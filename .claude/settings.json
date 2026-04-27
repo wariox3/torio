@@ -1,0 +1,6 @@
+{
+  "env": {
+    "VIRTUAL_ENV": "/home/desarrollo/.venvs/torio",
+    "PATH": "/home/desarrollo/.venvs/torio/bin:/home/desarrollo/.local/bin:/home/desarrollo/.nvm/versions/node/v20.10.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+  }
+}
