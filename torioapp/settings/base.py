@@ -29,6 +29,7 @@ SHARED_APPS = [
 
     'rest_framework',
     'rest_framework_simplejwt.token_blacklist',
+    'drf_spectacular',
     'corsheaders',
 ]
 
@@ -136,6 +137,19 @@ REST_FRAMEWORK = {
         'login': '5/min',
         'refresh': '20/min',
         'registro': '10/hour',
+    },
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Torio API',
+    'DESCRIPTION': 'API multi-tenant del ERP Torio',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SWAGGER_UI_SETTINGS': {
+        'persistAuthorization': True,
     },
 }
 

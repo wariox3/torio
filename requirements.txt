@@ -7,3 +7,4 @@ psycopg2-binary==2.9.12
 python-decouple==3.8
 djangorestframework_simplejwt==5.5.1
 PyJWT==2.12.1
+drf-spectacular==0.29.0

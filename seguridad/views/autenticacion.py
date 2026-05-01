@@ -1,7 +1,8 @@
 from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import update_last_login
-from rest_framework import status
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -10,6 +11,22 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from seguridad.serializers import SegLoginSerializer
+
+_DetailResponse = inline_serializer(
+    name='DetailResponse',
+    fields={'detail': serializers.CharField()},
+)
+_LoginResponse = inline_serializer(
+    name='LoginResponse',
+    fields={
+        'access': serializers.CharField(),
+        'detail': serializers.CharField(),
+    },
+)
+_RefreshRequest = inline_serializer(
+    name='RefreshRequest',
+    fields={'refresh': serializers.CharField(required=False)},
+)
 
 _ACCESS_MAX_AGE = int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds())
 _REFRESH_MAX_AGE = int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds())
@@ -26,6 +43,18 @@ def _set_auth_cookies(response, access_token, refresh_token=None):
                             httponly=True, secure=secure, samesite='Lax')
 
 
+@extend_schema(
+    tags=['Autenticación'],
+    summary='Iniciar sesión',
+    description='Valida credenciales y emite JWT en cookies httpOnly + body (para Bearer).',
+    request=SegLoginSerializer,
+    responses={
+        200: _LoginResponse,
+        401: OpenApiResponse(_DetailResponse, description='Credenciales inválidas'),
+        403: OpenApiResponse(_DetailResponse, description='Cuenta no verificada'),
+        429: OpenApiResponse(description='Demasiados intentos (rate limit 5/min)'),
+    },
+)
 class SegLoginView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
@@ -62,6 +91,17 @@ class SegLoginView(APIView):
         return response
 
 
+@extend_schema(
+    tags=['Autenticación'],
+    summary='Renovar access token',
+    description='Renueva el access token. Si rotación está activa, también emite nuevo refresh y blacklistea el anterior.',
+    request=_RefreshRequest,
+    responses={
+        200: _DetailResponse,
+        400: OpenApiResponse(_DetailResponse, description='Refresh token no encontrado'),
+        401: OpenApiResponse(_DetailResponse, description='Token inválido o expirado'),
+    },
+)
 class SegRefreshView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
@@ -92,6 +132,13 @@ class SegRefreshView(APIView):
         return response
 
 
+@extend_schema(
+    tags=['Autenticación'],
+    summary='Cerrar sesión',
+    description='Blacklistea el refresh token y limpia las cookies de autenticación.',
+    request=_RefreshRequest,
+    responses={200: _DetailResponse},
+)
 class SegLogoutView(APIView):
     permission_classes = [IsAuthenticated]
 

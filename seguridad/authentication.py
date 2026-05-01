@@ -1,4 +1,21 @@
+from drf_spectacular.contrib.rest_framework_simplejwt import SimpleJWTScheme
 from rest_framework_simplejwt.authentication import JWTAuthentication
+
+
+class SegCookieJWTScheme(SimpleJWTScheme):
+    target_class = 'seguridad.authentication.SegCookieJWTAuthentication'
+    name = ['jwtAuth', 'jwtCookieAuth']
+
+    def get_security_definition(self, auto_schema):
+        definitions = super().get_security_definition(auto_schema)
+        cookie_def = {
+            'type': 'apiKey',
+            'in': 'cookie',
+            'name': 'access_token',
+        }
+        if isinstance(definitions, list):
+            return definitions + [cookie_def]
+        return [definitions, cookie_def]
 
 
 class SegCookieJWTAuthentication(JWTAuthentication):
