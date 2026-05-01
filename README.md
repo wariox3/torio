@@ -67,8 +67,9 @@ python manage.py migrate_schemas --shared
 # 7. Crear el tenant público (una sola vez)
 python manage.py shell
 # >>> from contenedor.models import CtnCliente, CtnDominio
-# >>> public = CtnCliente.objects.create(schema_name='public', nombre='Public')
-# >>> CtnDominio.objects.create(domain='localhost', tenant=public, is_primary=True)
+# >>> tenant = CtnCliente(schema_name='public', nombre='Public')
+# >>> tenant.save(verbosity=1)                                  
+# >>> CtnDominio.objects.create(domain='localhost', is_primary=True, tenant=tenant)
 
 # 8. Servidor de desarrollo
 python manage.py runserver

@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 from decouple import Csv, config
 
@@ -27,12 +28,14 @@ SHARED_APPS = [
     'django.contrib.admin',
 
     'rest_framework',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
 ]
 
 TENANT_APPS = [
     'django.contrib.contenttypes',
     'tenant_users.permissions',
+    'general',
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [
@@ -112,6 +115,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Django REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'seguridad.authentication.SegCookieJWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
@@ -129,6 +133,9 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon': '60/min',
         'user': '1000/min',
+        'login': '5/min',
+        'refresh': '20/min',
+        'registro': '10/hour',
     },
 }
 
@@ -161,3 +168,18 @@ LOGGING = {
         },
     },
 }
+
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+}
+
+CORS_ALLOW_CREDENTIALS = True

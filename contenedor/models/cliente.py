@@ -8,6 +8,12 @@ class CtnCliente(TenantBase):
     activo = models.BooleanField('Activo', default=True)
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
     fecha_ultima_conexion = models.DateTimeField(null=True, auto_now_add=True)
+    owner = models.ForeignKey(
+        'seguridad.SegUsuario',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+    )
 
     auto_create_schema = True
 

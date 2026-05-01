@@ -1,0 +1,1 @@
+from .prueba import PruebaView
