@@ -16,9 +16,9 @@ from utilidades.zinc import Zinc
 logger = logging.getLogger(__name__)
 
 _SALT = 'seg-verificacion-email'
-_MAX_AGE = 72 * 3600  # 72 horas
+_TIEMPO_MAXIMO = 72 * 3600  # 72 horas
 
-_DetailResponse = inline_serializer(
+_RespuestaDetalle = inline_serializer(
     name='UsuarioDetailResponse',
     fields={'detail': serializers.CharField()},
 )
@@ -40,27 +40,27 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         return super().get_throttles()
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        usuario = serializer.save()
+        serializador = self.get_serializer(data=request.data)
+        serializador.is_valid(raise_exception=True)
+        usuario = serializador.save()
 
         token = signing.dumps(usuario.email, salt=_SALT)
         verificacion_url = f'{settings.FRONTEND_URL}/auth/verify-email?token={token}'
-        html_content = (
+        contenido_html = (
             f'<h1>¡Hola {usuario.nombre_corto}!</h1>'
             f'<p>Por favor verifica tu cuenta haciendo clic en el siguiente enlace.</p>'
             f'<a href="{verificacion_url}">Verificar cuenta</a>'
         )
         try:
-            Zinc().correo(usuario.email, 'Verifica tu cuenta', html_content)
+            Zinc().correo(usuario.email, 'Verifica tu cuenta', contenido_html)
         except Exception as e:
             logger.warning('No se pudo enviar correo de verificación a %s: %s', usuario.email, e)
 
-        headers = self.get_success_headers(serializer.data)
+        cabeceras = self.get_success_headers(serializador.data)
         return Response(
-            {**serializer.data, 'verificacion_url': verificacion_url},
+            {**serializador.data, 'verificacion_url': verificacion_url},
             status=status.HTTP_201_CREATED,
-            headers=headers,
+            headers=cabeceras,
         )
 
     @extend_schema(
@@ -72,9 +72,9 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             fields={'token': serializers.CharField()},
         ),
         responses={
-            200: _DetailResponse,
-            400: OpenApiResponse(_DetailResponse, description='Token inválido o expirado'),
-            404: OpenApiResponse(_DetailResponse, description='Usuario no encontrado'),
+            200: _RespuestaDetalle,
+            400: OpenApiResponse(_RespuestaDetalle, description='Token inválido o expirado'),
+            404: OpenApiResponse(_RespuestaDetalle, description='Usuario no encontrado'),
         },
     )
     @action(detail=False, methods=['post'], url_path='verificar-email')
@@ -84,7 +84,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Token requerido.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            email = signing.loads(token, salt=_SALT, max_age=_MAX_AGE)
+            correo = signing.loads(token, salt=_SALT, max_age=_TIEMPO_MAXIMO)
         except signing.SignatureExpired:
             return Response(
                 {'detail': 'El enlace ha expirado. Solicita uno nuevo.'},
@@ -94,7 +94,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Token inválido.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            usuario = SegUsuario.objects.get(email=email)
+            usuario = SegUsuario.objects.get(email=correo)
         except SegUsuario.DoesNotExist:
             return Response({'detail': 'Usuario no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -114,18 +114,18 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             fields={'email': serializers.EmailField()},
         ),
         responses={
-            200: _DetailResponse,
-            400: OpenApiResponse(_DetailResponse, description='Cuenta ya verificada'),
+            200: _RespuestaDetalle,
+            400: OpenApiResponse(_RespuestaDetalle, description='Cuenta ya verificada'),
         },
     )
     @action(detail=False, methods=['post'], url_path='reenviar-verificacion')
     def reenviar_verificacion(self, request):
-        email = request.data.get('email', '').strip().lower()
-        if not email:
+        correo = request.data.get('email', '').strip().lower()
+        if not correo:
             return Response({'detail': 'Email requerido.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            usuario = SegUsuario.objects.get(email=email)
+            usuario = SegUsuario.objects.get(email=correo)
         except SegUsuario.DoesNotExist:
             return Response({'detail': 'No existe una cuenta con este correo.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -137,13 +137,13 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
 
         token = signing.dumps(usuario.email, salt=_SALT)
         verificacion_url = f'{settings.FRONTEND_URL}/auth/verify-email?token={token}'
-        html_content = (
+        contenido_html = (
             f'<h1>¡Hola {usuario.nombre_corto}!</h1>'
             f'<p>Por favor verifica tu cuenta haciendo clic en el siguiente enlace.</p>'
             f'<a href="{verificacion_url}">Verificar cuenta</a>'
         )
         try:
-            Zinc().correo(usuario.email, 'Verifica tu cuenta', html_content)
+            Zinc().correo(usuario.email, 'Verifica tu cuenta', contenido_html)
         except Exception as e:
             logger.warning('No se pudo enviar correo de verificación a %s: %s', usuario.email, e)
-        return Response({'detail': 'Correo de verificación reenviado.'})
+        return Response({'detail': 'Correo de verificación reenviado.', 'verificacion_url': verificacion_url})

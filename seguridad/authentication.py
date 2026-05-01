@@ -26,18 +26,18 @@ class SegCookieJWTAuthentication(JWTAuthentication):
     """
 
     def authenticate(self, request):
-        header = self.get_header(request)
+        encabezado = self.get_header(request)
 
-        if header is not None:
-            raw_token = self.get_raw_token(header)
-            if raw_token is None:
+        if encabezado is not None:
+            token_sin_procesar = self.get_raw_token(encabezado)
+            if token_sin_procesar is None:
                 return None
-            validated_token = self.get_validated_token(raw_token)
-            return self.get_user(validated_token), validated_token
+            token_validado = self.get_validated_token(token_sin_procesar)
+            return self.get_user(token_validado), token_validado
 
-        raw_token = request.COOKIES.get('access_token')
-        if raw_token is None:
+        token_sin_procesar = request.COOKIES.get('access_token')
+        if token_sin_procesar is None:
             return None
 
-        validated_token = self.get_validated_token(raw_token)
-        return self.get_user(validated_token), validated_token
+        token_validado = self.get_validated_token(token_sin_procesar)
+        return self.get_user(token_validado), token_validado

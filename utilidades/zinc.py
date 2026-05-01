@@ -22,10 +22,10 @@ class Zinc:
         return {'error': True, 'status': respuesta['status'], 'datos': respuesta['datos']}
 
     def _post(self, data: dict, url: str):
-        full_url = settings.ZINC_URL + url
+        url_completa = settings.ZINC_URL + url
         try:
-            response = httpx.post(full_url, json=data, timeout=10)
-            return {'status': response.status_code, 'datos': response.json()}
+            respuesta = httpx.post(url_completa, json=data, timeout=10)
+            return {'status': respuesta.status_code, 'datos': respuesta.json()}
         except Exception as e:
             logger.error('Zinc error: %s', e)
             return {'status': 500, 'datos': {}}

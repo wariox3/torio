@@ -12,35 +12,35 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from seguridad.serializers import SegLoginSerializer
 
-_DetailResponse = inline_serializer(
+_RespuestaDetalle = inline_serializer(
     name='DetailResponse',
     fields={'detail': serializers.CharField()},
 )
-_LoginResponse = inline_serializer(
+_RespuestaLogin = inline_serializer(
     name='LoginResponse',
     fields={
         'access': serializers.CharField(),
         'detail': serializers.CharField(),
     },
 )
-_RefreshRequest = inline_serializer(
+_SolicitudRefresco = inline_serializer(
     name='RefreshRequest',
     fields={'refresh': serializers.CharField(required=False)},
 )
 
-_ACCESS_MAX_AGE = int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds())
-_REFRESH_MAX_AGE = int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds())
-_ROTATE = settings.SIMPLE_JWT.get('ROTATE_REFRESH_TOKENS', False)
-_BLACKLIST = settings.SIMPLE_JWT.get('BLACKLIST_AFTER_ROTATION', False)
+_TIEMPO_MAXIMO_ACCESO = int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds())
+_TIEMPO_MAXIMO_REFRESCO = int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds())
+_ROTAR = settings.SIMPLE_JWT.get('ROTATE_REFRESH_TOKENS', False)
+_LISTA_NEGRA = settings.SIMPLE_JWT.get('BLACKLIST_AFTER_ROTATION', False)
 
 
-def _set_auth_cookies(response, access_token, refresh_token=None):
-    secure = not settings.DEBUG
-    response.set_cookie('access_token', access_token, max_age=_ACCESS_MAX_AGE,
-                        httponly=True, secure=secure, samesite='Lax')
+def _asignar_cookies_auth(respuesta, access_token, refresh_token=None):
+    seguro = not settings.DEBUG
+    respuesta.set_cookie('access_token', access_token, max_age=_TIEMPO_MAXIMO_ACCESO,
+                         httponly=True, secure=seguro, samesite='Lax')
     if refresh_token:
-        response.set_cookie('refresh_token', refresh_token, max_age=_REFRESH_MAX_AGE,
-                            httponly=True, secure=secure, samesite='Lax')
+        respuesta.set_cookie('refresh_token', refresh_token, max_age=_TIEMPO_MAXIMO_REFRESCO,
+                             httponly=True, secure=seguro, samesite='Lax')
 
 
 @extend_schema(
@@ -49,9 +49,9 @@ def _set_auth_cookies(response, access_token, refresh_token=None):
     description='Valida credenciales y emite JWT en cookies httpOnly + body (para Bearer).',
     request=SegLoginSerializer,
     responses={
-        200: _LoginResponse,
-        401: OpenApiResponse(_DetailResponse, description='Credenciales inválidas'),
-        403: OpenApiResponse(_DetailResponse, description='Cuenta no verificada'),
+        200: _RespuestaLogin,
+        401: OpenApiResponse(_RespuestaDetalle, description='Credenciales inválidas'),
+        403: OpenApiResponse(_RespuestaDetalle, description='Cuenta no verificada'),
         429: OpenApiResponse(description='Demasiados intentos (rate limit 5/min)'),
     },
 )
@@ -61,45 +61,45 @@ class SegLoginView(APIView):
     throttle_scope = 'login'
 
     def post(self, request):
-        serializer = SegLoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        serializador = SegLoginSerializer(data=request.data)
+        serializador.is_valid(raise_exception=True)
 
-        user = authenticate(
+        usuario = authenticate(
             request,
-            username=serializer.validated_data['email'],
-            password=serializer.validated_data['password'],
+            username=serializador.validated_data['email'],
+            password=serializador.validated_data['password'],
         )
-        if user is None:
+        if usuario is None:
             return Response({'detail': 'Credenciales inválidas.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        if not user.is_verified:
+        if not usuario.is_verified:
             return Response(
                 {'detail': 'Cuenta no verificada. Revisa tu correo para activarla.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        update_last_login(None, user)
-        refresh = RefreshToken.for_user(user)
+        update_last_login(None, usuario)
+        refresh = RefreshToken.for_user(usuario)
         access_token = str(refresh.access_token)
         refresh_token = str(refresh)
 
-        response = Response({
+        respuesta = Response({
             'access': access_token,   # para Postman / clientes externos
             'detail': 'Login exitoso.',
         })
-        _set_auth_cookies(response, access_token, refresh_token)
-        return response
+        _asignar_cookies_auth(respuesta, access_token, refresh_token)
+        return respuesta
 
 
 @extend_schema(
     tags=['Autenticación'],
     summary='Renovar access token',
     description='Renueva el access token. Si rotación está activa, también emite nuevo refresh y blacklistea el anterior.',
-    request=_RefreshRequest,
+    request=_SolicitudRefresco,
     responses={
-        200: _DetailResponse,
-        400: OpenApiResponse(_DetailResponse, description='Refresh token no encontrado'),
-        401: OpenApiResponse(_DetailResponse, description='Token inválido o expirado'),
+        200: _RespuestaDetalle,
+        400: OpenApiResponse(_RespuestaDetalle, description='Refresh token no encontrado'),
+        401: OpenApiResponse(_RespuestaDetalle, description='Token inválido o expirado'),
     },
 )
 class SegRefreshView(APIView):
@@ -117,8 +117,8 @@ class SegRefreshView(APIView):
             access_token = str(refresh.access_token)
 
             new_refresh_token = None
-            if _ROTATE:
-                if _BLACKLIST:
+            if _ROTAR:
+                if _LISTA_NEGRA:
                     refresh.blacklist()
                 refresh.set_jti()
                 refresh.set_exp()
@@ -127,17 +127,17 @@ class SegRefreshView(APIView):
         except TokenError:
             return Response({'detail': 'Token inválido o expirado.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        response = Response({'detail': 'Token renovado.'})
-        _set_auth_cookies(response, access_token, new_refresh_token)
-        return response
+        respuesta = Response({'detail': 'Token renovado.'})
+        _asignar_cookies_auth(respuesta, access_token, new_refresh_token)
+        return respuesta
 
 
 @extend_schema(
     tags=['Autenticación'],
     summary='Cerrar sesión',
     description='Blacklistea el refresh token y limpia las cookies de autenticación.',
-    request=_RefreshRequest,
-    responses={200: _DetailResponse},
+    request=_SolicitudRefresco,
+    responses={200: _RespuestaDetalle},
 )
 class SegLogoutView(APIView):
     permission_classes = [IsAuthenticated]
@@ -150,7 +150,7 @@ class SegLogoutView(APIView):
             except TokenError:
                 pass
 
-        response = Response({'detail': 'Logout exitoso.'})
-        response.delete_cookie('access_token')
-        response.delete_cookie('refresh_token')
-        return response
+        respuesta = Response({'detail': 'Logout exitoso.'})
+        respuesta.delete_cookie('access_token')
+        respuesta.delete_cookie('refresh_token')
+        return respuesta
