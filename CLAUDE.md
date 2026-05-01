@@ -21,7 +21,7 @@ python manage.py createsuperuser    # Create admin user
 
 ## Architecture
 
-This is a **Django 6.0.4** multi-tenant SaaS project using **PostgreSQL schema-based tenancy** via `django-tenants` and `django-tenant-users`.
+This is a **Django 5.2.13** multi-tenant SaaS project using **PostgreSQL schema-based tenancy** via `django-tenants` and `django-tenant-users`.
 
 **Key dependency**: `django-tenants` requires **PostgreSQL** — SQLite (currently in `settings.py`) is a placeholder and will not work for tenant features. The database engine must be changed to `django.db.backends.postgresql` before running any tenant-related code.
 
