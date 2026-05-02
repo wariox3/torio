@@ -33,7 +33,14 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
     serializer_class = SegUsuarioSerializer
 
     def get_permissions(self):
+        if self.action == 'create':
+            return [AllowAny()]
         return super().get_permissions()
+
+    def get_authenticators(self):
+        if self.action == 'create':
+            return []
+        return super().get_authenticators()
 
     def get_throttles(self):
         scopes = {
@@ -47,8 +54,6 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         return super().get_throttles()
 
     def create(self, request, *args, **kwargs):
-        self.permission_classes = [AllowAny]
-        self.authentication_classes = []
         verify_turnstile(request.data.get('turnstile_token', ''), request.META.get('REMOTE_ADDR'))
         serializador = self.get_serializer(data=request.data)
         serializador.is_valid(raise_exception=True)
