@@ -3,7 +3,7 @@ from tenant_users.tenants.models import TenantBase
 
 
 class CtnCliente(TenantBase):
-    schema_name = models.CharField(max_length=100)
+    schema_name = models.CharField(max_length=100, unique=True)
     nombre = models.CharField('Nombre', max_length=100)
     activo = models.BooleanField('Activo', default=True)
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
