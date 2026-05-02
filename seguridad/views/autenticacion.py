@@ -11,6 +11,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from seguridad.serializers import SegLoginSerializer
+from utilidades.turnstile import verify_turnstile
 
 _RespuestaDetalle = inline_serializer(
     name='DetailResponse',
@@ -61,6 +62,7 @@ class SegLoginView(APIView):
     throttle_scope = 'login'
 
     def post(self, request):
+        verify_turnstile(request.data.get('turnstile_token', ''), request.META.get('REMOTE_ADDR'))
         serializador = SegLoginSerializer(data=request.data)
         serializador.is_valid(raise_exception=True)
 

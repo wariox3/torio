@@ -11,6 +11,7 @@ from rest_framework.throttling import ScopedRateThrottle
 
 from seguridad.models import SegUsuario
 from seguridad.serializers import SegUsuarioSerializer
+from utilidades.turnstile import verify_turnstile
 from utilidades.zinc import Zinc
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         return super().get_throttles()
 
     def create(self, request, *args, **kwargs):
+        verify_turnstile(request.data.get('turnstile_token', ''), request.META.get('REMOTE_ADDR'))
         serializador = self.get_serializer(data=request.data)
         serializador.is_valid(raise_exception=True)
         usuario = serializador.save()
@@ -155,6 +157,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
     @extend_schema(exclude=True)
     @action(detail=False, methods=['post'], url_path='recuperar-clave')
     def recuperar_clave(self, request):
+        verify_turnstile(request.data.get('turnstile_token', ''), request.META.get('REMOTE_ADDR'))
         email = request.data.get('email', '').strip().lower()
         if not email:
             return Response({'detail': 'Email requerido.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -193,6 +196,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
     @extend_schema(exclude=True)
     @action(detail=False, methods=['post'], url_path='restablecer-clave')
     def restablecer_clave(self, request):
+        verify_turnstile(request.data.get('turnstile_token', ''), request.META.get('REMOTE_ADDR'))
         token = request.data.get('token', '').strip()
         nueva_clave = request.data.get('nueva_clave', '')
 
