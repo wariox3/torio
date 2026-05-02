@@ -77,20 +77,17 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
     @extend_schema(
         tags=['Autenticación'],
         summary='Verificar email',
-        description='Activa la cuenta con el token enviado al correo. Válido 72 horas.',
-        request=inline_serializer(
-            name='VerificacionTokenRequest',
-            fields={'token': serializers.CharField()},
-        ),
+        description='Activa la cuenta con el token del link enviado al correo. Válido 72 horas.',
         responses={
             200: _RespuestaDetalle,
             400: OpenApiResponse(_RespuestaDetalle, description='Token inválido o expirado'),
             404: OpenApiResponse(_RespuestaDetalle, description='Usuario no encontrado'),
         },
     )
-    @action(detail=False, methods=['post'], url_path='verificar-email', permission_classes=[AllowAny], authentication_classes=[])
+    @action(detail=False, methods=['get'], url_path='verificar-email',
+            permission_classes=[AllowAny], authentication_classes=[])
     def verificar_email(self, request):
-        token = request.data.get('token', '').strip()
+        token = request.query_params.get('token', '').strip()
         if not token:
             return Response({'detail': 'Token requerido.'}, status=status.HTTP_400_BAD_REQUEST)
 
