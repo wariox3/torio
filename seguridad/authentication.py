@@ -39,5 +39,9 @@ class SegCookieJWTAuthentication(JWTAuthentication):
         if token_sin_procesar is None:
             return None
 
-        token_validado = self.get_validated_token(token_sin_procesar)
+        try:
+            token_validado = self.get_validated_token(token_sin_procesar)
+        except Exception:
+            return None
+
         return self.get_user(token_validado), token_validado
