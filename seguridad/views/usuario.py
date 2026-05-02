@@ -38,7 +38,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         return super().get_permissions()
 
     def get_authenticators(self):
-        if self.action == 'create':
+        if getattr(self, 'action', None) == 'create':
             return []
         return super().get_authenticators()
 
