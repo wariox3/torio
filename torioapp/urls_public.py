@@ -9,7 +9,7 @@ urlpatterns = [
     path('seguridad/', include('seguridad.urls')),
 ]
 
-if settings.DEBUG:
+if settings.ENABLE_API_DOCS:
     from drf_spectacular.views import (
         SpectacularAPIView,
         SpectacularRedocView,

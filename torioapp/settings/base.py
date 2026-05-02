@@ -207,3 +207,4 @@ CORS_ALLOWED_ORIGINS = [
 BACKEND_URL = config('BACKEND_URL', default='http://localhost:8000')
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:4200')
 ZINC_URL = config('ZINC_URL', default='http://localhost:3000')
+ENABLE_API_DOCS = config('ENABLE_API_DOCS', default=False, cast=bool)
