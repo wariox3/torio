@@ -197,6 +197,12 @@ SIMPLE_JWT = {
 }
 
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    'https://reddoc.uk',
+    'https://www.reddoc.uk',
+    'http://localhost:4200',
+    'http://127.0.0.1:4200',
+]
 
 BACKEND_URL = config('BACKEND_URL', default='http://localhost:8000')
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:4200')
