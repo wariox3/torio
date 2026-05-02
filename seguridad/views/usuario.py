@@ -193,7 +193,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.warning('No se pudo enviar correo de recuperación a %s: %s', email, e)
 
-        return Response({'detail': 'Si el correo existe, recibirás las instrucciones para recuperar tu clave.'})
+        return Response({'detail': 'Se envía correo para recuperar la clave.'})
 
     @extend_schema(exclude=True)
     @action(detail=False, methods=['post'], url_path='restablecer-clave',
