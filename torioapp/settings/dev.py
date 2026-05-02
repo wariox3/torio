@@ -8,5 +8,3 @@ DEBUG = True
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:4200',
 ]
-
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

@@ -136,7 +136,9 @@ REST_FRAMEWORK = {
         'user': '1000/min',
         'login': '5/min',
         'refresh': '20/min',
-        'registro': '10/hour',
+        'registro': '5/hour',
+        'recuperar_clave': '3/min',
+        'restablecer_clave': '5/min',
     },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }

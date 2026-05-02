@@ -15,8 +15,11 @@ from utilidades.zinc import Zinc
 
 logger = logging.getLogger(__name__)
 
-_SALT = 'seg-verificacion-email'
-_TIEMPO_MAXIMO = 72 * 3600  # 72 horas
+_SALT_VERIFICACION = 'seg-verificacion-email'
+_TIEMPO_VERIFICACION = 72 * 3600  # 72 horas
+
+_SALT_RECUPERAR = 'seg-recuperar-clave'
+_TIEMPO_RECUPERAR = 3600  # 1 hora
 
 _RespuestaDetalle = inline_serializer(
     name='UsuarioDetailResponse',
@@ -29,13 +32,19 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
     serializer_class = SegUsuarioSerializer
 
     def get_permissions(self):
-        if self.action in ('create', 'verificar_email', 'reenviar_verificacion'):
+        if self.action in ('create', 'verificar_email', 'reenviar_verificacion',
+                           'recuperar_clave', 'restablecer_clave'):
             return [AllowAny()]
         return super().get_permissions()
 
     def get_throttles(self):
-        if self.action == 'create':
-            self.throttle_scope = 'registro'
+        scopes = {
+            'create': 'registro',
+            'recuperar_clave': 'recuperar_clave',
+            'restablecer_clave': 'restablecer_clave',
+        }
+        if self.action in scopes:
+            self.throttle_scope = scopes[self.action]
             return [ScopedRateThrottle()]
         return super().get_throttles()
 
@@ -44,7 +53,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         serializador.is_valid(raise_exception=True)
         usuario = serializador.save()
 
-        token = signing.dumps(usuario.email, salt=_SALT)
+        token = signing.dumps(usuario.email, salt=_SALT_VERIFICACION)
         verificacion_url = f'{settings.FRONTEND_URL}/auth/verify-email?token={token}'
         contenido_html = (
             f'<h1>¡Hola {usuario.nombre_corto}!</h1>'
@@ -57,11 +66,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             logger.warning('No se pudo enviar correo de verificación a %s: %s', usuario.email, e)
 
         cabeceras = self.get_success_headers(serializador.data)
-        return Response(
-            {**serializador.data, 'verificacion_url': verificacion_url},
-            status=status.HTTP_201_CREATED,
-            headers=cabeceras,
-        )
+        return Response(serializador.data, status=status.HTTP_201_CREATED, headers=cabeceras)
 
     @extend_schema(
         tags=['Autenticación'],
@@ -84,7 +89,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Token requerido.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            correo = signing.loads(token, salt=_SALT, max_age=_TIEMPO_MAXIMO)
+            correo = signing.loads(token, salt=_SALT_VERIFICACION, max_age=_TIEMPO_VERIFICACION)
         except signing.SignatureExpired:
             return Response(
                 {'detail': 'El enlace ha expirado. Solicita uno nuevo.'},
@@ -113,10 +118,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             name='ReenviarVerificacionRequest',
             fields={'email': serializers.EmailField()},
         ),
-        responses={
-            200: _RespuestaDetalle,
-            400: OpenApiResponse(_RespuestaDetalle, description='Cuenta ya verificada'),
-        },
+        responses={200: _RespuestaDetalle},
     )
     @action(detail=False, methods=['post'], url_path='reenviar-verificacion')
     def reenviar_verificacion(self, request):
@@ -124,18 +126,19 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         if not correo:
             return Response({'detail': 'Email requerido.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        _RESPUESTA_GENERICA = Response(
+            {'detail': 'Si la cuenta existe, recibirás un correo de verificación.'}
+        )
+
         try:
             usuario = SegUsuario.objects.get(email=correo)
         except SegUsuario.DoesNotExist:
-            return Response({'detail': 'No existe una cuenta con este correo.'}, status=status.HTTP_404_NOT_FOUND)
+            return _RESPUESTA_GENERICA
 
         if usuario.is_verified:
-            return Response(
-                {'detail': 'Esta cuenta ya está verificada.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return _RESPUESTA_GENERICA
 
-        token = signing.dumps(usuario.email, salt=_SALT)
+        token = signing.dumps(usuario.email, salt=_SALT_VERIFICACION)
         verificacion_url = f'{settings.FRONTEND_URL}/auth/verify-email?token={token}'
         contenido_html = (
             f'<h1>¡Hola {usuario.nombre_corto}!</h1>'
@@ -146,4 +149,80 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             Zinc().correo(usuario.email, 'Verifica tu cuenta', contenido_html)
         except Exception as e:
             logger.warning('No se pudo enviar correo de verificación a %s: %s', usuario.email, e)
-        return Response({'detail': 'Correo de verificación reenviado.', 'verificacion_url': verificacion_url})
+
+        return _RESPUESTA_GENERICA
+
+    @extend_schema(exclude=True)
+    @action(detail=False, methods=['post'], url_path='recuperar-clave')
+    def recuperar_clave(self, request):
+        email = request.data.get('email', '').strip().lower()
+        if not email:
+            return Response({'detail': 'Email requerido.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        _RESPUESTA_GENERICA = Response(
+            {'detail': 'Si el correo existe, recibirás las instrucciones para recuperar tu clave.'}
+        )
+
+        try:
+            usuario = SegUsuario.objects.get(email=email)
+        except SegUsuario.DoesNotExist:
+            return _RESPUESTA_GENERICA
+
+        if not usuario.is_verified:
+            return Response(
+                {'detail': 'Cuenta no verificada.', 'is_verified': False},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        token = signing.dumps(email, salt=_SALT_RECUPERAR)
+        reset_link = f'{settings.FRONTEND_URL}/auth/restablecer-clave?token={token}'
+        html_content = (
+            f'<h1>Recuperación de clave</h1>'
+            f'<p>Recibimos una solicitud para restablecer la clave de tu cuenta.</p>'
+            f'<p>Haz clic en el siguiente enlace para crear una nueva clave:</p>'
+            f'<a href="{reset_link}">Restablecer clave</a>'
+            f'<p>Si no solicitaste esto, ignora este correo.</p>'
+        )
+        try:
+            Zinc().correo(email, 'Recuperación de clave', html_content)
+        except Exception as e:
+            logger.warning('No se pudo enviar correo de recuperación a %s: %s', email, e)
+
+        return _RESPUESTA_GENERICA
+
+    @extend_schema(exclude=True)
+    @action(detail=False, methods=['post'], url_path='restablecer-clave')
+    def restablecer_clave(self, request):
+        token = request.data.get('token', '').strip()
+        nueva_clave = request.data.get('nueva_clave', '')
+
+        if not token or not nueva_clave:
+            return Response(
+                {'detail': 'Token y nueva_clave son requeridos.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if len(nueva_clave) < 8:
+            return Response(
+                {'detail': 'La clave debe tener al menos 8 caracteres.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            email = signing.loads(token, salt=_SALT_RECUPERAR, max_age=_TIEMPO_RECUPERAR)
+        except signing.SignatureExpired:
+            return Response(
+                {'detail': 'El enlace ha expirado. Solicita uno nuevo.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except signing.BadSignature:
+            return Response({'detail': 'Token inválido.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            usuario = SegUsuario.objects.get(email=email)
+        except SegUsuario.DoesNotExist:
+            return Response({'detail': 'Token inválido.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        usuario.set_password(nueva_clave)
+        usuario.save(update_fields=['password'])
+        return Response({'detail': 'Clave restablecida correctamente.'})
