@@ -5,3 +5,8 @@ DEBUG = False
 PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 
 TURNSTILE_ENABLED = False
+
+CORS_ALLOWED_ORIGINS = [
+    'https://reddoc.uk',
+    'https://www.reddoc.uk',
+]
