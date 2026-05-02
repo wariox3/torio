@@ -165,18 +165,17 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         if not email:
             return Response({'detail': 'Email requerido.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        _RESPUESTA_GENERICA = Response(
-            {'detail': 'Si el correo existe, recibirás las instrucciones para recuperar tu clave.'}
-        )
-
         try:
             usuario = SegUsuario.objects.get(email=email)
         except SegUsuario.DoesNotExist:
-            return _RESPUESTA_GENERICA
+            return Response(
+                {'detail': 'No existe una cuenta registrada con este correo.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         if not usuario.is_verified:
             return Response(
-                {'detail': 'Cuenta no verificada.', 'is_verified': False},
+                {'detail': 'La cuenta no está verificada. Revisa tu correo para activarla.', 'is_verified': False},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
