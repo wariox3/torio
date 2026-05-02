@@ -33,9 +33,6 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
     serializer_class = SegUsuarioSerializer
 
     def get_permissions(self):
-        if self.action in ('create', 'verificar_email', 'reenviar_verificacion',
-                           'recuperar_clave', 'restablecer_clave'):
-            return [AllowAny()]
         return super().get_permissions()
 
     def get_throttles(self):
@@ -50,6 +47,8 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         return super().get_throttles()
 
     def create(self, request, *args, **kwargs):
+        self.permission_classes = [AllowAny]
+        self.authentication_classes = []
         verify_turnstile(request.data.get('turnstile_token', ''), request.META.get('REMOTE_ADDR'))
         serializador = self.get_serializer(data=request.data)
         serializador.is_valid(raise_exception=True)
@@ -84,7 +83,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             404: OpenApiResponse(_RespuestaDetalle, description='Usuario no encontrado'),
         },
     )
-    @action(detail=False, methods=['post'], url_path='verificar-email')
+    @action(detail=False, methods=['post'], url_path='verificar-email', permission_classes=[AllowAny], authentication_classes=[])
     def verificar_email(self, request):
         token = request.data.get('token', '').strip()
         if not token:
@@ -122,7 +121,8 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         ),
         responses={200: _RespuestaDetalle},
     )
-    @action(detail=False, methods=['post'], url_path='reenviar-verificacion')
+    @action(detail=False, methods=['post'], url_path='reenviar-verificacion',
+            permission_classes=[AllowAny], authentication_classes=[])
     def reenviar_verificacion(self, request):
         correo = request.data.get('email', '').strip().lower()
         if not correo:
@@ -155,7 +155,8 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         return _RESPUESTA_GENERICA
 
     @extend_schema(exclude=True)
-    @action(detail=False, methods=['post'], url_path='recuperar-clave')
+    @action(detail=False, methods=['post'], url_path='recuperar-clave',
+            permission_classes=[AllowAny], authentication_classes=[])
     def recuperar_clave(self, request):
         verify_turnstile(request.data.get('turnstile_token', ''), request.META.get('REMOTE_ADDR'))
         email = request.data.get('email', '').strip().lower()
@@ -194,7 +195,8 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         return _RESPUESTA_GENERICA
 
     @extend_schema(exclude=True)
-    @action(detail=False, methods=['post'], url_path='restablecer-clave')
+    @action(detail=False, methods=['post'], url_path='restablecer-clave',
+            permission_classes=[AllowAny], authentication_classes=[])
     def restablecer_clave(self, request):
         verify_turnstile(request.data.get('turnstile_token', ''), request.META.get('REMOTE_ADDR'))
         token = request.data.get('token', '').strip()
