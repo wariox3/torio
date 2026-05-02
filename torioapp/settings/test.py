@@ -5,6 +5,7 @@ DEBUG = False
 PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 
 TURNSTILE_ENABLED = False
+ENABLE_API_DOCS = True
 
 CORS_ALLOWED_ORIGINS = [
     'https://reddoc.uk',

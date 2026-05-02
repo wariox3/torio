@@ -1,25 +1,28 @@
 # Torio
 
-SaaS multi-tenant construido sobre **Django 6** y **PostgreSQL**, con aislamiento por schema vía `django-tenants` y usuarios globales gestionados por `django-tenant-users`.
+SaaS multi-tenant construido sobre **Django 5.2** y **PostgreSQL**, con aislamiento por schema vía `django-tenants` y usuarios globales gestionados por `django-tenant-users`.
 
 ## Stack
 
 - Python 3.12
-- Django 6.0
+- Django 5.2
 - PostgreSQL (schema-based multi-tenancy)
-- Django REST Framework
+- Django REST Framework + SimpleJWT
 - `django-tenants` 3.10 · `django-tenant-users` 2.2
-- `django-cors-headers`, `python-decouple`
+- `drf-spectacular`, `django-cors-headers`, `python-decouple`
+- `httpx`, `gunicorn`
 
 ## Arquitectura
 
 - **`torioapp/`** — configuración del proyecto (settings, URLs, WSGI/ASGI).
 - **`contenedor/`** — registro público de inquilinos. Define `CtnCliente` (subclase de `TenantBase`, un schema PostgreSQL por instancia) y `CtnDominio` (mapping host → tenant).
 - **`seguridad/`** — usuarios globales (`SegUsuario`, subclase de `UserProfile`). Vive en el schema público; los usuarios pueden pertenecer a varios tenants.
+- **`general/`** — lógica de negocio por tenant.
+- **`utilidades/`** — servicios transversales: `Zinc` (envío de correos) y `Turnstile` (verificación Cloudflare).
 
 ### URLs públicas vs. tenant
 
-- `torioapp/urls_public.py` — schema público (gestión de tenants, super-admin).
+- `torioapp/urls_public.py` — schema público (gestión de tenants, autenticación, admin).
 - `torioapp/urls_tenant.py` — schema de cada cliente.
 - El `host` de la petición decide cuál se sirve, vía `TenantMainMiddleware`.
 
@@ -28,12 +31,12 @@ SaaS multi-tenant construido sobre **Django 6** y **PostgreSQL**, con aislamient
 ```
 torioapp/settings/
   base.py    # común
-  dev.py     # local (DEBUG=True, CORS abierto, email a consola)
-  prod.py    # producción (HTTPS, HSTS, cookies seguras, CORS estricto)
-  test.py    # tests (hashing rápido)
+  dev.py     # local (DEBUG=True, CORS localhost:4200)
+  test.py    # tests (CORS reddoc.uk, Turnstile deshabilitado)
+  prod.py    # producción (HTTPS, HSTS, cookies seguras, CORS reddoc.co)
 ```
 
-`manage.py` usa `torioapp.settings.dev` por defecto. En producción, exportar `DJANGO_SETTINGS_MODULE=torioapp.settings.prod` (ya cableado en `wsgi.py`/`asgi.py`).
+`manage.py` usa `torioapp.settings.dev` por defecto. En producción exportar `DJANGO_SETTINGS_MODULE=torioapp.settings.prod` (ya cableado en `wsgi.py`/`asgi.py`).
 
 ## Requisitos
 
@@ -68,7 +71,7 @@ python manage.py migrate_schemas --shared
 python manage.py shell
 # >>> from contenedor.models import CtnCliente, CtnDominio
 # >>> tenant = CtnCliente(schema_name='public', nombre='Public')
-# >>> tenant.save(verbosity=1)                                  
+# >>> tenant.save(verbosity=1)
 # >>> CtnDominio.objects.create(domain='localhost', is_primary=True, tenant=tenant)
 
 # 8. Servidor de desarrollo
@@ -86,8 +89,31 @@ Definidas en `.env` (ver `.env.example`):
 | `ALLOWED_HOSTS` | CSV de hosts permitidos. |
 | `DATABASE_*` | Credenciales PostgreSQL (`USER`, `CLAVE`, `HOST`, `NAME`, `PORT`). |
 | `LOG_LEVEL`, `DJANGO_LOG_LEVEL` | Nivel de logging (default `INFO`). |
-| `CORS_ALLOWED_ORIGINS` | Solo en prod. CSV de orígenes permitidos. |
+| `BACKEND_URL` | URL base del backend. |
+| `FRONTEND_URL` | URL base del frontend (usada en links de correo). |
+| `ZINC_URL` | URL del servicio de envío de correos Zinc. |
+| `TURNSTILE_SECRET_KEY` | Secret key de Cloudflare Turnstile. |
+| `TURNSTILE_ENABLED` | `True` en prod/test, `False` en dev. |
+| `ENABLE_API_DOCS` | Habilita `/api/docs/`. Solo activar en dev/staging. |
+| `CORS_ALLOWED_ORIGINS` | Solo en prod. CSV de orígenes permitidos (ej. `https://reddoc.co`). |
 | `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS` | Solo en prod. |
+
+## Endpoints de autenticación
+
+Todos bajo `/seguridad/`:
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `POST` | `login/` | Inicia sesión. Emite JWT en cookies httpOnly. |
+| `POST` | `refresh/` | Renueva el access token. |
+| `POST` | `logout/` | Invalida el refresh token y limpia cookies. |
+| `POST` | `usuario/` | Registro de usuario. |
+| `POST` | `usuario/verificar-email/` | Activa la cuenta con el token del correo. |
+| `POST` | `usuario/reenviar-verificacion/` | Reenvía el correo de verificación. |
+| `POST` | `usuario/recuperar-clave/` | Envía link de recuperación al correo. |
+| `POST` | `usuario/restablecer-clave/` | Establece nueva clave con el token del link. |
+
+Los endpoints de registro, recuperación y login están protegidos con **Cloudflare Turnstile** (campo `turnstile_token` en el body).
 
 ## Comandos útiles
 
@@ -107,16 +133,16 @@ python manage.py test                       # tests
 from contenedor.models import CtnCliente, CtnDominio
 
 cliente = CtnCliente.objects.create(schema_name='acme', nombre='ACME S.A.')
-CtnDominio.objects.create(domain='acme.localhost', tenant=cliente, is_primary=True)
+CtnDominio.objects.create(domain='acme.midominio.com', tenant=cliente, is_primary=True)
 ```
 
-El schema PostgreSQL se crea automáticamente (`auto_create_schema=True`).
+El schema PostgreSQL se crea automáticamente (`auto_create_schema=True`). El `schema_name` debe ser único, comenzar con letra minúscula y contener solo letras, dígitos y guion bajo.
 
 ## Convenciones
 
 - **Modelos** con prefijo de app (`Ctn*`, `Seg*`) y `db_table` explícito en `Meta`.
 - **Settings** nunca con secretos hardcodeados — siempre vía `python-decouple`.
-- **Migraciones** del schema público se aplican con `migrate_schemas --shared`; las de tenants con `migrate_schemas` (todos) o `migrate_schemas --schema=acme`.
+- **Migraciones** del schema público con `migrate_schemas --shared`; las de tenants con `migrate_schemas` (todos) o `migrate_schemas --schema=acme`.
 
 ## Pendiente
 
@@ -124,5 +150,4 @@ El schema PostgreSQL se crea automáticamente (`auto_create_schema=True`).
 - CI (lint + tests + check de migraciones).
 - Docker / `docker-compose` para PostgreSQL local + app.
 - `pre-commit` con `ruff` / `black`.
-- Documentación de API (`drf-spectacular`).
-- Tareas asíncronas (Celery + Redis) para aprovisionamiento de tenants y emails.
+- Tareas asíncronas (Celery + Redis) para aprovisionamiento de tenants.
