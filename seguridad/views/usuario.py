@@ -238,3 +238,36 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         usuario.set_password(nueva_clave)
         usuario.save(update_fields=['password'])
         return Response({'detail': 'Clave restablecida correctamente.'})
+
+    @extend_schema(exclude=True)
+    @action(detail=True, methods=['post'], url_path='cambiar-clave')
+    def cambiar_clave(self, request, pk=None):
+        try:
+            usuario = SegUsuario.objects.get(pk=pk)
+        except SegUsuario.DoesNotExist:
+            return Response({'detail': 'Usuario no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if usuario.pk != request.user.pk:
+            return Response({'detail': 'No tienes permiso para cambiar la clave de otro usuario.'}, status=status.HTTP_403_FORBIDDEN)
+
+        clave_actual = request.data.get('clave_actual', '')
+        clave_nueva = request.data.get('clave_nueva', '')
+
+        if not clave_actual or not clave_nueva:
+            return Response(
+                {'detail': 'clave_actual y nueva son requeridos.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not usuario.check_password(clave_actual):
+            return Response({'detail': 'La clave actual es incorrecta.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(clave_nueva) < 8:
+            return Response(
+                {'detail': 'La nueva clave debe tener al menos 8 caracteres.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        usuario.set_password(clave_nueva)
+        usuario.save(update_fields=['password'])
+        return Response({'detail': 'Clave actualizada correctamente.'})
