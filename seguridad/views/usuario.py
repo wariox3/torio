@@ -240,16 +240,9 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         return Response({'detail': 'Clave restablecida correctamente.'})
 
     @extend_schema(exclude=True)
-    @action(detail=True, methods=['post'], url_path='cambiar-clave')
-    def cambiar_clave(self, request, pk=None):
-        try:
-            usuario = SegUsuario.objects.get(pk=pk)
-        except SegUsuario.DoesNotExist:
-            return Response({'detail': 'Usuario no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
-
-        if usuario.pk != request.user.pk:
-            return Response({'detail': 'No tienes permiso para cambiar la clave de otro usuario.'}, status=status.HTTP_403_FORBIDDEN)
-
+    @action(detail=False, methods=['post'], url_path='cambiar-clave')
+    def cambiar_clave(self, request):
+        usuario = request.user
         clave_actual = request.data.get('clave_actual', '')
         clave_nueva = request.data.get('clave_nueva', '')
 
