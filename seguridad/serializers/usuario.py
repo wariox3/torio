@@ -21,3 +21,9 @@ class SegUsuarioSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
         return user
+
+
+class SegUsuarioActualizarSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SegUsuario
+        fields = ['nombre_corto', 'numero_identificacion', 'celular', 'idioma']

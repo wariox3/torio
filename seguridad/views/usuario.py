@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
 from seguridad.models import SegUsuario
-from seguridad.serializers import SegUsuarioSerializer
+from seguridad.serializers import SegUsuarioActualizarSerializer, SegUsuarioSerializer
 from utilidades.turnstile import verify_turnstile
 from utilidades.zinc import Zinc
 
@@ -31,6 +31,11 @@ _RespuestaDetalle = inline_serializer(
 class SegUsuarioViewSet(viewsets.ModelViewSet):
     queryset = SegUsuario.objects.all()
     serializer_class = SegUsuarioSerializer
+
+    def get_serializer_class(self):
+        if self.action in ('update', 'partial_update'):
+            return SegUsuarioActualizarSerializer
+        return SegUsuarioSerializer
 
     def get_permissions(self):
         if self.action == 'create':
