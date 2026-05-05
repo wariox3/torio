@@ -9,8 +9,11 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
+from rest_framework.parsers import MultiPartParser
+
 from seguridad.models import SegUsuario
-from seguridad.serializers import SegUsuarioActualizarSerializer, SegUsuarioSerializer
+from seguridad.serializers import SegUsuarioActualizarSerializer, SegUsuarioMeSerializer, SegUsuarioSerializer
+from utilidades.backblaze import subir_foto_usuario
 from utilidades.turnstile import verify_turnstile
 from utilidades.zinc import Zinc
 
@@ -238,6 +241,37 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         usuario.set_password(nueva_clave)
         usuario.save(update_fields=['password'])
         return Response({'detail': 'Clave restablecida correctamente.'})
+
+    @extend_schema(
+        tags=['Usuarios'],
+        summary='Subir foto de perfil',
+        description='Acepta JPEG, PNG o WEBP (máx 5 MB). Genera original (800px) y thumbnail (150×150).',
+        request=inline_serializer(
+            name='FotoRequest',
+            fields={'foto': serializers.ImageField()},
+        ),
+        responses={200: SegUsuarioMeSerializer},
+    )
+    @action(detail=False, methods=['post'], url_path='foto', parser_classes=[MultiPartParser])
+    def foto(self, request):
+        archivo = request.FILES.get('foto')
+        if not archivo:
+            return Response({'detail': 'Campo foto requerido.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            url_original, url_thumbnail = subir_foto_usuario(archivo, request.user.id)
+        except ValueError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            return Response(
+                {'detail': 'No se pudo subir la imagen. Intenta de nuevo.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        request.user.imagen = url_original
+        request.user.imagen_thumbnail = url_thumbnail
+        request.user.save(update_fields=['imagen', 'imagen_thumbnail'])
+        return Response(SegUsuarioMeSerializer(request.user).data)
 
     @extend_schema(exclude=True)
     @action(detail=False, methods=['post'], url_path='cambiar-clave')

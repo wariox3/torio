@@ -213,3 +213,11 @@ ENABLE_API_DOCS = config('ENABLE_API_DOCS', default=False, cast=bool)
 
 TURNSTILE_SECRET_KEY = config('TURNSTILE_SECRET_KEY', default='')
 TURNSTILE_ENABLED = config('TURNSTILE_ENABLED', default=True, cast=bool)
+
+# Backblaze B2
+B2_KEY_ID = config('B2_KEY_ID', default='')
+B2_APP_KEY = config('B2_APP_KEY', default='')
+B2_ENDPOINT_URL = config('B2_ENDPOINT_URL', default='')
+B2_BUCKET_PUBLICO = config('B2_BUCKET_PUBLICO', default='')
+B2_BUCKET_PRIVADO = config('B2_BUCKET_PRIVADO', default='')
+B2_CDN_URL_PUBLICO = config('B2_CDN_URL_PUBLICO', default='')
