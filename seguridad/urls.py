@@ -2,10 +2,11 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from seguridad.views import (
-    SegLoginView,
-    SegLogoutView,
+    LoginView,
+    LogoutView,
+    MeView,
     SegPermisoViewSet,
-    SegRefreshView,
+    RefreshView,
     SegRolViewSet,
     SegUsuarioRolViewSet,
     SegUsuarioViewSet,
@@ -18,8 +19,9 @@ router.register(r'permiso', SegPermisoViewSet)
 router.register(r'usuario-rol', SegUsuarioRolViewSet)
 
 urlpatterns = [
-    path('login/', SegLoginView.as_view()),
-    path('refresh/', SegRefreshView.as_view()),
-    path('logout/', SegLogoutView.as_view()),
+    path('login/', LoginView.as_view()),
+    path('refresh/', RefreshView.as_view()),
+    path('logout/', LogoutView.as_view()),
+    path('me/', MeView.as_view()),
     *router.urls,
 ]

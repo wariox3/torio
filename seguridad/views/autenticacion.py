@@ -10,19 +10,12 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from seguridad.serializers import SegLoginSerializer
+from seguridad.serializers import SegLoginSerializer, SegUsuarioMeSerializer
 from utilidades.turnstile import verify_turnstile
 
 _RespuestaDetalle = inline_serializer(
     name='DetailResponse',
     fields={'detail': serializers.CharField()},
-)
-_RespuestaLogin = inline_serializer(
-    name='LoginResponse',
-    fields={
-        'access': serializers.CharField(),
-        'detail': serializers.CharField(),
-    },
 )
 _SolicitudRefresco = inline_serializer(
     name='RefreshRequest',
@@ -50,13 +43,13 @@ def _asignar_cookies_auth(respuesta, access_token, refresh_token=None):
     description='Valida credenciales y emite JWT en cookies httpOnly + body (para Bearer).',
     request=SegLoginSerializer,
     responses={
-        200: _RespuestaLogin,
+        200: SegUsuarioMeSerializer,
         401: OpenApiResponse(_RespuestaDetalle, description='Credenciales inválidas'),
         403: OpenApiResponse(_RespuestaDetalle, description='Cuenta no verificada'),
         429: OpenApiResponse(description='Demasiados intentos (rate limit 5/min)'),
     },
 )
-class SegLoginView(APIView):
+class LoginView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'login'
@@ -85,10 +78,7 @@ class SegLoginView(APIView):
         access_token = str(refresh.access_token)
         refresh_token = str(refresh)
 
-        respuesta = Response({
-            'access': access_token,   # para Postman / clientes externos
-            'detail': 'Login exitoso.',
-        })
+        respuesta = Response(SegUsuarioMeSerializer(usuario).data)
         _asignar_cookies_auth(respuesta, access_token, refresh_token)
         return respuesta
 
@@ -104,7 +94,7 @@ class SegLoginView(APIView):
         401: OpenApiResponse(_RespuestaDetalle, description='Token inválido o expirado'),
     },
 )
-class SegRefreshView(APIView):
+class RefreshView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'refresh'
@@ -136,12 +126,23 @@ class SegRefreshView(APIView):
 
 @extend_schema(
     tags=['Autenticación'],
+    summary='Perfil del usuario autenticado',
+    description='Retorna los datos del usuario que realiza la petición.',
+    responses={200: SegUsuarioMeSerializer},
+)
+class MeView(APIView):
+    def get(self, request):
+        return Response(SegUsuarioMeSerializer(request.user).data)
+
+
+@extend_schema(
+    tags=['Autenticación'],
     summary='Cerrar sesión',
     description='Blacklistea el refresh token y limpia las cookies de autenticación.',
     request=_SolicitudRefresco,
     responses={200: _RespuestaDetalle},
 )
-class SegLogoutView(APIView):
+class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):

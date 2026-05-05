@@ -27,3 +27,14 @@ class SegUsuarioActualizarSerializer(serializers.ModelSerializer):
     class Meta:
         model = SegUsuario
         fields = ['nombre_corto', 'numero_identificacion', 'celular', 'idioma']
+
+
+class SegUsuarioMeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SegUsuario
+        fields = [
+            'id', 'email', 'nombre_corto', 'numero_identificacion',
+            'celular', 'idioma', 'imagen', 'imagen_thumbnail',
+            'is_verified', 'fecha_creacion',
+        ]
+        read_only_fields = fields
