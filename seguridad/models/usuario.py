@@ -22,7 +22,8 @@ class SegUsuario(UserProfile):
     celular = models.CharField(max_length=50, null=True)
     idioma = models.CharField(max_length=2, default='es')
     imagen = models.TextField(default='usuarios/imagen_defecto.jpg')
-    imagen_thumbnail = models.TextField(default='usuarios/imagen_defecto.jpg')        
+    imagen_thumbnail = models.TextField(default='usuarios/imagen_defecto.jpg')
+    saldo_pendiente = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
 
     class Meta:

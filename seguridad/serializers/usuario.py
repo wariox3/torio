@@ -39,7 +39,7 @@ class SegUsuarioMeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'nombre_corto', 'numero_identificacion',
             'celular', 'idioma', 'imagen', 'imagen_thumbnail',
-            'is_verified', 'fecha_creacion',
+            'saldo_pendiente', 'is_verified', 'fecha_creacion',
         ]
         read_only_fields = fields
 
