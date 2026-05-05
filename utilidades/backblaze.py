@@ -81,5 +81,4 @@ def subir_foto_usuario(archivo, user_id: int) -> tuple[str, str]:
         logger.error('Error subiendo foto a B2 para usuario %s: %s', user_id, e)
         raise
 
-    base = settings.B2_CDN_URL_PUBLICO.rstrip('/')
-    return f'{base}/{key_original}', f'{base}/{key_thumbnail}'
+    return key_original, key_thumbnail

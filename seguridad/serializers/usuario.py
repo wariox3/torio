@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework import serializers
 
 from seguridad.models import SegUsuario
@@ -30,6 +31,9 @@ class SegUsuarioActualizarSerializer(serializers.ModelSerializer):
 
 
 class SegUsuarioMeSerializer(serializers.ModelSerializer):
+    imagen = serializers.SerializerMethodField()
+    imagen_thumbnail = serializers.SerializerMethodField()
+
     class Meta:
         model = SegUsuario
         fields = [
@@ -38,3 +42,15 @@ class SegUsuarioMeSerializer(serializers.ModelSerializer):
             'is_verified', 'fecha_creacion',
         ]
         read_only_fields = fields
+
+    def _cdn_url(self, path):
+        if not path:
+            return None
+        base = settings.B2_CDN_URL_PUBLICO.rstrip('/')
+        return f'{base}/{path}'
+
+    def get_imagen(self, obj):
+        return self._cdn_url(obj.imagen)
+
+    def get_imagen_thumbnail(self, obj):
+        return self._cdn_url(obj.imagen_thumbnail)
