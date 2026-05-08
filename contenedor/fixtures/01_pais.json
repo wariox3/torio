@@ -1,0 +1,6 @@
+{
+  "model": "contenedor.CtnPais",
+  "data": [
+    { "id": "CO", "nombre": "Colombia", "codigo": "+57" }
+  ]
+}

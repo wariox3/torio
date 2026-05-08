@@ -1,0 +1,8 @@
+{
+  "model": "contenedor.CtnEstado",
+  "data": [
+    { "id": 1, "nombre": "Amazonas",    "codigo": "91", "pais_id": "CO" },
+    { "id": 2, "nombre": "Antioquia",   "codigo": "05", "pais_id": "CO" },
+    { "id": 3, "nombre": "Cundinamarca","codigo": "25", "pais_id": "CO" }
+  ]
+}

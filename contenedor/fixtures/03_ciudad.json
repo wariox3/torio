@@ -1,0 +1,8 @@
+{
+  "model": "contenedor.CtnCiudad",
+  "data": [
+    { "id": 1, "nombre": "Medellín", "latitud":  6.244203, "longitud": -75.581215, "codigo_postal": "050001", "porcentaje_impuesto": 0, "estado_id": 2 },
+    { "id": 2, "nombre": "Bogotá",   "latitud":  4.710989, "longitud": -74.072090, "codigo_postal": "110111", "porcentaje_impuesto": 0, "estado_id": 3 },
+    { "id": 3, "nombre": "Leticia",  "latitud": -4.215000, "longitud": -69.940000, "codigo_postal": "910001", "porcentaje_impuesto": 0, "estado_id": 1 }
+  ]
+}
