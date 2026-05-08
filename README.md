@@ -74,7 +74,10 @@ python manage.py shell
 # >>> tenant.save(verbosity=1)
 # >>> CtnDominio.objects.create(domain='localhost', is_primary=True, tenant=tenant)
 
-# 8. Servidor de desarrollo
+# 8. Cargar datos iniciales (referencia)
+python manage.py cargar_geodata
+
+# 9. Servidor de desarrollo
 python manage.py runserver
 ```
 
@@ -115,6 +118,51 @@ Todos bajo `/seguridad/`:
 
 Los endpoints de registro, recuperación y login están protegidos con **Cloudflare Turnstile** (campo `turnstile_token` en el body).
 
+## Datos iniciales
+
+El comando `cargar_geodata` carga datos de referencia desde `contenedor/fixtures/` de forma idempotente (`update_or_create`). Los archivos se procesan en orden numérico para respetar las dependencias de FK.
+
+```bash
+python manage.py cargar_geodata
+```
+
+Salida esperada:
+
+```
+01_pais.json (contenedor.CtnPais) — creados: 1, actualizados: 0
+02_estado.json (contenedor.CtnEstado) — creados: 33, actualizados: 0
+03_ciudad.json (contenedor.CtnCiudad) — creados: 1121, actualizados: 0
+04_identificacion.json (contenedor.CtnIdentificacion) — creados: 9, actualizados: 0
+05_plan.json (contenedor.CtnPlan) — creados: 11, actualizados: 0
+```
+
+### Fixtures disponibles
+
+| Archivo | Modelo | Registros | Descripción |
+|---|---|---|---|
+| `01_pais.json` | `CtnPais` | 1 | Colombia |
+| `02_estado.json` | `CtnEstado` | 33 | Departamentos de Colombia |
+| `03_ciudad.json` | `CtnCiudad` | 1121 | Municipios de Colombia |
+| `04_identificacion.json` | `CtnIdentificacion` | 9 | Tipos de identificación DIAN |
+| `05_plan.json` | `CtnPlan` | 11 | Planes de suscripción |
+
+### Formato de fixture
+
+Cada archivo JSON sigue esta estructura:
+
+```json
+{
+  "model": "app.NombreModelo",
+  "data": [
+    { "id": 1, "campo": "valor", "fk_id": "referencia" }
+  ]
+}
+```
+
+- El prefijo numérico (`01_`, `02_`, …) define el orden de carga para respetar las FK.
+- Los campos FK usan el sufijo `_id` (ej. `pais_id`, `estado_id`).
+- El comando es idempotente: se puede ejecutar varias veces sin duplicar datos.
+
 ## Comandos útiles
 
 ```bash
@@ -122,6 +170,7 @@ python manage.py runserver                  # dev server
 python manage.py migrate_schemas --shared   # migraciones del schema público
 python manage.py migrate_schemas            # migraciones de todos los tenants
 python manage.py makemigrations             # generar migraciones
+python manage.py cargar_geodata             # cargar datos de referencia
 python manage.py check --deploy             # auditoría de seguridad para prod
 python manage.py createsuperuser            # admin (en schema público)
 python manage.py test                       # tests

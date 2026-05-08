@@ -3,16 +3,22 @@ from rest_framework.routers import DefaultRouter
 from contenedor.views import (
     CtnCiudadViewSet,
     CtnClienteViewSet,
+    CtnDatosFacturacionViewSet,
     CtnEstadoViewSet,
+    CtnIdentificacionViewSet,
     CtnMovimientoViewSet,
     CtnPaisViewSet,
+    CtnPlanViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'ciudad', CtnCiudadViewSet, basename='ciudad')
 router.register(r'cliente', CtnClienteViewSet)
+router.register(r'datos-facturacion', CtnDatosFacturacionViewSet, basename='datos-facturacion')
 router.register(r'estado', CtnEstadoViewSet, basename='estado')
+router.register(r'identificacion', CtnIdentificacionViewSet, basename='identificacion')
 router.register(r'movimiento', CtnMovimientoViewSet, basename='movimiento')
 router.register(r'pais', CtnPaisViewSet, basename='pais')
+router.register(r'plan', CtnPlanViewSet, basename='plan')
 
 urlpatterns = router.urls

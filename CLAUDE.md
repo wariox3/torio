@@ -14,6 +14,7 @@ source /home/desarrollo/.venvs/torio/bin/activate
 python manage.py runserver          # Start dev server
 python manage.py migrate            # Apply migrations
 python manage.py makemigrations     # Generate migrations
+python manage.py cargar_geodata     # Load reference data from contenedor/fixtures/ (idempotent)
 python manage.py test               # Run all tests
 python manage.py test contenedor    # Run tests for a specific app
 python manage.py createsuperuser    # Create admin user
