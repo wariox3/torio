@@ -1,11 +1,13 @@
 from django.db import transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from contenedor.models import CtnCliente, CtnDominio
 from contenedor.serializers import CtnClienteSerializer
+from contenedor.serializers.cliente import CtnClienteListaUsuarioSerializer
 from seguridad.models import SegUsuarioTenant
 
 
@@ -45,3 +47,27 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         SegUsuarioTenant.objects.create(usuario=request.user, cliente=cliente)
 
         return Response(CtnClienteSerializer(cliente).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        summary='Listar contenedores del usuario',
+        description='Retorna los clientes-tenant vinculados al usuario autenticado. Acepta `nombre` como query param para filtrar.',
+        parameters=[
+            inline_serializer('FiltroNombreSerializer', {'nombre': serializers.CharField(required=False)}),
+        ],
+        responses={200: CtnClienteListaUsuarioSerializer(many=True)},
+    )
+    @action(detail=False, methods=['get'], url_path='lista-usuario')
+    def lista_usuario(self, request):
+        ids_cliente = SegUsuarioTenant.objects.filter(
+            usuario=request.user
+        ).values_list('cliente_id', flat=True)
+
+        clientes = CtnCliente.objects.filter(id__in=ids_cliente, activo=True)
+
+        nombre = request.query_params.get('nombre')
+        if nombre:
+            clientes = clientes.filter(nombre__icontains=nombre)
+
+        pagina = self.paginate_queryset(clientes)
+        serializador = CtnClienteListaUsuarioSerializer(pagina, many=True)
+        return self.get_paginated_response(serializador.data)
