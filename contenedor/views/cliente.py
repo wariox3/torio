@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
@@ -33,11 +34,12 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         serializador = CtnClienteSerializer(data=request.data)
         serializador.is_valid(raise_exception=True)
 
-        dominio = serializador.validated_data.pop('dominio')
+        schema_name = serializador.validated_data['schema_name']
+        dominio = f'{schema_name}.{settings.TENANT_BASE_DOMAIN}'
 
         if CtnDominio.objects.filter(domain=dominio).exists():
             return Response(
-                {'detail': f'El dominio "{dominio}" ya está registrado.'},
+                {'detail': f'El schema "{schema_name}" ya está registrado.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

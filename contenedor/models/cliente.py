@@ -5,6 +5,8 @@ from tenant_users.tenants.models import TenantBase
 class CtnCliente(TenantBase):
     schema_name = models.CharField(max_length=100, unique=True)
     nombre = models.CharField('Nombre', max_length=100)
+    telefono = models.CharField('Teléfono', max_length=20)
+    correo = models.EmailField('Correo', max_length=255)
     activo = models.BooleanField('Activo', default=True)
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
     fecha_ultima_conexion = models.DateTimeField(null=True, auto_now_add=True)
