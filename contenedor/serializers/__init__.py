@@ -1,8 +1,8 @@
-from .ciudad import CtnCiudadListaSerializer, CtnCiudadSerializer
+from .ciudad import CtnCiudadSeleccionarSerializer, CtnCiudadSerializer
 from .cliente import CtnClienteSerializer
 from .datos_facturacion import CtnDatosFacturacionSerializer
-from .estado import CtnEstadoListaSerializer, CtnEstadoSerializer
-from .identificacion import CtnIdentificacionListaSerializer, CtnIdentificacionSerializer
+from .estado import CtnEstadoSeleccionarSerializer, CtnEstadoSerializer
+from .identificacion import CtnIdentificacionSeleccionarSerializer, CtnIdentificacionSerializer
 from .movimiento import CtnMovimientoSerializer
 from .pais import CtnPaisSerializer
-from .plan import CtnPlanListaSerializer, CtnPlanSerializer
+from .plan import CtnPlanSeleccionarSerializer, CtnPlanSerializer

@@ -15,7 +15,7 @@ class CtnPlanSerializer(serializers.ModelSerializer):
         ]
 
 
-class CtnPlanListaSerializer(serializers.ModelSerializer):
+class CtnPlanSeleccionarSerializer(serializers.ModelSerializer):
     class Meta:
         model = CtnPlan
         fields = ['id', 'nombre']

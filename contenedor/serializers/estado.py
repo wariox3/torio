@@ -9,7 +9,7 @@ class CtnEstadoSerializer(serializers.ModelSerializer):
         fields = ['id', 'nombre', 'codigo', 'pais']
 
 
-class CtnEstadoListaSerializer(serializers.ModelSerializer):
+class CtnEstadoSeleccionarSerializer(serializers.ModelSerializer):
     class Meta:
         model = CtnEstado
         fields = ['id', 'nombre']

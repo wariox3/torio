@@ -9,7 +9,7 @@ class CtnCiudadSerializer(serializers.ModelSerializer):
         fields = ['id', 'nombre', 'latitud', 'longitud', 'codigo_postal', 'porcentaje_impuesto', 'estado']
 
 
-class CtnCiudadListaSerializer(serializers.ModelSerializer):
+class CtnCiudadSeleccionarSerializer(serializers.ModelSerializer):
     class Meta:
         model = CtnCiudad
         fields = ['id', 'nombre']

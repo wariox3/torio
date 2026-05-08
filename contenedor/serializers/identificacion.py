@@ -9,7 +9,7 @@ class CtnIdentificacionSerializer(serializers.ModelSerializer):
         fields = ['id', 'nombre', 'orden', 'codigo', 'pais']
 
 
-class CtnIdentificacionListaSerializer(serializers.ModelSerializer):
+class CtnIdentificacionSeleccionarSerializer(serializers.ModelSerializer):
     class Meta:
         model = CtnIdentificacion
         fields = ['id', 'nombre']
