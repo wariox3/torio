@@ -30,15 +30,11 @@ _LISTA_NEGRA = settings.SIMPLE_JWT.get('BLACKLIST_AFTER_ROTATION', False)
 
 def _asignar_cookies_auth(respuesta, access_token, refresh_token=None):
     seguro = not settings.DEBUG
-    dominio = f'.{settings.TENANT_BASE_DOMAIN}'
-    # SameSite=None es necesario cuando el frontend y la API están en dominios distintos
-    # (cross-site). Requiere Secure=True, que ya se garantiza cuando DEBUG=False.
-    samesite = 'Lax' if settings.DEBUG else 'None'
     respuesta.set_cookie('access_token', access_token, max_age=_TIEMPO_MAXIMO_ACCESO,
-                         httponly=True, secure=seguro, samesite=samesite, domain=dominio)
+                         httponly=True, secure=seguro, samesite='Lax')
     if refresh_token:
         respuesta.set_cookie('refresh_token', refresh_token, max_age=_TIEMPO_MAXIMO_REFRESCO,
-                             httponly=True, secure=seguro, samesite=samesite, domain=dominio)
+                             httponly=True, secure=seguro, samesite='Lax')
 
 
 @extend_schema(
@@ -160,9 +156,7 @@ class LogoutView(APIView):
             except TokenError:
                 pass
 
-        dominio = f'.{settings.TENANT_BASE_DOMAIN}'
-        samesite = 'Lax' if settings.DEBUG else 'None'
         respuesta = Response({'detail': 'Logout exitoso.'})
-        respuesta.delete_cookie('access_token', domain=dominio, samesite=samesite)
-        respuesta.delete_cookie('refresh_token', domain=dominio, samesite=samesite)
+        respuesta.delete_cookie('access_token')
+        respuesta.delete_cookie('refresh_token')
         return respuesta
