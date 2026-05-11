@@ -7,6 +7,11 @@ class CtnSuscripcion(models.Model):
         on_delete=models.CASCADE,
         related_name='suscripciones',
     )
+    usuario = models.ForeignKey(
+        'seguridad.SegUsuario',
+        on_delete=models.PROTECT,
+        related_name='suscripciones',
+    )
     suscripcion_tipo = models.ForeignKey(
         'contenedor.CtnSuscripcionTipo',
         null=True,

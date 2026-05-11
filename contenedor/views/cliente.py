@@ -56,6 +56,7 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         fecha_inicio = date.today()
         CtnSuscripcion.objects.create(
             cliente=cliente,
+            usuario=request.user,
             suscripcion_tipo=suscripcion_tipo,
             fecha_inicio=fecha_inicio,
             fecha_fin=fecha_inicio + relativedelta(months=1),
