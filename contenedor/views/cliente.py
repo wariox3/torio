@@ -1,6 +1,3 @@
-from datetime import date
-
-from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.core.management import call_command
 from django.db import transaction
@@ -10,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion
+from contenedor.models import CtnCliente, CtnDominio
 from contenedor.serializers import CtnClienteSerializer
 from contenedor.serializers.cliente import CtnClienteListaUsuarioSerializer
 from seguridad.models import SegUsuarioTenant
@@ -47,20 +44,10 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        suscripcion_tipo = serializador.validated_data.pop('suscripcion_tipo')
         cliente = serializador.save(owner=request.user)
 
         CtnDominio.objects.create(domain=dominio, is_primary=True, tenant=cliente)
         SegUsuarioTenant.objects.create(usuario=request.user, cliente=cliente)
-
-        fecha_inicio = date.today()
-        CtnSuscripcion.objects.create(
-            cliente=cliente,
-            usuario=request.user,
-            suscripcion_tipo=suscripcion_tipo,
-            fecha_inicio=fecha_inicio,
-            fecha_fin=fecha_inicio + relativedelta(months=1),
-        )
 
         call_command('cargar_datos_tenant', schema=schema_name, verbosity=0)
 

@@ -1,18 +1,12 @@
 from rest_framework import serializers
 
-from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcionTipo
+from contenedor.models import CtnCliente, CtnDominio
 
 
 class CtnClienteSerializer(serializers.ModelSerializer):
-    suscripcion_tipo_id = serializers.PrimaryKeyRelatedField(
-        queryset=CtnSuscripcionTipo.objects.all(),
-        write_only=True,
-        source='suscripcion_tipo',
-    )
-
     class Meta:
         model = CtnCliente
-        fields = ['id', 'schema_name', 'nombre', 'telefono', 'correo', 'activo', 'fecha_creacion', 'suscripcion_tipo_id']
+        fields = ['id', 'schema_name', 'nombre', 'telefono', 'correo', 'activo', 'fecha_creacion']
         read_only_fields = ['id', 'activo', 'fecha_creacion']
 
 
