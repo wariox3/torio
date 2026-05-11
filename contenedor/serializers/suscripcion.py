@@ -20,5 +20,24 @@ class CtnSuscripcionSerializer(serializers.ModelSerializer):
             'suscripcion_tipo_nombre',
             'fecha_inicio',
             'fecha_fin',
+            'frecuencia',
         ]
         read_only_fields = ['id']
+
+    def validate(self, attrs):
+        suscripcion_tipo = attrs.get('suscripcion_tipo') or getattr(self.instance, 'suscripcion_tipo', None)
+        frecuencia = attrs.get('frecuencia') or getattr(self.instance, 'frecuencia', None)
+        if suscripcion_tipo is None or frecuencia is None:
+            return attrs
+
+        if suscripcion_tipo.suscripcion_categoria_id == 99:
+            if frecuencia != CtnSuscripcion.FRECUENCIA_PRUEBA:
+                raise serializers.ValidationError(
+                    {'frecuencia': 'Para categoría 99 la frecuencia debe ser P (Prueba).'}
+                )
+        else:
+            if frecuencia not in (CtnSuscripcion.FRECUENCIA_MENSUAL, CtnSuscripcion.FRECUENCIA_ANUAL):
+                raise serializers.ValidationError(
+                    {'frecuencia': 'La frecuencia debe ser M (Mensual) o A (Anual).'}
+                )
+        return attrs

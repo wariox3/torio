@@ -20,6 +20,15 @@ class CtnSuscripcion(models.Model):
     )
     fecha_inicio = models.DateField()
     fecha_fin = models.DateField()
+    FRECUENCIA_MENSUAL = 'M'
+    FRECUENCIA_ANUAL = 'A'
+    FRECUENCIA_PRUEBA = 'P'
+    FRECUENCIA_CHOICES = [
+        (FRECUENCIA_MENSUAL, 'Mensual'),
+        (FRECUENCIA_ANUAL, 'Anual'),
+        (FRECUENCIA_PRUEBA, 'Prueba'),
+    ]
+    frecuencia = models.CharField(max_length=1, choices=FRECUENCIA_CHOICES, default=FRECUENCIA_MENSUAL)
 
     class Meta:
         db_table = 'ctn_suscripcion'

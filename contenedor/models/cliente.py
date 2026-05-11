@@ -16,6 +16,13 @@ class CtnCliente(TenantBase):
         blank=True,
         on_delete=models.SET_NULL,
     )
+    suscripcion = models.ForeignKey(
+        'contenedor.CtnSuscripcion',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+    )
 
     auto_create_schema = True
     auto_drop_schema = True

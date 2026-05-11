@@ -1,3 +1,6 @@
+from datetime import date, timedelta
+
+from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.core.management import call_command
 from django.db import transaction
@@ -7,7 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from contenedor.models import CtnCliente, CtnDominio
+from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion
 from contenedor.serializers import CtnClienteSerializer
 from contenedor.serializers.cliente import CtnClienteActualizarSerializer, CtnClienteListaUsuarioSerializer
 from seguridad.models import SegUsuarioTenant
@@ -49,10 +52,30 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        suscripcion_tipo = serializador.validated_data.pop('suscripcion_tipo')
+        frecuencia = serializador.validated_data.pop('frecuencia')
         cliente = serializador.save(owner=request.user)
 
         CtnDominio.objects.create(domain=dominio, is_primary=True, tenant=cliente)
         SegUsuarioTenant.objects.create(usuario=request.user, cliente=cliente)
+
+        fecha_inicio = date.today()
+        if frecuencia == CtnSuscripcion.FRECUENCIA_PRUEBA:
+            fecha_fin = fecha_inicio + timedelta(days=15)
+        elif frecuencia == CtnSuscripcion.FRECUENCIA_ANUAL:
+            fecha_fin = fecha_inicio + relativedelta(years=1)
+        else:
+            fecha_fin = fecha_inicio + relativedelta(months=1)
+        suscripcion = CtnSuscripcion.objects.create(
+            cliente=cliente,
+            usuario=request.user,
+            suscripcion_tipo=suscripcion_tipo,
+            fecha_inicio=fecha_inicio,
+            fecha_fin=fecha_fin,
+            frecuencia=frecuencia,
+        )
+        cliente.suscripcion = suscripcion
+        cliente.save(update_fields=['suscripcion'])
 
         call_command('cargar_datos_tenant', schema=schema_name, verbosity=0)
 
@@ -83,7 +106,9 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
             usuario=request.user
         ).values_list('cliente_id', flat=True)
 
-        clientes = CtnCliente.objects.filter(id__in=ids_cliente, activo=True)
+        clientes = CtnCliente.objects.select_related(
+            'suscripcion__suscripcion_tipo'
+        ).filter(id__in=ids_cliente, activo=True)
 
         nombre = request.query_params.get('nombre')
         if nombre:
