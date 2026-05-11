@@ -10,6 +10,12 @@ class CtnClienteSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'activo', 'fecha_creacion']
 
 
+class CtnClienteActualizarSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CtnCliente
+        fields = ['nombre']
+
+
 class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
     dominio = serializers.SerializerMethodField()
 

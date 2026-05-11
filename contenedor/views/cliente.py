@@ -9,7 +9,7 @@ from rest_framework.response import Response
 
 from contenedor.models import CtnCliente, CtnDominio
 from contenedor.serializers import CtnClienteSerializer
-from contenedor.serializers.cliente import CtnClienteListaUsuarioSerializer
+from contenedor.serializers.cliente import CtnClienteActualizarSerializer, CtnClienteListaUsuarioSerializer
 from seguridad.models import SegUsuarioTenant
 
 
@@ -18,6 +18,11 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
     serializer_class = CtnClienteSerializer
     permission_classes = [IsAuthenticated]
     queryset = CtnCliente.objects.all()
+
+    def get_serializer_class(self):
+        if self.action in ('update', 'partial_update'):
+            return CtnClienteActualizarSerializer
+        return CtnClienteSerializer
 
     @extend_schema(
         summary='Crear tenant',
