@@ -5,4 +5,5 @@ from .estado import CtnEstadoSeleccionarSerializer, CtnEstadoSerializer
 from .identificacion import CtnIdentificacionSeleccionarSerializer, CtnIdentificacionSerializer
 from .movimiento import CtnMovimientoSerializer
 from .pais import CtnPaisSerializer
-from .plan import CtnPlanSeleccionarSerializer, CtnPlanSerializer
+from .suscripcion import CtnSuscripcionSerializer
+from .suscripcion_tipo import CtnSuscripcionTipoSerializer

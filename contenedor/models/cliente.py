@@ -18,6 +18,7 @@ class CtnCliente(TenantBase):
     )
 
     auto_create_schema = True
+    auto_drop_schema = True
 
     class Meta:
         db_table = "ctn_cliente"

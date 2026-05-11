@@ -5,4 +5,5 @@ from .estado import CtnEstadoViewSet
 from .identificacion import CtnIdentificacionViewSet
 from .movimiento import CtnMovimientoViewSet
 from .pais import CtnPaisViewSet
-from .plan import CtnPlanViewSet
+from .suscripcion import CtnSuscripcionViewSet
+from .suscripcion_tipo import CtnSuscripcionTipoViewSet

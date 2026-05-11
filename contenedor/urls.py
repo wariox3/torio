@@ -8,7 +8,8 @@ from contenedor.views import (
     CtnIdentificacionViewSet,
     CtnMovimientoViewSet,
     CtnPaisViewSet,
-    CtnPlanViewSet,
+    CtnSuscripcionViewSet,
+    CtnSuscripcionTipoViewSet,
 )
 
 router = DefaultRouter()
@@ -19,6 +20,7 @@ router.register(r'estado', CtnEstadoViewSet, basename='estado')
 router.register(r'identificacion', CtnIdentificacionViewSet, basename='identificacion')
 router.register(r'movimiento', CtnMovimientoViewSet, basename='movimiento')
 router.register(r'pais', CtnPaisViewSet, basename='pais')
-router.register(r'plan', CtnPlanViewSet, basename='plan')
+router.register(r'suscripcion', CtnSuscripcionViewSet, basename='suscripcion')
+router.register(r'suscripcion-tipo', CtnSuscripcionTipoViewSet, basename='suscripcion-tipo')
 
 urlpatterns = router.urls

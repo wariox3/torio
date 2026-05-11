@@ -1,3 +1,6 @@
+from datetime import date
+
+from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.db import transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
@@ -6,7 +9,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from contenedor.models import CtnCliente, CtnDominio
+from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion
 from contenedor.serializers import CtnClienteSerializer
 from contenedor.serializers.cliente import CtnClienteListaUsuarioSerializer
 from seguridad.models import SegUsuarioTenant
@@ -43,12 +46,32 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        suscripcion_tipo = serializador.validated_data.pop('suscripcion_tipo')
         cliente = serializador.save(owner=request.user)
 
         CtnDominio.objects.create(domain=dominio, is_primary=True, tenant=cliente)
         SegUsuarioTenant.objects.create(usuario=request.user, cliente=cliente)
 
+        fecha_inicio = date.today()
+        CtnSuscripcion.objects.create(
+            cliente=cliente,
+            suscripcion_tipo=suscripcion_tipo,
+            fecha_inicio=fecha_inicio,
+            fecha_fin=fecha_inicio + relativedelta(months=1),
+        )
+
         return Response(CtnClienteSerializer(cliente).data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            cliente = self.get_object()
+        except Exception:
+            return Response(
+                {'detail': f'El cliente con id "{kwargs.get("pk")}" no existe.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        cliente.delete(force_drop=True)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
         summary='Listar contenedores del usuario',

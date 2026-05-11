@@ -7,4 +7,5 @@ from .evento_pasarela import CtnEventoPasarela
 from .identificacion import CtnIdentificacion
 from .movimiento import CtnMovimiento
 from .pais import CtnPais
-from .plan import CtnPlan
+from .suscripcion import CtnSuscripcion
+from .suscripcion_tipo import CtnSuscripcionTipo
