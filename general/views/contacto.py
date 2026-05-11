@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from general.models import GenContacto
 from general.serializers import GenContactoSerializer
+from utilidades.mixins import FiltrosDinamicosMixin
 
 _LIST_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por nombre corto o número de identificación'),
@@ -15,9 +16,20 @@ _LIST_PARAMS = [
 
 
 @extend_schema(tags=['Contacto'])
-class GenContactoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
+class GenContactoViewSet(
+    FiltrosDinamicosMixin,
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
     serializer_class = GenContactoSerializer
     permission_classes = [IsAuthenticated]
+
+    campos_filtrables = {
+        'id', 'nombre_corto', 'numero_identificacion', 'cliente', 'proveedor', 'empleado', 'conductor', 'ciudad_id',
+    }
+    select_related_lista = ('identificacion', 'ciudad', 'tipo_persona')
+    ordenamiento_default_lista = ('nombre_corto',)
 
     def get_queryset(self):
         qs = GenContacto.objects.select_related(
