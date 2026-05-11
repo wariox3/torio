@@ -1,0 +1,6 @@
+{
+  "model": "general.GenPais",
+  "data": [
+    { "id": "CO", "nombre": "Colombia", "codigo": "169" }
+  ]
+}

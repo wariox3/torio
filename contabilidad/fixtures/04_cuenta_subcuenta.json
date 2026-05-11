@@ -1,0 +1,8413 @@
+{
+  "model": "contabilidad.ConCuentaSubcuenta",
+  "data": [
+    {
+      "id": 110505,
+      "nombre": "Caja general"
+    },
+    {
+      "id": 110510,
+      "nombre": "Cajas menores"
+    },
+    {
+      "id": 110515,
+      "nombre": "Moneda extranjera"
+    },
+    {
+      "id": 111005,
+      "nombre": "Moneda nacional"
+    },
+    {
+      "id": 111010,
+      "nombre": "Moneda extranjera"
+    },
+    {
+      "id": 111505,
+      "nombre": "Moneda nacional"
+    },
+    {
+      "id": 111510,
+      "nombre": "Moneda extranjera"
+    },
+    {
+      "id": 112005,
+      "nombre": "Bancos"
+    },
+    {
+      "id": 112010,
+      "nombre": "Corporaciones de ahorro y vivienda"
+    },
+    {
+      "id": 112015,
+      "nombre": "Organismos cooperativos financieros"
+    },
+    {
+      "id": 112505,
+      "nombre": "Rotatorios moneda nacional"
+    },
+    {
+      "id": 112510,
+      "nombre": "Rotatorios moneda extranjera"
+    },
+    {
+      "id": 112515,
+      "nombre": "Especiales moneda nacional"
+    },
+    {
+      "id": 112520,
+      "nombre": "Especiales moneda extranjera"
+    },
+    {
+      "id": 112525,
+      "nombre": "De amortización moneda nacional"
+    },
+    {
+      "id": 112530,
+      "nombre": "De amortización moneda extranjera"
+    },
+    {
+      "id": 120505,
+      "nombre": "Agricultura, ganadería, caza y silvicultura"
+    },
+    {
+      "id": 120510,
+      "nombre": "Pesca"
+    },
+    {
+      "id": 120515,
+      "nombre": "Explotación de minas y canteras"
+    },
+    {
+      "id": 120520,
+      "nombre": "Industria manufacturera"
+    },
+    {
+      "id": 120525,
+      "nombre": "Suministro de electricidad, gas y agua"
+    },
+    {
+      "id": 120530,
+      "nombre": "Construcción"
+    },
+    {
+      "id": 120535,
+      "nombre": "Comercio al por mayor y al por menor"
+    },
+    {
+      "id": 120540,
+      "nombre": "Hoteles y restaurantes"
+    },
+    {
+      "id": 120545,
+      "nombre": "Transporte, almacenamiento y comunicaciones"
+    },
+    {
+      "id": 120550,
+      "nombre": "Actividad financiera"
+    },
+    {
+      "id": 120555,
+      "nombre": "Actividades inmobiliarias, empresariales y de alquiler"
+    },
+    {
+      "id": 120560,
+      "nombre": "Enseñanza"
+    },
+    {
+      "id": 120565,
+      "nombre": "Servicios sociales y de salud"
+    },
+    {
+      "id": 120570,
+      "nombre": "Otras actividades de servicios comunitarios, sociales y personales"
+    },
+    {
+      "id": 120599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 121005,
+      "nombre": "Agricultura, ganadería, caza y silvicultura"
+    },
+    {
+      "id": 121010,
+      "nombre": "Pesca"
+    },
+    {
+      "id": 121015,
+      "nombre": "Explotación de minas y canteras"
+    },
+    {
+      "id": 121020,
+      "nombre": "Industria manufacturera"
+    },
+    {
+      "id": 121025,
+      "nombre": "Suministro de electricidad, gas y agua"
+    },
+    {
+      "id": 121030,
+      "nombre": "Construcción"
+    },
+    {
+      "id": 121035,
+      "nombre": "Comercio al por mayor y al por menor"
+    },
+    {
+      "id": 121040,
+      "nombre": "Hoteles y restaurantes"
+    },
+    {
+      "id": 121045,
+      "nombre": "Transporte, almacenamiento y comunicaciones"
+    },
+    {
+      "id": 121050,
+      "nombre": "Actividad financiera"
+    },
+    {
+      "id": 121055,
+      "nombre": "Actividades inmobiliarias, empresariales y de alquiler"
+    },
+    {
+      "id": 121060,
+      "nombre": "Enseñanza"
+    },
+    {
+      "id": 121065,
+      "nombre": "Servicios sociales y de salud"
+    },
+    {
+      "id": 121070,
+      "nombre": "Otras actividades de servicios comunitarios, sociales y personales"
+    },
+    {
+      "id": 121099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 121505,
+      "nombre": "Bonos públicos moneda nacional"
+    },
+    {
+      "id": 121510,
+      "nombre": "Bonos públicos moneda extranjera"
+    },
+    {
+      "id": 121515,
+      "nombre": "Bonos ordinarios"
+    },
+    {
+      "id": 121520,
+      "nombre": "Bonos convertibles en acciones"
+    },
+    {
+      "id": 121595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 122005,
+      "nombre": "Cédulas de capitalización"
+    },
+    {
+      "id": 122010,
+      "nombre": "Cédulas hipotecarias"
+    },
+    {
+      "id": 122015,
+      "nombre": "Cédulas de inversión"
+    },
+    {
+      "id": 122095,
+      "nombre": "Otras"
+    },
+    {
+      "id": 122505,
+      "nombre": "Certificados de depósito a término (CDT)"
+    },
+    {
+      "id": 122510,
+      "nombre": "Certificados de depósito de ahorro"
+    },
+    {
+      "id": 122515,
+      "nombre": "Certificados de ahorro de valor constante (CAVC)"
+    },
+    {
+      "id": 122520,
+      "nombre": "Certificados de cambio"
+    },
+    {
+      "id": 122525,
+      "nombre": "Certificados cafeteros valorizables"
+    },
+    {
+      "id": 122530,
+      "nombre": "Certificados eléctricos valorizables (CEV)"
+    },
+    {
+      "id": 122535,
+      "nombre": "Certificados de reembolso tributario (CERT)"
+    },
+    {
+      "id": 122540,
+      "nombre": "Certificados de desarrollo turístico"
+    },
+    {
+      "id": 122545,
+      "nombre": "Certificados de inversión forestal (CIF)"
+    },
+    {
+      "id": 122595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 123005,
+      "nombre": "Empresas comerciales"
+    },
+    {
+      "id": 123010,
+      "nombre": "Empresas industriales"
+    },
+    {
+      "id": 123015,
+      "nombre": "Empresas de servicios"
+    },
+    {
+      "id": 123505,
+      "nombre": "Títulos de desarrollo agropecuario"
+    },
+    {
+      "id": 123510,
+      "nombre": "Títulos canjeables por certificados de cambio"
+    },
+    {
+      "id": 123515,
+      "nombre": "Títulos de tesorería (TES)"
+    },
+    {
+      "id": 123520,
+      "nombre": "Títulos de participación"
+    },
+    {
+      "id": 123525,
+      "nombre": "Títulos de crédito de fomento"
+    },
+    {
+      "id": 123530,
+      "nombre": "Títulos financieros agroindustriales (TFA)"
+    },
+    {
+      "id": 123535,
+      "nombre": "Títulos de ahorro cafetero (TAC)"
+    },
+    {
+      "id": 123540,
+      "nombre": "Títulos de ahorro nacional (TAN)"
+    },
+    {
+      "id": 123545,
+      "nombre": "Títulos energéticos de rentabilidad creciente (TER)"
+    },
+    {
+      "id": 123550,
+      "nombre": "Títulos de ahorro educativo (TAE)"
+    },
+    {
+      "id": 123555,
+      "nombre": "Títulos financieros industriales y comerciales"
+    },
+    {
+      "id": 123560,
+      "nombre": "Tesoros"
+    },
+    {
+      "id": 123565,
+      "nombre": "Títulos de devolución de impuestos nacionales (TIDIS)"
+    },
+    {
+      "id": 123570,
+      "nombre": "Títulos inmobiliarios"
+    },
+    {
+      "id": 123595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 124005,
+      "nombre": "Bancos comerciales"
+    },
+    {
+      "id": 124010,
+      "nombre": "Compañías de financiamiento comercial"
+    },
+    {
+      "id": 124015,
+      "nombre": "Corporaciones financieras"
+    },
+    {
+      "id": 124095,
+      "nombre": "Otras"
+    },
+    {
+      "id": 124505,
+      "nombre": "Fideicomisos de inversión moneda nacional"
+    },
+    {
+      "id": 124510,
+      "nombre": "Fideicomisos de inversión moneda extranjera"
+    },
+    {
+      "id": 125005,
+      "nombre": "Acciones"
+    },
+    {
+      "id": 125010,
+      "nombre": "Cuotas o partes de interés social"
+    },
+    {
+      "id": 125015,
+      "nombre": "Bonos"
+    },
+    {
+      "id": 125020,
+      "nombre": "Cédulas"
+    },
+    {
+      "id": 125025,
+      "nombre": "Certificados"
+    },
+    {
+      "id": 125030,
+      "nombre": "Papeles comerciales"
+    },
+    {
+      "id": 125035,
+      "nombre": "Títulos"
+    },
+    {
+      "id": 125040,
+      "nombre": "Aceptaciones bancarias o financieras"
+    },
+    {
+      "id": 125095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 125099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 125505,
+      "nombre": "Bonos de financiamiento especial"
+    },
+    {
+      "id": 125510,
+      "nombre": "Bonos de financiamiento presupuestal"
+    },
+    {
+      "id": 125515,
+      "nombre": "Bonos para desarrollo social y seguridad interna (BDSI)"
+    },
+    {
+      "id": 125595,
+      "nombre": "Otras"
+    },
+    {
+      "id": 126099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 129505,
+      "nombre": "Aportes en cooperativas"
+    },
+    {
+      "id": 129510,
+      "nombre": "Derechos en clubes sociales"
+    },
+    {
+      "id": 129515,
+      "nombre": "Acciones o derechos en clubes deportivos"
+    },
+    {
+      "id": 129520,
+      "nombre": "Bonos en colegios"
+    },
+    {
+      "id": 129595,
+      "nombre": "Diversas"
+    },
+    {
+      "id": 129599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 129905,
+      "nombre": "Acciones"
+    },
+    {
+      "id": 129910,
+      "nombre": "Cuotas o partes de interés social"
+    },
+    {
+      "id": 129915,
+      "nombre": "Bonos"
+    },
+    {
+      "id": 129920,
+      "nombre": "Cédulas"
+    },
+    {
+      "id": 129925,
+      "nombre": "Certificados"
+    },
+    {
+      "id": 129930,
+      "nombre": "Papeles comerciales"
+    },
+    {
+      "id": 129935,
+      "nombre": "Títulos"
+    },
+    {
+      "id": 129940,
+      "nombre": "Aceptaciones bancarias o financieras"
+    },
+    {
+      "id": 129945,
+      "nombre": "Derechos fiduciarios"
+    },
+    {
+      "id": 129950,
+      "nombre": "Derechos de recompra de inversiones negociadas"
+    },
+    {
+      "id": 129955,
+      "nombre": "Obligatorias"
+    },
+    {
+      "id": 129960,
+      "nombre": "Cuentas en participación"
+    },
+    {
+      "id": 129995,
+      "nombre": "Otras inversiones"
+    },
+    {
+      "id": 130505,
+      "nombre": "Nacionales"
+    },
+    {
+      "id": 130510,
+      "nombre": "Del exterior"
+    },
+    {
+      "id": 130515,
+      "nombre": "Deudores del sistema"
+    },
+    {
+      "id": 131005,
+      "nombre": "Casa matriz"
+    },
+    {
+      "id": 131010,
+      "nombre": "Compañías vinculadas"
+    },
+    {
+      "id": 131015,
+      "nombre": "Accionistas o socios"
+    },
+    {
+      "id": 131020,
+      "nombre": "Particulares"
+    },
+    {
+      "id": 131095,
+      "nombre": "Otras"
+    },
+    {
+      "id": 131505,
+      "nombre": "Ventas"
+    },
+    {
+      "id": 131510,
+      "nombre": "Pagos a nombre de casa matriz"
+    },
+    {
+      "id": 131515,
+      "nombre": "Valores recibidos por casa matriz"
+    },
+    {
+      "id": 131520,
+      "nombre": "Préstamos"
+    },
+    {
+      "id": 132005,
+      "nombre": "Filiales"
+    },
+    {
+      "id": 132010,
+      "nombre": "Subsidiarias"
+    },
+    {
+      "id": 132015,
+      "nombre": "Sucursales"
+    },
+    {
+      "id": 132505,
+      "nombre": "A socios"
+    },
+    {
+      "id": 132510,
+      "nombre": "A accionistas"
+    },
+    {
+      "id": 133005,
+      "nombre": "A proveedores"
+    },
+    {
+      "id": 133010,
+      "nombre": "A contratistas"
+    },
+    {
+      "id": 133015,
+      "nombre": "A trabajadores"
+    },
+    {
+      "id": 133020,
+      "nombre": "A agentes"
+    },
+    {
+      "id": 133025,
+      "nombre": "A concesionarios"
+    },
+    {
+      "id": 133030,
+      "nombre": "De adjudicaciones"
+    },
+    {
+      "id": 133095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 133099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 133505,
+      "nombre": "Para importaciones"
+    },
+    {
+      "id": 133510,
+      "nombre": "Para servicios"
+    },
+    {
+      "id": 133515,
+      "nombre": "Para contratos"
+    },
+    {
+      "id": 133520,
+      "nombre": "Para responsabilidades"
+    },
+    {
+      "id": 133525,
+      "nombre": "Para juicios ejecutivos"
+    },
+    {
+      "id": 133530,
+      "nombre": "Para adquisición de acciones, cuotas o derechos sociales"
+    },
+    {
+      "id": 133535,
+      "nombre": "En garantía"
+    },
+    {
+      "id": 133595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 134005,
+      "nombre": "De bienes raíces"
+    },
+    {
+      "id": 134010,
+      "nombre": "De maquinaria y equipo"
+    },
+    {
+      "id": 134015,
+      "nombre": "De flota y equipo de transporte"
+    },
+    {
+      "id": 134020,
+      "nombre": "De flota y equipo aéreo"
+    },
+    {
+      "id": 134025,
+      "nombre": "De flota y equipo férreo"
+    },
+    {
+      "id": 134030,
+      "nombre": "De flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 134035,
+      "nombre": "De semovientes"
+    },
+    {
+      "id": 134095,
+      "nombre": "De otros bienes"
+    },
+    {
+      "id": 134505,
+      "nombre": "Dividendos y/o participaciones"
+    },
+    {
+      "id": 134510,
+      "nombre": "Intereses"
+    },
+    {
+      "id": 134515,
+      "nombre": "Comisiones"
+    },
+    {
+      "id": 134520,
+      "nombre": "Honorarios"
+    },
+    {
+      "id": 134525,
+      "nombre": "Servicios"
+    },
+    {
+      "id": 134530,
+      "nombre": "Arrendamientos"
+    },
+    {
+      "id": 134535,
+      "nombre": "CERT por cobrar"
+    },
+    {
+      "id": 134595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 135005,
+      "nombre": "De construcción"
+    },
+    {
+      "id": 135010,
+      "nombre": "De prestación de servicios"
+    },
+    {
+      "id": 135095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 135505,
+      "nombre": "Anticipo de impuestos de renta y complementarios"
+    },
+    {
+      "id": 135510,
+      "nombre": "Anticipo de impuestos de industria y comercio"
+    },
+    {
+      "id": 135515,
+      "nombre": "Retención en la fuente"
+    },
+    {
+      "id": 135517,
+      "nombre": "Impuesto a las ventas retenido"
+    },
+    {
+      "id": 135519,
+      "nombre": "IVA ACTIVOS FIJOS DESCT RENTA"
+    },
+    {
+      "id": 135518,
+      "nombre": "Impuesto de industria y comercio retenido"
+    },
+    {
+      "id": 135520,
+      "nombre": "Sobrantes en liquidación privada de impuestos"
+    },
+    {
+      "id": 135525,
+      "nombre": "Contribuciones"
+    },
+    {
+      "id": 135530,
+      "nombre": "Impuestos descontables"
+    },
+    {
+      "id": 135595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 136005,
+      "nombre": "A compañías aseguradoras"
+    },
+    {
+      "id": 136010,
+      "nombre": "A transportadores"
+    },
+    {
+      "id": 136015,
+      "nombre": "Por tiquetes aéreos"
+    },
+    {
+      "id": 136095,
+      "nombre": "Otras"
+    },
+    {
+      "id": 136505,
+      "nombre": "Vivienda"
+    },
+    {
+      "id": 136510,
+      "nombre": "Vehículos"
+    },
+    {
+      "id": 136515,
+      "nombre": "Educación"
+    },
+    {
+      "id": 136520,
+      "nombre": "Médicos, odontológicos y similares"
+    },
+    {
+      "id": 136525,
+      "nombre": "Calamidad doméstica"
+    },
+    {
+      "id": 136530,
+      "nombre": "Responsabilidades"
+    },
+    {
+      "id": 136595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 137005,
+      "nombre": "Con garantía real"
+    },
+    {
+      "id": 137010,
+      "nombre": "Con garantía personal"
+    },
+    {
+      "id": 138005,
+      "nombre": "Depositarios"
+    },
+    {
+      "id": 138010,
+      "nombre": "Comisionistas de bolsas"
+    },
+    {
+      "id": 138015,
+      "nombre": "Fondo de inversión"
+    },
+    {
+      "id": 138020,
+      "nombre": "Cuentas por cobrar de terceros"
+    },
+    {
+      "id": 138025,
+      "nombre": "Pagos por cuenta de terceros"
+    },
+    {
+      "id": 138030,
+      "nombre": "Fondos de inversión social"
+    },
+    {
+      "id": 138095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 139905,
+      "nombre": "Clientes"
+    },
+    {
+      "id": 139910,
+      "nombre": "Cuentas corrientes comerciales"
+    },
+    {
+      "id": 139915,
+      "nombre": "Cuentas por cobrar a casa matriz"
+    },
+    {
+      "id": 139920,
+      "nombre": "Cuentas por cobrar a vinculados económicos"
+    },
+    {
+      "id": 139925,
+      "nombre": "Cuentas por cobrar a socios y accionistas"
+    },
+    {
+      "id": 139930,
+      "nombre": "Anticipos y avances"
+    },
+    {
+      "id": 139932,
+      "nombre": "Cuentas de operación conjunta"
+    },
+    {
+      "id": 139935,
+      "nombre": "Depósitos"
+    },
+    {
+      "id": 139940,
+      "nombre": "Promesas de compraventa"
+    },
+    {
+      "id": 139945,
+      "nombre": "Ingresos por cobrar"
+    },
+    {
+      "id": 139950,
+      "nombre": "Retención sobre contratos"
+    },
+    {
+      "id": 139955,
+      "nombre": "Reclamaciones"
+    },
+    {
+      "id": 139960,
+      "nombre": "Cuentas por cobrar a trabajadores"
+    },
+    {
+      "id": 139965,
+      "nombre": "Préstamos a particulares"
+    },
+    {
+      "id": 139975,
+      "nombre": "Deudores varios"
+    },
+    {
+      "id": 139980,
+      "nombre": "Derechos de recompra de cartera negociada"
+    },
+    {
+      "id": 140599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 141099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 141599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 141799,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 142099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 142599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 142899,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 143005,
+      "nombre": "Productos manufacturados"
+    },
+    {
+      "id": 143010,
+      "nombre": "Productos extraídos y/o procesados"
+    },
+    {
+      "id": 143015,
+      "nombre": "Productos agrícolas y forestales"
+    },
+    {
+      "id": 143020,
+      "nombre": "Subproductos"
+    },
+    {
+      "id": 143025,
+      "nombre": "Productos de pesca"
+    },
+    {
+      "id": 143099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 143599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 144099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 144599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 145005,
+      "nombre": "Por urbanizar"
+    },
+    {
+      "id": 145010,
+      "nombre": "Urbanizados por construir"
+    },
+    {
+      "id": 145099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 145599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 146099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 146599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 149905,
+      "nombre": "Para obsolescencia"
+    },
+    {
+      "id": 149910,
+      "nombre": "Para diferencia de inventario físico"
+    },
+    {
+      "id": 149915,
+      "nombre": "Para pérdidas de inventarios"
+    },
+    {
+      "id": 149920,
+      "nombre": "Lifo"
+    },
+    {
+      "id": 150405,
+      "nombre": "Urbanos"
+    },
+    {
+      "id": 150410,
+      "nombre": "Rurales"
+    },
+    {
+      "id": 150499,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 150605,
+      "nombre": "Tuberías y equipo"
+    },
+    {
+      "id": 150610,
+      "nombre": "Costos de importación materiales"
+    },
+    {
+      "id": 150615,
+      "nombre": "Proyectos de construcción"
+    },
+    {
+      "id": 150699,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 150805,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 150810,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 150815,
+      "nombre": "Vías de comunicación"
+    },
+    {
+      "id": 150820,
+      "nombre": "Pozos artesianos"
+    },
+    {
+      "id": 150825,
+      "nombre": "Proyectos de exploración"
+    },
+    {
+      "id": 150830,
+      "nombre": "Proyectos de desarrollo"
+    },
+    {
+      "id": 150899,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 151205,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 151210,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 151215,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 151220,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 151225,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 151230,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 151235,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 151240,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 151245,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 151250,
+      "nombre": "Plantas y redes"
+    },
+    {
+      "id": 151299,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 151605,
+      "nombre": "Edificios"
+    },
+    {
+      "id": 151610,
+      "nombre": "Oficinas"
+    },
+    {
+      "id": 151615,
+      "nombre": "Almacenes"
+    },
+    {
+      "id": 151620,
+      "nombre": "Fábricas y plantas industriales"
+    },
+    {
+      "id": 151625,
+      "nombre": "Salas de exhibición y ventas"
+    },
+    {
+      "id": 151630,
+      "nombre": "Cafetería y casinos"
+    },
+    {
+      "id": 151635,
+      "nombre": "Silos"
+    },
+    {
+      "id": 151640,
+      "nombre": "Invernaderos"
+    },
+    {
+      "id": 151645,
+      "nombre": "Casetas y campamentos"
+    },
+    {
+      "id": 151650,
+      "nombre": "Instalaciones agropecuarias"
+    },
+    {
+      "id": 151655,
+      "nombre": "Viviendas para empleados y obreros"
+    },
+    {
+      "id": 151660,
+      "nombre": "Terminal de buses y taxis"
+    },
+    {
+      "id": 151663,
+      "nombre": "Terminal marítimo"
+    },
+    {
+      "id": 151665,
+      "nombre": "Terminal férreo"
+    },
+    {
+      "id": 151670,
+      "nombre": "Parqueaderos, garajes y depósitos"
+    },
+    {
+      "id": 151675,
+      "nombre": "Hangares"
+    },
+    {
+      "id": 151680,
+      "nombre": "Bodegas"
+    },
+    {
+      "id": 151695,
+      "nombre": "Otros"
+    },
+    {
+      "id": 151699,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 152099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 152405,
+      "nombre": "Muebles y enseres"
+    },
+    {
+      "id": 152410,
+      "nombre": "Equipos"
+    },
+    {
+      "id": 152495,
+      "nombre": "Otros"
+    },
+    {
+      "id": 152499,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 152805,
+      "nombre": "Equipos de procesamiento de datos"
+    },
+    {
+      "id": 152810,
+      "nombre": "Equipos de telecomunicaciones"
+    },
+    {
+      "id": 152815,
+      "nombre": "Equipos de radio"
+    },
+    {
+      "id": 152820,
+      "nombre": "Satélites y antenas"
+    },
+    {
+      "id": 152825,
+      "nombre": "Líneas telefónicas"
+    },
+    {
+      "id": 152895,
+      "nombre": "Otros"
+    },
+    {
+      "id": 152899,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 153205,
+      "nombre": "Médico"
+    },
+    {
+      "id": 153210,
+      "nombre": "Odontológico"
+    },
+    {
+      "id": 153215,
+      "nombre": "Laboratorio"
+    },
+    {
+      "id": 153220,
+      "nombre": "Instrumental"
+    },
+    {
+      "id": 153295,
+      "nombre": "Otros"
+    },
+    {
+      "id": 153299,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 153605,
+      "nombre": "De habitaciones"
+    },
+    {
+      "id": 153610,
+      "nombre": "De comestibles y bebidas"
+    },
+    {
+      "id": 153695,
+      "nombre": "Otros"
+    },
+    {
+      "id": 153699,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 154005,
+      "nombre": "Autos, camionetas y camperos"
+    },
+    {
+      "id": 154008,
+      "nombre": "Camiones, volquetas y furgones"
+    },
+    {
+      "id": 154010,
+      "nombre": "Tractomulas y remolques"
+    },
+    {
+      "id": 154015,
+      "nombre": "Buses y busetas"
+    },
+    {
+      "id": 154017,
+      "nombre": "Recolectores y contenedores"
+    },
+    {
+      "id": 154020,
+      "nombre": "Montacargas"
+    },
+    {
+      "id": 154025,
+      "nombre": "Palas y grúas"
+    },
+    {
+      "id": 154030,
+      "nombre": "Motocicletas"
+    },
+    {
+      "id": 154035,
+      "nombre": "Bicicletas"
+    },
+    {
+      "id": 154040,
+      "nombre": "Estibas y carretas"
+    },
+    {
+      "id": 154045,
+      "nombre": "Bandas transportadoras"
+    },
+    {
+      "id": 154095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 154099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 154405,
+      "nombre": "Buques"
+    },
+    {
+      "id": 154410,
+      "nombre": "Lanchas"
+    },
+    {
+      "id": 154415,
+      "nombre": "Remolcadoras"
+    },
+    {
+      "id": 154420,
+      "nombre": "Botes"
+    },
+    {
+      "id": 154425,
+      "nombre": "Boyas"
+    },
+    {
+      "id": 154430,
+      "nombre": "Amarres"
+    },
+    {
+      "id": 154435,
+      "nombre": "Contenedores y chasises"
+    },
+    {
+      "id": 154440,
+      "nombre": "Gabarras"
+    },
+    {
+      "id": 154495,
+      "nombre": "Otros"
+    },
+    {
+      "id": 154499,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 154805,
+      "nombre": "Aviones"
+    },
+    {
+      "id": 154810,
+      "nombre": "Avionetas"
+    },
+    {
+      "id": 154815,
+      "nombre": "Helicópteros"
+    },
+    {
+      "id": 154820,
+      "nombre": "Turbinas y motores"
+    },
+    {
+      "id": 154825,
+      "nombre": "Manuales de entrenamiento personal técnico"
+    },
+    {
+      "id": 154830,
+      "nombre": "Equipos de vuelo"
+    },
+    {
+      "id": 154895,
+      "nombre": "Otros"
+    },
+    {
+      "id": 154899,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 155205,
+      "nombre": "Locomotoras"
+    },
+    {
+      "id": 155210,
+      "nombre": "Vagones"
+    },
+    {
+      "id": 155215,
+      "nombre": "Redes férreas"
+    },
+    {
+      "id": 155295,
+      "nombre": "Otros"
+    },
+    {
+      "id": 155299,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 155605,
+      "nombre": "Instalaciones para agua y energía"
+    },
+    {
+      "id": 155610,
+      "nombre": "Acueducto, acequias y canalizaciones"
+    },
+    {
+      "id": 155615,
+      "nombre": "Plantas de generación hidráulica"
+    },
+    {
+      "id": 155620,
+      "nombre": "Plantas de generación térmica"
+    },
+    {
+      "id": 155625,
+      "nombre": "Plantas de generación a gas"
+    },
+    {
+      "id": 155628,
+      "nombre": "Plantas de generación diesel, gasolina y petróleo"
+    },
+    {
+      "id": 155630,
+      "nombre": "Plantas de distribución"
+    },
+    {
+      "id": 155635,
+      "nombre": "Plantas de transmisión y subestaciones"
+    },
+    {
+      "id": 155640,
+      "nombre": "Oleoductos"
+    },
+    {
+      "id": 155645,
+      "nombre": "Gasoductos"
+    },
+    {
+      "id": 155647,
+      "nombre": "Poliductos"
+    },
+    {
+      "id": 155650,
+      "nombre": "Redes de distribución"
+    },
+    {
+      "id": 155655,
+      "nombre": "Plantas de tratamiento"
+    },
+    {
+      "id": 155660,
+      "nombre": "Redes de recolección de aguas negras"
+    },
+    {
+      "id": 155665,
+      "nombre": "Instalaciones y equipo de bombeo"
+    },
+    {
+      "id": 155670,
+      "nombre": "Redes de distribución de vapor"
+    },
+    {
+      "id": 155675,
+      "nombre": "Redes de aire"
+    },
+    {
+      "id": 155680,
+      "nombre": "Redes alimentación de gas"
+    },
+    {
+      "id": 155682,
+      "nombre": "Redes externas de telefonía"
+    },
+    {
+      "id": 155685,
+      "nombre": "Plantas deshidratadoras"
+    },
+    {
+      "id": 155695,
+      "nombre": "Otros"
+    },
+    {
+      "id": 155699,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 156099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 156299,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 156405,
+      "nombre": "Cultivos en desarrollo"
+    },
+    {
+      "id": 156410,
+      "nombre": "Cultivos amortizables"
+    },
+    {
+      "id": 156499,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 156805,
+      "nombre": "Pavimentación y patios"
+    },
+    {
+      "id": 156810,
+      "nombre": "Vías"
+    },
+    {
+      "id": 156815,
+      "nombre": "Puentes"
+    },
+    {
+      "id": 156820,
+      "nombre": "Calles"
+    },
+    {
+      "id": 156825,
+      "nombre": "Aeródromos"
+    },
+    {
+      "id": 156895,
+      "nombre": "Otros"
+    },
+    {
+      "id": 156899,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 157205,
+      "nombre": "Minas"
+    },
+    {
+      "id": 157210,
+      "nombre": "Canteras"
+    },
+    {
+      "id": 157299,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 157699,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 158099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 158499,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 158805,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 158810,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 158815,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 158820,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 158825,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 158830,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 158835,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 158840,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 158845,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 158850,
+      "nombre": "Plantas y redes"
+    },
+    {
+      "id": 158855,
+      "nombre": "Armamento de vigilancia"
+    },
+    {
+      "id": 158860,
+      "nombre": "Semovientes"
+    },
+    {
+      "id": 158865,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 158899,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 159205,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 159210,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 159215,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 159220,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 159225,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 159230,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 159235,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 159240,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 159245,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 159250,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 159255,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 159260,
+      "nombre": "Armamento de vigilancia"
+    },
+    {
+      "id": 159265,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 159299,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 159605,
+      "nombre": "Exceso fiscal sobre la contable"
+    },
+    {
+      "id": 159610,
+      "nombre": "Defecto fiscal sobre la contable (CR)"
+    },
+    {
+      "id": 159699,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 159705,
+      "nombre": "Plantaciones agrícolas y forestales"
+    },
+    {
+      "id": 159710,
+      "nombre": "Vías de comunicación"
+    },
+    {
+      "id": 159715,
+      "nombre": "Semovientes"
+    },
+    {
+      "id": 159799,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 159805,
+      "nombre": "Minas y canteras"
+    },
+    {
+      "id": 159815,
+      "nombre": "Pozos artesianos"
+    },
+    {
+      "id": 159820,
+      "nombre": "Yacimientos"
+    },
+    {
+      "id": 159899,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 159904,
+      "nombre": "Terrenos"
+    },
+    {
+      "id": 159906,
+      "nombre": "Materiales proyectos petroleros"
+    },
+    {
+      "id": 159908,
+      "nombre": "Construcciones en curso"
+    },
+    {
+      "id": 159912,
+      "nombre": "Maquinaria en montaje"
+    },
+    {
+      "id": 159916,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 159920,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 159924,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 159928,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 159932,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 159936,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 159940,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 159944,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 159948,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 159952,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 159956,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 159960,
+      "nombre": "Armamento de vigilancia"
+    },
+    {
+      "id": 159962,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 159964,
+      "nombre": "Plantaciones agrícolas y forestales"
+    },
+    {
+      "id": 159968,
+      "nombre": "Vías de comunicación"
+    },
+    {
+      "id": 159972,
+      "nombre": "Minas y canteras"
+    },
+    {
+      "id": 159980,
+      "nombre": "Pozos artesianos"
+    },
+    {
+      "id": 159984,
+      "nombre": "Yacimientos"
+    },
+    {
+      "id": 159988,
+      "nombre": "Semovientes"
+    },
+    {
+      "id": 159992,
+      "nombre": "Propiedades, planta y equipo en tránsito"
+    },
+    {
+      "id": 160505,
+      "nombre": "Formado o estimado"
+    },
+    {
+      "id": 160510,
+      "nombre": "Adquirido o comprado"
+    },
+    {
+      "id": 160599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 161005,
+      "nombre": "Adquiridas"
+    },
+    {
+      "id": 161010,
+      "nombre": "Formadas"
+    },
+    {
+      "id": 161099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 161505,
+      "nombre": "Adquiridas"
+    },
+    {
+      "id": 161510,
+      "nombre": "Formadas"
+    },
+    {
+      "id": 161599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 162005,
+      "nombre": "Concesiones"
+    },
+    {
+      "id": 162010,
+      "nombre": "Franquicias"
+    },
+    {
+      "id": 162099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 162505,
+      "nombre": "Derechos de autor"
+    },
+    {
+      "id": 162510,
+      "nombre": "Puesto de bolsa"
+    },
+    {
+      "id": 162515,
+      "nombre": "En fideicomisos inmobiliarios"
+    },
+    {
+      "id": 162520,
+      "nombre": "En fideicomisos de garantía"
+    },
+    {
+      "id": 162525,
+      "nombre": "En fideicomisos de administración"
+    },
+    {
+      "id": 162530,
+      "nombre": "De exhibición - películas"
+    },
+    {
+      "id": 162535,
+      "nombre": "En bienes recibidos en arrendamiento financiero (leasing)"
+    },
+    {
+      "id": 162595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 162599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 163099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 163599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 169805,
+      "nombre": "Crédito mercantil"
+    },
+    {
+      "id": 169810,
+      "nombre": "Marcas"
+    },
+    {
+      "id": 169815,
+      "nombre": "Patentes"
+    },
+    {
+      "id": 169820,
+      "nombre": "Concesiones y franquicias"
+    },
+    {
+      "id": 169830,
+      "nombre": "Derechos"
+    },
+    {
+      "id": 169835,
+      "nombre": "Know how"
+    },
+    {
+      "id": 169840,
+      "nombre": "Licencias"
+    },
+    {
+      "id": 169899,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 170505,
+      "nombre": "Intereses"
+    },
+    {
+      "id": 170510,
+      "nombre": "Honorarios"
+    },
+    {
+      "id": 170515,
+      "nombre": "Comisiones"
+    },
+    {
+      "id": 170520,
+      "nombre": "Seguros y fianzas"
+    },
+    {
+      "id": 170525,
+      "nombre": "Arrendamientos"
+    },
+    {
+      "id": 170530,
+      "nombre": "Bodegajes"
+    },
+    {
+      "id": 170535,
+      "nombre": "Mantenimiento equipos"
+    },
+    {
+      "id": 170540,
+      "nombre": "Servicios"
+    },
+    {
+      "id": 170545,
+      "nombre": "Suscripciones"
+    },
+    {
+      "id": 170595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 171004,
+      "nombre": "Organización y preoperativos"
+    },
+    {
+      "id": 171008,
+      "nombre": "Remodelaciones"
+    },
+    {
+      "id": 171012,
+      "nombre": "Estudios, investigaciones y proyectos"
+    },
+    {
+      "id": 171016,
+      "nombre": "Programas para computador (software)"
+    },
+    {
+      "id": 171020,
+      "nombre": "Útiles y papelería"
+    },
+    {
+      "id": 171024,
+      "nombre": "Mejoras a propiedades ajenas"
+    },
+    {
+      "id": 171028,
+      "nombre": "Contribuciones y afiliaciones"
+    },
+    {
+      "id": 171032,
+      "nombre": "Entrenamiento de personal"
+    },
+    {
+      "id": 171036,
+      "nombre": "Ferias y exposiciones"
+    },
+    {
+      "id": 171040,
+      "nombre": "Licencias"
+    },
+    {
+      "id": 171044,
+      "nombre": "Publicidad, propaganda y promoción"
+    },
+    {
+      "id": 171048,
+      "nombre": "Elementos de aseo y cafetería"
+    },
+    {
+      "id": 171052,
+      "nombre": "Moldes y troqueles"
+    },
+    {
+      "id": 171056,
+      "nombre": "Instrumental quirúrgico"
+    },
+    {
+      "id": 171060,
+      "nombre": "Dotación y suministro a trabajadores"
+    },
+    {
+      "id": 171064,
+      "nombre": "Elementos de ropería y lencería"
+    },
+    {
+      "id": 171068,
+      "nombre": "Loza y cristalería"
+    },
+    {
+      "id": 171069,
+      "nombre": "Platería"
+    },
+    {
+      "id": 171070,
+      "nombre": "Cubiertería"
+    },
+    {
+      "id": 171076,
+      "nombre": "Impuesto de renta diferido ?débitos? por diferencias temporales"
+    },
+    {
+      "id": 171080,
+      "nombre": "Concursos y licitaciones"
+    },
+    {
+      "id": 171095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 171099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 171505,
+      "nombre": "Pozos secos"
+    },
+    {
+      "id": 171510,
+      "nombre": "Pozos no comerciales"
+    },
+    {
+      "id": 171515,
+      "nombre": "Otros costos de exploración"
+    },
+    {
+      "id": 171599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 172005,
+      "nombre": "Perforación y explotación"
+    },
+    {
+      "id": 172010,
+      "nombre": "Perforaciones campos en desarrollo"
+    },
+    {
+      "id": 172015,
+      "nombre": "Facilidades de producción"
+    },
+    {
+      "id": 172020,
+      "nombre": "Servicio a pozos"
+    },
+    {
+      "id": 172099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 179805,
+      "nombre": "Costos de exploración por amortizar"
+    },
+    {
+      "id": 179810,
+      "nombre": "Costos de explotación y desarrollo"
+    },
+    {
+      "id": 179899,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 180505,
+      "nombre": "Obras de arte"
+    },
+    {
+      "id": 180510,
+      "nombre": "Bibliotecas"
+    },
+    {
+      "id": 180595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 180599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 189505,
+      "nombre": "Máquinas porteadoras"
+    },
+    {
+      "id": 189510,
+      "nombre": "Bienes entregados en comodato"
+    },
+    {
+      "id": 189515,
+      "nombre": "Amortización acumulada de bienes entregados en comodato (CR)"
+    },
+    {
+      "id": 189520,
+      "nombre": "Bienes recibidos en pago"
+    },
+    {
+      "id": 189525,
+      "nombre": "Derechos sucesorales"
+    },
+    {
+      "id": 189530,
+      "nombre": "Estampillas"
+    },
+    {
+      "id": 189595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 189599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 189905,
+      "nombre": "Bienes de arte y cultura"
+    },
+    {
+      "id": 189995,
+      "nombre": "Diversos"
+    },
+    {
+      "id": 190505,
+      "nombre": "Acciones"
+    },
+    {
+      "id": 190510,
+      "nombre": "Cuotas o partes de interés social"
+    },
+    {
+      "id": 190515,
+      "nombre": "Derechos fiduciarios"
+    },
+    {
+      "id": 191004,
+      "nombre": "Terrenos"
+    },
+    {
+      "id": 191006,
+      "nombre": "Materiales proyectos petroleros"
+    },
+    {
+      "id": 191008,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 191012,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 191016,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 191020,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 191024,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 191028,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 191032,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 191036,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 191040,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 191044,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 191048,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 191052,
+      "nombre": "Armamento de vigilancia"
+    },
+    {
+      "id": 191056,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 191060,
+      "nombre": "Plantaciones agrícolas y forestales"
+    },
+    {
+      "id": 191064,
+      "nombre": "Vías de comunicación"
+    },
+    {
+      "id": 191068,
+      "nombre": "Minas y canteras"
+    },
+    {
+      "id": 191072,
+      "nombre": "Pozos artesianos"
+    },
+    {
+      "id": 191076,
+      "nombre": "Yacimientos"
+    },
+    {
+      "id": 191080,
+      "nombre": "Semovientes"
+    },
+    {
+      "id": 199505,
+      "nombre": "Bienes de arte y cultura"
+    },
+    {
+      "id": 199510,
+      "nombre": "Bienes entregados en comodato"
+    },
+    {
+      "id": 199515,
+      "nombre": "Bienes recibidos en pago"
+    },
+    {
+      "id": 199520,
+      "nombre": "Inventario de semovientes"
+    },
+    {
+      "id": 210505,
+      "nombre": "Sobregiros"
+    },
+    {
+      "id": 210510,
+      "nombre": "Pagarés"
+    },
+    {
+      "id": 210515,
+      "nombre": "Cartas de crédito"
+    },
+    {
+      "id": 210520,
+      "nombre": "Aceptaciones bancarias"
+    },
+    {
+      "id": 211005,
+      "nombre": "Sobregiros"
+    },
+    {
+      "id": 211010,
+      "nombre": "Pagarés"
+    },
+    {
+      "id": 211015,
+      "nombre": "Cartas de crédito"
+    },
+    {
+      "id": 211020,
+      "nombre": "Aceptaciones bancarias"
+    },
+    {
+      "id": 211505,
+      "nombre": "Pagarés"
+    },
+    {
+      "id": 211510,
+      "nombre": "Aceptaciones financieras"
+    },
+    {
+      "id": 211515,
+      "nombre": "Cartas de crédito"
+    },
+    {
+      "id": 211520,
+      "nombre": "Contratos de arrendamiento financiero (leasing)"
+    },
+    {
+      "id": 212005,
+      "nombre": "Pagarés"
+    },
+    {
+      "id": 212010,
+      "nombre": "Aceptaciones financieras"
+    },
+    {
+      "id": 212020,
+      "nombre": "Contratos de arrendamiento financiero (leasing)"
+    },
+    {
+      "id": 212505,
+      "nombre": "Sobregiros"
+    },
+    {
+      "id": 212510,
+      "nombre": "Pagarés"
+    },
+    {
+      "id": 212515,
+      "nombre": "Hipotecarias"
+    },
+    {
+      "id": 213505,
+      "nombre": "Acciones"
+    },
+    {
+      "id": 213510,
+      "nombre": "Cuotas o partes de interés social"
+    },
+    {
+      "id": 213515,
+      "nombre": "Bonos"
+    },
+    {
+      "id": 213520,
+      "nombre": "Cédulas"
+    },
+    {
+      "id": 213525,
+      "nombre": "Certificados"
+    },
+    {
+      "id": 213530,
+      "nombre": "Papeles comerciales"
+    },
+    {
+      "id": 213535,
+      "nombre": "Títulos"
+    },
+    {
+      "id": 213540,
+      "nombre": "Aceptaciones bancarias o financieras"
+    },
+    {
+      "id": 213595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 214505,
+      "nombre": "Gobierno Nacional"
+    },
+    {
+      "id": 214510,
+      "nombre": "Entidades oficiales"
+    },
+    {
+      "id": 219505,
+      "nombre": "Particulares"
+    },
+    {
+      "id": 219510,
+      "nombre": "Compañías vinculadas"
+    },
+    {
+      "id": 219515,
+      "nombre": "Casa matriz"
+    },
+    {
+      "id": 219520,
+      "nombre": "Socios o accionistas"
+    },
+    {
+      "id": 219525,
+      "nombre": "Fondos y cooperativas"
+    },
+    {
+      "id": 219530,
+      "nombre": "Directores"
+    },
+    {
+      "id": 219595,
+      "nombre": "Otras"
+    },
+    {
+      "id": 233505,
+      "nombre": "Gastos financieros"
+    },
+    {
+      "id": 233510,
+      "nombre": "Gastos legales"
+    },
+    {
+      "id": 233515,
+      "nombre": "Libros, suscripciones, periódicos y revistas"
+    },
+    {
+      "id": 233520,
+      "nombre": "Comisiones"
+    },
+    {
+      "id": 233525,
+      "nombre": "Honorarios"
+    },
+    {
+      "id": 233530,
+      "nombre": "Servicios técnicos"
+    },
+    {
+      "id": 233535,
+      "nombre": "Servicios de mantenimiento"
+    },
+    {
+      "id": 233540,
+      "nombre": "Arrendamientos"
+    },
+    {
+      "id": 233545,
+      "nombre": "Transportes, fletes y acarreos"
+    },
+    {
+      "id": 233550,
+      "nombre": "Servicios públicos"
+    },
+    {
+      "id": 233555,
+      "nombre": "Seguros"
+    },
+    {
+      "id": 233560,
+      "nombre": "Gastos de viaje"
+    },
+    {
+      "id": 233565,
+      "nombre": "Gastos de representación y relaciones públicas"
+    },
+    {
+      "id": 233570,
+      "nombre": "Servicios aduaneros"
+    },
+    {
+      "id": 233595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 235505,
+      "nombre": "Accionistas"
+    },
+    {
+      "id": 235510,
+      "nombre": "Socios"
+    },
+    {
+      "id": 236005,
+      "nombre": "Dividendos"
+    },
+    {
+      "id": 236010,
+      "nombre": "Participaciones"
+    },
+    {
+      "id": 236505,
+      "nombre": "Salarios y pagos laborales"
+    },
+    {
+      "id": 236510,
+      "nombre": "Dividendos y/o participaciones"
+    },
+    {
+      "id": 236515,
+      "nombre": "Honorarios"
+    },
+    {
+      "id": 236520,
+      "nombre": "Comisiones"
+    },
+    {
+      "id": 236525,
+      "nombre": "Servicios"
+    },
+    {
+      "id": 236530,
+      "nombre": "Arrendamientos"
+    },
+    {
+      "id": 236535,
+      "nombre": "Rendimientos financieros"
+    },
+    {
+      "id": 236540,
+      "nombre": "Compras"
+    },
+    {
+      "id": 236545,
+      "nombre": "Loterías, rifas, apuestas y similares"
+    },
+    {
+      "id": 236550,
+      "nombre": "Por pagos al exterior"
+    },
+    {
+      "id": 236555,
+      "nombre": "Por ingresos obtenidos en el exterior"
+    },
+    {
+      "id": 236560,
+      "nombre": "Enajenación propiedades planta y equipo, personas naturales"
+    },
+    {
+      "id": 236565,
+      "nombre": "Por impuesto de timbre"
+    },
+    {
+      "id": 236570,
+      "nombre": "Otras retenciones y patrimonio"
+    },
+    {
+      "id": 236575,
+      "nombre": "Autorretenciones"
+    },
+    {
+      "id": 237005,
+      "nombre": "Aportes a entidades promotoras de salud, EPS"
+    },
+    {
+      "id": 237006,
+      "nombre": "Aportes a administradoras de riesgos profesionales, ARP"
+    },
+    {
+      "id": 237010,
+      "nombre": "Aportes al ICBF, SENA y cajas de compensación"
+    },
+    {
+      "id": 237015,
+      "nombre": "Aportes al FIC"
+    },
+    {
+      "id": 237025,
+      "nombre": "Embargos judiciales"
+    },
+    {
+      "id": 237030,
+      "nombre": "Libranzas"
+    },
+    {
+      "id": 237035,
+      "nombre": "Sindicatos"
+    },
+    {
+      "id": 237040,
+      "nombre": "Cooperativas"
+    },
+    {
+      "id": 237045,
+      "nombre": "Fondos"
+    },
+    {
+      "id": 237095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 238005,
+      "nombre": "Depositarios"
+    },
+    {
+      "id": 238010,
+      "nombre": "Comisionistas de bolsas"
+    },
+    {
+      "id": 238015,
+      "nombre": "Sociedad administradora-Fondos de inversión"
+    },
+    {
+      "id": 238020,
+      "nombre": "Reintegros por pagar"
+    },
+    {
+      "id": 238025,
+      "nombre": "Fondo de perseverancia"
+    },
+    {
+      "id": 238030,
+      "nombre": "Fondos de cesantías y/o pensiones"
+    },
+    {
+      "id": 238035,
+      "nombre": "Donaciones asignadas por pagar"
+    },
+    {
+      "id": 238095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 240405,
+      "nombre": "Vigencia fiscal corriente"
+    },
+    {
+      "id": 240410,
+      "nombre": "Vigencias fiscales anteriores"
+    },
+    {
+      "id": 240805,
+      "nombre": "Impuesto sobre las ventas por pagar"
+    },
+    {
+      "id": 241210,
+      "nombre": "Vigencias fiscales anteriores"
+    },
+    {
+      "id": 242405,
+      "nombre": "Vigencia fiscal corriente"
+    },
+    {
+      "id": 242410,
+      "nombre": "Vigencias fiscales anteriores"
+    },
+    {
+      "id": 243605,
+      "nombre": "Vigencia fiscal corriente"
+    },
+    {
+      "id": 243610,
+      "nombre": "Vigencias fiscales anteriores"
+    },
+    {
+      "id": 244405,
+      "nombre": "De hidrocarburos"
+    },
+    {
+      "id": 244410,
+      "nombre": "De minas"
+    },
+    {
+      "id": 246405,
+      "nombre": "De licores"
+    },
+    {
+      "id": 246410,
+      "nombre": "De cervezas"
+    },
+    {
+      "id": 246415,
+      "nombre": "De cigarrillos"
+    },
+    {
+      "id": 251005,
+      "nombre": "Ley laboral anterior"
+    },
+    {
+      "id": 251010,
+      "nombre": "Ley 50 de 1990 y normas posteriores"
+    },
+    {
+      "id": 253005,
+      "nombre": "Primas"
+    },
+    {
+      "id": 253010,
+      "nombre": "Auxilios"
+    },
+    {
+      "id": 253015,
+      "nombre": "Dotación y suministro a trabajadores"
+    },
+    {
+      "id": 253020,
+      "nombre": "Bonificaciones"
+    },
+    {
+      "id": 253025,
+      "nombre": "Seguros"
+    },
+    {
+      "id": 253095,
+      "nombre": "Otras"
+    },
+    {
+      "id": 260505,
+      "nombre": "Intereses"
+    },
+    {
+      "id": 260510,
+      "nombre": "Comisiones"
+    },
+    {
+      "id": 260515,
+      "nombre": "Honorarios"
+    },
+    {
+      "id": 260520,
+      "nombre": "Servicios técnicos"
+    },
+    {
+      "id": 260525,
+      "nombre": "Transportes, fletes y acarreos"
+    },
+    {
+      "id": 260530,
+      "nombre": "Gastos de viaje"
+    },
+    {
+      "id": 260535,
+      "nombre": "Servicios públicos"
+    },
+    {
+      "id": 260540,
+      "nombre": "Regalías"
+    },
+    {
+      "id": 260545,
+      "nombre": "Garantías"
+    },
+    {
+      "id": 260550,
+      "nombre": "Materiales y repuestos"
+    },
+    {
+      "id": 260595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 261005,
+      "nombre": "Cesantías"
+    },
+    {
+      "id": 261010,
+      "nombre": "Intereses sobre cesantías"
+    },
+    {
+      "id": 261015,
+      "nombre": "Vacaciones"
+    },
+    {
+      "id": 261020,
+      "nombre": "Prima de servicios"
+    },
+    {
+      "id": 261025,
+      "nombre": "Prestaciones extralegales"
+    },
+    {
+      "id": 261030,
+      "nombre": "Viáticos"
+    },
+    {
+      "id": 261095,
+      "nombre": "Otras"
+    },
+    {
+      "id": 261505,
+      "nombre": "De renta y complementarios"
+    },
+    {
+      "id": 261510,
+      "nombre": "De industria y comercio"
+    },
+    {
+      "id": 261515,
+      "nombre": "Tasa por utilización de puertos"
+    },
+    {
+      "id": 261520,
+      "nombre": "De vehículos"
+    },
+    {
+      "id": 261525,
+      "nombre": "De hidrocarburos y minas"
+    },
+    {
+      "id": 261595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 262005,
+      "nombre": "Cálculo actuarial pensiones de jubilación"
+    },
+    {
+      "id": 262010,
+      "nombre": "Pensiones de jubilación por amortizar (DB)"
+    },
+    {
+      "id": 262505,
+      "nombre": "Acueducto y alcantarillado"
+    },
+    {
+      "id": 262510,
+      "nombre": "Energía eléctrica"
+    },
+    {
+      "id": 262515,
+      "nombre": "Teléfonos"
+    },
+    {
+      "id": 262595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 263005,
+      "nombre": "Terrenos"
+    },
+    {
+      "id": 263010,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 263015,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 263020,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 263025,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 263030,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 263035,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 263040,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 263045,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 263050,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 263055,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 263060,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 263065,
+      "nombre": "Armamento de vigilancia"
+    },
+    {
+      "id": 263070,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 263075,
+      "nombre": "Plantaciones agrícolas y forestales"
+    },
+    {
+      "id": 263080,
+      "nombre": "Vías de comunicación"
+    },
+    {
+      "id": 263085,
+      "nombre": "Pozos artesianos"
+    },
+    {
+      "id": 263095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 263505,
+      "nombre": "Multas y sanciones autoridades administrativas"
+    },
+    {
+      "id": 263510,
+      "nombre": "Intereses por multas y sanciones"
+    },
+    {
+      "id": 263515,
+      "nombre": "Reclamos"
+    },
+    {
+      "id": 263520,
+      "nombre": "Laborales"
+    },
+    {
+      "id": 263525,
+      "nombre": "Civiles"
+    },
+    {
+      "id": 263530,
+      "nombre": "Penales"
+    },
+    {
+      "id": 263535,
+      "nombre": "Administrativos"
+    },
+    {
+      "id": 263540,
+      "nombre": "Comerciales"
+    },
+    {
+      "id": 263595,
+      "nombre": "Otras"
+    },
+    {
+      "id": 269505,
+      "nombre": "Para beneficencia"
+    },
+    {
+      "id": 269510,
+      "nombre": "Para comunicaciones"
+    },
+    {
+      "id": 269515,
+      "nombre": "Para pérdida en transporte"
+    },
+    {
+      "id": 269520,
+      "nombre": "Para operación"
+    },
+    {
+      "id": 269525,
+      "nombre": "Para protección de bienes agotables"
+    },
+    {
+      "id": 269530,
+      "nombre": "Para ajustes en redención de unidades"
+    },
+    {
+      "id": 269535,
+      "nombre": "Autoseguro"
+    },
+    {
+      "id": 269540,
+      "nombre": "Planes y programas de reforestación y electrificación"
+    },
+    {
+      "id": 269595,
+      "nombre": "Otras"
+    },
+    {
+      "id": 270505,
+      "nombre": "Intereses"
+    },
+    {
+      "id": 270510,
+      "nombre": "Comisiones"
+    },
+    {
+      "id": 270515,
+      "nombre": "Arrendamientos"
+    },
+    {
+      "id": 270520,
+      "nombre": "Honorarios"
+    },
+    {
+      "id": 270525,
+      "nombre": "Servicios técnicos"
+    },
+    {
+      "id": 270530,
+      "nombre": "De suscriptores"
+    },
+    {
+      "id": 270535,
+      "nombre": "Transportes, fletes y acarreos"
+    },
+    {
+      "id": 270540,
+      "nombre": "Mercancía en tránsito ya vendida"
+    },
+    {
+      "id": 270545,
+      "nombre": "Matrículas y pensiones"
+    },
+    {
+      "id": 270550,
+      "nombre": "Cuotas de administración"
+    },
+    {
+      "id": 270595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 271005,
+      "nombre": "Reajuste del sistema"
+    },
+    {
+      "id": 272505,
+      "nombre": "Por depreciación flexible"
+    },
+    {
+      "id": 272595,
+      "nombre": "Diversos"
+    },
+    {
+      "id": 272599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 280505,
+      "nombre": "De clientes"
+    },
+    {
+      "id": 280510,
+      "nombre": "Sobre contratos"
+    },
+    {
+      "id": 280515,
+      "nombre": "Para obras en proceso"
+    },
+    {
+      "id": 280595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 281005,
+      "nombre": "Para futura suscripción de acciones"
+    },
+    {
+      "id": 281010,
+      "nombre": "Para futuro pago de cuotas o derechos sociales"
+    },
+    {
+      "id": 281015,
+      "nombre": "Para garantía en la prestación de servicios"
+    },
+    {
+      "id": 281020,
+      "nombre": "Para garantía de contratos"
+    },
+    {
+      "id": 281025,
+      "nombre": "De licitaciones"
+    },
+    {
+      "id": 281030,
+      "nombre": "De manejo de bienes"
+    },
+    {
+      "id": 281035,
+      "nombre": "Fondo de reserva"
+    },
+    {
+      "id": 281095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 281505,
+      "nombre": "Valores recibidos para terceros"
+    },
+    {
+      "id": 281510,
+      "nombre": "Venta por cuenta de terceros"
+    },
+    {
+      "id": 282505,
+      "nombre": "Cumplimiento obligaciones laborales"
+    },
+    {
+      "id": 282510,
+      "nombre": "Para estabilidad de obra"
+    },
+    {
+      "id": 282515,
+      "nombre": "Garantía cumplimiento de contratos"
+    },
+    {
+      "id": 283005,
+      "nombre": "Indemnizaciones"
+    },
+    {
+      "id": 283010,
+      "nombre": "Depósitos judiciales"
+    },
+    {
+      "id": 283505,
+      "nombre": "Cuotas netas"
+    },
+    {
+      "id": 283510,
+      "nombre": "Grupos en formación"
+    },
+    {
+      "id": 289505,
+      "nombre": "Préstamos de productos"
+    },
+    {
+      "id": 289510,
+      "nombre": "Reembolso de costos exploratorios"
+    },
+    {
+      "id": 289515,
+      "nombre": "Programa de extensión agropecuaria"
+    },
+    {
+      "id": 292005,
+      "nombre": "Valor bonos pensionales"
+    },
+    {
+      "id": 292010,
+      "nombre": "Bonos pensionales por amortizar (DB)"
+    },
+    {
+      "id": 292015,
+      "nombre": "Intereses causados sobre bonos pensionales"
+    },
+    {
+      "id": 292505,
+      "nombre": "Valor títulos pensionales"
+    },
+    {
+      "id": 292510,
+      "nombre": "Títulos pensionales por amortizar (DB)"
+    },
+    {
+      "id": 292515,
+      "nombre": "Intereses causados sobre títulos pensionales"
+    },
+    {
+      "id": 310505,
+      "nombre": "Capital autorizado"
+    },
+    {
+      "id": 310510,
+      "nombre": "Capital por suscribir (DB)"
+    },
+    {
+      "id": 310515,
+      "nombre": "Capital suscrito por cobrar (DB)"
+    },
+    {
+      "id": 311505,
+      "nombre": "Cuotas o partes de interés social"
+    },
+    {
+      "id": 311510,
+      "nombre": "Aportes de socios-fondo mutuo de inversión"
+    },
+    {
+      "id": 311515,
+      "nombre": "Contribución de la empresa-fondo mutuo de inversión"
+    },
+    {
+      "id": 311520,
+      "nombre": "Suscripciones del público"
+    },
+    {
+      "id": 320505,
+      "nombre": "Prima en colocación de acciones"
+    },
+    {
+      "id": 320510,
+      "nombre": "Prima en colocación de acciones por cobrar (DB)"
+    },
+    {
+      "id": 320515,
+      "nombre": "Prima en colocación de cuotas o partes de interés social"
+    },
+    {
+      "id": 321005,
+      "nombre": "En dinero"
+    },
+    {
+      "id": 321010,
+      "nombre": "En valores mobiliarios"
+    },
+    {
+      "id": 321015,
+      "nombre": "En bienes muebles"
+    },
+    {
+      "id": 321020,
+      "nombre": "En bienes inmuebles"
+    },
+    {
+      "id": 321025,
+      "nombre": "En intangibles"
+    },
+    {
+      "id": 322505,
+      "nombre": "De acciones"
+    },
+    {
+      "id": 322510,
+      "nombre": "De cuotas o partes de interés social"
+    },
+    {
+      "id": 330505,
+      "nombre": "Reserva legal"
+    },
+    {
+      "id": 330510,
+      "nombre": "Reservas por disposiciones fiscales"
+    },
+    {
+      "id": 330515,
+      "nombre": "Reserva para readquisición de acciones"
+    },
+    {
+      "id": 330516,
+      "nombre": "Acciones propias readquiridas (DB)"
+    },
+    {
+      "id": 330517,
+      "nombre": "Reserva para readquisición de cuotas o partes de interés social"
+    },
+    {
+      "id": 330518,
+      "nombre": "Cuotas o partes de interés social propias readquiridas (DB)"
+    },
+    {
+      "id": 330520,
+      "nombre": "Reserva para extensión agropecuaria"
+    },
+    {
+      "id": 330525,
+      "nombre": "Reserva Ley 7ª de 1990"
+    },
+    {
+      "id": 330530,
+      "nombre": "Reserva para reposición de semovientes"
+    },
+    {
+      "id": 330535,
+      "nombre": "Reserva Ley 4ª de 1980"
+    },
+    {
+      "id": 330595,
+      "nombre": "Otras"
+    },
+    {
+      "id": 331005,
+      "nombre": "Para futuras capitalizaciones"
+    },
+    {
+      "id": 331010,
+      "nombre": "Para reposición de activos"
+    },
+    {
+      "id": 331015,
+      "nombre": "Para futuros ensanches"
+    },
+    {
+      "id": 331095,
+      "nombre": "Otras"
+    },
+    {
+      "id": 331505,
+      "nombre": "Para beneficencia y civismo"
+    },
+    {
+      "id": 331510,
+      "nombre": "Para futuras capitalizaciones"
+    },
+    {
+      "id": 331515,
+      "nombre": "Para futuros ensanches"
+    },
+    {
+      "id": 331520,
+      "nombre": "Para adquisición o reposición de propiedades, planta y equipo"
+    },
+    {
+      "id": 331525,
+      "nombre": "Para investigaciones y desarrollo"
+    },
+    {
+      "id": 331530,
+      "nombre": "Para fomento económico"
+    },
+    {
+      "id": 331535,
+      "nombre": "Para capital de trabajo"
+    },
+    {
+      "id": 331540,
+      "nombre": "Para estabilización de rendimientos"
+    },
+    {
+      "id": 331545,
+      "nombre": "A disposición del máximo órgano social"
+    },
+    {
+      "id": 331595,
+      "nombre": "Otras"
+    },
+    {
+      "id": 340505,
+      "nombre": "De capital social"
+    },
+    {
+      "id": 340510,
+      "nombre": "De superávit de capital"
+    },
+    {
+      "id": 340515,
+      "nombre": "De reservas"
+    },
+    {
+      "id": 340520,
+      "nombre": "De resultados de ejercicios anteriores"
+    },
+    {
+      "id": 340525,
+      "nombre": "De activos en período improductivo"
+    },
+    {
+      "id": 340530,
+      "nombre": "De saneamiento fiscal"
+    },
+    {
+      "id": 340535,
+      "nombre": "De ajustes Decreto 3019 de 1989"
+    },
+    {
+      "id": 340540,
+      "nombre": "De dividendos y participaciones decretadas en acciones, cuotas o partes de interés social"
+    },
+    {
+      "id": 340545,
+      "nombre": "Superávit método de participación"
+    },
+    {
+      "id": 380505,
+      "nombre": "Acciones"
+    },
+    {
+      "id": 380510,
+      "nombre": "Cuotas o partes de interés social"
+    },
+    {
+      "id": 380515,
+      "nombre": "Derechos fiduciarios"
+    },
+    {
+      "id": 381004,
+      "nombre": "Terrenos"
+    },
+    {
+      "id": 381006,
+      "nombre": "Materiales proyectos petroleros"
+    },
+    {
+      "id": 381008,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 381012,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 381016,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 381020,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 381024,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 381028,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 381032,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 381036,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 381040,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 381044,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 381048,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 381052,
+      "nombre": "Armamento de vigilancia"
+    },
+    {
+      "id": 381056,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 381060,
+      "nombre": "Plantaciones agrícolas y forestales"
+    },
+    {
+      "id": 381064,
+      "nombre": "Vías de comunicación"
+    },
+    {
+      "id": 381068,
+      "nombre": "Minas y canteras"
+    },
+    {
+      "id": 381072,
+      "nombre": "Pozos artesianos"
+    },
+    {
+      "id": 381076,
+      "nombre": "Yacimientos"
+    },
+    {
+      "id": 381080,
+      "nombre": "Semovientes"
+    },
+    {
+      "id": 389505,
+      "nombre": "Bienes de arte y cultura"
+    },
+    {
+      "id": 389510,
+      "nombre": "Bienes entregados en comodato"
+    },
+    {
+      "id": 389515,
+      "nombre": "Bienes recibidos en pago"
+    },
+    {
+      "id": 389520,
+      "nombre": "Inventario de semovientes"
+    },
+    {
+      "id": 410505,
+      "nombre": "Cultivo de cereales"
+    },
+    {
+      "id": 410510,
+      "nombre": "Cultivos de hortalizas, legumbres y plantas ornamentales"
+    },
+    {
+      "id": 410515,
+      "nombre": "Cultivos de frutas, nueces y plantas aromáticas"
+    },
+    {
+      "id": 410520,
+      "nombre": "Cultivo de café"
+    },
+    {
+      "id": 410525,
+      "nombre": "Cultivo de flores"
+    },
+    {
+      "id": 410530,
+      "nombre": "Cultivo de caña de azúcar"
+    },
+    {
+      "id": 410535,
+      "nombre": "Cultivo de algodón y plantas para material textil"
+    },
+    {
+      "id": 410540,
+      "nombre": "Cultivo de banano"
+    },
+    {
+      "id": 410545,
+      "nombre": "Otros cultivos agrícolas"
+    },
+    {
+      "id": 410550,
+      "nombre": "Cría de ovejas, cabras, asnos, mulas y burdéganos"
+    },
+    {
+      "id": 410555,
+      "nombre": "Cría de ganado caballar y vacuno"
+    },
+    {
+      "id": 410560,
+      "nombre": "Producción avícola"
+    },
+    {
+      "id": 410565,
+      "nombre": "Cría de otros animales"
+    },
+    {
+      "id": 410570,
+      "nombre": "Servicios agrícolas y ganaderos"
+    },
+    {
+      "id": 410575,
+      "nombre": "Actividad de caza"
+    },
+    {
+      "id": 410580,
+      "nombre": "Actividad de silvicultura"
+    },
+    {
+      "id": 410595,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 410599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 411005,
+      "nombre": "Actividad de pesca"
+    },
+    {
+      "id": 411010,
+      "nombre": "Explotación de criaderos de peces"
+    },
+    {
+      "id": 411095,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 411099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 411505,
+      "nombre": "Carbón"
+    },
+    {
+      "id": 411510,
+      "nombre": "Petróleo crudo"
+    },
+    {
+      "id": 411512,
+      "nombre": "Gas natural"
+    },
+    {
+      "id": 411514,
+      "nombre": "Servicios relacionados con extracción de petróleo y gas"
+    },
+    {
+      "id": 411515,
+      "nombre": "Minerales de hierro"
+    },
+    {
+      "id": 411520,
+      "nombre": "Minerales metalíferos no ferrosos"
+    },
+    {
+      "id": 411525,
+      "nombre": "Piedra, arena y arcilla"
+    },
+    {
+      "id": 411527,
+      "nombre": "Piedras preciosas"
+    },
+    {
+      "id": 411528,
+      "nombre": "Oro"
+    },
+    {
+      "id": 411530,
+      "nombre": "Otras minas y canteras"
+    },
+    {
+      "id": 411532,
+      "nombre": "Prestación de servicios sector minero"
+    },
+    {
+      "id": 411595,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 411599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 412001,
+      "nombre": "Producción y procesamiento de carnes y productos cárnicos"
+    },
+    {
+      "id": 412002,
+      "nombre": "Productos de pescado"
+    },
+    {
+      "id": 412003,
+      "nombre": "Productos de frutas, legumbres y hortalizas"
+    },
+    {
+      "id": 412004,
+      "nombre": "Elaboración de aceites y grasas"
+    },
+    {
+      "id": 412005,
+      "nombre": "Elaboración de productos lácteos"
+    },
+    {
+      "id": 412006,
+      "nombre": "Elaboración de productos de molinería"
+    },
+    {
+      "id": 412007,
+      "nombre": "Elaboración de almidones y derivados"
+    },
+    {
+      "id": 412008,
+      "nombre": "Elaboración de alimentos para animales"
+    },
+    {
+      "id": 412009,
+      "nombre": "Elaboración de productos para panadería"
+    },
+    {
+      "id": 412010,
+      "nombre": "Elaboración de azúcar y melazas"
+    },
+    {
+      "id": 412011,
+      "nombre": "Elaboración de cacao, chocolate y confitería"
+    },
+    {
+      "id": 412012,
+      "nombre": "Elaboración de pastas y productos farináceos"
+    },
+    {
+      "id": 412013,
+      "nombre": "Elaboración de productos de café"
+    },
+    {
+      "id": 412014,
+      "nombre": "Elaboración de otros productos alimenticios"
+    },
+    {
+      "id": 412015,
+      "nombre": "Elaboración de bebidas alcohólicas y alcohol etílico"
+    },
+    {
+      "id": 412016,
+      "nombre": "Elaboración de vinos"
+    },
+    {
+      "id": 412017,
+      "nombre": "Elaboración de bebidas malteadas y de malta"
+    },
+    {
+      "id": 412018,
+      "nombre": "Elaboración de bebidas no alcohólicas"
+    },
+    {
+      "id": 412019,
+      "nombre": "Elaboración de productos de tabaco"
+    },
+    {
+      "id": 412020,
+      "nombre": "Preparación e hilatura de fibras textiles y tejeduría"
+    },
+    {
+      "id": 412021,
+      "nombre": "Acabado de productos textiles"
+    },
+    {
+      "id": 412022,
+      "nombre": "Elaboración de artículos de materiales textiles"
+    },
+    {
+      "id": 412023,
+      "nombre": "Elaboración de tapices y alfombras"
+    },
+    {
+      "id": 412024,
+      "nombre": "Elaboración de cuerdas, cordeles, bramantes y redes"
+    },
+    {
+      "id": 412025,
+      "nombre": "Elaboración de otros productos textiles"
+    },
+    {
+      "id": 412026,
+      "nombre": "Elaboración de tejidos"
+    },
+    {
+      "id": 412027,
+      "nombre": "Elaboración de prendas de vestir"
+    },
+    {
+      "id": 412028,
+      "nombre": "Preparación, adobo y teñido de pieles"
+    },
+    {
+      "id": 412029,
+      "nombre": "Curtido, adobo o preparación de cuero"
+    },
+    {
+      "id": 412030,
+      "nombre": "Elaboración de maletas, bolsos y similares"
+    },
+    {
+      "id": 412031,
+      "nombre": "Elaboración de calzado"
+    },
+    {
+      "id": 412032,
+      "nombre": "Producción de madera, artículos de madera y corcho"
+    },
+    {
+      "id": 412033,
+      "nombre": "Elaboración de pasta y productos de madera, papel y cartón"
+    },
+    {
+      "id": 412034,
+      "nombre": "Ediciones y publicaciones"
+    },
+    {
+      "id": 412035,
+      "nombre": "Impresión"
+    },
+    {
+      "id": 412036,
+      "nombre": "Servicios relacionados con la edición y la impresión"
+    },
+    {
+      "id": 412037,
+      "nombre": "Reproducción de grabaciones"
+    },
+    {
+      "id": 412038,
+      "nombre": "Elaboración de productos de horno de coque"
+    },
+    {
+      "id": 412039,
+      "nombre": "Elaboración de productos de la refinación de petróleo"
+    },
+    {
+      "id": 412040,
+      "nombre": "Elaboración de sustancias químicas básicas"
+    },
+    {
+      "id": 412041,
+      "nombre": "Elaboración de abonos y compuestos de nitrógeno"
+    },
+    {
+      "id": 412042,
+      "nombre": "Elaboración de plástico y caucho sintético"
+    },
+    {
+      "id": 412043,
+      "nombre": "Elaboración de productos químicos de uso agropecuario"
+    },
+    {
+      "id": 412044,
+      "nombre": "Elaboración de pinturas, tintas y masillas"
+    },
+    {
+      "id": 412045,
+      "nombre": "Elaboración de productos farmacéuticos y botánicos"
+    },
+    {
+      "id": 412046,
+      "nombre": "Elaboración de jabones, detergentes y preparados de tocador"
+    },
+    {
+      "id": 412047,
+      "nombre": "Elaboración de otros productos químicos"
+    },
+    {
+      "id": 412048,
+      "nombre": "Elaboración de fibras"
+    },
+    {
+      "id": 412049,
+      "nombre": "Elaboración de otros productos de caucho"
+    },
+    {
+      "id": 412050,
+      "nombre": "Elaboración de productos de plástico"
+    },
+    {
+      "id": 412051,
+      "nombre": "Elaboración de vidrio y productos de vidrio"
+    },
+    {
+      "id": 412052,
+      "nombre": "Elaboración de productos de cerámica, loza, piedra, arcilla y porcelana"
+    },
+    {
+      "id": 412053,
+      "nombre": "Elaboración de cemento, cal y yeso"
+    },
+    {
+      "id": 412054,
+      "nombre": "Elaboración de artículos de hormigón, cemento y yeso"
+    },
+    {
+      "id": 412055,
+      "nombre": "Corte, tallado y acabado de la piedra"
+    },
+    {
+      "id": 412056,
+      "nombre": "Elaboración de otros productos minerales no metálicos"
+    },
+    {
+      "id": 412057,
+      "nombre": "Industrias básicas y fundición de hierro y acero"
+    },
+    {
+      "id": 412058,
+      "nombre": "Productos primarios de metales preciosos y de metales no ferrosos"
+    },
+    {
+      "id": 412059,
+      "nombre": "Fundición de metales no ferrosos"
+    },
+    {
+      "id": 412060,
+      "nombre": "Fabricación de productos metálicos para uso estructural"
+    },
+    {
+      "id": 412061,
+      "nombre": "Forja, prensado, estampado, laminado de metal y pulvimetalurgia"
+    },
+    {
+      "id": 412062,
+      "nombre": "Revestimiento de metales y obras de ingeniería mecánica"
+    },
+    {
+      "id": 412063,
+      "nombre": "Fabricación de artículos de ferretería"
+    },
+    {
+      "id": 412064,
+      "nombre": "Elaboración de otros productos de metal"
+    },
+    {
+      "id": 412065,
+      "nombre": "Fabricación de maquinaria y equipo"
+    },
+    {
+      "id": 412066,
+      "nombre": "Fabricación de equipos de elevación y manipulación"
+    },
+    {
+      "id": 412067,
+      "nombre": "Elaboración de aparatos de uso doméstico"
+    },
+    {
+      "id": 412068,
+      "nombre": "Elaboración de equipo de oficina"
+    },
+    {
+      "id": 412069,
+      "nombre": "Elaboración de pilas y baterías primarias"
+    },
+    {
+      "id": 412070,
+      "nombre": "Elaboración de equipo de iluminación"
+    },
+    {
+      "id": 412071,
+      "nombre": "Elaboración de otros tipos de equipo eléctrico"
+    },
+    {
+      "id": 412072,
+      "nombre": "Fabricación de equipos de radio, televisión y comunicaciones"
+    },
+    {
+      "id": 412073,
+      "nombre": "Fabricación de aparatos e instrumentos médicos"
+    },
+    {
+      "id": 412074,
+      "nombre": "Fabricación de instrumentos de medición y control"
+    },
+    {
+      "id": 412075,
+      "nombre": "Fabricación de instrumentos de óptica y equipo fotográfico"
+    },
+    {
+      "id": 412076,
+      "nombre": "Fabricación de relojes"
+    },
+    {
+      "id": 412077,
+      "nombre": "Fabricación de vehículos automotores"
+    },
+    {
+      "id": 412078,
+      "nombre": "Fabricación de carrocerías para automotores"
+    },
+    {
+      "id": 412079,
+      "nombre": "Fabricación de partes piezas y accesorios para automotores"
+    },
+    {
+      "id": 412080,
+      "nombre": "Fabricación y reparación de buques y otras embarcaciones"
+    },
+    {
+      "id": 412081,
+      "nombre": "Fabricación de locomotoras y material rodante para ferrocarriles"
+    },
+    {
+      "id": 412082,
+      "nombre": "Fabricación de aeronaves"
+    },
+    {
+      "id": 412083,
+      "nombre": "Fabricación de motocicletas"
+    },
+    {
+      "id": 412084,
+      "nombre": "Fabricación de bicicletas y sillas de ruedas"
+    },
+    {
+      "id": 412085,
+      "nombre": "Fabricación de otros tipos de transporte"
+    },
+    {
+      "id": 412086,
+      "nombre": "Fabricación de muebles"
+    },
+    {
+      "id": 412087,
+      "nombre": "Fabricación de joyas y artículos conexos"
+    },
+    {
+      "id": 412088,
+      "nombre": "Fabricación de instrumentos de música"
+    },
+    {
+      "id": 412089,
+      "nombre": "Fabricación de artículos y equipo para deporte"
+    },
+    {
+      "id": 412090,
+      "nombre": "Fabricación de juegos y juguetes"
+    },
+    {
+      "id": 412091,
+      "nombre": "Reciclamiento de desperdicios"
+    },
+    {
+      "id": 412095,
+      "nombre": "Productos de otras industrias manufactureras"
+    },
+    {
+      "id": 412099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 412505,
+      "nombre": "Generación, captación y distribución de energía eléctrica"
+    },
+    {
+      "id": 412510,
+      "nombre": "Fabricación de gas y distribución de combustibles gaseosos"
+    },
+    {
+      "id": 412515,
+      "nombre": "Captación, depuración y distribución de agua"
+    },
+    {
+      "id": 412595,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 412599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 413005,
+      "nombre": "Preparación de terrenos"
+    },
+    {
+      "id": 413010,
+      "nombre": "Construcción de edificios y obras de ingeniería civil"
+    },
+    {
+      "id": 413015,
+      "nombre": "Acondicionamiento de edificios"
+    },
+    {
+      "id": 413020,
+      "nombre": "Terminación de edificaciones"
+    },
+    {
+      "id": 413025,
+      "nombre": "Alquiler de equipo con operarios"
+    },
+    {
+      "id": 413095,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 413099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 413502,
+      "nombre": "Venta de vehículos automotores"
+    },
+    {
+      "id": 413504,
+      "nombre": "Mantenimiento, reparación y lavado de vehículos automotores"
+    },
+    {
+      "id": 413506,
+      "nombre": "Venta de partes, piezas y accesorios de vehículos automotores"
+    },
+    {
+      "id": 413508,
+      "nombre": "Venta de combustibles sólidos, líquidos, gaseosos"
+    },
+    {
+      "id": 413510,
+      "nombre": "Venta de lubricantes, aditivos, llantas y lujos para automotores"
+    },
+    {
+      "id": 413512,
+      "nombre": "Venta a cambio de retribución o por contrata"
+    },
+    {
+      "id": 413514,
+      "nombre": "Venta de insumos, materias primas agropecuarias y flores"
+    },
+    {
+      "id": 413516,
+      "nombre": "Venta de otros insumos y materias primas no agropecuarias"
+    },
+    {
+      "id": 413518,
+      "nombre": "Venta de animales vivos y cueros"
+    },
+    {
+      "id": 413520,
+      "nombre": "Venta de productos en almacenes no especializados"
+    },
+    {
+      "id": 413522,
+      "nombre": "Venta de productos agropecuarios"
+    },
+    {
+      "id": 413524,
+      "nombre": "Venta de productos textiles, de vestir, de cuero y calzado"
+    },
+    {
+      "id": 413526,
+      "nombre": "Venta de papel y cartón"
+    },
+    {
+      "id": 413528,
+      "nombre": "Venta de libros, revistas, elementos de papelería, útiles y textos escolares"
+    },
+    {
+      "id": 413530,
+      "nombre": "Venta de juegos, juguetes y artículos deportivos"
+    },
+    {
+      "id": 413532,
+      "nombre": "Venta de instrumentos quirúrgicos y ortopédicos"
+    },
+    {
+      "id": 413534,
+      "nombre": "Venta de artículos en relojerías y joyerías"
+    },
+    {
+      "id": 413536,
+      "nombre": "Venta de electrodomésticos y muebles"
+    },
+    {
+      "id": 413538,
+      "nombre": "Venta de productos de aseo, farmacéuticos, medicinales, y artículos de tocador"
+    },
+    {
+      "id": 413540,
+      "nombre": "Venta de cubiertos, vajillas, cristalería, porcelanas, cerámicas y otros artículos de uso doméstico"
+    },
+    {
+      "id": 413542,
+      "nombre": "Venta de materiales de construcción, fontanería y calefacción"
+    },
+    {
+      "id": 413544,
+      "nombre": "Venta de pinturas y lacas"
+    },
+    {
+      "id": 413546,
+      "nombre": "Venta de productos de vidrios y marquetería"
+    },
+    {
+      "id": 413548,
+      "nombre": "Venta de herramientas y artículos de ferretería"
+    },
+    {
+      "id": 413550,
+      "nombre": "Venta de químicos"
+    },
+    {
+      "id": 413552,
+      "nombre": "Venta de productos intermedios, desperdicios y desechos"
+    },
+    {
+      "id": 413554,
+      "nombre": "Venta de maquinaria, equipo de oficina y programas de computador"
+    },
+    {
+      "id": 413556,
+      "nombre": "Venta de artículos en cacharrerías y misceláneas"
+    },
+    {
+      "id": 413558,
+      "nombre": "Venta de instrumentos musicales"
+    },
+    {
+      "id": 413560,
+      "nombre": "Venta de artículos en casas de empeño y prenderías"
+    },
+    {
+      "id": 413562,
+      "nombre": "Venta de equipo fotográfico"
+    },
+    {
+      "id": 413564,
+      "nombre": "Venta de equipo óptico y de precisión"
+    },
+    {
+      "id": 413566,
+      "nombre": "Venta de empaques"
+    },
+    {
+      "id": 413568,
+      "nombre": "Venta de equipo profesional y científico"
+    },
+    {
+      "id": 413570,
+      "nombre": "Venta de loterías, rifas, chance, apuestas y similares"
+    },
+    {
+      "id": 413572,
+      "nombre": "Reparación de efectos personales y electrodomésticos"
+    },
+    {
+      "id": 413595,
+      "nombre": "Venta de otros productos"
+    },
+    {
+      "id": 413599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 414005,
+      "nombre": "Hotelería"
+    },
+    {
+      "id": 414010,
+      "nombre": "Campamento y otros tipos de hospedaje"
+    },
+    {
+      "id": 414015,
+      "nombre": "Restaurantes"
+    },
+    {
+      "id": 414020,
+      "nombre": "Bares y cantinas"
+    },
+    {
+      "id": 414095,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 414099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 414505,
+      "nombre": "Servicio de transporte por carretera"
+    },
+    {
+      "id": 414510,
+      "nombre": "Servicio de transporte por vía férrea"
+    },
+    {
+      "id": 414515,
+      "nombre": "Servicio de transporte por vía acuática"
+    },
+    {
+      "id": 414520,
+      "nombre": "Servicio de transporte por vía aérea"
+    },
+    {
+      "id": 414525,
+      "nombre": "Servicio de transporte por tuberías"
+    },
+    {
+      "id": 414530,
+      "nombre": "Manipulación de carga"
+    },
+    {
+      "id": 414535,
+      "nombre": "Almacenamiento y depósito"
+    },
+    {
+      "id": 414540,
+      "nombre": "Servicios complementarios para el transporte"
+    },
+    {
+      "id": 414545,
+      "nombre": "Agencias de viaje"
+    },
+    {
+      "id": 414550,
+      "nombre": "Otras agencias de transporte"
+    },
+    {
+      "id": 414555,
+      "nombre": "Servicio postal y de correo"
+    },
+    {
+      "id": 414560,
+      "nombre": "Servicio telefónico"
+    },
+    {
+      "id": 414565,
+      "nombre": "Servicio de telégrafo"
+    },
+    {
+      "id": 414570,
+      "nombre": "Servicio de transmisión de datos"
+    },
+    {
+      "id": 414575,
+      "nombre": "Servicio de radio y televisión por cable"
+    },
+    {
+      "id": 414580,
+      "nombre": "Transmisión de sonido e imágenes por contrato"
+    },
+    {
+      "id": 414595,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 414599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 415005,
+      "nombre": "Venta de inversiones"
+    },
+    {
+      "id": 415010,
+      "nombre": "Dividendos de sociedades anónimas y/o asimiladas"
+    },
+    {
+      "id": 415015,
+      "nombre": "Participaciones de sociedades limitadas y/o asimiladas"
+    },
+    {
+      "id": 415020,
+      "nombre": "Intereses"
+    },
+    {
+      "id": 415025,
+      "nombre": "Reajuste monetario-UPAC (hoy UVR)"
+    },
+    {
+      "id": 415030,
+      "nombre": "Comisiones"
+    },
+    {
+      "id": 415035,
+      "nombre": "Operaciones de descuento"
+    },
+    {
+      "id": 415040,
+      "nombre": "Cuotas de inscripción-consorcios"
+    },
+    {
+      "id": 415045,
+      "nombre": "Cuotas de administración-consorcios"
+    },
+    {
+      "id": 415050,
+      "nombre": "Reajuste del sistema-consorcios"
+    },
+    {
+      "id": 415055,
+      "nombre": "Eliminación de suscriptores-consorcios"
+    },
+    {
+      "id": 415060,
+      "nombre": "Cuotas de ingreso o retiro-sociedad administradora"
+    },
+    {
+      "id": 415065,
+      "nombre": "Servicios a comisionistas"
+    },
+    {
+      "id": 415070,
+      "nombre": "Inscripciones y cuotas"
+    },
+    {
+      "id": 415075,
+      "nombre": "Recuperación de garantías"
+    },
+    {
+      "id": 415080,
+      "nombre": "Ingresos método de participación"
+    },
+    {
+      "id": 415095,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 415099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 415505,
+      "nombre": "Arrendamientos de bienes inmuebles"
+    },
+    {
+      "id": 415510,
+      "nombre": "Inmobiliarias por retribución o contrata"
+    },
+    {
+      "id": 415515,
+      "nombre": "Alquiler equipo de transporte"
+    },
+    {
+      "id": 415520,
+      "nombre": "Alquiler maquinaria y equipo"
+    },
+    {
+      "id": 415525,
+      "nombre": "Alquiler de efectos personales y enseres domésticos"
+    },
+    {
+      "id": 415530,
+      "nombre": "Consultoría en equipo y programas de informática"
+    },
+    {
+      "id": 415535,
+      "nombre": "Procesamiento de datos"
+    },
+    {
+      "id": 415540,
+      "nombre": "Mantenimiento y reparación de maquinaria de oficina"
+    },
+    {
+      "id": 415545,
+      "nombre": "Investigaciones científicas y de desarrollo"
+    },
+    {
+      "id": 415550,
+      "nombre": "Actividades empresariales de consultoría"
+    },
+    {
+      "id": 415555,
+      "nombre": "Publicidad"
+    },
+    {
+      "id": 415560,
+      "nombre": "Dotación de personal"
+    },
+    {
+      "id": 415565,
+      "nombre": "Investigación y seguridad"
+    },
+    {
+      "id": 415570,
+      "nombre": "Limpieza de inmuebles"
+    },
+    {
+      "id": 415575,
+      "nombre": "Fotografía"
+    },
+    {
+      "id": 415580,
+      "nombre": "Envase y empaque"
+    },
+    {
+      "id": 415585,
+      "nombre": "Fotocopiado"
+    },
+    {
+      "id": 415590,
+      "nombre": "Mantenimiento y reparación de maquinaria y equipo"
+    },
+    {
+      "id": 415595,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 415599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 416005,
+      "nombre": "Actividades relacionadas con la educación"
+    },
+    {
+      "id": 416095,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 416099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 416505,
+      "nombre": "Servicio hospitalario"
+    },
+    {
+      "id": 416510,
+      "nombre": "Servicio médico"
+    },
+    {
+      "id": 416515,
+      "nombre": "Servicio odontológico"
+    },
+    {
+      "id": 416520,
+      "nombre": "Servicio de laboratorio"
+    },
+    {
+      "id": 416525,
+      "nombre": "Actividades veterinarias"
+    },
+    {
+      "id": 416530,
+      "nombre": "Actividades de servicios sociales"
+    },
+    {
+      "id": 416595,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 416599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 417005,
+      "nombre": "Eliminación de desperdicios y aguas residuales"
+    },
+    {
+      "id": 417010,
+      "nombre": "Actividades de asociación"
+    },
+    {
+      "id": 417015,
+      "nombre": "Producción y distribución de filmes y videocintas"
+    },
+    {
+      "id": 417020,
+      "nombre": "Exhibición de filmes y videocintas"
+    },
+    {
+      "id": 417025,
+      "nombre": "Actividad de radio y televisión"
+    },
+    {
+      "id": 417030,
+      "nombre": "Actividad teatral, musical y artística"
+    },
+    {
+      "id": 417035,
+      "nombre": "Grabación y producción de discos"
+    },
+    {
+      "id": 417040,
+      "nombre": "Entretenimiento y esparcimiento"
+    },
+    {
+      "id": 417045,
+      "nombre": "Agencias de noticias"
+    },
+    {
+      "id": 417050,
+      "nombre": "Lavanderías y similares"
+    },
+    {
+      "id": 417055,
+      "nombre": "Peluquerías y similares"
+    },
+    {
+      "id": 417060,
+      "nombre": "Servicios funerarios"
+    },
+    {
+      "id": 417065,
+      "nombre": "Zonas francas"
+    },
+    {
+      "id": 417095,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 417099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 417599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 420505,
+      "nombre": "Materia prima"
+    },
+    {
+      "id": 420510,
+      "nombre": "Material de desecho"
+    },
+    {
+      "id": 420515,
+      "nombre": "Materiales varios"
+    },
+    {
+      "id": 420520,
+      "nombre": "Productos de diversificación"
+    },
+    {
+      "id": 420525,
+      "nombre": "Excedentes de exportación"
+    },
+    {
+      "id": 420530,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 420535,
+      "nombre": "Productos agrícolas"
+    },
+    {
+      "id": 420540,
+      "nombre": "De propaganda"
+    },
+    {
+      "id": 420545,
+      "nombre": "Productos en remate"
+    },
+    {
+      "id": 420550,
+      "nombre": "Combustibles y lubricantes"
+    },
+    {
+      "id": 420599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 421005,
+      "nombre": "Intereses"
+    },
+    {
+      "id": 421010,
+      "nombre": "Reajuste monetario-UPAC (hoy UVR)"
+    },
+    {
+      "id": 421015,
+      "nombre": "Descuentos amortizados"
+    },
+    {
+      "id": 421020,
+      "nombre": "Diferencia en cambio"
+    },
+    {
+      "id": 421025,
+      "nombre": "Financiación vehículos"
+    },
+    {
+      "id": 421030,
+      "nombre": "Financiación sistemas de viajes"
+    },
+    {
+      "id": 421035,
+      "nombre": "Aceptaciones bancarias"
+    },
+    {
+      "id": 421040,
+      "nombre": "Descuentos comerciales condicionados"
+    },
+    {
+      "id": 421045,
+      "nombre": "Descuentos bancarios"
+    },
+    {
+      "id": 421050,
+      "nombre": "Comisiones cheques de otras plazas"
+    },
+    {
+      "id": 421055,
+      "nombre": "Multas y recargos"
+    },
+    {
+      "id": 421060,
+      "nombre": "Sanciones cheques devueltos"
+    },
+    {
+      "id": 421095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 421099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 421505,
+      "nombre": "De sociedades anónimas y/o asimiladas"
+    },
+    {
+      "id": 421510,
+      "nombre": "De sociedades limitadas y/o asimiladas"
+    },
+    {
+      "id": 421599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 421805,
+      "nombre": "De sociedades anónimas y/o asimiladas"
+    },
+    {
+      "id": 421810,
+      "nombre": "De sociedades limitadas y/o asimiladas"
+    },
+    {
+      "id": 422005,
+      "nombre": "Terrenos"
+    },
+    {
+      "id": 422010,
+      "nombre": "Construcciones y edificios"
+    },
+    {
+      "id": 422015,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 422020,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 422025,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 422030,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 422035,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 422040,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 422045,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 422050,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 422055,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 422060,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 422062,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 422065,
+      "nombre": "Plantaciones agrícolas y forestales"
+    },
+    {
+      "id": 422070,
+      "nombre": "Aeródromos"
+    },
+    {
+      "id": 422075,
+      "nombre": "Semovientes"
+    },
+    {
+      "id": 422099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 422505,
+      "nombre": "Sobre inversiones"
+    },
+    {
+      "id": 422510,
+      "nombre": "De concesionarios"
+    },
+    {
+      "id": 422515,
+      "nombre": "De actividades financieras"
+    },
+    {
+      "id": 422520,
+      "nombre": "Por venta de servicios de taller"
+    },
+    {
+      "id": 422525,
+      "nombre": "Por venta de seguros"
+    },
+    {
+      "id": 422530,
+      "nombre": "Por ingresos para terceros"
+    },
+    {
+      "id": 422535,
+      "nombre": "Por distribución de películas"
+    },
+    {
+      "id": 422540,
+      "nombre": "Derechos de autor"
+    },
+    {
+      "id": 422545,
+      "nombre": "Derechos de programación"
+    },
+    {
+      "id": 422599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 423005,
+      "nombre": "Asesorías"
+    },
+    {
+      "id": 423010,
+      "nombre": "Asistencia técnica"
+    },
+    {
+      "id": 423015,
+      "nombre": "Administración de vinculadas"
+    },
+    {
+      "id": 423099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 423505,
+      "nombre": "De báscula"
+    },
+    {
+      "id": 423510,
+      "nombre": "De transporte"
+    },
+    {
+      "id": 423515,
+      "nombre": "De prensa"
+    },
+    {
+      "id": 423520,
+      "nombre": "Administrativos"
+    },
+    {
+      "id": 423525,
+      "nombre": "Técnicos"
+    },
+    {
+      "id": 423530,
+      "nombre": "De computación"
+    },
+    {
+      "id": 423535,
+      "nombre": "De telefax"
+    },
+    {
+      "id": 423540,
+      "nombre": "Taller de vehículos"
+    },
+    {
+      "id": 423545,
+      "nombre": "De recepción de aeronaves"
+    },
+    {
+      "id": 423550,
+      "nombre": "De transporte programa gas natural"
+    },
+    {
+      "id": 423555,
+      "nombre": "Por contratos"
+    },
+    {
+      "id": 423560,
+      "nombre": "De trilla"
+    },
+    {
+      "id": 423565,
+      "nombre": "De mantenimiento"
+    },
+    {
+      "id": 423570,
+      "nombre": "Al personal"
+    },
+    {
+      "id": 423575,
+      "nombre": "De casino"
+    },
+    {
+      "id": 423580,
+      "nombre": "Fletes"
+    },
+    {
+      "id": 423585,
+      "nombre": "Entre compañías"
+    },
+    {
+      "id": 423595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 423599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 424005,
+      "nombre": "Acciones"
+    },
+    {
+      "id": 424010,
+      "nombre": "Cuotas o partes de interés social"
+    },
+    {
+      "id": 424015,
+      "nombre": "Bonos"
+    },
+    {
+      "id": 424020,
+      "nombre": "Cédulas"
+    },
+    {
+      "id": 424025,
+      "nombre": "Certificados"
+    },
+    {
+      "id": 424030,
+      "nombre": "Papeles comerciales"
+    },
+    {
+      "id": 424035,
+      "nombre": "Títulos"
+    },
+    {
+      "id": 424045,
+      "nombre": "Derechos fiduciarios"
+    },
+    {
+      "id": 424050,
+      "nombre": "Obligatorias"
+    },
+    {
+      "id": 424095,
+      "nombre": "Otras"
+    },
+    {
+      "id": 424099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 424504,
+      "nombre": "Terrenos"
+    },
+    {
+      "id": 424506,
+      "nombre": "Materiales industria petrolera"
+    },
+    {
+      "id": 424508,
+      "nombre": "Construcciones en curso"
+    },
+    {
+      "id": 424512,
+      "nombre": "Maquinaria en montaje"
+    },
+    {
+      "id": 424516,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 424520,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 424524,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 424528,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 424532,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 424536,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 424540,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 424544,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 424548,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 424552,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 424556,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 424560,
+      "nombre": "Armamento de vigilancia"
+    },
+    {
+      "id": 424562,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 424564,
+      "nombre": "Plantaciones agrícolas y forestales"
+    },
+    {
+      "id": 424568,
+      "nombre": "Vías de comunicación"
+    },
+    {
+      "id": 424572,
+      "nombre": "Minas y Canteras"
+    },
+    {
+      "id": 424580,
+      "nombre": "Pozos artesianos"
+    },
+    {
+      "id": 424584,
+      "nombre": "Yacimientos"
+    },
+    {
+      "id": 424588,
+      "nombre": "Semovientes"
+    },
+    {
+      "id": 424599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 424805,
+      "nombre": "Intangibles"
+    },
+    {
+      "id": 424810,
+      "nombre": "Otros activos"
+    },
+    {
+      "id": 424899,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 425005,
+      "nombre": "Deudas malas"
+    },
+    {
+      "id": 425010,
+      "nombre": "Seguros"
+    },
+    {
+      "id": 425015,
+      "nombre": "Reclamos"
+    },
+    {
+      "id": 425020,
+      "nombre": "Reintegro por personal en comisión"
+    },
+    {
+      "id": 425025,
+      "nombre": "Reintegro garantías"
+    },
+    {
+      "id": 425030,
+      "nombre": "Descuentos concedidos"
+    },
+    {
+      "id": 425035,
+      "nombre": "De provisiones"
+    },
+    {
+      "id": 425040,
+      "nombre": "Gastos bancarios"
+    },
+    {
+      "id": 425045,
+      "nombre": "De depreciación"
+    },
+    {
+      "id": 425050,
+      "nombre": "Reintegro de otros costos y gastos"
+    },
+    {
+      "id": 425099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 425505,
+      "nombre": "Por siniestro"
+    },
+    {
+      "id": 425510,
+      "nombre": "Por suministros"
+    },
+    {
+      "id": 425515,
+      "nombre": "Lucro cesante compañías de seguros"
+    },
+    {
+      "id": 425520,
+      "nombre": "Daño emergente compañías de seguros"
+    },
+    {
+      "id": 425525,
+      "nombre": "Por pérdida de mercancía"
+    },
+    {
+      "id": 425530,
+      "nombre": "Por incumplimiento de contratos"
+    },
+    {
+      "id": 425535,
+      "nombre": "De terceros"
+    },
+    {
+      "id": 425540,
+      "nombre": "Por incapacidades ISS"
+    },
+    {
+      "id": 425595,
+      "nombre": "Otras"
+    },
+    {
+      "id": 425599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 426099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 426599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 427599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 429503,
+      "nombre": "CERT"
+    },
+    {
+      "id": 429505,
+      "nombre": "Aprovechamientos"
+    },
+    {
+      "id": 429507,
+      "nombre": "Auxilios"
+    },
+    {
+      "id": 429509,
+      "nombre": "Subvenciones"
+    },
+    {
+      "id": 429511,
+      "nombre": "Ingresos por investigación y desarrollo"
+    },
+    {
+      "id": 429513,
+      "nombre": "Por trabajos ejecutados"
+    },
+    {
+      "id": 429515,
+      "nombre": "Regalías"
+    },
+    {
+      "id": 429517,
+      "nombre": "Derivados de las exportaciones"
+    },
+    {
+      "id": 429519,
+      "nombre": "Otros ingresos de explotación"
+    },
+    {
+      "id": 429521,
+      "nombre": "De la actividad ganadera"
+    },
+    {
+      "id": 429525,
+      "nombre": "Derechos y licitaciones"
+    },
+    {
+      "id": 429530,
+      "nombre": "Ingresos por elementos perdidos"
+    },
+    {
+      "id": 429533,
+      "nombre": "Multas y recargos"
+    },
+    {
+      "id": 429535,
+      "nombre": "Preavisos descontados"
+    },
+    {
+      "id": 429537,
+      "nombre": "Reclamos"
+    },
+    {
+      "id": 429540,
+      "nombre": "Recobro de daños"
+    },
+    {
+      "id": 429543,
+      "nombre": "Premios"
+    },
+    {
+      "id": 429545,
+      "nombre": "Bonificaciones"
+    },
+    {
+      "id": 429547,
+      "nombre": "Productos descontados"
+    },
+    {
+      "id": 429549,
+      "nombre": "Reconocimientos ISS"
+    },
+    {
+      "id": 429551,
+      "nombre": "Excedentes"
+    },
+    {
+      "id": 429553,
+      "nombre": "Sobrantes de caja"
+    },
+    {
+      "id": 429555,
+      "nombre": "Sobrantes en liquidación fletes"
+    },
+    {
+      "id": 429557,
+      "nombre": "Subsidios estatales"
+    },
+    {
+      "id": 429559,
+      "nombre": "Capacitación distribuidores"
+    },
+    {
+      "id": 429561,
+      "nombre": "De escrituración"
+    },
+    {
+      "id": 429563,
+      "nombre": "Registro promesas de venta"
+    },
+    {
+      "id": 429567,
+      "nombre": "Útiles, papelería y fotocopias"
+    },
+    {
+      "id": 429571,
+      "nombre": "Resultados, matrículas y traspasos"
+    },
+    {
+      "id": 429573,
+      "nombre": "Decoraciones"
+    },
+    {
+      "id": 429575,
+      "nombre": "Manejo de carga"
+    },
+    {
+      "id": 429579,
+      "nombre": "Historia clínica"
+    },
+    {
+      "id": 429581,
+      "nombre": "Ajuste al peso"
+    },
+    {
+      "id": 429583,
+      "nombre": "Llamadas telefónicas"
+    },
+    {
+      "id": 429595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 429599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 470505,
+      "nombre": "Inversiones (CR)"
+    },
+    {
+      "id": 470510,
+      "nombre": "Inventarios (CR)"
+    },
+    {
+      "id": 470515,
+      "nombre": "Propiedades, planta y equipo (CR)"
+    },
+    {
+      "id": 470520,
+      "nombre": "Intangibles (CR)"
+    },
+    {
+      "id": 470525,
+      "nombre": "Activos diferidos"
+    },
+    {
+      "id": 470530,
+      "nombre": "Otros activos (CR)"
+    },
+    {
+      "id": 470535,
+      "nombre": "Pasivos sujetos de ajuste"
+    },
+    {
+      "id": 470540,
+      "nombre": "Patrimonio"
+    },
+    {
+      "id": 470545,
+      "nombre": "Depreciación acumulada (DB)"
+    },
+    {
+      "id": 470550,
+      "nombre": "Depreciación diferida (CR)"
+    },
+    {
+      "id": 470555,
+      "nombre": "Agotamiento acumulado (DB)"
+    },
+    {
+      "id": 470560,
+      "nombre": "Amortización acumulada (DB)"
+    },
+    {
+      "id": 470565,
+      "nombre": "Ingresos operacionales (DB)"
+    },
+    {
+      "id": 470568,
+      "nombre": "Devoluciones en ventas (CR)"
+    },
+    {
+      "id": 470570,
+      "nombre": "Ingresos no operacionales (DB)"
+    },
+    {
+      "id": 470575,
+      "nombre": "Gastos operacionales de administración (CR)"
+    },
+    {
+      "id": 470580,
+      "nombre": "Gastos operacionales de ventas (CR)"
+    },
+    {
+      "id": 470585,
+      "nombre": "Gastos no operacionales (CR)"
+    },
+    {
+      "id": 470590,
+      "nombre": "Compras (CR)"
+    },
+    {
+      "id": 470591,
+      "nombre": "Devoluciones en compras (DB)"
+    },
+    {
+      "id": 470592,
+      "nombre": "Costo de ventas (CR)"
+    },
+    {
+      "id": 470594,
+      "nombre": "Costos de producción o de operación (CR)"
+    },
+    {
+      "id": 510503,
+      "nombre": "Salario integral"
+    },
+    {
+      "id": 510506,
+      "nombre": "Sueldos"
+    },
+    {
+      "id": 510512,
+      "nombre": "Jornales"
+    },
+    {
+      "id": 510515,
+      "nombre": "Horas extras y recargos"
+    },
+    {
+      "id": 510518,
+      "nombre": "Comisiones"
+    },
+    {
+      "id": 510521,
+      "nombre": "Viáticos"
+    },
+    {
+      "id": 510524,
+      "nombre": "Incapacidades"
+    },
+    {
+      "id": 510527,
+      "nombre": "Auxilio de transporte"
+    },
+    {
+      "id": 510530,
+      "nombre": "Cesantías"
+    },
+    {
+      "id": 510533,
+      "nombre": "Intereses sobre cesantías"
+    },
+    {
+      "id": 510536,
+      "nombre": "Prima de servicios"
+    },
+    {
+      "id": 510539,
+      "nombre": "Vacaciones"
+    },
+    {
+      "id": 510542,
+      "nombre": "Primas extralegales"
+    },
+    {
+      "id": 510545,
+      "nombre": "Auxilios"
+    },
+    {
+      "id": 510548,
+      "nombre": "Bonificaciones"
+    },
+    {
+      "id": 510551,
+      "nombre": "Dotación y suministro a trabajadores"
+    },
+    {
+      "id": 510554,
+      "nombre": "Seguros"
+    },
+    {
+      "id": 510557,
+      "nombre": "Cuotas partes pensiones de jubilación"
+    },
+    {
+      "id": 510558,
+      "nombre": "Amortización cálculo actuarial pensiones de jubilación"
+    },
+    {
+      "id": 510559,
+      "nombre": "Pensiones de jubilación"
+    },
+    {
+      "id": 510560,
+      "nombre": "Indemnizaciones laborales"
+    },
+    {
+      "id": 510561,
+      "nombre": "Amortización bonos pensionales"
+    },
+    {
+      "id": 510562,
+      "nombre": "Amortización títulos pensionales"
+    },
+    {
+      "id": 510563,
+      "nombre": "Capacitación al personal"
+    },
+    {
+      "id": 510566,
+      "nombre": "Gastos deportivos y de recreación"
+    },
+    {
+      "id": 510568,
+      "nombre": "Aportes a administradoras de riesgos profesionales, ARP"
+    },
+    {
+      "id": 510569,
+      "nombre": "Aportes a entidades promotoras de salud, EPS"
+    },
+    {
+      "id": 510570,
+      "nombre": "Aportes a fondos de pensiones y/o cesantías"
+    },
+    {
+      "id": 510572,
+      "nombre": "Aportes cajas de compensación familiar"
+    },
+    {
+      "id": 510575,
+      "nombre": "Aportes ICBF"
+    },
+    {
+      "id": 510578,
+      "nombre": "SENA"
+    },
+    {
+      "id": 510581,
+      "nombre": "Aportes sindicales"
+    },
+    {
+      "id": 510584,
+      "nombre": "Gastos médicos y drogas"
+    },
+    {
+      "id": 510595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 510599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 511005,
+      "nombre": "Junta directiva"
+    },
+    {
+      "id": 511010,
+      "nombre": "Revisoría fiscal"
+    },
+    {
+      "id": 511015,
+      "nombre": "Auditoría externa"
+    },
+    {
+      "id": 511020,
+      "nombre": "Avalúos"
+    },
+    {
+      "id": 511025,
+      "nombre": "Asesoría jurídica"
+    },
+    {
+      "id": 511030,
+      "nombre": "Asesoría financiera"
+    },
+    {
+      "id": 511035,
+      "nombre": "Asesoría técnica"
+    },
+    {
+      "id": 511095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 511099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 511505,
+      "nombre": "Industria y comercio"
+    },
+    {
+      "id": 511510,
+      "nombre": "De timbres"
+    },
+    {
+      "id": 511515,
+      "nombre": "A la propiedad raíz"
+    },
+    {
+      "id": 511520,
+      "nombre": "Derechos sobre instrumentos públicos"
+    },
+    {
+      "id": 511525,
+      "nombre": "De valorización"
+    },
+    {
+      "id": 511530,
+      "nombre": "De turismo"
+    },
+    {
+      "id": 511535,
+      "nombre": "Tasa por utilización de puertos"
+    },
+    {
+      "id": 511540,
+      "nombre": "De vehículos"
+    },
+    {
+      "id": 511545,
+      "nombre": "De espectáculos públicos"
+    },
+    {
+      "id": 511550,
+      "nombre": "Cuotas de fomento"
+    },
+    {
+      "id": 511570,
+      "nombre": "IVA descontable"
+    },
+    {
+      "id": 511595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 511599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 512005,
+      "nombre": "Terrenos"
+    },
+    {
+      "id": 512010,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 512015,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 512020,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 512025,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 512030,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 512035,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 512040,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 512045,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 512050,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 512055,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 512060,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 512065,
+      "nombre": "Aeródromos"
+    },
+    {
+      "id": 512070,
+      "nombre": "Semovientes"
+    },
+    {
+      "id": 512095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 512099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 512505,
+      "nombre": "Contribuciones"
+    },
+    {
+      "id": 512510,
+      "nombre": "Afiliaciones y sostenimiento"
+    },
+    {
+      "id": 512599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 513005,
+      "nombre": "Manejo"
+    },
+    {
+      "id": 513010,
+      "nombre": "Cumplimiento"
+    },
+    {
+      "id": 513015,
+      "nombre": "Corriente débil"
+    },
+    {
+      "id": 513020,
+      "nombre": "Vida colectiva"
+    },
+    {
+      "id": 513025,
+      "nombre": "Incendio"
+    },
+    {
+      "id": 513030,
+      "nombre": "Terremoto"
+    },
+    {
+      "id": 513035,
+      "nombre": "Sustracción y hurto"
+    },
+    {
+      "id": 513040,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 513045,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 513050,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 513055,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 513060,
+      "nombre": "Responsabilidad civil y extracontractual"
+    },
+    {
+      "id": 513065,
+      "nombre": "Vuelo"
+    },
+    {
+      "id": 513070,
+      "nombre": "Rotura de maquinaria"
+    },
+    {
+      "id": 513075,
+      "nombre": "Obligatorio accidente de tránsito"
+    },
+    {
+      "id": 513080,
+      "nombre": "Lucro cesante"
+    },
+    {
+      "id": 513085,
+      "nombre": "Transporte de mercancía"
+    },
+    {
+      "id": 513095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 513099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 513505,
+      "nombre": "Aseo y vigilancia"
+    },
+    {
+      "id": 513510,
+      "nombre": "Temporales"
+    },
+    {
+      "id": 513515,
+      "nombre": "Asistencia técnica"
+    },
+    {
+      "id": 513520,
+      "nombre": "Procesamiento electrónico de datos"
+    },
+    {
+      "id": 513525,
+      "nombre": "Acueducto y alcantarillado"
+    },
+    {
+      "id": 513530,
+      "nombre": "Energía eléctrica"
+    },
+    {
+      "id": 513535,
+      "nombre": "Teléfono"
+    },
+    {
+      "id": 513540,
+      "nombre": "Correo, portes y telegramas"
+    },
+    {
+      "id": 513545,
+      "nombre": "Fax y télex"
+    },
+    {
+      "id": 513550,
+      "nombre": "Transporte, fletes y acarreos"
+    },
+    {
+      "id": 513555,
+      "nombre": "Gas"
+    },
+    {
+      "id": 513595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 513599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 514005,
+      "nombre": "Notariales"
+    },
+    {
+      "id": 514010,
+      "nombre": "Registro mercantil"
+    },
+    {
+      "id": 514015,
+      "nombre": "Trámites y licencias"
+    },
+    {
+      "id": 514020,
+      "nombre": "Aduaneros"
+    },
+    {
+      "id": 514025,
+      "nombre": "Consulares"
+    },
+    {
+      "id": 514095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 514099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 514505,
+      "nombre": "Terrenos"
+    },
+    {
+      "id": 514510,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 514515,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 514520,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 514525,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 514530,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 514535,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 514540,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 514545,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 514550,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 514555,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 514560,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 514565,
+      "nombre": "Armamento de vigilancia"
+    },
+    {
+      "id": 514570,
+      "nombre": "Vías de comunicación"
+    },
+    {
+      "id": 514599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 515005,
+      "nombre": "Instalaciones eléctricas"
+    },
+    {
+      "id": 515010,
+      "nombre": "Arreglos ornamentales"
+    },
+    {
+      "id": 515015,
+      "nombre": "Reparaciones locativas"
+    },
+    {
+      "id": 515095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 515099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 515505,
+      "nombre": "Alojamiento y manutención"
+    },
+    {
+      "id": 515510,
+      "nombre": "Pasajes fluviales y/o marítimos"
+    },
+    {
+      "id": 515515,
+      "nombre": "Pasajes aéreos"
+    },
+    {
+      "id": 515520,
+      "nombre": "Pasajes terrestres"
+    },
+    {
+      "id": 515525,
+      "nombre": "Pasajes férreos"
+    },
+    {
+      "id": 515595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 515599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 516005,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 516010,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 516015,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 516020,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 516025,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 516030,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 516035,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 516040,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 516045,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 516050,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 516055,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 516060,
+      "nombre": "Armamento de vigilancia"
+    },
+    {
+      "id": 516099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 516505,
+      "nombre": "Vías de comunicación"
+    },
+    {
+      "id": 516510,
+      "nombre": "Intangibles"
+    },
+    {
+      "id": 516515,
+      "nombre": "Cargos diferidos"
+    },
+    {
+      "id": 516595,
+      "nombre": "Otras"
+    },
+    {
+      "id": 516599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 519505,
+      "nombre": "Comisiones"
+    },
+    {
+      "id": 519510,
+      "nombre": "Libros, suscripciones, periódicos y revistas"
+    },
+    {
+      "id": 519515,
+      "nombre": "Música ambiental"
+    },
+    {
+      "id": 519520,
+      "nombre": "Gastos de representación y relaciones públicas"
+    },
+    {
+      "id": 519525,
+      "nombre": "Elementos de aseo y cafetería"
+    },
+    {
+      "id": 519530,
+      "nombre": "Útiles, papelería y fotocopias"
+    },
+    {
+      "id": 519535,
+      "nombre": "Combustibles y lubricantes"
+    },
+    {
+      "id": 519540,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 519545,
+      "nombre": "Taxis y buses"
+    },
+    {
+      "id": 519550,
+      "nombre": "Estampillas"
+    },
+    {
+      "id": 519555,
+      "nombre": "Microfilmación"
+    },
+    {
+      "id": 519560,
+      "nombre": "Casino y restaurante"
+    },
+    {
+      "id": 519565,
+      "nombre": "Parqueaderos"
+    },
+    {
+      "id": 519570,
+      "nombre": "Indemnización por daños a terceros"
+    },
+    {
+      "id": 519575,
+      "nombre": "Pólvora y similares"
+    },
+    {
+      "id": 519595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 519599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 519905,
+      "nombre": "Inversiones"
+    },
+    {
+      "id": 519910,
+      "nombre": "Deudores"
+    },
+    {
+      "id": 519915,
+      "nombre": "Propiedades, planta y equipo"
+    },
+    {
+      "id": 519995,
+      "nombre": "Otros activos"
+    },
+    {
+      "id": 519999,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 520503,
+      "nombre": "Salario integral"
+    },
+    {
+      "id": 520506,
+      "nombre": "Sueldos"
+    },
+    {
+      "id": 520512,
+      "nombre": "Jornales"
+    },
+    {
+      "id": 520515,
+      "nombre": "Horas extras y recargos"
+    },
+    {
+      "id": 520518,
+      "nombre": "Comisiones"
+    },
+    {
+      "id": 520521,
+      "nombre": "Viáticos"
+    },
+    {
+      "id": 520524,
+      "nombre": "Incapacidades"
+    },
+    {
+      "id": 520527,
+      "nombre": "Auxilio de transporte"
+    },
+    {
+      "id": 520530,
+      "nombre": "Cesantías"
+    },
+    {
+      "id": 520533,
+      "nombre": "Intereses sobre cesantías"
+    },
+    {
+      "id": 520536,
+      "nombre": "Prima de servicios"
+    },
+    {
+      "id": 520539,
+      "nombre": "Vacaciones"
+    },
+    {
+      "id": 520542,
+      "nombre": "Primas extralegales"
+    },
+    {
+      "id": 520545,
+      "nombre": "Auxilios"
+    },
+    {
+      "id": 520548,
+      "nombre": "Bonificaciones"
+    },
+    {
+      "id": 520551,
+      "nombre": "Dotación y suministro a trabajadores"
+    },
+    {
+      "id": 520554,
+      "nombre": "Seguros"
+    },
+    {
+      "id": 520557,
+      "nombre": "Cuotas partes pensiones de jubilación"
+    },
+    {
+      "id": 520558,
+      "nombre": "Amortización cálculo actuarial pensiones de jubilación"
+    },
+    {
+      "id": 520559,
+      "nombre": "Pensiones de jubilación"
+    },
+    {
+      "id": 520560,
+      "nombre": "Indemnizaciones laborales"
+    },
+    {
+      "id": 520561,
+      "nombre": "Amortización bonos pensionales"
+    },
+    {
+      "id": 520562,
+      "nombre": "Amortización títulos pensionales"
+    },
+    {
+      "id": 520563,
+      "nombre": "Capacitación al personal"
+    },
+    {
+      "id": 520566,
+      "nombre": "Gastos deportivos y de recreación"
+    },
+    {
+      "id": 520568,
+      "nombre": "Aportes a administradoras de riesgos profesionales, ARP"
+    },
+    {
+      "id": 520569,
+      "nombre": "Aportes a entidades promotoras de salud, EPS"
+    },
+    {
+      "id": 520570,
+      "nombre": "Aportes a fondos de pensiones y/o cesantías"
+    },
+    {
+      "id": 520572,
+      "nombre": "Aportes cajas de compensación familiar"
+    },
+    {
+      "id": 520575,
+      "nombre": "Aportes ICBF"
+    },
+    {
+      "id": 520578,
+      "nombre": "SENA"
+    },
+    {
+      "id": 520581,
+      "nombre": "Aportes sindicales"
+    },
+    {
+      "id": 520584,
+      "nombre": "Gastos médicos y drogas"
+    },
+    {
+      "id": 520595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 520599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 521005,
+      "nombre": "Junta directiva"
+    },
+    {
+      "id": 521010,
+      "nombre": "Revisoría fiscal"
+    },
+    {
+      "id": 521015,
+      "nombre": "Auditoría externa"
+    },
+    {
+      "id": 521020,
+      "nombre": "Avalúos"
+    },
+    {
+      "id": 521025,
+      "nombre": "Asesoría jurídica"
+    },
+    {
+      "id": 521030,
+      "nombre": "Asesoría financiera"
+    },
+    {
+      "id": 521035,
+      "nombre": "Asesoría técnica"
+    },
+    {
+      "id": 521095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 521099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 521505,
+      "nombre": "Industria y comercio"
+    },
+    {
+      "id": 521510,
+      "nombre": "De timbres"
+    },
+    {
+      "id": 521515,
+      "nombre": "A la propiedad raíz"
+    },
+    {
+      "id": 521520,
+      "nombre": "Derechos sobre instrumentos públicos"
+    },
+    {
+      "id": 521525,
+      "nombre": "De valorización"
+    },
+    {
+      "id": 521530,
+      "nombre": "De turismo"
+    },
+    {
+      "id": 521535,
+      "nombre": "Tasa por utilización de puertos"
+    },
+    {
+      "id": 521540,
+      "nombre": "De vehículos"
+    },
+    {
+      "id": 521545,
+      "nombre": "De espectáculos públicos"
+    },
+    {
+      "id": 521550,
+      "nombre": "Cuotas de fomento"
+    },
+    {
+      "id": 521555,
+      "nombre": "Licores"
+    },
+    {
+      "id": 521560,
+      "nombre": "Cervezas"
+    },
+    {
+      "id": 521565,
+      "nombre": "Cigarrillos"
+    },
+    {
+      "id": 521570,
+      "nombre": "IVA descontable"
+    },
+    {
+      "id": 521595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 521599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 522005,
+      "nombre": "Terrenos"
+    },
+    {
+      "id": 522010,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 522015,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 522020,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 522025,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 522030,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 522035,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 522040,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 522045,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 522050,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 522055,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 522060,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 522065,
+      "nombre": "Aeródromos"
+    },
+    {
+      "id": 522070,
+      "nombre": "Semovientes"
+    },
+    {
+      "id": 522095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 522099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 522505,
+      "nombre": "Contribuciones"
+    },
+    {
+      "id": 522510,
+      "nombre": "Afiliaciones y sostenimiento"
+    },
+    {
+      "id": 522599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 523005,
+      "nombre": "Manejo"
+    },
+    {
+      "id": 523010,
+      "nombre": "Cumplimiento"
+    },
+    {
+      "id": 523015,
+      "nombre": "Corriente débil"
+    },
+    {
+      "id": 523020,
+      "nombre": "Vida colectiva"
+    },
+    {
+      "id": 523025,
+      "nombre": "Incendio"
+    },
+    {
+      "id": 523030,
+      "nombre": "Terremoto"
+    },
+    {
+      "id": 523035,
+      "nombre": "Sustracción y hurto"
+    },
+    {
+      "id": 523040,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 523045,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 523050,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 523055,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 523060,
+      "nombre": "Responsabilidad civil y extracontractual"
+    },
+    {
+      "id": 523065,
+      "nombre": "Vuelo"
+    },
+    {
+      "id": 523070,
+      "nombre": "Rotura de maquinaria"
+    },
+    {
+      "id": 523075,
+      "nombre": "Obligatorio accidente de tránsito"
+    },
+    {
+      "id": 523080,
+      "nombre": "Lucro cesante"
+    },
+    {
+      "id": 523095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 523099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 523505,
+      "nombre": "Aseo y vigilancia"
+    },
+    {
+      "id": 523510,
+      "nombre": "Temporales"
+    },
+    {
+      "id": 523515,
+      "nombre": "Asistencia técnica"
+    },
+    {
+      "id": 523520,
+      "nombre": "Procesamiento electrónico de datos"
+    },
+    {
+      "id": 523525,
+      "nombre": "Acueducto y alcantarillado"
+    },
+    {
+      "id": 523530,
+      "nombre": "Energía eléctrica"
+    },
+    {
+      "id": 523535,
+      "nombre": "Teléfono"
+    },
+    {
+      "id": 523540,
+      "nombre": "Correo, portes y telegramas"
+    },
+    {
+      "id": 523545,
+      "nombre": "Fax y télex"
+    },
+    {
+      "id": 523550,
+      "nombre": "Transporte, fletes y acarreos"
+    },
+    {
+      "id": 523555,
+      "nombre": "Gas"
+    },
+    {
+      "id": 523560,
+      "nombre": "Publicidad, propaganda y promoción"
+    },
+    {
+      "id": 523595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 523599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 524005,
+      "nombre": "Notariales"
+    },
+    {
+      "id": 524010,
+      "nombre": "Registro mercantil"
+    },
+    {
+      "id": 524015,
+      "nombre": "Trámites y licencias"
+    },
+    {
+      "id": 524020,
+      "nombre": "Aduaneros"
+    },
+    {
+      "id": 524025,
+      "nombre": "Consulares"
+    },
+    {
+      "id": 524095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 524099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 524505,
+      "nombre": "Terrenos"
+    },
+    {
+      "id": 524510,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 524515,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 524520,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 524525,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 524530,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 524535,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 524540,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 524545,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 524550,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 524555,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 524560,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 524565,
+      "nombre": "Armamento de vigilancia"
+    },
+    {
+      "id": 524570,
+      "nombre": "Vías de comunicación"
+    },
+    {
+      "id": 524599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 525005,
+      "nombre": "Instalaciones eléctricas"
+    },
+    {
+      "id": 525010,
+      "nombre": "Arreglos ornamentales"
+    },
+    {
+      "id": 525015,
+      "nombre": "Reparaciones locativas"
+    },
+    {
+      "id": 525095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 525099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 525505,
+      "nombre": "Alojamiento y manutención"
+    },
+    {
+      "id": 525510,
+      "nombre": "Pasajes fluviales y/o marítimos"
+    },
+    {
+      "id": 525515,
+      "nombre": "Pasajes aéreos"
+    },
+    {
+      "id": 525520,
+      "nombre": "Pasajes terrestres"
+    },
+    {
+      "id": 525525,
+      "nombre": "Pasajes férreos"
+    },
+    {
+      "id": 525595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 525599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 526005,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 526010,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 526015,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 526020,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 526025,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 526030,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 526035,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 526040,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 526045,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 526050,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 526055,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 526060,
+      "nombre": "Armamento de vigilancia"
+    },
+    {
+      "id": 526065,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 526099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 526505,
+      "nombre": "Vías de comunicación"
+    },
+    {
+      "id": 526510,
+      "nombre": "Intangibles"
+    },
+    {
+      "id": 526515,
+      "nombre": "Cargos diferidos"
+    },
+    {
+      "id": 526595,
+      "nombre": "Otras"
+    },
+    {
+      "id": 526599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 527099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 527505,
+      "nombre": "De sociedades anónimas y/o asimiladas"
+    },
+    {
+      "id": 527510,
+      "nombre": "De sociedades limitadas y/o asimiladas"
+    },
+    {
+      "id": 529505,
+      "nombre": "Comisiones"
+    },
+    {
+      "id": 529510,
+      "nombre": "Libros, suscripciones, periódicos y revistas"
+    },
+    {
+      "id": 529515,
+      "nombre": "Música ambiental"
+    },
+    {
+      "id": 529520,
+      "nombre": "Gastos de representación y relaciones públicas"
+    },
+    {
+      "id": 529525,
+      "nombre": "Elementos de aseo y cafetería"
+    },
+    {
+      "id": 529530,
+      "nombre": "Útiles, papelería y fotocopias"
+    },
+    {
+      "id": 529535,
+      "nombre": "Combustibles y lubricantes"
+    },
+    {
+      "id": 529540,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 529545,
+      "nombre": "Taxis y buses"
+    },
+    {
+      "id": 529550,
+      "nombre": "Estampillas"
+    },
+    {
+      "id": 529555,
+      "nombre": "Microfilmación"
+    },
+    {
+      "id": 529560,
+      "nombre": "Casino y restaurante"
+    },
+    {
+      "id": 529565,
+      "nombre": "Parqueaderos"
+    },
+    {
+      "id": 529570,
+      "nombre": "Indemnización por daños a terceros"
+    },
+    {
+      "id": 529575,
+      "nombre": "Pólvora y similares"
+    },
+    {
+      "id": 529595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 529599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 529905,
+      "nombre": "Inversiones"
+    },
+    {
+      "id": 529910,
+      "nombre": "Deudores"
+    },
+    {
+      "id": 529915,
+      "nombre": "Inventarios"
+    },
+    {
+      "id": 529920,
+      "nombre": "Propiedades, planta y equipo"
+    },
+    {
+      "id": 529995,
+      "nombre": "Otros activos"
+    },
+    {
+      "id": 529999,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 530505,
+      "nombre": "Gastos bancarios"
+    },
+    {
+      "id": 530510,
+      "nombre": "Reajuste monetario-UPAC (hoy UVR)"
+    },
+    {
+      "id": 530515,
+      "nombre": "Comisiones"
+    },
+    {
+      "id": 530520,
+      "nombre": "Intereses"
+    },
+    {
+      "id": 530525,
+      "nombre": "Diferencia en cambio"
+    },
+    {
+      "id": 530530,
+      "nombre": "Gastos en negociación certificados de cambio"
+    },
+    {
+      "id": 530535,
+      "nombre": "Descuentos comerciales condicionados"
+    },
+    {
+      "id": 530540,
+      "nombre": "Gastos manejo y emisión de bonos"
+    },
+    {
+      "id": 530545,
+      "nombre": "Prima amortizada"
+    },
+    {
+      "id": 530595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 530599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 531005,
+      "nombre": "Venta de inversiones"
+    },
+    {
+      "id": 531010,
+      "nombre": "Venta de cartera"
+    },
+    {
+      "id": 531015,
+      "nombre": "Venta de propiedades, planta y equipo"
+    },
+    {
+      "id": 531020,
+      "nombre": "Venta de intangibles"
+    },
+    {
+      "id": 531025,
+      "nombre": "Venta de otros activos"
+    },
+    {
+      "id": 531030,
+      "nombre": "Retiro de propiedades, planta y equipo"
+    },
+    {
+      "id": 531035,
+      "nombre": "Retiro de otros activos"
+    },
+    {
+      "id": 531040,
+      "nombre": "Pérdidas por siniestros"
+    },
+    {
+      "id": 531095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 531099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 531305,
+      "nombre": "De sociedades anónimas y/o asimiladas"
+    },
+    {
+      "id": 531310,
+      "nombre": "De sociedades limitadas y/o asimiladas"
+    },
+    {
+      "id": 531505,
+      "nombre": "Costas y procesos judiciales"
+    },
+    {
+      "id": 531510,
+      "nombre": "Actividades culturales y cívicas"
+    },
+    {
+      "id": 531515,
+      "nombre": "Costos y gastos de ejercicios anteriores"
+    },
+    {
+      "id": 531520,
+      "nombre": "Impuestos asumidos"
+    },
+    {
+      "id": 531595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 531599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 539505,
+      "nombre": "Demandas laborales"
+    },
+    {
+      "id": 539510,
+      "nombre": "Demandas por incumplimiento de contratos"
+    },
+    {
+      "id": 539515,
+      "nombre": "Indemnizaciones"
+    },
+    {
+      "id": 539520,
+      "nombre": "Multas, sanciones y litigios"
+    },
+    {
+      "id": 539525,
+      "nombre": "Donaciones"
+    },
+    {
+      "id": 539530,
+      "nombre": "Constitución de garantías"
+    },
+    {
+      "id": 539535,
+      "nombre": "Amortización de bienes entregados en comodato"
+    },
+    {
+      "id": 539595,
+      "nombre": "Otros"
+    },
+    {
+      "id": 539599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 540505,
+      "nombre": "Impuesto de renta y complementarios"
+    },
+    {
+      "id": 590505,
+      "nombre": "Ganancias y pérdidas"
+    },
+    {
+      "id": 610505,
+      "nombre": "Cultivo de cereales"
+    },
+    {
+      "id": 610510,
+      "nombre": "Cultivos de hortalizas, legumbres y plantas ornamentales"
+    },
+    {
+      "id": 610515,
+      "nombre": "Cultivos de frutas, nueces y plantas aromáticas"
+    },
+    {
+      "id": 610520,
+      "nombre": "Cultivo de café"
+    },
+    {
+      "id": 610525,
+      "nombre": "Cultivo de flores"
+    },
+    {
+      "id": 610530,
+      "nombre": "Cultivo de caña de azúcar"
+    },
+    {
+      "id": 610535,
+      "nombre": "Cultivo de algodón y plantas para material textil"
+    },
+    {
+      "id": 610540,
+      "nombre": "Cultivo de banano"
+    },
+    {
+      "id": 610545,
+      "nombre": "Otros cultivos agrícolas"
+    },
+    {
+      "id": 610550,
+      "nombre": "Cría de ovejas, cabras, asnos, mulas y burdéganos"
+    },
+    {
+      "id": 610555,
+      "nombre": "Cría de ganado caballar y vacuno"
+    },
+    {
+      "id": 610560,
+      "nombre": "Producción avícola"
+    },
+    {
+      "id": 610565,
+      "nombre": "Cría de otros animales"
+    },
+    {
+      "id": 610570,
+      "nombre": "Servicios agrícolas y ganaderos"
+    },
+    {
+      "id": 610575,
+      "nombre": "Actividad de caza"
+    },
+    {
+      "id": 610580,
+      "nombre": "Actividad de silvicultura"
+    },
+    {
+      "id": 610595,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 610599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 611005,
+      "nombre": "Actividad de pesca"
+    },
+    {
+      "id": 611010,
+      "nombre": "Explotación de criaderos de peces"
+    },
+    {
+      "id": 611095,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 611099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 611505,
+      "nombre": "Carbón"
+    },
+    {
+      "id": 611510,
+      "nombre": "Petróleo crudo"
+    },
+    {
+      "id": 611512,
+      "nombre": "Gas natural"
+    },
+    {
+      "id": 611514,
+      "nombre": "Servicios relacionados con extracción de petróleo y gas"
+    },
+    {
+      "id": 611515,
+      "nombre": "Minerales de hierro"
+    },
+    {
+      "id": 611520,
+      "nombre": "Minerales metalíferos no ferrosos"
+    },
+    {
+      "id": 611525,
+      "nombre": "Piedra, arena y arcilla"
+    },
+    {
+      "id": 611527,
+      "nombre": "Piedras preciosas"
+    },
+    {
+      "id": 611528,
+      "nombre": "Oro"
+    },
+    {
+      "id": 611530,
+      "nombre": "Otras minas y canteras"
+    },
+    {
+      "id": 611532,
+      "nombre": "Prestación de servicios sector minero"
+    },
+    {
+      "id": 611595,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 611599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 612001,
+      "nombre": "Producción y procesamiento de carnes y productos cárnicos"
+    },
+    {
+      "id": 612002,
+      "nombre": "Productos de pescado"
+    },
+    {
+      "id": 612003,
+      "nombre": "Productos de frutas, legumbres y hortalizas"
+    },
+    {
+      "id": 612004,
+      "nombre": "Elaboración de aceites y grasas"
+    },
+    {
+      "id": 612005,
+      "nombre": "Elaboración de productos lácteos"
+    },
+    {
+      "id": 612006,
+      "nombre": "Elaboración de productos de molinería"
+    },
+    {
+      "id": 612007,
+      "nombre": "Elaboración de almidones y derivados"
+    },
+    {
+      "id": 612008,
+      "nombre": "Elaboración de alimentos para animales"
+    },
+    {
+      "id": 612009,
+      "nombre": "Elaboración de productos para panadería"
+    },
+    {
+      "id": 612010,
+      "nombre": "Elaboración de azúcar y melazas"
+    },
+    {
+      "id": 612011,
+      "nombre": "Elaboración de cacao, chocolate y confitería"
+    },
+    {
+      "id": 612012,
+      "nombre": "Elaboración de pastas y productos farináceos"
+    },
+    {
+      "id": 612013,
+      "nombre": "Elaboración de productos de café"
+    },
+    {
+      "id": 612014,
+      "nombre": "Elaboración de otros productos alimenticios"
+    },
+    {
+      "id": 612015,
+      "nombre": "Elaboración de bebidas alcohólicas y alcohol etílico"
+    },
+    {
+      "id": 612016,
+      "nombre": "Elaboración de vinos"
+    },
+    {
+      "id": 612017,
+      "nombre": "Elaboración de bebidas malteadas y de malta"
+    },
+    {
+      "id": 612018,
+      "nombre": "Elaboración de bebidas no alcohólicas"
+    },
+    {
+      "id": 612019,
+      "nombre": "Elaboración de productos de tabaco"
+    },
+    {
+      "id": 612020,
+      "nombre": "Preparación e hilatura de fibras textiles y tejeduría"
+    },
+    {
+      "id": 612021,
+      "nombre": "Acabado de productos textiles"
+    },
+    {
+      "id": 612022,
+      "nombre": "Elaboración de artículos de materiales textiles"
+    },
+    {
+      "id": 612023,
+      "nombre": "Elaboración de tapices y alfombras"
+    },
+    {
+      "id": 612024,
+      "nombre": "Elaboración de cuerdas, cordeles, bramantes y redes"
+    },
+    {
+      "id": 612025,
+      "nombre": "Elaboración de otros productos textiles"
+    },
+    {
+      "id": 612026,
+      "nombre": "Elaboración de tejidos"
+    },
+    {
+      "id": 612027,
+      "nombre": "Elaboración de prendas de vestir"
+    },
+    {
+      "id": 612028,
+      "nombre": "Preparación, adobo y teñido de pieles"
+    },
+    {
+      "id": 612029,
+      "nombre": "Curtido, adobo o preparación de cuero"
+    },
+    {
+      "id": 612030,
+      "nombre": "Elaboración de maletas, bolsos y similares"
+    },
+    {
+      "id": 612031,
+      "nombre": "Elaboración de calzado"
+    },
+    {
+      "id": 612032,
+      "nombre": "Producción de madera, artículos de madera y corcho"
+    },
+    {
+      "id": 612033,
+      "nombre": "Elaboración de pasta y productos de madera, papel y cartón"
+    },
+    {
+      "id": 612034,
+      "nombre": "Ediciones y publicaciones"
+    },
+    {
+      "id": 612035,
+      "nombre": "Impresión"
+    },
+    {
+      "id": 612036,
+      "nombre": "Servicios relacionados con la edición y la impresión"
+    },
+    {
+      "id": 612037,
+      "nombre": "Reproducción de grabaciones"
+    },
+    {
+      "id": 612038,
+      "nombre": "Elaboración de productos de horno de coque"
+    },
+    {
+      "id": 612039,
+      "nombre": "Elaboración de productos de la refinación de petróleo"
+    },
+    {
+      "id": 612040,
+      "nombre": "Elaboración de sustancias químicas básicas"
+    },
+    {
+      "id": 612041,
+      "nombre": "Elaboración de abonos y compuestos de nitrógeno"
+    },
+    {
+      "id": 612042,
+      "nombre": "Elaboración de plástico y caucho sintético"
+    },
+    {
+      "id": 612043,
+      "nombre": "Elaboración de productos químicos de uso agropecuario"
+    },
+    {
+      "id": 612044,
+      "nombre": "Elaboración de pinturas, tintas y masillas"
+    },
+    {
+      "id": 612045,
+      "nombre": "Elaboración de productos farmacéuticos y botánicos"
+    },
+    {
+      "id": 612046,
+      "nombre": "Elaboración de jabones, detergentes y preparados de tocador"
+    },
+    {
+      "id": 612047,
+      "nombre": "Elaboración de otros productos químicos"
+    },
+    {
+      "id": 612048,
+      "nombre": "Elaboración de fibras"
+    },
+    {
+      "id": 612049,
+      "nombre": "Elaboración de otros productos de caucho"
+    },
+    {
+      "id": 612050,
+      "nombre": "Elaboración de productos de plástico"
+    },
+    {
+      "id": 612051,
+      "nombre": "Elaboración de vidrio y productos de vidrio"
+    },
+    {
+      "id": 612052,
+      "nombre": "Elaboración de productos de cerámica, loza, piedra, arcilla y porcelana"
+    },
+    {
+      "id": 612053,
+      "nombre": "Elaboración de cemento, cal y yeso"
+    },
+    {
+      "id": 612054,
+      "nombre": "Elaboración de artículos de hormigón, cemento y yeso"
+    },
+    {
+      "id": 612055,
+      "nombre": "Corte, tallado y acabado de la piedra"
+    },
+    {
+      "id": 612056,
+      "nombre": "Elaboración de otros productos minerales no metálicos"
+    },
+    {
+      "id": 612057,
+      "nombre": "Industrias básicas y fundición de hierro y acero"
+    },
+    {
+      "id": 612058,
+      "nombre": "Productos primarios de metales preciosos y de metales no ferrosos"
+    },
+    {
+      "id": 612059,
+      "nombre": "Fundición de metales no ferrosos"
+    },
+    {
+      "id": 612060,
+      "nombre": "Fabricación de productos metálicos para uso estructural"
+    },
+    {
+      "id": 612061,
+      "nombre": "Forja, prensado, estampado, laminado de metal y pulvimetalurgia"
+    },
+    {
+      "id": 612062,
+      "nombre": "Revestimiento de metales y obras de ingeniería mecánica"
+    },
+    {
+      "id": 612063,
+      "nombre": "Fabricación de artículos de ferretería"
+    },
+    {
+      "id": 612064,
+      "nombre": "Elaboración de otros productos de metal"
+    },
+    {
+      "id": 612065,
+      "nombre": "Fabricación de maquinaria y equipo"
+    },
+    {
+      "id": 612066,
+      "nombre": "Fabricación de equipos de elevación y manipulación"
+    },
+    {
+      "id": 612067,
+      "nombre": "Elaboración de aparatos de uso doméstico"
+    },
+    {
+      "id": 612068,
+      "nombre": "Elaboración de equipo de oficina"
+    },
+    {
+      "id": 612069,
+      "nombre": "Elaboración de pilas y baterías primarias"
+    },
+    {
+      "id": 612070,
+      "nombre": "Elaboración de equipo de iluminación"
+    },
+    {
+      "id": 612071,
+      "nombre": "Elaboración de otros tipos de equipo eléctrico"
+    },
+    {
+      "id": 612072,
+      "nombre": "Fabricación de equipos de radio, televisión y comunicaciones"
+    },
+    {
+      "id": 612073,
+      "nombre": "Fabricación de aparatos e instrumentos médicos"
+    },
+    {
+      "id": 612074,
+      "nombre": "Fabricación de instrumentos de medición y control"
+    },
+    {
+      "id": 612075,
+      "nombre": "Fabricación de instrumentos de óptica y equipo fotográfico"
+    },
+    {
+      "id": 612076,
+      "nombre": "Fabricación de relojes"
+    },
+    {
+      "id": 612077,
+      "nombre": "Fabricación de vehículos automotores"
+    },
+    {
+      "id": 612078,
+      "nombre": "Fabricación de carrocerías para automotores"
+    },
+    {
+      "id": 612079,
+      "nombre": "Fabricación de partes, piezas y accesorios para automotores"
+    },
+    {
+      "id": 612080,
+      "nombre": "Fabricación y reparación de buques y otras embarcaciones"
+    },
+    {
+      "id": 612081,
+      "nombre": "Fabricación de locomotoras y material rodante para ferrocarriles"
+    },
+    {
+      "id": 612082,
+      "nombre": "Fabricación de aeronaves"
+    },
+    {
+      "id": 612083,
+      "nombre": "Fabricación de motocicletas"
+    },
+    {
+      "id": 612084,
+      "nombre": "Fabricación de bicicletas y sillas de ruedas"
+    },
+    {
+      "id": 612085,
+      "nombre": "Fabricación de otros tipos de transporte"
+    },
+    {
+      "id": 612086,
+      "nombre": "Fabricación de muebles"
+    },
+    {
+      "id": 612087,
+      "nombre": "Fabricación de joyas y artículos conexos"
+    },
+    {
+      "id": 612088,
+      "nombre": "Fabricación de instrumentos de música"
+    },
+    {
+      "id": 612089,
+      "nombre": "Fabricación de artículos y equipo para deporte"
+    },
+    {
+      "id": 612090,
+      "nombre": "Fabricación de juegos y juguetes"
+    },
+    {
+      "id": 612091,
+      "nombre": "Reciclamiento de desperdicios"
+    },
+    {
+      "id": 612095,
+      "nombre": "Productos de otras industrias manufactureras"
+    },
+    {
+      "id": 612099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 612505,
+      "nombre": "Generación, captación y distribución de energía eléctrica"
+    },
+    {
+      "id": 612510,
+      "nombre": "Fabricación de gas y distribución de combustibles gaseosos"
+    },
+    {
+      "id": 612515,
+      "nombre": "Captación, depuración y distribución de agua"
+    },
+    {
+      "id": 612595,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 612599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 613005,
+      "nombre": "Preparación de terrenos"
+    },
+    {
+      "id": 613010,
+      "nombre": "Construcción de edificios y obras de ingeniería civil"
+    },
+    {
+      "id": 613015,
+      "nombre": "Acondicionamiento de edificios"
+    },
+    {
+      "id": 613020,
+      "nombre": "Terminación de edificaciones"
+    },
+    {
+      "id": 613025,
+      "nombre": "Alquiler de equipo con operario"
+    },
+    {
+      "id": 613095,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 613099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 613502,
+      "nombre": "Venta de vehículos automotores"
+    },
+    {
+      "id": 613504,
+      "nombre": "Mantenimiento, reparación y lavado de vehículos automotores"
+    },
+    {
+      "id": 613506,
+      "nombre": "Venta de partes, piezas y accesorios de vehículos automotores"
+    },
+    {
+      "id": 613508,
+      "nombre": "Venta de combustibles sólidos, líquidos, gaseosos"
+    },
+    {
+      "id": 613510,
+      "nombre": "Venta de lubricantes, aditivos, llantas y lujos para automotores"
+    },
+    {
+      "id": 613512,
+      "nombre": "Venta a cambio de retribución o por contrata"
+    },
+    {
+      "id": 613514,
+      "nombre": "Venta de insumos, materias primas agropecuarias y flores"
+    },
+    {
+      "id": 613516,
+      "nombre": "Venta de otros insumos y materias primas no agropecuarias"
+    },
+    {
+      "id": 613518,
+      "nombre": "Venta de animales vivos y cueros"
+    },
+    {
+      "id": 613520,
+      "nombre": "Venta de productos en almacenes no especializados"
+    },
+    {
+      "id": 613522,
+      "nombre": "Venta de productos agropecuarios"
+    },
+    {
+      "id": 613524,
+      "nombre": "Venta de productos textiles, de vestir, de cuero y calzado"
+    },
+    {
+      "id": 613526,
+      "nombre": "Venta de papel y cartón"
+    },
+    {
+      "id": 613528,
+      "nombre": "Venta de libros, revistas, elementos de papelería, útiles y textos escolares"
+    },
+    {
+      "id": 613530,
+      "nombre": "Venta de juegos, juguetes y artículos deportivos"
+    },
+    {
+      "id": 613532,
+      "nombre": "Venta de instrumentos quirúrgicos y ortopédicos"
+    },
+    {
+      "id": 613534,
+      "nombre": "Venta de artículos en relojerías y joyerías"
+    },
+    {
+      "id": 613536,
+      "nombre": "Venta de electrodomésticos y muebles"
+    },
+    {
+      "id": 613538,
+      "nombre": "Venta de productos de aseo, farmacéuticos, medicinales y artículos de tocador"
+    },
+    {
+      "id": 613540,
+      "nombre": "Venta de cubiertos, vajillas, cristalería, porcelanas, cerámicas y otros artículos de uso doméstico"
+    },
+    {
+      "id": 613542,
+      "nombre": "Venta de materiales de construcción, fontanería y calefacción"
+    },
+    {
+      "id": 613544,
+      "nombre": "Venta de pinturas y lacas"
+    },
+    {
+      "id": 613546,
+      "nombre": "Venta de productos de vidrios y marquetería"
+    },
+    {
+      "id": 613548,
+      "nombre": "Venta de herramientas y artículos de ferretería"
+    },
+    {
+      "id": 613550,
+      "nombre": "Venta de químicos"
+    },
+    {
+      "id": 613552,
+      "nombre": "Venta de productos intermedios, desperdicios y desechos"
+    },
+    {
+      "id": 613554,
+      "nombre": "Venta de maquinaria, equipo de oficina y programas de computador"
+    },
+    {
+      "id": 613556,
+      "nombre": "Venta de artículos en cacharrerías y misceláneas"
+    },
+    {
+      "id": 613558,
+      "nombre": "Venta de instrumentos musicales"
+    },
+    {
+      "id": 613560,
+      "nombre": "Venta de artículos en casas de empeño y prenderías"
+    },
+    {
+      "id": 613562,
+      "nombre": "Venta de equipo fotográfico"
+    },
+    {
+      "id": 613564,
+      "nombre": "Venta de equipo óptico y de precisión"
+    },
+    {
+      "id": 613566,
+      "nombre": "Venta de empaques"
+    },
+    {
+      "id": 613568,
+      "nombre": "Venta de equipo profesional y científico"
+    },
+    {
+      "id": 613570,
+      "nombre": "Venta de loterías, rifas, chance, apuestas y similares"
+    },
+    {
+      "id": 613572,
+      "nombre": "Reparación de efectos personales y electrodomésticos"
+    },
+    {
+      "id": 613595,
+      "nombre": "Venta de otros productos"
+    },
+    {
+      "id": 613599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 614005,
+      "nombre": "Hotelería"
+    },
+    {
+      "id": 614010,
+      "nombre": "Campamento y otros tipos de hospedaje"
+    },
+    {
+      "id": 614015,
+      "nombre": "Restaurantes"
+    },
+    {
+      "id": 614020,
+      "nombre": "Bares y cantinas"
+    },
+    {
+      "id": 614095,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 614099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 614505,
+      "nombre": "Servicio de transporte por carretera"
+    },
+    {
+      "id": 614510,
+      "nombre": "Servicio de transporte por vía férrea"
+    },
+    {
+      "id": 614515,
+      "nombre": "Servicio de transporte por vía acuática"
+    },
+    {
+      "id": 614520,
+      "nombre": "Servicio de transporte por vía aérea"
+    },
+    {
+      "id": 614525,
+      "nombre": "Servicio de transporte por tuberías"
+    },
+    {
+      "id": 614530,
+      "nombre": "Manipulación de carga"
+    },
+    {
+      "id": 614535,
+      "nombre": "Almacenamiento y depósito"
+    },
+    {
+      "id": 614540,
+      "nombre": "Servicios complementarios para el transporte"
+    },
+    {
+      "id": 614545,
+      "nombre": "Agencias de viaje"
+    },
+    {
+      "id": 614550,
+      "nombre": "Otras agencias de transporte"
+    },
+    {
+      "id": 614555,
+      "nombre": "Servicio postal y de correo"
+    },
+    {
+      "id": 614560,
+      "nombre": "Servicio telefónico"
+    },
+    {
+      "id": 614565,
+      "nombre": "Servicio de telégrafo"
+    },
+    {
+      "id": 614570,
+      "nombre": "Servicio de transmisión de datos"
+    },
+    {
+      "id": 614575,
+      "nombre": "Servicio de radio y televisión por cable"
+    },
+    {
+      "id": 614580,
+      "nombre": "Transmisión de sonido e imágenes por contrato"
+    },
+    {
+      "id": 614595,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 614599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 615005,
+      "nombre": "De inversiones"
+    },
+    {
+      "id": 615010,
+      "nombre": "De servicio de bolsa"
+    },
+    {
+      "id": 615099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 615505,
+      "nombre": "Arrendamientos de bienes inmuebles"
+    },
+    {
+      "id": 615510,
+      "nombre": "Inmobiliarias por retribución o contrata"
+    },
+    {
+      "id": 615515,
+      "nombre": "Alquiler equipo de transporte"
+    },
+    {
+      "id": 615520,
+      "nombre": "Alquiler maquinaria y equipo"
+    },
+    {
+      "id": 615525,
+      "nombre": "Alquiler de efectos personales y enseres domésticos"
+    },
+    {
+      "id": 615530,
+      "nombre": "Consultoría en equipo y programas de informática"
+    },
+    {
+      "id": 615535,
+      "nombre": "Procesamiento de datos"
+    },
+    {
+      "id": 615540,
+      "nombre": "Mantenimiento y reparación de maquinaria de oficina"
+    },
+    {
+      "id": 615545,
+      "nombre": "Investigaciones científicas y de desarrollo"
+    },
+    {
+      "id": 615550,
+      "nombre": "Actividades empresariales de consultoría"
+    },
+    {
+      "id": 615555,
+      "nombre": "Publicidad"
+    },
+    {
+      "id": 615560,
+      "nombre": "Dotación de personal"
+    },
+    {
+      "id": 615565,
+      "nombre": "Investigación y seguridad"
+    },
+    {
+      "id": 615570,
+      "nombre": "Limpieza de inmuebles"
+    },
+    {
+      "id": 615575,
+      "nombre": "Fotografía"
+    },
+    {
+      "id": 615580,
+      "nombre": "Envase y empaque"
+    },
+    {
+      "id": 615585,
+      "nombre": "Fotocopiado"
+    },
+    {
+      "id": 615590,
+      "nombre": "Mantenimiento y reparación de maquinaria y equipo"
+    },
+    {
+      "id": 615595,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 615599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 616005,
+      "nombre": "Actividades relacionadas con la educación"
+    },
+    {
+      "id": 616095,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 616099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 616505,
+      "nombre": "Servicio hospitalario"
+    },
+    {
+      "id": 616510,
+      "nombre": "Servicio médico"
+    },
+    {
+      "id": 616515,
+      "nombre": "Servicio odontológico"
+    },
+    {
+      "id": 616520,
+      "nombre": "Servicio de laboratorio"
+    },
+    {
+      "id": 616525,
+      "nombre": "Actividades veterinarias"
+    },
+    {
+      "id": 616530,
+      "nombre": "Actividades de servicios sociales"
+    },
+    {
+      "id": 616595,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 616599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 617005,
+      "nombre": "Eliminación de desperdicios y aguas residuales"
+    },
+    {
+      "id": 617010,
+      "nombre": "Actividades de asociación"
+    },
+    {
+      "id": 617015,
+      "nombre": "Producción y distribución de filmes y videocintas"
+    },
+    {
+      "id": 617020,
+      "nombre": "Exhibición de filmes y videocintas"
+    },
+    {
+      "id": 617025,
+      "nombre": "Actividad de radio y televisión"
+    },
+    {
+      "id": 617030,
+      "nombre": "Actividad teatral, musical y artística"
+    },
+    {
+      "id": 617035,
+      "nombre": "Grabación y producción de discos"
+    },
+    {
+      "id": 617040,
+      "nombre": "Entretenimiento y esparcimiento"
+    },
+    {
+      "id": 617045,
+      "nombre": "Agencias de noticias"
+    },
+    {
+      "id": 617050,
+      "nombre": "Lavanderías y similares"
+    },
+    {
+      "id": 617055,
+      "nombre": "Peluquerías y similares"
+    },
+    {
+      "id": 617060,
+      "nombre": "Servicios funerarios"
+    },
+    {
+      "id": 617065,
+      "nombre": "Zonas francas"
+    },
+    {
+      "id": 617095,
+      "nombre": "Actividades conexas"
+    },
+    {
+      "id": 617099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 620599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 621099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 621599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 622099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 622599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 810505,
+      "nombre": "Valores mobiliarios"
+    },
+    {
+      "id": 810510,
+      "nombre": "Bienes muebles"
+    },
+    {
+      "id": 810599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 811005,
+      "nombre": "Valores mobiliarios"
+    },
+    {
+      "id": 811010,
+      "nombre": "Bienes muebles"
+    },
+    {
+      "id": 811015,
+      "nombre": "Bienes inmuebles"
+    },
+    {
+      "id": 811020,
+      "nombre": "Contratos de ganado en participación"
+    },
+    {
+      "id": 811099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 811505,
+      "nombre": "En arrendamiento"
+    },
+    {
+      "id": 811510,
+      "nombre": "En préstamo"
+    },
+    {
+      "id": 811515,
+      "nombre": "En depósito"
+    },
+    {
+      "id": 811520,
+      "nombre": "En consignación"
+    },
+    {
+      "id": 811599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 812005,
+      "nombre": "Ejecutivos"
+    },
+    {
+      "id": 812010,
+      "nombre": "Incumplimiento de contratos"
+    },
+    {
+      "id": 819505,
+      "nombre": "Valores adquiridos por recibir"
+    },
+    {
+      "id": 819595,
+      "nombre": "Otras"
+    },
+    {
+      "id": 819599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 830505,
+      "nombre": "Bienes muebles"
+    },
+    {
+      "id": 830510,
+      "nombre": "Bienes inmuebles"
+    },
+    {
+      "id": 830599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 831005,
+      "nombre": "Acciones"
+    },
+    {
+      "id": 831010,
+      "nombre": "Bonos"
+    },
+    {
+      "id": 831095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 831506,
+      "nombre": "Materiales proyectos petroleros"
+    },
+    {
+      "id": 831516,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 831520,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 831524,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 831528,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 831532,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 831536,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 831540,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 831544,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 831548,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 831552,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 831556,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 831560,
+      "nombre": "Armamento de vigilancia"
+    },
+    {
+      "id": 831562,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 831564,
+      "nombre": "Plantaciones agrícolas y forestales"
+    },
+    {
+      "id": 831568,
+      "nombre": "Vías de comunicación"
+    },
+    {
+      "id": 831572,
+      "nombre": "Minas y canteras"
+    },
+    {
+      "id": 831576,
+      "nombre": "Pozos artesianos"
+    },
+    {
+      "id": 831580,
+      "nombre": "Yacimientos"
+    },
+    {
+      "id": 831584,
+      "nombre": "Semovientes"
+    },
+    {
+      "id": 831599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 832005,
+      "nombre": "País"
+    },
+    {
+      "id": 832010,
+      "nombre": "Exterior"
+    },
+    {
+      "id": 832505,
+      "nombre": "Inversiones"
+    },
+    {
+      "id": 832510,
+      "nombre": "Deudores"
+    },
+    {
+      "id": 832595,
+      "nombre": "Otros activos"
+    },
+    {
+      "id": 833005,
+      "nombre": "Bonos"
+    },
+    {
+      "id": 833095,
+      "nombre": "Otros"
+    },
+    {
+      "id": 839505,
+      "nombre": "Cheques posfechados"
+    },
+    {
+      "id": 839510,
+      "nombre": "Certificados de depósito a término"
+    },
+    {
+      "id": 839515,
+      "nombre": "Cheques devueltos"
+    },
+    {
+      "id": 839520,
+      "nombre": "Bienes y valores en fideicomiso"
+    },
+    {
+      "id": 839525,
+      "nombre": "Intereses sobre deudas vencidas"
+    },
+    {
+      "id": 839595,
+      "nombre": "Diversas"
+    },
+    {
+      "id": 839599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 839905,
+      "nombre": "Inversiones"
+    },
+    {
+      "id": 839910,
+      "nombre": "Inventarios"
+    },
+    {
+      "id": 839915,
+      "nombre": "Propiedades, planta y equipo"
+    },
+    {
+      "id": 839920,
+      "nombre": "Intangibles"
+    },
+    {
+      "id": 839925,
+      "nombre": "Cargos diferidos"
+    },
+    {
+      "id": 839995,
+      "nombre": "Otros activos"
+    },
+    {
+      "id": 910505,
+      "nombre": "Valores mobiliarios"
+    },
+    {
+      "id": 910510,
+      "nombre": "Bienes muebles"
+    },
+    {
+      "id": 910599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 911005,
+      "nombre": "Valores mobiliarios"
+    },
+    {
+      "id": 911010,
+      "nombre": "Bienes muebles"
+    },
+    {
+      "id": 911015,
+      "nombre": "Bienes inmuebles"
+    },
+    {
+      "id": 911020,
+      "nombre": "Contratos de ganado en participación"
+    },
+    {
+      "id": 911099,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 911505,
+      "nombre": "En arrendamiento"
+    },
+    {
+      "id": 911510,
+      "nombre": "En préstamo"
+    },
+    {
+      "id": 911515,
+      "nombre": "En depósito"
+    },
+    {
+      "id": 911520,
+      "nombre": "En consignación"
+    },
+    {
+      "id": 911525,
+      "nombre": "En comodato"
+    },
+    {
+      "id": 911599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 912005,
+      "nombre": "Laborales"
+    },
+    {
+      "id": 912010,
+      "nombre": "Civiles"
+    },
+    {
+      "id": 912015,
+      "nombre": "Administrativos o arbitrales"
+    },
+    {
+      "id": 912020,
+      "nombre": "Tributarios"
+    },
+    {
+      "id": 930505,
+      "nombre": "Bienes muebles"
+    },
+    {
+      "id": 930510,
+      "nombre": "Bienes inmuebles"
+    },
+    {
+      "id": 939505,
+      "nombre": "Documentos por cobrar descontados"
+    },
+    {
+      "id": 939510,
+      "nombre": "Convenios de pago"
+    },
+    {
+      "id": 939515,
+      "nombre": "Contratos de construcciones e instalaciones por ejecutar"
+    },
+    {
+      "id": 939525,
+      "nombre": "Adjudicaciones pendientes de legalizar"
+    },
+    {
+      "id": 939530,
+      "nombre": "Reserva artículo 3º Ley 4ª de 1980"
+    },
+    {
+      "id": 939535,
+      "nombre": "Reserva costo reposición semovientes"
+    },
+    {
+      "id": 939595,
+      "nombre": "Diversas"
+    },
+    {
+      "id": 939599,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 939905,
+      "nombre": "Capital social"
+    },
+    {
+      "id": 939910,
+      "nombre": "Superávit de capital"
+    },
+    {
+      "id": 939915,
+      "nombre": "Reservas"
+    },
+    {
+      "id": 939925,
+      "nombre": "Dividendos o participaciones decretadas en acciones, cuotas o partes de interés social"
+    },
+    {
+      "id": 939930,
+      "nombre": "Resultados de ejercicios anteriores"
+    }
+  ]
+}

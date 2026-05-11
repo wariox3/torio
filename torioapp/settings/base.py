@@ -37,6 +37,7 @@ TENANT_APPS = [
     'django.contrib.contenttypes',
     'tenant_users.permissions',
     'general',
+    'contabilidad',
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [

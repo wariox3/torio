@@ -1,0 +1,8 @@
+{
+  "model": "general.GenCuentaBancoTipo",
+  "data": [
+    { "id": 1, "nombre": "Banco nacional"     },
+    { "id": 2, "nombre": "Tarjeta de credito" },
+    { "id": 3, "nombre": "Efectivo"           }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "model": "general.GenPlazoPago",
+  "data": [
+    { "id": 1, "nombre": "Contado", "dias": 0  },
+    { "id": 2, "nombre": "8 dias",  "dias": 8  },
+    { "id": 3, "nombre": "15 dias", "dias": 15 },
+    { "id": 4, "nombre": "30 dias", "dias": 30 },
+    { "id": 5, "nombre": "60 dias", "dias": 60 },
+    { "id": 6, "nombre": "90 dias", "dias": 90 }
+  ]
+}

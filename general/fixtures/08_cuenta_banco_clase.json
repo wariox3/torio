@@ -1,0 +1,7 @@
+{
+  "model": "general.GenCuentaBancoClase",
+  "data": [
+    { "id": 1, "nombre": "Ahorro"    },
+    { "id": 2, "nombre": "Corriente" }
+  ]
+}

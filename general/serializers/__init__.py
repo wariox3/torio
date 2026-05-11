@@ -1,0 +1,1 @@
+from .contacto import GenContactoSerializer

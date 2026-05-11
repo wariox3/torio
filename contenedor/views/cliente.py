@@ -2,6 +2,7 @@ from datetime import date
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
+from django.core.management import call_command
 from django.db import transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
@@ -59,6 +60,8 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
             fecha_inicio=fecha_inicio,
             fecha_fin=fecha_inicio + relativedelta(months=1),
         )
+
+        call_command('cargar_datos_tenant', schema=schema_name, verbosity=0)
 
         return Response(CtnClienteSerializer(cliente).data, status=status.HTTP_201_CREATED)
 

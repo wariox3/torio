@@ -1,0 +1,1393 @@
+{
+  "model": "contabilidad.ConCuentaCuenta",
+  "data": [
+    {
+      "id": 1105,
+      "nombre": "Caja"
+    },
+    {
+      "id": 1110,
+      "nombre": "Bancos"
+    },
+    {
+      "id": 1115,
+      "nombre": "Remesas en tránsito"
+    },
+    {
+      "id": 1120,
+      "nombre": "Cuentas de ahorro"
+    },
+    {
+      "id": 1125,
+      "nombre": "Fondos"
+    },
+    {
+      "id": 1205,
+      "nombre": "Acciones"
+    },
+    {
+      "id": 1210,
+      "nombre": "Cuotas o partes de interés social"
+    },
+    {
+      "id": 1215,
+      "nombre": "Bonos"
+    },
+    {
+      "id": 1220,
+      "nombre": "Cédulas"
+    },
+    {
+      "id": 1225,
+      "nombre": "Certificados"
+    },
+    {
+      "id": 1230,
+      "nombre": "Papeles comerciales"
+    },
+    {
+      "id": 1235,
+      "nombre": "Títulos"
+    },
+    {
+      "id": 1240,
+      "nombre": "Aceptaciones bancarias o financieras"
+    },
+    {
+      "id": 1245,
+      "nombre": "Derechos fiduciarios"
+    },
+    {
+      "id": 1250,
+      "nombre": "Derechos de recompra de inversiones negociadas (repos)"
+    },
+    {
+      "id": 1255,
+      "nombre": "Obligatorias"
+    },
+    {
+      "id": 1260,
+      "nombre": "Cuentas en participación"
+    },
+    {
+      "id": 1295,
+      "nombre": "Otras inversiones"
+    },
+    {
+      "id": 1299,
+      "nombre": "Provisiones"
+    },
+    {
+      "id": 1305,
+      "nombre": "Clientes"
+    },
+    {
+      "id": 1310,
+      "nombre": "Cuentas corrientes comerciales"
+    },
+    {
+      "id": 1315,
+      "nombre": "Cuentas por cobrar a casa matriz"
+    },
+    {
+      "id": 1320,
+      "nombre": "Cuentas por cobrar a vinculados económicos"
+    },
+    {
+      "id": 1323,
+      "nombre": "Cuentas por cobrar a directores"
+    },
+    {
+      "id": 1325,
+      "nombre": "Cuentas por cobrar a socios y accionistas"
+    },
+    {
+      "id": 1328,
+      "nombre": "Aportes por cobrar"
+    },
+    {
+      "id": 1330,
+      "nombre": "Anticipos y avances"
+    },
+    {
+      "id": 1332,
+      "nombre": "Cuentas de operación conjunta"
+    },
+    {
+      "id": 1335,
+      "nombre": "Depósitos"
+    },
+    {
+      "id": 1340,
+      "nombre": "Promesas de compra venta"
+    },
+    {
+      "id": 1345,
+      "nombre": "Ingresos por cobrar"
+    },
+    {
+      "id": 1350,
+      "nombre": "Retención sobre contratos"
+    },
+    {
+      "id": 1355,
+      "nombre": "Anticipo de impuestos y contribuciones o saldos a favor"
+    },
+    {
+      "id": 1360,
+      "nombre": "Reclamaciones"
+    },
+    {
+      "id": 1365,
+      "nombre": "Cuentas por cobrar a trabajadores"
+    },
+    {
+      "id": 1370,
+      "nombre": "Préstamos a particulares"
+    },
+    {
+      "id": 1380,
+      "nombre": "Deudores varios"
+    },
+    {
+      "id": 1385,
+      "nombre": "Derechos de recompra de cartera negociada"
+    },
+    {
+      "id": 1390,
+      "nombre": "Deudas de difícil cobro"
+    },
+    {
+      "id": 1399,
+      "nombre": "Provisiones"
+    },
+    {
+      "id": 1405,
+      "nombre": "Materias primas"
+    },
+    {
+      "id": 1410,
+      "nombre": "Productos en proceso"
+    },
+    {
+      "id": 1415,
+      "nombre": "Obras de construcción en curso"
+    },
+    {
+      "id": 1417,
+      "nombre": "Obras de urbanismo"
+    },
+    {
+      "id": 1420,
+      "nombre": "Contratos en ejecución"
+    },
+    {
+      "id": 1425,
+      "nombre": "Cultivos en desarrollo"
+    },
+    {
+      "id": 1428,
+      "nombre": "Plantaciones agrícolas"
+    },
+    {
+      "id": 1430,
+      "nombre": "Productos terminados"
+    },
+    {
+      "id": 1435,
+      "nombre": "Mercancías no fabricadas por la empresa"
+    },
+    {
+      "id": 1440,
+      "nombre": "Bienes raíces para la venta"
+    },
+    {
+      "id": 1445,
+      "nombre": "Semovientes"
+    },
+    {
+      "id": 1450,
+      "nombre": "Terrenos"
+    },
+    {
+      "id": 1455,
+      "nombre": "Materiales, repuestos y accesorios"
+    },
+    {
+      "id": 1460,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 1465,
+      "nombre": "Inventarios en tránsito"
+    },
+    {
+      "id": 1499,
+      "nombre": "Provisiones"
+    },
+    {
+      "id": 1504,
+      "nombre": "Terrenos"
+    },
+    {
+      "id": 1506,
+      "nombre": "Materiales proyectos petroleros"
+    },
+    {
+      "id": 1508,
+      "nombre": "Construcciones en curso"
+    },
+    {
+      "id": 1512,
+      "nombre": "Maquinaria y equipos en montaje"
+    },
+    {
+      "id": 1516,
+      "nombre": "Construcciones y edificaciones"
+    },
+    {
+      "id": 1520,
+      "nombre": "Maquinaria y equipo"
+    },
+    {
+      "id": 1524,
+      "nombre": "Equipo de oficina"
+    },
+    {
+      "id": 1528,
+      "nombre": "Equipo de computación y comunicación"
+    },
+    {
+      "id": 1532,
+      "nombre": "Equipo médico-científico"
+    },
+    {
+      "id": 1536,
+      "nombre": "Equipo de hoteles y restaurantes"
+    },
+    {
+      "id": 1540,
+      "nombre": "Flota y equipo de transporte"
+    },
+    {
+      "id": 1544,
+      "nombre": "Flota y equipo fluvial y/o marítimo"
+    },
+    {
+      "id": 1548,
+      "nombre": "Flota y equipo aéreo"
+    },
+    {
+      "id": 1552,
+      "nombre": "Flota y equipo férreo"
+    },
+    {
+      "id": 1556,
+      "nombre": "Acueductos, plantas y redes"
+    },
+    {
+      "id": 1560,
+      "nombre": "Armamento de vigilancia"
+    },
+    {
+      "id": 1562,
+      "nombre": "Envases y empaques"
+    },
+    {
+      "id": 1564,
+      "nombre": "Plantaciones agrícolas y forestales"
+    },
+    {
+      "id": 1568,
+      "nombre": "Vías de comunicación"
+    },
+    {
+      "id": 1572,
+      "nombre": "Minas y canteras"
+    },
+    {
+      "id": 1576,
+      "nombre": "Pozos artesianos"
+    },
+    {
+      "id": 1580,
+      "nombre": "Yacimientos"
+    },
+    {
+      "id": 1584,
+      "nombre": "Semovientes"
+    },
+    {
+      "id": 1588,
+      "nombre": "Propiedades, planta y equipo en tránsito"
+    },
+    {
+      "id": 1592,
+      "nombre": "Depreciación acumulada"
+    },
+    {
+      "id": 1596,
+      "nombre": "Depreciación diferida"
+    },
+    {
+      "id": 1597,
+      "nombre": "Amortización acumulada"
+    },
+    {
+      "id": 1598,
+      "nombre": "Agotamiento acumulado"
+    },
+    {
+      "id": 1599,
+      "nombre": "Provisiones"
+    },
+    {
+      "id": 1605,
+      "nombre": "Crédito mercantil"
+    },
+    {
+      "id": 1610,
+      "nombre": "Marcas"
+    },
+    {
+      "id": 1615,
+      "nombre": "Patentes"
+    },
+    {
+      "id": 1620,
+      "nombre": "Concesiones y franquicias"
+    },
+    {
+      "id": 1625,
+      "nombre": "Derechos"
+    },
+    {
+      "id": 1630,
+      "nombre": "Know how"
+    },
+    {
+      "id": 1635,
+      "nombre": "Licencias"
+    },
+    {
+      "id": 1698,
+      "nombre": "Depreciación y/o amortización acumulada"
+    },
+    {
+      "id": 1699,
+      "nombre": "Provisiones"
+    },
+    {
+      "id": 1705,
+      "nombre": "Gastos pagados por anticipado"
+    },
+    {
+      "id": 1710,
+      "nombre": "Cargos diferidos"
+    },
+    {
+      "id": 1715,
+      "nombre": "Costos de exploración por amortizar"
+    },
+    {
+      "id": 1720,
+      "nombre": "Costos de explotación y desarrollo"
+    },
+    {
+      "id": 1730,
+      "nombre": "Cargos por corrección monetaria diferida"
+    },
+    {
+      "id": 1798,
+      "nombre": "Amortización acumulada"
+    },
+    {
+      "id": 1805,
+      "nombre": "Bienes de arte y cultura"
+    },
+    {
+      "id": 1895,
+      "nombre": "Diversos"
+    },
+    {
+      "id": 1899,
+      "nombre": "Provisiones"
+    },
+    {
+      "id": 1905,
+      "nombre": "De inversiones"
+    },
+    {
+      "id": 1910,
+      "nombre": "De propiedades, planta y equipo"
+    },
+    {
+      "id": 1995,
+      "nombre": "De otros activos"
+    },
+    {
+      "id": 2105,
+      "nombre": "Bancos nacionales"
+    },
+    {
+      "id": 2110,
+      "nombre": "Bancos del exterior"
+    },
+    {
+      "id": 2115,
+      "nombre": "Corporaciones financieras"
+    },
+    {
+      "id": 2120,
+      "nombre": "Compañías de financiamiento comercial"
+    },
+    {
+      "id": 2125,
+      "nombre": "Corporaciones de ahorro y vivienda"
+    },
+    {
+      "id": 2130,
+      "nombre": "Entidades financieras del exterior"
+    },
+    {
+      "id": 2135,
+      "nombre": "Compromisos de recompra de inversiones negociadas"
+    },
+    {
+      "id": 2140,
+      "nombre": "Compromisos de recompra de cartera negociada"
+    },
+    {
+      "id": 2145,
+      "nombre": "Obligaciones gubernamentales"
+    },
+    {
+      "id": 2195,
+      "nombre": "Otras obligaciones"
+    },
+    {
+      "id": 2205,
+      "nombre": "Nacionales"
+    },
+    {
+      "id": 2210,
+      "nombre": "Del exterior"
+    },
+    {
+      "id": 2215,
+      "nombre": "Cuentas corrientes comerciales"
+    },
+    {
+      "id": 2220,
+      "nombre": "Casa matriz"
+    },
+    {
+      "id": 2225,
+      "nombre": "Compañías vinculadas"
+    },
+    {
+      "id": 2305,
+      "nombre": "Cuentas corrientes comerciales"
+    },
+    {
+      "id": 2310,
+      "nombre": "A casa matriz"
+    },
+    {
+      "id": 2315,
+      "nombre": "A compañías vinculadas"
+    },
+    {
+      "id": 2320,
+      "nombre": "A contratistas"
+    },
+    {
+      "id": 2330,
+      "nombre": "Órdenes de compra por utilizar"
+    },
+    {
+      "id": 2335,
+      "nombre": "Costos y gastos por pagar"
+    },
+    {
+      "id": 2340,
+      "nombre": "Instalamentos por pagar"
+    },
+    {
+      "id": 2345,
+      "nombre": "Acreedores oficiales"
+    },
+    {
+      "id": 2350,
+      "nombre": "Regalías por pagar"
+    },
+    {
+      "id": 2355,
+      "nombre": "Deudas con accionistas o socios"
+    },
+    {
+      "id": 2357,
+      "nombre": "Deudas con directores"
+    },
+    {
+      "id": 2360,
+      "nombre": "Dividendos o participaciones por pagar"
+    },
+    {
+      "id": 2365,
+      "nombre": "Retención en la fuente"
+    },
+    {
+      "id": 2367,
+      "nombre": "Impuesto a las ventas retenido"
+    },
+    {
+      "id": 2368,
+      "nombre": "Impuesto de industria y comercio retenido"
+    },
+    {
+      "id": 2370,
+      "nombre": "Retenciones y aportes de nómina"
+    },
+    {
+      "id": 2375,
+      "nombre": "Cuotas por devolver"
+    },
+    {
+      "id": 2380,
+      "nombre": "Acreedores varios"
+    },
+    {
+      "id": 2404,
+      "nombre": "De renta y complementarios"
+    },
+    {
+      "id": 2405,
+      "nombre": "De renta y complementarios"
+    },
+    {
+      "id": 2408,
+      "nombre": "Impuesto sobre las ventas por pagar"
+    },
+    {
+      "id": 2412,
+      "nombre": "De industria y comercio"
+    },
+    {
+      "id": 2416,
+      "nombre": "A la propiedad raíz"
+    },
+    {
+      "id": 2420,
+      "nombre": "Derechos sobre instrumentos públicos"
+    },
+    {
+      "id": 2424,
+      "nombre": "De valorización"
+    },
+    {
+      "id": 2428,
+      "nombre": "De turismo"
+    },
+    {
+      "id": 2432,
+      "nombre": "Tasa por utilización de puertos"
+    },
+    {
+      "id": 2436,
+      "nombre": "De vehículos"
+    },
+    {
+      "id": 2440,
+      "nombre": "De espectáculos públicos"
+    },
+    {
+      "id": 2444,
+      "nombre": "De hidrocarburos y minas"
+    },
+    {
+      "id": 2448,
+      "nombre": "Regalías e impuestos a la pequeña y mediana minería"
+    },
+    {
+      "id": 2452,
+      "nombre": "A las exportaciones cafeteras"
+    },
+    {
+      "id": 2456,
+      "nombre": "A las importaciones"
+    },
+    {
+      "id": 2460,
+      "nombre": "Cuotas de fomento"
+    },
+    {
+      "id": 2464,
+      "nombre": "De licores, cervezas y cigarrillos"
+    },
+    {
+      "id": 2468,
+      "nombre": "Al sacrificio de ganado"
+    },
+    {
+      "id": 2472,
+      "nombre": "Al azar y juegos"
+    },
+    {
+      "id": 2476,
+      "nombre": "Gravámenes y regalías por utilización del suelo"
+    },
+    {
+      "id": 2495,
+      "nombre": "Otros"
+    },
+    {
+      "id": 2505,
+      "nombre": "Salarios por pagar"
+    },
+    {
+      "id": 2510,
+      "nombre": "Cesantías consolidadas"
+    },
+    {
+      "id": 2515,
+      "nombre": "Intereses sobre cesantías"
+    },
+    {
+      "id": 2520,
+      "nombre": "Prima de servicios"
+    },
+    {
+      "id": 2525,
+      "nombre": "Vacaciones consolidadas"
+    },
+    {
+      "id": 2530,
+      "nombre": "Prestaciones extralegales"
+    },
+    {
+      "id": 2532,
+      "nombre": "Pensiones por pagar"
+    },
+    {
+      "id": 2535,
+      "nombre": "Cuotas partes pensiones de jubilación"
+    },
+    {
+      "id": 2540,
+      "nombre": "Indemnizaciones laborales"
+    },
+    {
+      "id": 2605,
+      "nombre": "Para costos y gastos"
+    },
+    {
+      "id": 2610,
+      "nombre": "Para obligaciones laborales"
+    },
+    {
+      "id": 2615,
+      "nombre": "Para obligaciones fiscales"
+    },
+    {
+      "id": 2620,
+      "nombre": "Pensiones de jubilación"
+    },
+    {
+      "id": 2625,
+      "nombre": "Para obras de urbanismo"
+    },
+    {
+      "id": 2630,
+      "nombre": "Para mantenimiento y reparaciones"
+    },
+    {
+      "id": 2635,
+      "nombre": "Para contingencias"
+    },
+    {
+      "id": 2640,
+      "nombre": "Para obligaciones de garantías"
+    },
+    {
+      "id": 2695,
+      "nombre": "Provisiones diversas"
+    },
+    {
+      "id": 2705,
+      "nombre": "Ingresos recibidos por anticipado"
+    },
+    {
+      "id": 2710,
+      "nombre": "Abonos diferidos"
+    },
+    {
+      "id": 2715,
+      "nombre": "Utilidad diferida en ventas a plazos"
+    },
+    {
+      "id": 2720,
+      "nombre": "Crédito por corrección monetaria diferida"
+    },
+    {
+      "id": 2725,
+      "nombre": "Impuestos diferidos"
+    },
+    {
+      "id": 2805,
+      "nombre": "Anticipos y avances recibidos"
+    },
+    {
+      "id": 2810,
+      "nombre": "Depósitos recibidos"
+    },
+    {
+      "id": 2815,
+      "nombre": "Ingresos recibidos para terceros"
+    },
+    {
+      "id": 2820,
+      "nombre": "Cuentas de operación conjunta"
+    },
+    {
+      "id": 2825,
+      "nombre": "Retenciones a terceros sobre contratos"
+    },
+    {
+      "id": 2830,
+      "nombre": "Embargos judiciales"
+    },
+    {
+      "id": 2835,
+      "nombre": "Acreedores del sistema"
+    },
+    {
+      "id": 2840,
+      "nombre": "Cuentas en participación"
+    },
+    {
+      "id": 2860,
+      "nombre": "Cuentas en participación"
+    },
+    {
+      "id": 2895,
+      "nombre": "Diversos"
+    },
+    {
+      "id": 2905,
+      "nombre": "Bonos en circulación"
+    },
+    {
+      "id": 2910,
+      "nombre": "Bonos obligatoriamente convertibles en acciones"
+    },
+    {
+      "id": 2915,
+      "nombre": "Papeles comerciales"
+    },
+    {
+      "id": 2920,
+      "nombre": "Bonos pensionales"
+    },
+    {
+      "id": 2925,
+      "nombre": "Títulos pensionales"
+    },
+    {
+      "id": 3105,
+      "nombre": "Capital suscrito y pagado"
+    },
+    {
+      "id": 3115,
+      "nombre": "Aportes sociales"
+    },
+    {
+      "id": 3120,
+      "nombre": "Capital asignado"
+    },
+    {
+      "id": 3125,
+      "nombre": "Inversión suplementaria al capital asignado"
+    },
+    {
+      "id": 3130,
+      "nombre": "Capital de personas naturales"
+    },
+    {
+      "id": 3135,
+      "nombre": "Aportes del Estado"
+    },
+    {
+      "id": 3140,
+      "nombre": "Fondo social"
+    },
+    {
+      "id": 3205,
+      "nombre": "Prima en colocación de acciones, cuotas o partes de interés social"
+    },
+    {
+      "id": 3210,
+      "nombre": "Donaciones"
+    },
+    {
+      "id": 3215,
+      "nombre": "Crédito mercantil"
+    },
+    {
+      "id": 3220,
+      "nombre": "Know how"
+    },
+    {
+      "id": 3225,
+      "nombre": "Superávit método de participación"
+    },
+    {
+      "id": 3305,
+      "nombre": "Reservas obligatorias"
+    },
+    {
+      "id": 3310,
+      "nombre": "Reservas estatutarias"
+    },
+    {
+      "id": 3315,
+      "nombre": "Reservas ocasionales"
+    },
+    {
+      "id": 3405,
+      "nombre": "Ajustes por inflación"
+    },
+    {
+      "id": 3410,
+      "nombre": "Saneamiento fiscal"
+    },
+    {
+      "id": 3415,
+      "nombre": "Ajustes por inflación Decreto 3019 de 1989"
+    },
+    {
+      "id": 3505,
+      "nombre": "Dividendos decretados en acciones"
+    },
+    {
+      "id": 3510,
+      "nombre": "Participaciones decretadas en cuotas o partes de interés social"
+    },
+    {
+      "id": 3605,
+      "nombre": "Utilidad del ejercicio"
+    },
+    {
+      "id": 3610,
+      "nombre": "Pérdida del ejercicio"
+    },
+    {
+      "id": 3705,
+      "nombre": "Utilidades acumuladas"
+    },
+    {
+      "id": 3710,
+      "nombre": "Pérdidas acumuladas"
+    },
+    {
+      "id": 3805,
+      "nombre": "De inversiones"
+    },
+    {
+      "id": 3810,
+      "nombre": "De propiedades, planta y equipo"
+    },
+    {
+      "id": 3895,
+      "nombre": "De otros activos"
+    },
+    {
+      "id": 4105,
+      "nombre": "Agricultura, ganadería, caza y silvicultura"
+    },
+    {
+      "id": 4110,
+      "nombre": "Pesca"
+    },
+    {
+      "id": 4115,
+      "nombre": "Explotación de minas y canteras"
+    },
+    {
+      "id": 4120,
+      "nombre": "Industrias manufactureras"
+    },
+    {
+      "id": 4125,
+      "nombre": "Suministro de electricidad, gas y agua"
+    },
+    {
+      "id": 4130,
+      "nombre": "Construcción"
+    },
+    {
+      "id": 4135,
+      "nombre": "Comercio al por mayor y al por menor"
+    },
+    {
+      "id": 4140,
+      "nombre": "Hoteles y restaurantes"
+    },
+    {
+      "id": 4145,
+      "nombre": "Transporte, almacenamiento y comunicaciones"
+    },
+    {
+      "id": 4150,
+      "nombre": "Actividad financiera"
+    },
+    {
+      "id": 4155,
+      "nombre": "Actividades inmobiliarias, empresariales y de alquiler"
+    },
+    {
+      "id": 4160,
+      "nombre": "Enseñanza"
+    },
+    {
+      "id": 4165,
+      "nombre": "Servicios sociales y de salud"
+    },
+    {
+      "id": 4170,
+      "nombre": "Otras actividades de servicios comunitarios, sociales y personales"
+    },
+    {
+      "id": 4175,
+      "nombre": "Devoluciones en ventas (DB)"
+    },
+    {
+      "id": 4205,
+      "nombre": "Otras ventas"
+    },
+    {
+      "id": 4210,
+      "nombre": "Financieros"
+    },
+    {
+      "id": 4215,
+      "nombre": "Dividendos y participaciones"
+    },
+    {
+      "id": 4218,
+      "nombre": "Ingresos método de participación"
+    },
+    {
+      "id": 4220,
+      "nombre": "Arrendamientos"
+    },
+    {
+      "id": 4225,
+      "nombre": "Comisiones"
+    },
+    {
+      "id": 4230,
+      "nombre": "Honorarios"
+    },
+    {
+      "id": 4235,
+      "nombre": "Servicios"
+    },
+    {
+      "id": 4240,
+      "nombre": "Utilidad en venta de inversiones"
+    },
+    {
+      "id": 4245,
+      "nombre": "Utilidad en venta de propiedades, planta y equipo"
+    },
+    {
+      "id": 4248,
+      "nombre": "Utilidad en venta de otros bienes"
+    },
+    {
+      "id": 4250,
+      "nombre": "Recuperaciones"
+    },
+    {
+      "id": 4255,
+      "nombre": "Indemnizaciones"
+    },
+    {
+      "id": 4260,
+      "nombre": "Participaciones en concesiones"
+    },
+    {
+      "id": 4265,
+      "nombre": "Ingresos de ejercicios anteriores"
+    },
+    {
+      "id": 4275,
+      "nombre": "Devoluciones en otras ventas (DB)"
+    },
+    {
+      "id": 4295,
+      "nombre": "Diversos"
+    },
+    {
+      "id": 4705,
+      "nombre": "Corrección monetaria"
+    },
+    {
+      "id": 5105,
+      "nombre": "Gastos de personal"
+    },
+    {
+      "id": 5110,
+      "nombre": "Honorarios"
+    },
+    {
+      "id": 5115,
+      "nombre": "Impuestos"
+    },
+    {
+      "id": 5120,
+      "nombre": "Arrendamientos"
+    },
+    {
+      "id": 5125,
+      "nombre": "Contribuciones y afiliaciones"
+    },
+    {
+      "id": 5130,
+      "nombre": "Seguros"
+    },
+    {
+      "id": 5135,
+      "nombre": "Servicios"
+    },
+    {
+      "id": 5140,
+      "nombre": "Gastos legales"
+    },
+    {
+      "id": 5145,
+      "nombre": "Mantenimiento y reparaciones"
+    },
+    {
+      "id": 5150,
+      "nombre": "Adecuación e instalación"
+    },
+    {
+      "id": 5155,
+      "nombre": "Gastos de viaje"
+    },
+    {
+      "id": 5160,
+      "nombre": "Depreciaciones"
+    },
+    {
+      "id": 5165,
+      "nombre": "Amortizaciones"
+    },
+    {
+      "id": 5195,
+      "nombre": "Diversos"
+    },
+    {
+      "id": 5199,
+      "nombre": "Provisiones"
+    },
+    {
+      "id": 5205,
+      "nombre": "Gastos de personal"
+    },
+    {
+      "id": 5210,
+      "nombre": "Honorarios"
+    },
+    {
+      "id": 5215,
+      "nombre": "Impuestos"
+    },
+    {
+      "id": 5220,
+      "nombre": "Arrendamientos"
+    },
+    {
+      "id": 5225,
+      "nombre": "Contribuciones y afiliaciones"
+    },
+    {
+      "id": 5230,
+      "nombre": "Seguros"
+    },
+    {
+      "id": 5235,
+      "nombre": "Servicios"
+    },
+    {
+      "id": 5240,
+      "nombre": "Gastos legales"
+    },
+    {
+      "id": 5245,
+      "nombre": "Mantenimiento y reparaciones"
+    },
+    {
+      "id": 5250,
+      "nombre": "Adecuación e instalación"
+    },
+    {
+      "id": 5255,
+      "nombre": "Gastos de viaje"
+    },
+    {
+      "id": 5260,
+      "nombre": "Depreciaciones"
+    },
+    {
+      "id": 5265,
+      "nombre": "Amortizaciones"
+    },
+    {
+      "id": 5270,
+      "nombre": "Financieros-reajuste del sistema"
+    },
+    {
+      "id": 5275,
+      "nombre": "Pérdidas método de participación"
+    },
+    {
+      "id": 5295,
+      "nombre": "Diversos"
+    },
+    {
+      "id": 5299,
+      "nombre": "Provisiones"
+    },
+    {
+      "id": 5305,
+      "nombre": "Financieros"
+    },
+    {
+      "id": 5310,
+      "nombre": "Pérdida en venta y retiro de bienes"
+    },
+    {
+      "id": 5313,
+      "nombre": "Pérdidas método de participación"
+    },
+    {
+      "id": 5315,
+      "nombre": "Gastos extraordinarios"
+    },
+    {
+      "id": 5395,
+      "nombre": "Gastos diversos"
+    },
+    {
+      "id": 5405,
+      "nombre": "Impuesto de renta y complementarios"
+    },
+    {
+      "id": 5905,
+      "nombre": "Ganancias y pérdidas"
+    },
+    {
+      "id": 6105,
+      "nombre": "Agricultura, ganadería, caza y silvicultura"
+    },
+    {
+      "id": 6110,
+      "nombre": "Pesca"
+    },
+    {
+      "id": 6115,
+      "nombre": "Explotación de minas y canteras"
+    },
+    {
+      "id": 6120,
+      "nombre": "Industrias manufactureras"
+    },
+    {
+      "id": 6125,
+      "nombre": "Suministro de electricidad, gas y agua"
+    },
+    {
+      "id": 6130,
+      "nombre": "Construcción"
+    },
+    {
+      "id": 6135,
+      "nombre": "Comercio al por mayor y al por menor"
+    },
+    {
+      "id": 6140,
+      "nombre": "Hoteles y restaurantes"
+    },
+    {
+      "id": 6145,
+      "nombre": "Transporte, almacenamiento y comunicaciones"
+    },
+    {
+      "id": 6150,
+      "nombre": "Actividad financiera"
+    },
+    {
+      "id": 6155,
+      "nombre": "Actividades inmobiliarias, empresariales y de alquiler"
+    },
+    {
+      "id": 6160,
+      "nombre": "Enseñanza"
+    },
+    {
+      "id": 6165,
+      "nombre": "Servicios sociales y de salud"
+    },
+    {
+      "id": 6170,
+      "nombre": "Otras actividades de servicios comunitarios, sociales y personales"
+    },
+    {
+      "id": 6205,
+      "nombre": "De mercancías"
+    },
+    {
+      "id": 6210,
+      "nombre": "De materias primas"
+    },
+    {
+      "id": 6215,
+      "nombre": "De materiales indirectos"
+    },
+    {
+      "id": 6220,
+      "nombre": "Compra de energía"
+    },
+    {
+      "id": 6225,
+      "nombre": "Devoluciones en compras (CR)"
+    },
+    {
+      "id": 7105,
+      "nombre": "Materia prima"
+    },
+    {
+      "id": 7205,
+      "nombre": "Mano de obra"
+    },
+    {
+      "id": 7235,
+      "nombre": "Servicios temporales"
+    },
+    {
+      "id": 7305,
+      "nombre": "Costos indirectos"
+    },
+    {
+      "id": 7405,
+      "nombre": "Contratos de servicios"
+    },
+    {
+      "id": 8105,
+      "nombre": "Bienes y valores entregados en custodia"
+    },
+    {
+      "id": 8110,
+      "nombre": "Bienes y valores entregados en garantía"
+    },
+    {
+      "id": 8115,
+      "nombre": "Bienes y valores en poder de terceros"
+    },
+    {
+      "id": 8120,
+      "nombre": "Litigios y/o demandas"
+    },
+    {
+      "id": 8125,
+      "nombre": "Promesas de compraventa"
+    },
+    {
+      "id": 8195,
+      "nombre": "Diversas"
+    },
+    {
+      "id": 8305,
+      "nombre": "Bienes recibidos en arrendamiento financiero"
+    },
+    {
+      "id": 8310,
+      "nombre": "Títulos de inversión no colocados"
+    },
+    {
+      "id": 8315,
+      "nombre": "Propiedades, planta y equipo totalmente depreciados, agotados y/o amortizados"
+    },
+    {
+      "id": 8320,
+      "nombre": "Créditos a favor no utilizados"
+    },
+    {
+      "id": 8325,
+      "nombre": "Activos castigados"
+    },
+    {
+      "id": 8330,
+      "nombre": "Títulos de inversión amortizados"
+    },
+    {
+      "id": 8335,
+      "nombre": "Capitalización por revalorización de patrimonio"
+    },
+    {
+      "id": 8395,
+      "nombre": "Otras cuentas deudoras de control"
+    },
+    {
+      "id": 8399,
+      "nombre": "Ajustes por inflación activos"
+    },
+    {
+      "id": 9105,
+      "nombre": "Bienes y valores recibidos en custodia"
+    },
+    {
+      "id": 9110,
+      "nombre": "Bienes y valores recibidos en garantía"
+    },
+    {
+      "id": 9115,
+      "nombre": "Bienes y valores recibidos de terceros"
+    },
+    {
+      "id": 9120,
+      "nombre": "Litigios y/o demandas"
+    },
+    {
+      "id": 9125,
+      "nombre": "Promesas de compraventa"
+    },
+    {
+      "id": 9130,
+      "nombre": "Contratos de administración delegada"
+    },
+    {
+      "id": 9135,
+      "nombre": "Cuentas en participación"
+    },
+    {
+      "id": 9195,
+      "nombre": "Otras responsabilidades contingentes"
+    },
+    {
+      "id": 9305,
+      "nombre": "Contratos de arrendamiento financiero"
+    },
+    {
+      "id": 9395,
+      "nombre": "Otras cuentas de orden acreedoras de control"
+    },
+    {
+      "id": 9399,
+      "nombre": "Ajustes por inflación patrimonio"
+    }
+  ]
+}

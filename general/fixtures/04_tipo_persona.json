@@ -1,0 +1,7 @@
+{
+  "model": "general.GenTipoPersona",
+  "data": [
+    { "id": 1, "nombre": "Jurídica" },
+    { "id": 2, "nombre": "Natural" }
+  ]
+}

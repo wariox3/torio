@@ -1,0 +1,17 @@
+{
+  "model": "general.GenBanco",
+  "data": [
+    { "id": 1,  "nombre": "Bancolombia"        },
+    { "id": 2,  "nombre": "Banco avvillas"     },
+    { "id": 3,  "nombre": "Davivienda"         },
+    { "id": 4,  "nombre": "Banco agrario"      },
+    { "id": 5,  "nombre": "Banco caja social"  },
+    { "id": 6,  "nombre": "Banco de occidente" },
+    { "id": 7,  "nombre": "Colpatria"          },
+    { "id": 8,  "nombre": "Banco bbva"         },
+    { "id": 9,  "nombre": "Sudameris"          },
+    { "id": 10, "nombre": "Banco itau"         },
+    { "id": 11, "nombre": "Banco de bogota"    },
+    { "id": 12, "nombre": "Nu bank"            }
+  ]
+}

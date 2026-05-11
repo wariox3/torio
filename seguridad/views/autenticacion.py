@@ -30,11 +30,12 @@ _LISTA_NEGRA = settings.SIMPLE_JWT.get('BLACKLIST_AFTER_ROTATION', False)
 
 def _asignar_cookies_auth(respuesta, access_token, refresh_token=None):
     seguro = not settings.DEBUG
+    dominio = f'.{settings.TENANT_BASE_DOMAIN}'
     respuesta.set_cookie('access_token', access_token, max_age=_TIEMPO_MAXIMO_ACCESO,
-                         httponly=True, secure=seguro, samesite='Lax')
+                         httponly=True, secure=seguro, samesite='Lax', domain=dominio)
     if refresh_token:
         respuesta.set_cookie('refresh_token', refresh_token, max_age=_TIEMPO_MAXIMO_REFRESCO,
-                             httponly=True, secure=seguro, samesite='Lax')
+                             httponly=True, secure=seguro, samesite='Lax', domain=dominio)
 
 
 @extend_schema(
@@ -78,7 +79,10 @@ class LoginView(APIView):
         access_token = str(refresh.access_token)
         refresh_token = str(refresh)
 
-        respuesta = Response(SegUsuarioMeSerializer(usuario).data)
+        data = SegUsuarioMeSerializer(usuario).data
+        if settings.DEBUG:
+            data['access_token'] = access_token
+        respuesta = Response(data)
         _asignar_cookies_auth(respuesta, access_token, refresh_token)
         return respuesta
 
@@ -153,7 +157,8 @@ class LogoutView(APIView):
             except TokenError:
                 pass
 
+        dominio = f'.{settings.TENANT_BASE_DOMAIN}'
         respuesta = Response({'detail': 'Logout exitoso.'})
-        respuesta.delete_cookie('access_token')
-        respuesta.delete_cookie('refresh_token')
+        respuesta.delete_cookie('access_token', domain=dominio)
+        respuesta.delete_cookie('refresh_token', domain=dominio)
         return respuesta

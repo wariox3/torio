@@ -1,0 +1,14 @@
+{
+  "model": "contabilidad.ConCuentaClase",
+  "data": [
+    { "id": 1, "nombre": "Activo"                               },
+    { "id": 2, "nombre": "Pasivo"                               },
+    { "id": 3, "nombre": "Patrimonio"                           },
+    { "id": 4, "nombre": "Ingresos"                             },
+    { "id": 5, "nombre": "Gastos"                               },
+    { "id": 6, "nombre": "Costos de venta"                      },
+    { "id": 7, "nombre": "Costos de produccion o de operacion"  },
+    { "id": 8, "nombre": "Cuentas de orden deudoras"            },
+    { "id": 9, "nombre": "Cuentas de orden acreedoras"          }
+  ]
+}
