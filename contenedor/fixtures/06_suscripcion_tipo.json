@@ -1,13 +1,17 @@
 {
   "model": "contenedor.CtnSuscripcionTipo",
   "data": [
-    { "id": 1,  "nombre": "Impulso Facturación",      "precio": 16900,  "suscripcion_clase_id": 1 },
-    { "id": 2,  "nombre": "Impulso ERP",              "precio": 22900,  "suscripcion_clase_id": 2 },
-    { "id": 3,  "nombre": "Crecimiento Facturación",  "precio": 49900,  "suscripcion_clase_id": 1 },
-    { "id": 4,  "nombre": "Crecimiento ERP",          "precio": 74900,  "suscripcion_clase_id": 2 },
-    { "id": 5,  "nombre": "Expansión Facturación",    "precio": 95900,  "suscripcion_clase_id": 1 },
-    { "id": 6,  "nombre": "Expansión ERP",            "precio": 149000, "suscripcion_clase_id": 2 },
-    { "id": 7,  "nombre": "Éxito Facturación",        "precio": 172900, "suscripcion_clase_id": 1 },
-    { "id": 8,  "nombre": "Éxito ERP",                "precio": 229900, "suscripcion_clase_id": 2 }
+    { "id": 1,  "nombre": "Impulso Facturación",              "precio": 16900,  "suscripcion_clase_id": 1, "suscripcion_categoria_id": 1 },
+    { "id": 2,  "nombre": "Impulso ERP",                      "precio": 22900,  "suscripcion_clase_id": 1, "suscripcion_categoria_id": 2 },
+    { "id": 3,  "nombre": "Crecimiento Facturación",          "precio": 49900,  "suscripcion_clase_id": 1, "suscripcion_categoria_id": 1 },
+    { "id": 4,  "nombre": "Crecimiento ERP",                  "precio": 74900,  "suscripcion_clase_id": 1, "suscripcion_categoria_id": 2 },
+    { "id": 5,  "nombre": "Expansión Facturación",            "precio": 95900,  "suscripcion_clase_id": 1, "suscripcion_categoria_id": 1 },
+    { "id": 6,  "nombre": "Expansión ERP",                    "precio": 149000, "suscripcion_clase_id": 1, "suscripcion_categoria_id": 2 },
+    { "id": 7,  "nombre": "Éxito Facturación",                "precio": 172900, "suscripcion_clase_id": 1, "suscripcion_categoria_id": 1 },
+    { "id": 8,  "nombre": "Éxito ERP",                        "precio": 229900, "suscripcion_clase_id": 1, "suscripcion_categoria_id": 2 },
+    { "id": 9,  "nombre": "Gestión humana Impulso",           "precio": 1,      "suscripcion_clase_id": 2, "suscripcion_categoria_id": 3 },
+    { "id": 10, "nombre": "Gestión humana Crecimiento",       "precio": 1,      "suscripcion_clase_id": 2, "suscripcion_categoria_id": 3 },
+    { "id": 11, "nombre": "Gestión humana Expansión",         "precio": 1,      "suscripcion_clase_id": 2, "suscripcion_categoria_id": 3 },
+    { "id": 12, "nombre": "Gestión humana Éxito",             "precio": 1,      "suscripcion_clase_id": 2, "suscripcion_categoria_id": 3 }
   ]
 }

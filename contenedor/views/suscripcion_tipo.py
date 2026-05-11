@@ -8,6 +8,7 @@ from contenedor.serializers import CtnSuscripcionTipoSerializer
 _LIST_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por nombre'),
     OpenApiParameter('suscripcion_clase_id', int, description='Filtrar por clase de suscripción'),
+    OpenApiParameter('suscripcion_categoria_id', int, description='Filtrar por categoría de suscripción'),
 ]
 
 
@@ -20,10 +21,13 @@ class CtnSuscripcionTipoViewSet(viewsets.ModelViewSet):
         qs = CtnSuscripcionTipo.objects.order_by('id')
         search = self.request.query_params.get('search', '').strip()
         suscripcion_clase_id = self.request.query_params.get('suscripcion_clase_id')
+        suscripcion_categoria_id = self.request.query_params.get('suscripcion_categoria_id')
         if search:
             qs = qs.filter(nombre__icontains=search)
         if suscripcion_clase_id:
             qs = qs.filter(suscripcion_clase_id=suscripcion_clase_id)
+        if suscripcion_categoria_id:
+            qs = qs.filter(suscripcion_categoria_id=suscripcion_categoria_id)
         return qs
 
     @extend_schema(parameters=_LIST_PARAMS)

@@ -6,5 +6,5 @@ from contenedor.models import CtnSuscripcionTipo
 class CtnSuscripcionTipoSerializer(serializers.ModelSerializer):
     class Meta:
         model = CtnSuscripcionTipo
-        fields = ['id', 'nombre', 'precio', 'suscripcion_clase_id']
+        fields = ['id', 'nombre', 'precio', 'suscripcion_clase_id', 'suscripcion_categoria_id']
         read_only_fields = ['id']
