@@ -1,3 +1,4 @@
+from .comprobante import ConComprobante
 from .cuenta import ConCuenta
 from .cuenta_clase import ConCuentaClase
 from .cuenta_cuenta import ConCuentaCuenta

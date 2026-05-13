@@ -170,7 +170,9 @@ python manage.py runserver                  # dev server
 python manage.py migrate_schemas --shared   # migraciones del schema público
 python manage.py migrate_schemas            # migraciones de todos los tenants
 python manage.py makemigrations             # generar migraciones
-python manage.py cargar_geodata             # cargar datos de referencia
+python manage.py cargar_geodata             # cargar datos de referencia (schema público)
+python manage.py cargar_datos_tenant        # cargar datos de referencia en todos los tenants
+python manage.py cargar_datos_tenant --schema demo  # cargar solo en un tenant específico
 python manage.py check --deploy             # auditoría de seguridad para prod
 python manage.py createsuperuser            # admin (en schema público)
 python manage.py test                       # tests

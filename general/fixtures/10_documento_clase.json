@@ -1,0 +1,33 @@
+{
+  "model": "general.GenDocumentoClase",
+  "data": [
+    { "id": 100, "nombre": "Factura venta",           "codigo_dian": "01", "grupo": 1 },
+    { "id": 101, "nombre": "Nota credito venta",      "codigo_dian": "01", "grupo": 1 },
+    { "id": 102, "nombre": "Nota debito venta",       "codigo_dian": "01", "grupo": 1 },
+    { "id": 103, "nombre": "Factura venta recurrente","codigo_dian": "01", "grupo": 1 },
+    { "id": 104, "nombre": "Cuenta cobro",            "codigo_dian": "01", "grupo": 1 },
+    { "id": 105, "nombre": "Factura POS",             "codigo_dian": "01", "grupo": 1 },
+    { "id": 106, "nombre": "Pedido cliente",          "codigo_dian": "01", "grupo": 1 },
+    { "id": 107, "nombre": "Remision",                "codigo_dian": "01", "grupo": 1 },
+    { "id": 108, "nombre": "Devolucion remision",     "codigo_dian": "01", "grupo": 1 },
+    { "id": 200, "nombre": "Pago",                    "codigo_dian": "01", "grupo": 2 },
+    { "id": 201, "nombre": "Saldo inicial CXC",       "codigo_dian": "01", "grupo": 2 },
+    { "id": 300, "nombre": "Compra",                  "codigo_dian": "01", "grupo": 3 },
+    { "id": 301, "nombre": "Nota credito compra",     "codigo_dian": "01", "grupo": 3 },
+    { "id": 302, "nombre": "Nota credito venta",      "codigo_dian": "01", "grupo": 3 },
+    { "id": 303, "nombre": "Documento soporte",       "codigo_dian": "01", "grupo": 3 },
+    { "id": 304, "nombre": "Nota ajuste",             "codigo_dian": "01", "grupo": 3 },
+    { "id": 305, "nombre": "Factura compra recurrente","codigo_dian": "01","grupo": 3 },
+    { "id": 400, "nombre": "Egreso",                  "codigo_dian": "01", "grupo": 4 },
+    { "id": 401, "nombre": "Saldo inicial CXP",       "codigo_dian": "01", "grupo": 4 },
+    { "id": 500, "nombre": "Entrada",                 "codigo_dian": "01", "grupo": 5 },
+    { "id": 501, "nombre": "Salida",                  "codigo_dian": "01", "grupo": 5 },
+    { "id": 502, "nombre": "Traslado almacen",        "codigo_dian": "01", "grupo": 5 },
+    { "id": 601, "nombre": "Asiento",                 "codigo_dian": "01", "grupo": 6 },
+    { "id": 602, "nombre": "Depreciacion",            "codigo_dian": "01", "grupo": 6 },
+    { "id": 603, "nombre": "Cierre",                  "codigo_dian": "01", "grupo": 6 },
+    { "id": 701, "nombre": "Nomina",                  "codigo_dian": "01", "grupo": 7 },
+    { "id": 702, "nombre": "Nomina electronica",      "codigo_dian": "01", "grupo": 7 },
+    { "id": 703, "nombre": "Seguridad social",        "codigo_dian": "01", "grupo": 7 }
+  ]
+}

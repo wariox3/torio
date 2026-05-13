@@ -1,0 +1,29 @@
+{
+  "model": "contabilidad.ConComprobante",
+  "data": [
+    { "id": 1,  "nombre": "SALDO INICIAL",        "codigo": "SI"  },
+    { "id": 2,  "nombre": "RECIBO DE CAJA",        "codigo": "RC"  },
+    { "id": 3,  "nombre": "EGRESO",                "codigo": "EG"  },
+    { "id": 4,  "nombre": "VENTA",                 "codigo": "VEN" },
+    { "id": 5,  "nombre": "NOTA CREDITO VENTA",    "codigo": "NCV" },
+    { "id": 6,  "nombre": "NOTA DEBITO VENTA",     "codigo": "NDV" },
+    { "id": 7,  "nombre": "COMPRA",                "codigo": "COM" },
+    { "id": 8,  "nombre": "NOTA CREDITO COMPRA",   "codigo": "NCC" },
+    { "id": 9,  "nombre": "NOTA DEBITO COMPRA",    "codigo": "NDC" },
+    { "id": 10, "nombre": "AJUSTE CONTABLE",       "codigo": "AJU", "permite_asiento": true },
+    { "id": 11, "nombre": "NOMINA",                "codigo": "NOM" },
+    { "id": 12, "nombre": "SEGURIDAD SOCIAL",      "codigo": "SSO" },
+    { "id": 13, "nombre": "PROVISION",             "codigo": "PRO" },
+    { "id": 14, "nombre": "DEPRECIACION",          "codigo": "DEP" },
+    { "id": 15, "nombre": "DOCUMENTO SOPORTE",     "codigo": "SOP" },
+    { "id": 16, "nombre": "VENTA POS",             "codigo": "POS" },
+    { "id": 17, "nombre": "NOTA DE AJUSTE",        "codigo": "NAJ" },
+    { "id": 18, "nombre": "CUENTA DE COBRO",       "codigo": "CDC" },
+    { "id": 19, "nombre": "CIERRE AÑO",            "codigo": "CIE" },
+    { "id": 20, "nombre": "VENTA POS ELECTRONICO", "codigo": "PEL" },
+    { "id": 21, "nombre": "PRIMA",                 "codigo": "PRI" },
+    { "id": 22, "nombre": "CESANTIA",              "codigo": "CES" },
+    { "id": 23, "nombre": "LIQUIDACION",           "codigo": "LIQ" },
+    { "id": 24, "nombre": "INTERES CESANTIA",      "codigo": "ICE" }
+  ]
+}

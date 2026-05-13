@@ -1,4 +1,7 @@
 from .asesor import GenAsesor
+from .documento import GenDocumento
+from .documento_clase import GenDocumentoClase
+from .documento_tipo import GenDocumentoTipo
 from .banco import GenBanco
 from .ciudad import GenCiudad
 from .contacto import GenContacto
@@ -9,5 +12,6 @@ from .estado import GenEstado
 from .identificacion import GenIdentificacion
 from .pais import GenPais
 from .plazo_pago import GenPlazoPago
+from .resolucion import GenResolucion
 from .precio import GenPrecio
 from .tipo_persona import GenTipoPersona

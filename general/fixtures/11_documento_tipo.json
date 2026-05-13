@@ -1,0 +1,296 @@
+{
+  "model": "general.GenDocumentoTipo",
+  "data": [
+    {
+      "id": 1,
+      "nombre": "FACTURA ELECTRÓNICA DE VENTA",
+      "documento_clase_id": 100,
+      "comprobante_id": 4,
+      "venta": true,
+      "cobrar": true,
+      "operacion": 1,
+      "contabilidad": true,
+      "inventario": true,
+      "operacion_inventario": -1,
+      "electronico": true
+    },
+    {
+      "id": 2,
+      "nombre": "NOTA CRÉDITO DE VENTA",
+      "documento_clase_id": 101,
+      "comprobante_id": 5,
+      "venta": true,
+      "cobrar": true,
+      "operacion": -1,
+      "contabilidad": true,
+      "inventario": true,
+      "operacion_inventario": 1,
+      "electronico": true
+    },
+    {
+      "id": 3,
+      "nombre": "NOTA DÉBITO DE VENTA",
+      "documento_clase_id": 102,
+      "comprobante_id": 6,
+      "venta": true,
+      "cobrar": true,
+      "operacion": 1,
+      "contabilidad": true,
+      "electronico": true
+    },
+    {
+      "id": 4,
+      "nombre": "PAGO",
+      "documento_clase_id": 200,
+      "comprobante_id": 2,
+      "contabilidad": true
+    },
+    {
+      "id": 5,
+      "nombre": "COMPRA",
+      "documento_clase_id": 300,
+      "comprobante_id": 7,
+      "compra": true,
+      "pagar": true,
+      "electronico": true,
+      "operacion": 1,
+      "inventario": true,
+      "operacion_inventario": 1,
+      "contabilidad": true
+    },
+    {
+      "id": 6,
+      "nombre": "NOTA CREDITO COMPRA",
+      "documento_clase_id": 301,
+      "comprobante_id": 8,
+      "compra": true,
+      "pagar": true,
+      "operacion": -1,
+      "inventario": true,
+      "operacion_inventario": -1,
+      "contabilidad": true
+    },
+    {
+      "id": 7,
+      "nombre": "NOTA DEBITO COMPRA",
+      "documento_clase_id": 302,
+      "comprobante_id": 9,
+      "compra": true,
+      "pagar": true,
+      "operacion": 1,
+      "contabilidad": true
+    },
+    {
+      "id": 8,
+      "nombre": "EGRESO",
+      "documento_clase_id": 400,
+      "comprobante_id": 3,
+      "contabilidad": true
+    },
+    {
+      "id": 9,
+      "nombre": "ENTRADA ALMACEN",
+      "documento_clase_id": 500,
+      "inventario": true,
+      "operacion_inventario": 1
+    },
+    {
+      "id": 10,
+      "nombre": "SALIDA ALMACEN",
+      "documento_clase_id": 501,
+      "inventario": true,
+      "operacion_inventario": -1
+    },
+    {
+      "id": 11,
+      "nombre": "DOCUMENTO SOPORTE",
+      "documento_clase_id": 303,
+      "comprobante_id": 15,
+      "compra": true,
+      "pagar": true,
+      "electronico": true,
+      "operacion": 1,
+      "inventario": true,
+      "contabilidad": true
+    },
+    {
+      "id": 12,
+      "nombre": "NOTA AJUSTE",
+      "documento_clase_id": 304,
+      "comprobante_id": 17,
+      "compra": true,
+      "pagar": true,
+      "electronico": true,
+      "operacion": -1,
+      "inventario": true,
+      "operacion_inventario": -1,
+      "contabilidad": true
+    },
+    {
+      "id": 13,
+      "nombre": "ASIENTO",
+      "documento_clase_id": 601,
+      "contabilidad": true
+    },
+    {
+      "id": 14,
+      "nombre": "NOMINA",
+      "documento_clase_id": 701,
+      "comprobante_id": 11,
+      "pagar": true,
+      "operacion": 1,
+      "contabilidad": true
+    },
+    {
+      "id": 15,
+      "nombre": "NOMINA ELECTRONICA",
+      "documento_clase_id": 702,
+      "electronico": true
+    },
+    {
+      "id": 16,
+      "nombre": "FACTURA VENTA RECURRENTE",
+      "documento_clase_id": 103
+    },
+    {
+      "id": 17,
+      "nombre": "CUENTA COBRO",
+      "documento_clase_id": 104,
+      "comprobante_id": 18,
+      "venta": true,
+      "cobrar": true,
+      "operacion": 1,
+      "operacion_inventario": -1
+    },
+    {
+      "id": 18,
+      "nombre": "SALDO INICIAL CXC",
+      "documento_clase_id": 201,
+      "cobrar": true,
+      "operacion": 1
+    },
+    {
+      "id": 19,
+      "nombre": "SALDO INICIAL CXP",
+      "documento_clase_id": 401,
+      "pagar": true,
+      "operacion": 1
+    },
+    {
+      "id": 20,
+      "nombre": "PRIMA",
+      "documento_clase_id": 701,
+      "comprobante_id": 21,
+      "pagar": true,
+      "operacion": 1,
+      "contabilidad": true
+    },
+    {
+      "id": 21,
+      "nombre": "CESANTIA",
+      "documento_clase_id": 701,
+      "comprobante_id": 22,
+      "pagar": true,
+      "operacion": 1,
+      "contabilidad": true
+    },
+    {
+      "id": 22,
+      "nombre": "SEGURIDAD SOCIAL",
+      "documento_clase_id": 703,
+      "comprobante_id": 11,
+      "pagar": true,
+      "operacion": 1,
+      "contabilidad": true
+    },
+    {
+      "id": 23,
+      "nombre": "DEPRECIACION",
+      "documento_clase_id": 602,
+      "comprobante_id": 14,
+      "contabilidad": true
+    },
+    {
+      "id": 24,
+      "nombre": "FACTURA POS ELECTRONICO",
+      "documento_clase_id": 105,
+      "comprobante_id": 16,
+      "venta": true,
+      "cobrar": true,
+      "operacion": 1,
+      "contabilidad": true,
+      "inventario": true,
+      "operacion_inventario": -1,
+      "electronico": true,
+      "pos": true
+    },
+    {
+      "id": 25,
+      "nombre": "CIERRE CONTABLE",
+      "documento_clase_id": 603,
+      "comprobante_id": 19,
+      "contabilidad": true
+    },
+    {
+      "id": 26,
+      "nombre": "PEDIDO CLIENTE",
+      "documento_clase_id": 106
+    },
+    {
+      "id": 27,
+      "nombre": "FACTURA POS",
+      "documento_clase_id": 105,
+      "comprobante_id": 20,
+      "venta": true,
+      "cobrar": true,
+      "operacion": 1,
+      "contabilidad": true,
+      "inventario": true,
+      "operacion_inventario": -1,
+      "pos": true
+    },
+    {
+      "id": 28,
+      "nombre": "LIQUIDACION",
+      "documento_clase_id": 701,
+      "comprobante_id": 21,
+      "pagar": true,
+      "operacion": 1,
+      "contabilidad": true
+    },
+    {
+      "id": 29,
+      "nombre": "REMISION",
+      "documento_clase_id": 107,
+      "operacion_remision": -1,
+      "afecta_cantidad": true
+    },
+    {
+      "id": 30,
+      "nombre": "DEVOLUCION REMISION",
+      "documento_clase_id": 108,
+      "operacion_remision": 1
+    },
+    {
+      "id": 31,
+      "nombre": "TRASLADO ALMACEN",
+      "documento_clase_id": 502,
+      "inventario": true,
+      "operacion_inventario": 1
+    },
+    {
+      "id": 32,
+      "nombre": "FACTURA COMPRA RECURRENTE",
+      "documento_clase_id": 305
+    },
+    {
+      "id": 33,
+      "nombre": "INTERES CESANTIA",
+      "documento_clase_id": 701,
+      "comprobante_id": 24,
+      "pagar": true,
+      "operacion": 1,
+      "contabilidad": true
+    }
+  ]
+}
