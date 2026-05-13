@@ -7,6 +7,7 @@ from contenedor.views import (
     CtnEstadoViewSet,
     CtnEventoPagoViewSet,
     CtnIdentificacionViewSet,
+    CtnInvitacionViewSet,
     CtnMovimientoViewSet,
     CtnPaisViewSet,
     CtnSuscripcionViewSet,
@@ -24,5 +25,6 @@ router.register(r'movimiento', CtnMovimientoViewSet, basename='movimiento')
 router.register(r'pais', CtnPaisViewSet, basename='pais')
 router.register(r'suscripcion', CtnSuscripcionViewSet, basename='suscripcion')
 router.register(r'suscripcion-tipo', CtnSuscripcionTipoViewSet, basename='suscripcion-tipo')
+router.register(r'invitacion', CtnInvitacionViewSet, basename='invitacion')
 
 urlpatterns = router.urls

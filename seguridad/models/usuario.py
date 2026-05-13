@@ -13,7 +13,7 @@ class SegUsuario(UserProfile):
     # last_login = models.DateTimeField(null=True)
     tenants = models.ManyToManyField(
         settings.TENANT_MODEL,
-        through='seguridad.SegUsuarioTenant',
+        through='seguridad.SegUsuarioCliente',
         related_name='user_set',
         blank=True,
     )

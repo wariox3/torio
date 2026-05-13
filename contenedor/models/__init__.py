@@ -1,4 +1,5 @@
 from .ciudad import CtnCiudad
+from .invitacion import CtnInvitacion
 from .cliente import CtnCliente
 from .contacto import CtnContacto
 from .dominio import CtnDominio

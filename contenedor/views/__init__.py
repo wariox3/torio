@@ -1,4 +1,5 @@
 from .ciudad import CtnCiudadViewSet
+from .invitacion import CtnInvitacionViewSet
 from .cliente import CtnClienteViewSet
 from .contacto import CtnContactoViewSet
 from .estado import CtnEstadoViewSet

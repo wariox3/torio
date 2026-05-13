@@ -1,4 +1,5 @@
 from .ciudad import CtnCiudadSeleccionarSerializer, CtnCiudadSerializer
+from .invitacion import CtnInvitacionAceptarSerializer, CtnInvitacionSerializer
 from .cliente import CtnClienteSerializer
 from .contacto import CtnContactoSerializer
 from .estado import CtnEstadoSeleccionarSerializer, CtnEstadoSerializer
