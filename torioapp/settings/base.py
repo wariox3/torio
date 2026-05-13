@@ -216,6 +216,9 @@ ENABLE_API_DOCS = config('ENABLE_API_DOCS', default=False, cast=bool)
 TURNSTILE_SECRET_KEY = config('TURNSTILE_SECRET_KEY', default='')
 TURNSTILE_ENABLED = config('TURNSTILE_ENABLED', default=True, cast=bool)
 
+# Wompi
+WOMPI_EVENTS_SECRET = config('WOMPI_EVENTS_SECRET', default='')
+
 # Backblaze B2
 B2_KEY_ID = config('B2_KEY_ID', default='')
 B2_APP_KEY = config('B2_APP_KEY', default='')

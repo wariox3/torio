@@ -1,13 +1,15 @@
 from rest_framework import serializers
 
-from contenedor.models import CtnDatosFacturacion
+from contenedor.models import CtnContacto
 
 
-class CtnDatosFacturacionSerializer(serializers.ModelSerializer):
+class CtnContactoSerializer(serializers.ModelSerializer):
     class Meta:
-        model = CtnDatosFacturacion
+        model = CtnContacto
         fields = [
             'id', 'numero_identificacion', 'digito_verificacion', 'nombre_corto',
             'direccion', 'telefono', 'correo',
             'identificacion', 'ciudad', 'usuario',
         ]
+        read_only_fields = ['id', 'usuario']
+        read_only_fields = ['id', 'usuario']

@@ -1,14 +1,7 @@
 from django.db import models
 
 
-class CtnEventoPasarela(models.Model):
-    movimiento = models.ForeignKey(
-        'contenedor.CtnMovimiento',
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name='eventos_pasarela',
-    )
+class CtnEventoPago(models.Model):
     fecha = models.DateTimeField(auto_now_add=True)
     evento = models.CharField(max_length=50, null=True)
     entorno = models.CharField(max_length=10, null=True)
@@ -23,9 +16,9 @@ class CtnEventoPasarela(models.Model):
     datos = models.JSONField(null=True, blank=True)
 
     class Meta:
-        db_table = 'ctn_evento_pasarela'
-        verbose_name = 'Evento pasarela'
-        verbose_name_plural = 'Eventos pasarela'
+        db_table = 'ctn_evento_pago'
+        verbose_name = 'Evento pago'
+        verbose_name_plural = 'Eventos pago'
 
     def __str__(self):
         return f'{self.evento} - {self.transaccion} - {self.estado}'
