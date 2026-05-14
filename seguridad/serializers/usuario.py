@@ -30,6 +30,12 @@ class SegUsuarioActualizarSerializer(serializers.ModelSerializer):
         fields = ['nombre_corto', 'numero_identificacion', 'celular', 'idioma']
 
 
+class SegUsuarioSeleccionarSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SegUsuario
+        fields = ['id', 'nombre_corto', 'email']
+
+
 class SegUsuarioMeSerializer(serializers.ModelSerializer):
     imagen = serializers.SerializerMethodField()
     imagen_thumbnail = serializers.SerializerMethodField()

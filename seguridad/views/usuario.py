@@ -2,7 +2,8 @@ import logging
 
 from django.conf import settings
 from django.core import signing
-from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from django.db import models
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
@@ -12,7 +13,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.parsers import MultiPartParser
 
 from seguridad.models import SegUsuario
-from seguridad.serializers import SegUsuarioActualizarSerializer, SegUsuarioMeSerializer, SegUsuarioSerializer
+from seguridad.serializers import SegUsuarioActualizarSerializer, SegUsuarioMeSerializer, SegUsuarioSeleccionarSerializer, SegUsuarioSerializer
 from utilidades.backblaze import subir_foto_usuario
 from utilidades.turnstile import verify_turnstile
 from utilidades.zinc import Zinc
@@ -272,6 +273,26 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         request.user.imagen_thumbnail = url_thumbnail
         request.user.save(update_fields=['imagen', 'imagen_thumbnail'])
         return Response(SegUsuarioMeSerializer(request.user).data)
+
+    @extend_schema(
+        tags=['Usuarios'],
+        summary='Seleccionar usuario',
+        description='Retorna id, nombre_corto y email. Busca por nombre o email (máx 10 resultados).',
+        parameters=[
+            OpenApiParameter('search', str, description='Buscar por nombre o email'),
+        ],
+        responses=SegUsuarioSeleccionarSerializer(many=True),
+    )
+    @action(detail=False, methods=['get'], url_path='seleccionar')
+    def seleccionar(self, request):
+        search = request.query_params.get('search', '').strip()
+        qs = SegUsuario.objects.all()
+        if search:
+            qs = qs.filter(
+                models.Q(nombre_corto__icontains=search) | models.Q(email__icontains=search)
+            )
+        qs = qs[:10]
+        return Response(SegUsuarioSeleccionarSerializer(qs, many=True).data)
 
     @extend_schema(exclude=True)
     @action(detail=False, methods=['post'], url_path='cambiar-clave')

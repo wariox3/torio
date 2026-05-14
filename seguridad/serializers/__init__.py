@@ -1,4 +1,4 @@
 from .autenticacion import SegLoginSerializer
 from .permiso import SegPermisoSerializer
 from .rol import SegRolSerializer
-from .usuario import SegUsuarioActualizarSerializer, SegUsuarioMeSerializer, SegUsuarioSerializer
+from .usuario import SegUsuarioActualizarSerializer, SegUsuarioMeSerializer, SegUsuarioSeleccionarSerializer, SegUsuarioSerializer
