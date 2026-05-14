@@ -4,14 +4,20 @@ from pathlib import Path
 from django.apps import apps
 from django.core.management.base import BaseCommand
 
-FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent / 'fixtures'
+_BASE = Path(__file__).resolve().parent.parent.parent.parent
+FIXTURES_DIRS = [
+    _BASE / 'contenedor' / 'fixtures',
+    _BASE / 'seguridad' / 'fixtures',
+]
 
 
 class Command(BaseCommand):
-    help = 'Carga datos geográficos desde los archivos JSON en fixtures/ (idempotente)'
+    help = 'Carga datos del schema público desde los fixtures/ de contenedor y seguridad (idempotente)'
 
     def handle(self, *_args, **_options):
-        archivos = sorted(FIXTURES_DIR.glob('*.json'))
+        archivos = sorted(
+            archivo for d in FIXTURES_DIRS for archivo in d.glob('*.json')
+        )
         if not archivos:
             self.stdout.write(self.style.WARNING('No se encontraron archivos JSON en fixtures/'))
             return

@@ -8,6 +8,7 @@
     {"id": 5, "nombre": "Compras",            "codigo": "compras",  "descripcion": "Creación de documentos de compra", "activo": true},
     {"id": 6, "nombre": "Operador",           "codigo": "operador", "descripcion": "Operaciones básicas de ingreso", "activo": true},
     {"id": 7, "nombre": "Auditor",            "codigo": "auditor",  "descripcion": "Solo lectura en todos los módulos", "activo": true},
-    {"id": 8, "nombre": "Recursos Humanos",   "codigo": "rrhh",     "descripcion": "Acceso al módulo de nómina y empleados", "activo": true}
+    {"id": 8, "nombre": "Recursos Humanos",   "codigo": "rrhh",     "descripcion": "Acceso al módulo de nómina y empleados", "activo": true},
+    {"id": 9, "nombre": "General",            "codigo": "general",  "descripcion": "Acceso general a todos los módulos", "activo": true}
   ]
 }
