@@ -18,6 +18,8 @@ class SegUsuarioSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop('password')
+        if not validated_data.get('nombre_corto'):
+            validated_data['nombre_corto'] = validated_data['email'].split('@')[0]
         user = SegUsuario(**validated_data)
         user.set_password(password)
         user.save()
