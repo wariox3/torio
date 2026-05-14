@@ -63,5 +63,8 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
         ]
 
     def get_dominio(self, obj):
+        dominios = getattr(obj, '_dominio_primario', None)
+        if dominios is not None:
+            return dominios[0].domain if dominios else None
         dominio = CtnDominio.objects.filter(tenant=obj, is_primary=True).first()
         return dominio.domain if dominio else None

@@ -112,7 +112,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
     def pendiente_usuario(self, request):
         qs = self.get_queryset().filter(
             estado=CtnInvitacion.ESTADO_PENDIENTE
-        ).select_related('cliente')
+        ).select_related('cliente', 'rol')
         pagina = self.paginate_queryset(qs)
         return self.get_paginated_response(CtnInvitacionSerializer(pagina, many=True).data)
 

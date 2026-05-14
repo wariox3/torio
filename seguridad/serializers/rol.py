@@ -15,4 +15,4 @@ class SegRolSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'fecha_creacion', 'permisos_codigos']
 
     def get_permisos_codigos(self, obj):
-        return list(obj.permisos.values_list('codigo', flat=True))
+        return [p.codigo for p in obj.permisos.all()]

@@ -10,6 +10,8 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from django.db.models import Prefetch
+
 from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion
 from contenedor.serializers import CtnClienteSerializer
 from contenedor.serializers.cliente import CtnClienteActualizarSerializer, CtnClienteListaUsuarioSerializer
@@ -109,6 +111,12 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
 
         clientes = CtnCliente.objects.select_related(
             'suscripcion__suscripcion_tipo'
+        ).prefetch_related(
+            Prefetch(
+                'domains',
+                queryset=CtnDominio.objects.filter(is_primary=True),
+                to_attr='_dominio_primario',
+            )
         ).filter(id__in=ids_cliente, activo=True)
 
         nombre = request.query_params.get('nombre')
