@@ -1,7 +1,7 @@
 import logging
 
 from django.conf import settings
-from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -104,16 +104,41 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         return Response(CtnInvitacionSerializer(invitacion).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
-        summary='Invitaciones pendientes',
-        description='Retorna las invitaciones pendientes del usuario autenticado.',
+        summary='Invitaciones pendientes del usuario autenticado',
+        description='Retorna las invitaciones pendientes recibidas por el usuario autenticado.',
         responses={200: CtnInvitacionSerializer(many=True)},
     )
-    @action(detail=False, methods=['get'], url_path='pendiente')
-    def pendiente(self, request):
+    @action(detail=False, methods=['get'], url_path='pendiente-usuario')
+    def pendiente_usuario(self, request):
         qs = self.get_queryset().filter(
             estado=CtnInvitacion.ESTADO_PENDIENTE
         ).select_related('cliente')
-        return Response(CtnInvitacionSerializer(qs, many=True).data)
+        pagina = self.paginate_queryset(qs)
+        return self.get_paginated_response(CtnInvitacionSerializer(pagina, many=True).data)
+
+    @extend_schema(
+        summary='Invitaciones pendientes de un cliente',
+        description='Retorna las invitaciones pendientes enviadas desde un cliente.',
+        parameters=[
+            OpenApiParameter('cliente_id', int, required=True, description='ID del cliente'),
+        ],
+        responses={
+            200: CtnInvitacionSerializer(many=True),
+            400: OpenApiResponse(_RespuestaDetalle, description='cliente_id requerido'),
+        },
+    )
+    @action(detail=False, methods=['get'], url_path='pendiente-cliente')
+    def pendiente_cliente(self, request):
+        cliente_id = request.query_params.get('cliente_id')
+        if not cliente_id:
+            return Response({'detail': 'cliente_id es requerido.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        qs = CtnInvitacion.objects.filter(
+            cliente_id=cliente_id,
+            estado=CtnInvitacion.ESTADO_PENDIENTE,
+        ).select_related('usuario_invitado', 'rol')
+        pagina = self.paginate_queryset(qs)
+        return self.get_paginated_response(CtnInvitacionSerializer(pagina, many=True).data)
 
     @extend_schema(
         summary='Aceptar invitación',
