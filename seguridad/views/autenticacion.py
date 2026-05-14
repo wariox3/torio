@@ -69,7 +69,7 @@ class LoginView(APIView):
 
         if not usuario.is_verified:
             return Response(
-                {'detail': 'Cuenta no verificada. Revisa tu correo para activarla.'},
+                {'detail': 'Cuenta no verificada. Revisa tu correo para activarla.', 'verificado': False},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
