@@ -1,5 +1,6 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 
 from contenedor.models import CtnSuscripcion
@@ -33,3 +34,16 @@ class CtnSuscripcionViewSet(viewsets.ModelViewSet):
     @extend_schema(parameters=_LIST_PARAMS)
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary='Suscripciones del usuario autenticado',
+        description='Retorna las suscripciones creadas por el usuario autenticado.',
+        responses=CtnSuscripcionSerializer(many=True),
+    )
+    @action(detail=False, methods=['get'], url_path='lista-usuario')
+    def lista_usuario(self, request):
+        qs = CtnSuscripcion.objects.filter(
+            usuario=request.user,
+        ).select_related('cliente', 'suscripcion_tipo').order_by('-fecha_inicio')
+        pagina = self.paginate_queryset(qs)
+        return self.get_paginated_response(CtnSuscripcionSerializer(pagina, many=True).data)
