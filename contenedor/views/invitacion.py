@@ -8,7 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from contenedor.models import CtnInvitacion
-from contenedor.serializers import CtnInvitacionCrearSerializer, CtnInvitacionSerializer
+from contenedor.serializers import CtnInvitacionClienteSerializer, CtnInvitacionCrearSerializer, CtnInvitacionSerializer
 from seguridad.models import SegUsuario, SegUsuarioCliente
 from utilidades.zinc import Zinc
 
@@ -138,7 +138,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
             estado=CtnInvitacion.ESTADO_PENDIENTE,
         ).select_related('usuario_invitado', 'rol')
         pagina = self.paginate_queryset(qs)
-        return self.get_paginated_response(CtnInvitacionSerializer(pagina, many=True).data)
+        return self.get_paginated_response(CtnInvitacionClienteSerializer(pagina, many=True).data)
 
     @extend_schema(
         summary='Aceptar invitación',
