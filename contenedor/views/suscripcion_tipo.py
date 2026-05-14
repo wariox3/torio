@@ -1,6 +1,8 @@
-from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import viewsets
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
+from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from contenedor.models import CtnSuscripcionTipo
 from contenedor.serializers import CtnSuscripcionTipoSerializer
@@ -33,3 +35,28 @@ class CtnSuscripcionTipoViewSet(viewsets.ModelViewSet):
     @extend_schema(parameters=_LIST_PARAMS)
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary='Listar tipos de suscripción por clase',
+        parameters=[
+            OpenApiParameter('clase_id', int, required=True, description='ID de la clase de suscripción'),
+        ],
+        responses={
+            200: CtnSuscripcionTipoSerializer(many=True),
+            400: OpenApiResponse(
+                inline_serializer('ClaseIdRequerido', {'detail': serializers.CharField()}),
+                description='clase_id requerido',
+            ),
+        },
+    )
+    @action(detail=False, methods=['get'], url_path='lista-clase')
+    def lista_clase(self, request):
+        clase_id = request.query_params.get('clase_id')
+        if not clase_id:
+            return Response({'detail': 'clase_id es requerido.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        qs = CtnSuscripcionTipo.objects.filter(
+            suscripcion_clase_id=clase_id,
+        ).exclude(suscripcion_categoria_id=99).order_by('id')
+        pagina = self.paginate_queryset(qs)
+        return self.get_paginated_response(CtnSuscripcionTipoSerializer(pagina, many=True).data)
