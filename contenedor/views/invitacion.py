@@ -70,23 +70,30 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if CtnInvitacion.objects.filter(
+        invitacion_existente = CtnInvitacion.objects.filter(
             cliente=cliente,
             usuario_invitado=usuario,
-            estado=CtnInvitacion.ESTADO_PENDIENTE,
-        ).exists():
-            return Response(
-                {'detail': 'Ya existe una invitación pendiente para este usuario.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        ).first()
 
-        invitacion = CtnInvitacion.objects.create(
-            cliente=cliente,
-            usuario_invitado=usuario,
-            usuario=request.user,
-            rol=rol,
-            estado=CtnInvitacion.ESTADO_PENDIENTE,
-        )
+        if invitacion_existente:
+            if invitacion_existente.estado == CtnInvitacion.ESTADO_PENDIENTE:
+                return Response(
+                    {'detail': 'Ya existe una invitación pendiente para este usuario.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            invitacion_existente.estado = CtnInvitacion.ESTADO_PENDIENTE
+            invitacion_existente.usuario = request.user
+            invitacion_existente.rol = rol
+            invitacion_existente.save(update_fields=['estado', 'usuario', 'rol'])
+            invitacion = invitacion_existente
+        else:
+            invitacion = CtnInvitacion.objects.create(
+                cliente=cliente,
+                usuario_invitado=usuario,
+                usuario=request.user,
+                rol=rol,
+                estado=CtnInvitacion.ESTADO_PENDIENTE,
+            )
 
         link = f'{settings.FRONTEND_URL}/invitaciones'
         html = (
@@ -194,7 +201,5 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         if invitacion.estado != CtnInvitacion.ESTADO_PENDIENTE:
             return Response({'detail': 'La invitación ya fue procesada.'}, status=status.HTTP_409_CONFLICT)
 
-        invitacion.estado = CtnInvitacion.ESTADO_RECHAZADA
-        invitacion.save(update_fields=['estado'])
-
-        return Response({'detail': 'Invitación rechazada.'})
+        invitacion.delete()
+        return Response({'detail': 'Invitación rechazada.'}, status=status.HTTP_200_OK)
