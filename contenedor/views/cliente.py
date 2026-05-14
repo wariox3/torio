@@ -105,24 +105,23 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
     )
     @action(detail=False, methods=['get'], url_path='lista-usuario')
     def lista_usuario(self, request):
-        ids_cliente = SegUsuarioCliente.objects.filter(
-            usuario=request.user
-        ).values_list('cliente_id', flat=True)
-
-        clientes = CtnCliente.objects.select_related(
-            'suscripcion__suscripcion_tipo'
+        membresias = SegUsuarioCliente.objects.filter(
+            usuario=request.user,
+            cliente__activo=True,
+        ).select_related(
+            'cliente__suscripcion__suscripcion_tipo',
+            'rol',
         ).prefetch_related(
             Prefetch(
-                'domains',
+                'cliente__domains',
                 queryset=CtnDominio.objects.filter(is_primary=True),
                 to_attr='_dominio_primario',
             )
-        ).filter(id__in=ids_cliente, activo=True)
+        )
 
         nombre = request.query_params.get('nombre')
         if nombre:
-            clientes = clientes.filter(nombre__icontains=nombre)
+            membresias = membresias.filter(cliente__nombre__icontains=nombre)
 
-        pagina = self.paginate_queryset(clientes)
-        serializador = CtnClienteListaUsuarioSerializer(pagina, many=True)
-        return self.get_paginated_response(serializador.data)
+        pagina = self.paginate_queryset(membresias)
+        return self.get_paginated_response(CtnClienteListaUsuarioSerializer(pagina, many=True).data)
