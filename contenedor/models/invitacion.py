@@ -16,22 +16,30 @@ class CtnInvitacion(models.Model):
         on_delete=models.CASCADE,
         related_name='invitaciones',
     )
-    invitado_por = models.ForeignKey(
+    usuario = models.ForeignKey(
         'seguridad.SegUsuario',
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name='invitaciones_enviadas',
     )
-    correo = models.EmailField()
+    usuario_invitado = models.ForeignKey(
+        'seguridad.SegUsuario',
+        on_delete=models.CASCADE,
+        related_name='invitaciones_recibidas',
+    )
+    rol = models.ForeignKey(
+        'seguridad.SegRol',
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name='invitaciones',
+    )
     estado = models.CharField(max_length=1, choices=ESTADO_CHOICES, default=ESTADO_PENDIENTE)
-    fecha_envio = models.DateTimeField(auto_now_add=True)
-    fecha_expira = models.DateTimeField()
-    token = models.CharField(max_length=500, unique=True)
+    fecha = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'ctn_invitacion'
         verbose_name = 'Invitación'
         verbose_name_plural = 'Invitaciones'
-        unique_together = [['cliente', 'correo']]
+        unique_together = [['cliente', 'usuario_invitado']]
 
     def __str__(self):
-        return f'{self.correo} → {self.cliente} ({self.get_estado_display()})'
+        return f'{self.usuario_invitado} → {self.cliente} ({self.get_estado_display()})'

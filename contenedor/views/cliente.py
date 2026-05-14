@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion
 from contenedor.serializers import CtnClienteSerializer
 from contenedor.serializers.cliente import CtnClienteActualizarSerializer, CtnClienteListaUsuarioSerializer
-from seguridad.models import SegUsuarioCliente
+from seguridad.models import SegRol, SegUsuarioCliente
 
 
 @extend_schema(tags=['Cliente'])
@@ -57,7 +57,8 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         cliente = serializador.save(owner=request.user)
 
         CtnDominio.objects.create(domain=dominio, is_primary=True, tenant=cliente)
-        SegUsuarioCliente.objects.create(usuario=request.user, cliente=cliente)
+        rol_owner = SegRol.objects.filter(codigo='owner').first()
+        SegUsuarioCliente.objects.create(usuario=request.user, cliente=cliente, rol=rol_owner)
 
         fecha_inicio = date.today()
         if frecuencia == CtnSuscripcion.FRECUENCIA_PRUEBA:

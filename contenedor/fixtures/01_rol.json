@@ -1,0 +1,13 @@
+{
+  "model": "seguridad.SegRol",
+  "data": [
+    {"id": 1, "nombre": "Propietario",       "codigo": "owner",    "descripcion": "Acceso total al contenedor", "activo": true},
+    {"id": 2, "nombre": "Administrador",      "codigo": "admin",    "descripcion": "Gestión de usuarios, roles y configuración", "activo": true},
+    {"id": 3, "nombre": "Contador",           "codigo": "contador", "descripcion": "Acceso completo a contabilidad y documentos", "activo": true},
+    {"id": 4, "nombre": "Vendedor",           "codigo": "vendedor", "descripcion": "Creación de documentos de venta", "activo": true},
+    {"id": 5, "nombre": "Compras",            "codigo": "compras",  "descripcion": "Creación de documentos de compra", "activo": true},
+    {"id": 6, "nombre": "Operador",           "codigo": "operador", "descripcion": "Operaciones básicas de ingreso", "activo": true},
+    {"id": 7, "nombre": "Auditor",            "codigo": "auditor",  "descripcion": "Solo lectura en todos los módulos", "activo": true},
+    {"id": 8, "nombre": "Recursos Humanos",   "codigo": "rrhh",     "descripcion": "Acceso al módulo de nómina y empleados", "activo": true}
+  ]
+}

@@ -37,16 +37,12 @@ class SegUsuario(UserProfile):
     def tiene_permiso(self, codigo, tenant):
         if self.is_superuser:
             return True
-        return self.asignaciones_rol.filter(
-            tenant=tenant,
+        return self.membresias.filter(
+            cliente=tenant,
             rol__activo=True,
             rol__permisos__codigo=codigo,
         ).exists()
 
-    def roles_en(self, tenant):
-        from seguridad.models import SegRol
-        return SegRol.objects.filter(
-            asignaciones__usuario=self,
-            asignaciones__tenant=tenant,
-            activo=True,
-        ).distinct()
+    def rol_en(self, tenant):
+        membresia = self.membresias.filter(cliente=tenant).select_related('rol').first()
+        return membresia.rol if membresia else None
