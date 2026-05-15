@@ -1,7 +1,7 @@
 from .ciudad import CtnCiudadSeleccionarSerializer, CtnCiudadSerializer
 from .invitacion import CtnInvitacionClienteSerializer, CtnInvitacionCrearSerializer, CtnInvitacionSerializer
 from .cliente import CtnClienteSerializer
-from .contacto import CtnContactoSerializer
+from .contacto import CtnContactoListaUsuarioSerializer, CtnContactoSerializer
 from .estado import CtnEstadoSeleccionarSerializer, CtnEstadoSerializer
 from .evento_pago import CtnEventoPagoSerializer
 from .identificacion import CtnIdentificacionSeleccionarSerializer, CtnIdentificacionSerializer

@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 
 from contenedor.models import CtnContacto
-from contenedor.serializers import CtnContactoSerializer
+from contenedor.serializers import CtnContactoListaUsuarioSerializer, CtnContactoSerializer
 
 
 @extend_schema(tags=['Contacto'])
@@ -23,7 +23,7 @@ class CtnContactoViewSet(viewsets.ModelViewSet):
     @extend_schema(
         summary='Contactos del usuario autenticado',
         description='Retorna los contactos creados por el usuario autenticado.',
-        responses=CtnContactoSerializer(many=True),
+        responses=CtnContactoListaUsuarioSerializer(many=True),
     )
     @action(detail=False, methods=['get'], url_path='lista-usuario')
     def lista_usuario(self, request):
@@ -31,4 +31,4 @@ class CtnContactoViewSet(viewsets.ModelViewSet):
             usuario=request.user,
         ).select_related('identificacion', 'ciudad', 'usuario')
         pagina = self.paginate_queryset(qs)
-        return self.get_paginated_response(CtnContactoSerializer(pagina, many=True).data)
+        return self.get_paginated_response(CtnContactoListaUsuarioSerializer(pagina, many=True).data)
