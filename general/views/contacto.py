@@ -1,6 +1,5 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
-from rest_framework.permissions import IsAuthenticated
 
 from general.models import GenContacto
 from general.serializers import GenContactoSerializer
@@ -23,7 +22,6 @@ class GenContactoViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = GenContactoSerializer
-    permission_classes = [IsAuthenticated]
 
     campos_filtrables = {
         'id', 'nombre_corto', 'numero_identificacion', 'cliente', 'proveedor', 'empleado', 'conductor', 'ciudad_id',

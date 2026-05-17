@@ -1,6 +1,5 @@
 {
   "model": "general.GenCiudad",
-  "actualizar_secuencia": true,
   "data": [
     {
       "id": 1,
