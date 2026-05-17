@@ -29,6 +29,7 @@ class CtnSuscripcion(models.Model):
         (FRECUENCIA_PRUEBA, 'Prueba'),
     ]
     frecuencia = models.CharField(max_length=1, choices=FRECUENCIA_CHOICES, default=FRECUENCIA_MENSUAL)
+    referencia_pago = models.CharField(max_length=100, null=True, blank=True)
 
     class Meta:
         db_table = 'ctn_suscripcion'

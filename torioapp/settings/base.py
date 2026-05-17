@@ -219,6 +219,7 @@ TURNSTILE_ENABLED = config('TURNSTILE_ENABLED', default=True, cast=bool)
 
 # Wompi
 WOMPI_EVENTS_SECRET = config('WOMPI_EVENTS_SECRET', default='')
+WOMPI_INTEGRITY_SECRET = config('WOMPI_INTEGRITY_SECRET', default='')
 
 # Backblaze B2
 B2_KEY_ID = config('B2_KEY_ID', default='')
