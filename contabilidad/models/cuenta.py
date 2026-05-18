@@ -2,12 +2,12 @@ from django.db import models
 
 
 class ConCuenta(models.Model):
-    codigo = models.CharField(max_length=20, default='0')
+    codigo = models.CharField(max_length=20, default='0', db_default='0')
     nombre = models.CharField(max_length=100)
-    exige_base = models.BooleanField(default=False)
-    exige_contacto = models.BooleanField(default=False)
-    exige_grupo = models.BooleanField(default=False)
-    permite_movimiento = models.BooleanField(default=False)
+    exige_base = models.BooleanField(default=False, db_default=False)
+    exige_contacto = models.BooleanField(default=False, db_default=False)
+    exige_grupo = models.BooleanField(default=False, db_default=False)
+    permite_movimiento = models.BooleanField(default=False, db_default=False)
     nivel = models.IntegerField(null=True)
     cuenta_clase = models.ForeignKey(
         'contabilidad.ConCuentaClase', null=True, on_delete=models.PROTECT,

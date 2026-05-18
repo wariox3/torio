@@ -7,7 +7,7 @@ class CtnCiudad(models.Model):
     latitud = models.DecimalField(max_digits=9, decimal_places=6, null=True)
     longitud = models.DecimalField(max_digits=9, decimal_places=6, null=True)
     codigo_postal = models.CharField(max_length=10, null=True)
-    porcentaje_impuesto = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    porcentaje_impuesto = models.DecimalField(max_digits=5, decimal_places=2, default=0, db_default=0)
     estado = models.ForeignKey(
         'contenedor.CtnEstado',
         on_delete=models.CASCADE,

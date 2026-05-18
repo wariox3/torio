@@ -10,8 +10,8 @@ class GenResolucion(models.Model):
     consecutivo_hasta = models.IntegerField()
     fecha_desde = models.DateField()
     fecha_hasta = models.DateField()
-    venta = models.BooleanField(default=False)
-    compra = models.BooleanField(default=False)
+    venta = models.BooleanField(default=False, db_default=False)
+    compra = models.BooleanField(default=False, db_default=False)
 
     class Meta:
         db_table = 'gen_resolucion'

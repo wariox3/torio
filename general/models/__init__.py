@@ -1,6 +1,7 @@
 from .asesor import GenAsesor
 from .documento import GenDocumento
 from .documento_clase import GenDocumentoClase
+from .documento_detalle import GenDocumentoDetalle
 from .documento_tipo import GenDocumentoTipo
 from .banco import GenBanco
 from .ciudad import GenCiudad
@@ -10,6 +11,7 @@ from .cuenta_banco_clase import GenCuentaBancoClase
 from .cuenta_banco_tipo import GenCuentaBancoTipo
 from .estado import GenEstado
 from .identificacion import GenIdentificacion
+from .item import GenItem
 from .pais import GenPais
 from .plazo_pago import GenPlazoPago
 from .resolucion import GenResolucion

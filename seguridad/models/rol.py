@@ -5,7 +5,7 @@ class SegRol(models.Model):
     nombre = models.CharField(max_length=50, unique=True, db_index=True)
     codigo = models.CharField(max_length=20, unique=True, null=True)
     descripcion = models.CharField(max_length=255, blank=True)
-    activo = models.BooleanField(default=True)
+    activo = models.BooleanField(default=True, db_default=True)
     permisos = models.ManyToManyField(
         'seguridad.SegPermiso',
         through='seguridad.SegRolPermiso',

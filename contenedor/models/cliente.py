@@ -7,7 +7,7 @@ class CtnCliente(TenantBase):
     nombre = models.CharField('Nombre', max_length=100)
     telefono = models.CharField('Teléfono', max_length=20)
     correo = models.EmailField('Correo', max_length=255)
-    activo = models.BooleanField('Activo', default=True)
+    activo = models.BooleanField('Activo', default=True, db_default=True)
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
     fecha_ultima_conexion = models.DateTimeField(null=True, auto_now_add=True)
     owner = models.ForeignKey(

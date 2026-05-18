@@ -11,8 +11,8 @@ class CtnEventoPago(models.Model):
     correo = models.CharField(max_length=250, null=True)
     estado = models.CharField(max_length=50, null=True)
     fecha_transaccion = models.DateTimeField(null=True)
-    estado_aplicado = models.BooleanField(default=False)
-    vr_original = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    estado_aplicado = models.BooleanField(default=False, db_default=False)
+    vr_original = models.DecimalField(max_digits=16, decimal_places=2, default=0, db_default=0)
     datos = models.JSONField(null=True, blank=True)
 
     class Meta:

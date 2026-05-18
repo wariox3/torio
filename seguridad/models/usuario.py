@@ -20,10 +20,10 @@ class SegUsuario(UserProfile):
     nombre_corto = models.CharField(max_length=255, null=True)
     numero_identificacion = models.CharField(max_length=20, null=True)
     celular = models.CharField(max_length=50, null=True)
-    idioma = models.CharField(max_length=2, default='es')
-    imagen = models.TextField(default='usuarios/imagen_defecto.jpg')
-    imagen_thumbnail = models.TextField(default='usuarios/imagen_defecto.jpg')
-    saldo_pendiente = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    idioma = models.CharField(max_length=2, default='es', db_default='es')
+    imagen = models.TextField(default='usuarios/imagen_defecto.jpg', db_default='usuarios/imagen_defecto.jpg')
+    imagen_thumbnail = models.TextField(default='usuarios/imagen_defecto.jpg', db_default='usuarios/imagen_defecto.jpg')
+    saldo_pendiente = models.DecimalField(max_digits=14, decimal_places=2, default=0, db_default=0)
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
 
     class Meta:

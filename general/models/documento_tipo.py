@@ -3,19 +3,19 @@ from django.db import models
 
 class GenDocumentoTipo(models.Model):
     nombre = models.CharField(max_length=100)
-    consecutivo = models.IntegerField(default=1)
-    venta = models.BooleanField(default=False)
-    compra = models.BooleanField(default=False)
-    cobrar = models.BooleanField(default=False)
-    pagar = models.BooleanField(default=False)
-    electronico = models.BooleanField(default=False)
-    contabilidad = models.BooleanField(default=False)
-    inventario = models.BooleanField(default=False)
-    pos = models.BooleanField(default=False)
-    operacion = models.BigIntegerField(default=0)
-    operacion_inventario = models.BigIntegerField(default=0)
-    operacion_remision = models.BigIntegerField(default=0)
-    afecta_cantidad = models.BooleanField(default=False)
+    consecutivo = models.IntegerField(default=1, db_default=1)
+    venta = models.BooleanField(default=False, db_default=False)
+    compra = models.BooleanField(default=False, db_default=False)
+    cobrar = models.BooleanField(default=False, db_default=False)
+    pagar = models.BooleanField(default=False, db_default=False)
+    electronico = models.BooleanField(default=False, db_default=False)
+    contabilidad = models.BooleanField(default=False, db_default=False)
+    inventario = models.BooleanField(default=False, db_default=False)
+    pos = models.BooleanField(default=False, db_default=False)
+    operacion = models.BigIntegerField(default=0, db_default=0)
+    operacion_inventario = models.BigIntegerField(default=0, db_default=0)
+    operacion_remision = models.BigIntegerField(default=0, db_default=0)
+    afecta_cantidad = models.BooleanField(default=False, db_default=False)
     documento_clase = models.ForeignKey(
         'general.GenDocumentoClase',
         null=True,

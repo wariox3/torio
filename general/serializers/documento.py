@@ -1,0 +1,77 @@
+from django.db import transaction
+from rest_framework import serializers
+
+from general.models import GenDocumento, GenDocumentoDetalle
+from general.serializers.documento_detalle import GenDocumentoDetalleSerializer
+
+
+class GenDocumentoSerializer(serializers.ModelSerializer):
+    detalles = GenDocumentoDetalleSerializer(
+        many=True,
+        source='documentos_detalles_documento_rel',
+    )
+    documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
+    contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True)
+
+    class Meta:
+        model = GenDocumento
+        fields = [
+            'id',
+            'numero',
+            'fecha',
+            'fecha_contable',
+            'fecha_vence',
+            'fecha_desde',
+            'fecha_hasta',
+            'soporte',
+            'orden_compra',
+            'remision',
+            'comentario',
+            'documento_tipo',
+            'documento_tipo_nombre',
+            'contacto',
+            'contacto_nombre',
+            'resolucion',
+            'plazo_pago',
+            'asesor',
+            'cuenta_banco',
+            'comprobante',
+            'cuenta',
+            'documento_referencia',
+            'subtotal',
+            'descuento',
+            'total_bruto',
+            'base_impuesto',
+            'impuesto',
+            'impuesto_retencion',
+            'total',
+            'estado_aprobado',
+            'estado_anulado',
+            'estado_contabilizado',
+            'detalles',
+        ]
+        read_only_fields = [
+            'id',
+            'subtotal',
+            'descuento',
+            'total_bruto',
+            'base_impuesto',
+            'impuesto',
+            'impuesto_retencion',
+            'total',
+            'estado_aprobado',
+            'estado_anulado',
+            'estado_contabilizado',
+        ]
+
+    @transaction.atomic
+    def create(self, validated_data):
+        detalles_data = validated_data.pop('documentos_detalles_documento_rel', [])
+        documento = GenDocumento.objects.create(**validated_data)
+        for detalle_data in detalles_data:
+            detalle = GenDocumentoDetalle(documento=documento, **detalle_data)
+            detalle.calcular()
+            detalle.save()
+        documento.recalcular_totales()
+        documento.save()
+        return documento

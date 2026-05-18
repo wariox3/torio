@@ -5,7 +5,7 @@ class GenIdentificacion(models.Model):
     id = models.BigIntegerField(primary_key=True)
     nombre = models.CharField(max_length=50)
     abreviatura = models.CharField(max_length=10, null=True)
-    orden = models.BigIntegerField(default=0)
+    orden = models.BigIntegerField(default=0, db_default=0)
     codigo = models.CharField(max_length=10, null=True)
     aporte = models.CharField(max_length=10, null=True)
     pais = models.ForeignKey('general.GenPais', null=True, on_delete=models.PROTECT)

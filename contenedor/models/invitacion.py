@@ -32,7 +32,7 @@ class CtnInvitacion(models.Model):
         on_delete=models.SET_NULL,
         related_name='invitaciones',
     )
-    estado = models.CharField(max_length=1, choices=ESTADO_CHOICES, default=ESTADO_PENDIENTE)
+    estado = models.CharField(max_length=1, choices=ESTADO_CHOICES, default=ESTADO_PENDIENTE, db_default=ESTADO_PENDIENTE)
     fecha = models.DateTimeField(auto_now_add=True)
 
     class Meta:
