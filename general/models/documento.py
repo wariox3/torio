@@ -128,6 +128,14 @@ class GenDocumento(models.Model):
     def __str__(self):
         return f'{self.documento_tipo_id} - {self.numero}'
 
+    def es_mutable(self):
+        return not (
+            self.estado_aprobado
+            or self.estado_anulado
+            or self.estado_contabilizado
+            or self.estado_electronico_enviado
+        )
+
     def recalcular_totales(self):
         agregados = self.documentos_detalles_documento_rel.aggregate(
             subtotal=Sum('subtotal'),
