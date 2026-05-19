@@ -10,6 +10,7 @@
     { "id": 106, "nombre": "Pedido cliente",          "codigo_dian": "01", "grupo": 1 },
     { "id": 107, "nombre": "Remision",                "codigo_dian": "01", "grupo": 1 },
     { "id": 108, "nombre": "Devolucion remision",     "codigo_dian": "01", "grupo": 1 },
+    { "id": 109, "nombre": "Contrato servicio",       "codigo_dian": "01", "grupo": 1 },
     { "id": 200, "nombre": "Pago",                    "codigo_dian": "01", "grupo": 2 },
     { "id": 201, "nombre": "Saldo inicial CXC",       "codigo_dian": "01", "grupo": 2 },
     { "id": 300, "nombre": "Compra",                  "codigo_dian": "01", "grupo": 3 },

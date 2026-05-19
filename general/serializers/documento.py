@@ -1,17 +1,13 @@
-from django.db import transaction
 from rest_framework import serializers
 
-from general.models import GenDocumento, GenDocumentoDetalle
+from general.models import GenDocumento
 from general.serializers.documento_detalle import GenDocumentoDetalleSerializer
 
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
-    detalles = GenDocumentoDetalleSerializer(
-        many=True,
-        source='documentos_detalles_documento_rel',
-    )
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
     contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True)
+    sector_nombre = serializers.CharField(source='sector.nombre', read_only=True)
 
     class Meta:
         model = GenDocumento
@@ -37,6 +33,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'cuenta_banco',
             'comprobante',
             'cuenta',
+            'sector',
+            'sector_nombre',
             'documento_referencia',
             'subtotal',
             'descuento',
@@ -48,7 +46,6 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'estado_aprobado',
             'estado_anulado',
             'estado_contabilizado',
-            'detalles',
         ]
         read_only_fields = [
             'id',
@@ -64,14 +61,13 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'estado_contabilizado',
         ]
 
-    @transaction.atomic
-    def create(self, validated_data):
-        detalles_data = validated_data.pop('documentos_detalles_documento_rel', [])
-        documento = GenDocumento.objects.create(**validated_data)
-        for detalle_data in detalles_data:
-            detalle = GenDocumentoDetalle(documento=documento, **detalle_data)
-            detalle.calcular()
-            detalle.save()
-        documento.recalcular_totales()
-        documento.save()
-        return documento
+
+class GenDocumentoDetalleVistaSerializer(GenDocumentoSerializer):
+    detalles = GenDocumentoDetalleSerializer(
+        many=True,
+        read_only=True,
+        source='documentos_detalles_documento_rel',
+    )
+
+    class Meta(GenDocumentoSerializer.Meta):
+        fields = GenDocumentoSerializer.Meta.fields + ['detalles']

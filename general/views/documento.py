@@ -6,34 +6,33 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from general.models import GenDocumento, GenDocumentoDetalle
-from general.serializers import GenDocumentoDetalleSerializer, GenDocumentoSerializer
+from general.serializers import (
+    GenDocumentoDetalleSerializer,
+    GenDocumentoDetalleVistaSerializer,
+    GenDocumentoSerializer,
+)
 from utilidades.mixins import FiltrosDinamicosMixin
 
 
 @extend_schema(tags=['Documento'])
-class GenDocumentoViewSet(
-    FiltrosDinamicosMixin,
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.CreateModelMixin,
-    viewsets.GenericViewSet,
-):
+class GenDocumentoViewSet(FiltrosDinamicosMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
+    
     serializer_class = GenDocumentoSerializer
 
-    campos_filtrables = {
-        'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id',
-        'estado_aprobado', 'estado_anulado', 'estado_contabilizado',
-    }
-    select_related_lista = ('documento_tipo', 'contacto')
-    prefetch_related_lista = ('documentos_detalles_documento_rel',)
+    campos_filtrables = {'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado'}
+    select_related_lista = ('documento_tipo', 'contacto', 'sector')
     ordenamiento_default_lista = ('-fecha', '-numero')
 
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return GenDocumentoDetalleVistaSerializer
+        return GenDocumentoSerializer
+
     def get_queryset(self):
-        return GenDocumento.objects.select_related(
-            'documento_tipo', 'contacto',
-        ).prefetch_related(
-            'documentos_detalles_documento_rel',
-        )
+        queryset = GenDocumento.objects.select_related('documento_tipo', 'contacto', 'sector')
+        if self.action == 'retrieve':
+            queryset = queryset.prefetch_related('documentos_detalles_documento_rel')
+        return queryset
 
     @action(detail=True, methods=['post'], url_path='detalle')
     def agregar_detalle(self, request, pk=None):
@@ -58,11 +57,7 @@ class GenDocumentoViewSet(
             status=status.HTTP_201_CREATED,
         )
 
-    @action(
-        detail=True,
-        methods=['patch', 'delete'],
-        url_path=r'detalle/(?P<detalle_id>[^/.]+)',
-    )
+    @action(detail=True, methods=['patch', 'delete'], url_path=r'detalle/(?P<detalle_id>[^/.]+)')
     def modificar_detalle(self, request, pk=None, detalle_id=None):
         with transaction.atomic():
             try:

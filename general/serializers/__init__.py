@@ -1,3 +1,3 @@
 from .contacto import GenContactoSerializer
-from .documento import GenDocumentoSerializer
+from .documento import GenDocumentoDetalleVistaSerializer, GenDocumentoSerializer
 from .documento_detalle import GenDocumentoDetalleSerializer

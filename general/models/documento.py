@@ -118,6 +118,12 @@ class GenDocumento(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_cuenta_rel',
     )
+    sector = models.ForeignKey(
+        'general.GenSector',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_sector_rel',
+    )
 
     class Meta:
         db_table = 'gen_documento'
