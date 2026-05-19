@@ -16,7 +16,7 @@ from utilidades.mixins import FiltrosDinamicosMixin
 
 
 @extend_schema(tags=['Documento'])
-class GenDocumentoViewSet(FiltrosDinamicosMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
+class GenDocumentoViewSet(FiltrosDinamicosMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
     
     serializer_class = GenDocumentoSerializer
 
@@ -36,6 +36,18 @@ class GenDocumentoViewSet(FiltrosDinamicosMixin, mixins.ListModelMixin, mixins.R
         if self.action == 'retrieve':
             queryset = queryset.prefetch_related('documentos_detalles_documento_rel')
         return queryset
+
+    def destroy(self, request, *args, **kwargs):
+        with transaction.atomic():
+            try:
+                documento = GenDocumento.objects.select_for_update().get(pk=kwargs['pk'])
+            except GenDocumento.DoesNotExist:
+                raise NotFound('Documento no encontrado.')
+            if not documento.es_mutable():
+                raise ValidationError('El documento no es modificable.')
+            documento.documentos_detalles_documento_rel.all().delete()
+            documento.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'], url_path='detalle')
     def agregar_detalle(self, request, pk=None):
