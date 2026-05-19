@@ -7,6 +7,7 @@ from rest_framework.response import Response
 
 from general.models import GenDocumento, GenDocumentoDetalle
 from general.serializers import (
+    GenDocumentoCrearSerializer,
     GenDocumentoDetalleSerializer,
     GenDocumentoDetalleVistaSerializer,
     GenDocumentoSerializer,
@@ -24,6 +25,8 @@ class GenDocumentoViewSet(FiltrosDinamicosMixin, mixins.ListModelMixin, mixins.R
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     def get_serializer_class(self):
+        if self.action == 'create':
+            return GenDocumentoCrearSerializer
         if self.action == 'retrieve':
             return GenDocumentoDetalleVistaSerializer
         return GenDocumentoSerializer

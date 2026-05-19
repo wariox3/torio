@@ -72,6 +72,12 @@ class GenDocumentoDetalle(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_detalles_contacto_rel',
     )
+    modalidad = models.ForeignKey(
+        'general.GenModalidad',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_detalles_modalidad_rel',
+    )
 
     class Meta:
         db_table = 'gen_documento_detalle'

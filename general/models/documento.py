@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Sum
 
@@ -123,6 +124,10 @@ class GenDocumento(models.Model):
         null=True,
         on_delete=models.PROTECT,
         related_name='documentos_sector_rel',
+    )
+    estrato = models.PositiveSmallIntegerField(
+        null=True,
+        validators=[MinValueValidator(1), MaxValueValidator(9)],
     )
 
     class Meta:

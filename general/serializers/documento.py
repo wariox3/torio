@@ -1,13 +1,14 @@
+from django.db import transaction
 from rest_framework import serializers
 
-from general.models import GenDocumento
+from general.models import GenDocumento, GenDocumentoDetalle
 from general.serializers.documento_detalle import GenDocumentoDetalleSerializer
 
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
-    contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True)
-    sector_nombre = serializers.CharField(source='sector.nombre', read_only=True)
+    contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
+    sector_nombre = serializers.CharField(source='sector.nombre', read_only=True, default=None)
 
     class Meta:
         model = GenDocumento
@@ -35,6 +36,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'cuenta',
             'sector',
             'sector_nombre',
+            'estrato',
             'documento_referencia',
             'subtotal',
             'descuento',
@@ -43,6 +45,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'impuesto',
             'impuesto_retencion',
             'total',
+            'salario',
             'estado_aprobado',
             'estado_anulado',
             'estado_contabilizado',
@@ -71,3 +74,26 @@ class GenDocumentoDetalleVistaSerializer(GenDocumentoSerializer):
 
     class Meta(GenDocumentoSerializer.Meta):
         fields = GenDocumentoSerializer.Meta.fields + ['detalles']
+
+
+class GenDocumentoCrearSerializer(GenDocumentoSerializer):
+    detalles = GenDocumentoDetalleSerializer(
+        many=True,
+        required=False,
+        source='documentos_detalles_documento_rel',
+    )
+
+    class Meta(GenDocumentoSerializer.Meta):
+        fields = GenDocumentoSerializer.Meta.fields + ['detalles']
+
+    @transaction.atomic
+    def create(self, validated_data):
+        detalles_data = validated_data.pop('documentos_detalles_documento_rel', [])
+        documento = GenDocumento.objects.create(**validated_data)
+        for detalle_data in detalles_data:
+            detalle = GenDocumentoDetalle(documento=documento, **detalle_data)
+            detalle.calcular()
+            detalle.save()
+        documento.recalcular_totales()
+        documento.save()
+        return documento

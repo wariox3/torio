@@ -12,6 +12,7 @@ from .cuenta_banco_tipo import GenCuentaBancoTipo
 from .estado import GenEstado
 from .identificacion import GenIdentificacion
 from .item import GenItem
+from .modalidad import GenModalidad
 from .pais import GenPais
 from .plazo_pago import GenPlazoPago
 from .resolucion import GenResolucion
