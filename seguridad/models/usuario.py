@@ -11,12 +11,6 @@ class SegUsuario(UserProfile):
     # Heredados de AbstractBaseUser
     # password = ...
     # last_login = models.DateTimeField(null=True)
-    tenants = models.ManyToManyField(
-        settings.TENANT_MODEL,
-        through='seguridad.SegUsuarioCliente',
-        related_name='user_set',
-        blank=True,
-    )
     nombre_corto = models.CharField(max_length=255, null=True)
     numero_identificacion = models.CharField(max_length=20, null=True)
     celular = models.CharField(max_length=50, null=True)
@@ -25,7 +19,12 @@ class SegUsuario(UserProfile):
     imagen_thumbnail = models.TextField(default='usuarios/imagen_defecto.jpg', db_default='usuarios/imagen_defecto.jpg')
     saldo_pendiente = models.DecimalField(max_digits=14, decimal_places=2, default=0, db_default=0)
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
-
+    tenants = models.ManyToManyField(
+        settings.TENANT_MODEL,
+        through='seguridad.SegUsuarioCliente',
+        related_name='user_set',
+        blank=True,
+    )
     class Meta:
         db_table = "seg_usuario"
         verbose_name = 'Usuario'
