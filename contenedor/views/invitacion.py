@@ -95,7 +95,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
                 estado=CtnInvitacion.ESTADO_PENDIENTE,
             )
 
-        link = f'{settings.FRONTEND_URL}/invitaciones'
+        link = f'{settings.FRONTEND_CUENTA_URL}/invitaciones'
         html = (
             f'<h1>Te han invitado a {cliente.nombre}</h1>'
             f'<p>{request.user.nombre_corto} te ha invitado a colaborar en '
