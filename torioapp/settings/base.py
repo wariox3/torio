@@ -212,6 +212,7 @@ BACKEND_URL = config('BACKEND_URL', default='http://localhost:8000')
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:4200')
 ZINC_URL = config('ZINC_URL', default='http://localhost:3000')
 TENANT_BASE_DOMAIN = config('TENANT_BASE_DOMAIN', default='localhost')
+AUTH_COOKIE_DOMAIN = config('AUTH_COOKIE_DOMAIN', default=None)
 ENABLE_API_DOCS = config('ENABLE_API_DOCS', default=False, cast=bool)
 
 TURNSTILE_SECRET_KEY = config('TURNSTILE_SECRET_KEY', default='')
