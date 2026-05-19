@@ -29,7 +29,7 @@ _LISTA_NEGRA = settings.SIMPLE_JWT.get('BLACKLIST_AFTER_ROTATION', False)
 
 
 def _asignar_cookies_auth(respuesta, access_token, refresh_token=None):
-    seguro = not settings.DEBUG
+    seguro = settings.AUTH_COOKIE_SECURE
     dominio = settings.AUTH_COOKIE_DOMAIN
     respuesta.set_cookie('access_token', access_token, max_age=_TIEMPO_MAXIMO_ACCESO,
                          httponly=True, secure=seguro, samesite='Lax', domain=dominio)
