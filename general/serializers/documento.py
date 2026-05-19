@@ -9,6 +9,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
     contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
     sector_nombre = serializers.CharField(source='sector.nombre', read_only=True, default=None)
+    modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
 
     class Meta:
         model = GenDocumento
@@ -36,6 +37,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'cuenta',
             'sector',
             'sector_nombre',
+            'modalidad',
+            'modalidad_nombre',
             'estrato',
             'documento_referencia',
             'subtotal',

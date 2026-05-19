@@ -21,7 +21,7 @@ class GenDocumentoViewSet(FiltrosDinamicosMixin, mixins.ListModelMixin, mixins.R
     serializer_class = GenDocumentoSerializer
 
     campos_filtrables = {'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado'}
-    select_related_lista = ('documento_tipo', 'contacto', 'sector')
+    select_related_lista = ('documento_tipo', 'contacto', 'sector', 'modalidad')
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     def get_serializer_class(self):
@@ -32,7 +32,7 @@ class GenDocumentoViewSet(FiltrosDinamicosMixin, mixins.ListModelMixin, mixins.R
         return GenDocumentoSerializer
 
     def get_queryset(self):
-        queryset = GenDocumento.objects.select_related('documento_tipo', 'contacto', 'sector')
+        queryset = GenDocumento.objects.select_related('documento_tipo', 'contacto', 'sector', 'modalidad')
         if self.action == 'retrieve':
             queryset = queryset.prefetch_related('documentos_detalles_documento_rel')
         return queryset
