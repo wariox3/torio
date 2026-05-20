@@ -43,7 +43,7 @@ class CtnClienteSerializer(serializers.ModelSerializer):
 class CtnClienteActualizarSerializer(serializers.ModelSerializer):
     class Meta:
         model = CtnCliente
-        fields = ['nombre']
+        fields = ['nombre', 'correo', 'telefono']
 
 
 class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
