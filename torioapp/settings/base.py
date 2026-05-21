@@ -51,9 +51,9 @@ DATABASE_ROUTERS = ['django_tenants.routers.TenantSyncRouter']
 
 AUTH_USER_MODEL = 'seguridad.SegUsuario'
 
-# TenantMainMiddleware DEBE ir primero para resolver el schema por host.
+# TenantHeaderMiddleware DEBE ir primero para resolver el schema por header X-Tenant.
 MIDDLEWARE = [
-    'django_tenants.middleware.main.TenantMainMiddleware',
+    'seguridad.middleware.TenantHeaderMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -200,6 +200,8 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
 }
 
+from corsheaders.defaults import default_headers
+
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     'https://reddoc.uk',
@@ -207,6 +209,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:4200',
     'http://127.0.0.1:4200',
 ]
+CORS_ALLOW_HEADERS = list(default_headers) + ['x-tenant']
 
 BACKEND_URL = config('BACKEND_URL', default='http://localhost:8000')
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:4200')
