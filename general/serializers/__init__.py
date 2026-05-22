@@ -10,4 +10,5 @@ from .documento import (
 )
 from .documento_detalle import GenDocumentoDetalleSerializer
 from .plazo_pago import GenPlazoPagoSeleccionarSerializer
+from .precio import GenPrecioSeleccionarSerializer
 from .tipo_persona import GenTipoPersonaSeleccionarSerializer

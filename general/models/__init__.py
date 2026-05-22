@@ -17,5 +17,6 @@ from .pais import GenPais
 from .plazo_pago import GenPlazoPago
 from .resolucion import GenResolucion
 from .precio import GenPrecio
+from .precio_detalle import GenPrecioDetalle
 from .sector import GenSector
 from .tipo_persona import GenTipoPersona

@@ -9,7 +9,7 @@ class GenPrecio(models.Model):
 
     class Meta:
         db_table = 'gen_precio'
-        ordering = ['nombre']
+        ordering = ['-id']
         verbose_name = 'Precio'
         verbose_name_plural = 'Precios'
 
