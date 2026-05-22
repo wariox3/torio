@@ -1,5 +1,6 @@
 from .asesor import GenAsesorSeleccionarSerializer
 from .banco import GenBancoSeleccionarSerializer
+from .ciudad import GenCiudadSeleccionarSerializer
 from .contacto import GenContactoSerializer
 from .cuenta_banco_clase import GenCuentaBancoClaseSeleccionarSerializer
 from .documento import (
