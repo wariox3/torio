@@ -9,6 +9,7 @@ from .documento import (
     GenDocumentoSerializer,
 )
 from .documento_detalle import GenDocumentoDetalleSerializer
+from .identificacion import GenIdentificacionSeleccionarSerializer
 from .plazo_pago import GenPlazoPagoSeleccionarSerializer
 from .precio import GenPrecioSeleccionarSerializer
 from .tipo_persona import GenTipoPersonaSeleccionarSerializer
