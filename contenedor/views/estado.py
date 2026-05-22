@@ -2,10 +2,10 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
 
 from contenedor.models import CtnEstado
 from contenedor.serializers import CtnEstadoSeleccionarSerializer, CtnEstadoSerializer
+from utilidades.paginacion import SeleccionarPaginacion
 
 _LIST_PARAMS = [
     OpenApiParameter('pais', str, description='Filtrar por código de país'),
@@ -14,7 +14,7 @@ _LIST_PARAMS = [
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('pais', str, description='Filtrar por código de país'),
-    OpenApiParameter('search', str, description='Buscar por nombre (retorna 10 resultados)'),
+    OpenApiParameter('search', str, description='Buscar por nombre'),
 ]
 
 
@@ -38,7 +38,7 @@ class CtnEstadoViewSet(viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
 
     @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=CtnEstadoSeleccionarSerializer(many=True))
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)
     def seleccionar(self, request):
         qs = CtnEstado.objects.all()
         pais = request.query_params.get('pais')
@@ -46,6 +46,7 @@ class CtnEstadoViewSet(viewsets.ModelViewSet):
         if pais:
             qs = qs.filter(pais_id=pais)
         if search:
-            qs = qs.filter(nombre__icontains=search)[:10]
-        serializer = CtnEstadoSeleccionarSerializer(qs, many=True)
-        return Response(serializer.data)
+            qs = qs.filter(nombre__icontains=search)
+        pagina = self.paginate_queryset(qs)
+        serializer = CtnEstadoSeleccionarSerializer(pagina, many=True)
+        return self.get_paginated_response(serializer.data)
