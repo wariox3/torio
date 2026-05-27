@@ -61,6 +61,7 @@ class CtnEventoPagoViewSet(viewsets.GenericViewSet):
         suscripcion_tipo_id = partes[1] if len(partes) > 1 else None
         periodo = partes[2] if len(partes) > 2 else None
         contacto_id = partes[3] if len(partes) > 3 else None
+        cliente_id = partes[4] if len(partes) > 4 else None
 
         with transaction.atomic():
             evento_pago = CtnEventoPago.objects.create(
@@ -97,6 +98,7 @@ class CtnEventoPagoViewSet(viewsets.GenericViewSet):
                         valor=monto_centavos / 100,
                         usuario=suscripcion.usuario,
                         contacto_id=int(contacto_id),
+                        cliente_id=int(cliente_id) if cliente_id else None,
                     )
 
                     suscripcion.suscripcion_tipo_id = int(suscripcion_tipo_id)

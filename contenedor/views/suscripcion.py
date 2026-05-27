@@ -8,7 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from contenedor.models import CtnContacto, CtnSuscripcion, CtnSuscripcionTipo
+from contenedor.models import CtnCliente, CtnContacto, CtnSuscripcion, CtnSuscripcionTipo
 from contenedor.serializers import CtnSuscripcionSerializer
 
 _LIST_PARAMS = [
@@ -26,6 +26,7 @@ class _IntegridadRequestSerializer(serializers.Serializer):
     suscripcion_tipo_id = serializers.IntegerField(min_value=1)
     periodo = serializers.ChoiceField(choices=_PERIODOS_VALIDOS)
     contacto_id = serializers.IntegerField(min_value=1)
+    cliente_id = serializers.IntegerField(min_value=1)
     monto_cents = serializers.IntegerField(min_value=1)
     moneda = serializers.CharField(max_length=3, default='COP')
 
@@ -74,8 +75,8 @@ class CtnSuscripcionViewSet(viewsets.ModelViewSet):
         summary='Firma de integridad Wompi',
         description=(
             'Recibe los componentes de la referencia, valida que existan, arma la referencia '
-            '`{suscripcion_id}-{suscripcion_tipo_id}-{periodo}-{contacto_id}` y genera el hash '
-            'de integridad SHA256 sobre referencia + monto_cents + moneda + WOMPI_INTEGRITY_SECRET.'
+            '`{suscripcion_id}-{suscripcion_tipo_id}-{periodo}-{contacto_id}-{cliente_id}-{timestamp}` '
+            'y genera el hash de integridad SHA256 sobre referencia + monto_cents + moneda + WOMPI_INTEGRITY_SECRET.'
         ),
         request=_IntegridadRequestSerializer,
         responses={
@@ -106,6 +107,7 @@ class CtnSuscripcionViewSet(viewsets.ModelViewSet):
         suscripcion_tipo_id = serializador.validated_data['suscripcion_tipo_id']
         periodo = serializador.validated_data['periodo']
         contacto_id = serializador.validated_data['contacto_id']
+        cliente_id = serializador.validated_data['cliente_id']
         monto_cents = serializador.validated_data['monto_cents']
         moneda = serializador.validated_data['moneda']
 
@@ -125,9 +127,14 @@ class CtnSuscripcionViewSet(viewsets.ModelViewSet):
                 {'detail': f'Contacto {contacto_id} no existe o no pertenece al usuario.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        if not CtnCliente.objects.filter(id=cliente_id).exists():
+            return Response(
+                {'detail': f'Cliente {cliente_id} no existe.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
-        referencia = f'{suscripcion_id}-{suscripcion_tipo_id}-{periodo}-{contacto_id}-{timestamp}'
+        referencia = f'{suscripcion_id}-{suscripcion_tipo_id}-{periodo}-{contacto_id}-{cliente_id}-{timestamp}'
         suscripcion.referencia_pago = referencia
         suscripcion.save(update_fields=['referencia_pago'])
 

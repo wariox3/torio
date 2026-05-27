@@ -12,6 +12,12 @@ class CtnMovimiento(models.Model):
         on_delete=models.PROTECT,
         related_name='movimientos',
     )
+    cliente = models.ForeignKey(
+        'contenedor.CtnCliente',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='movimientos',
+    )
     usuario = models.ForeignKey(
         'seguridad.SegUsuario',
         on_delete=models.PROTECT,
