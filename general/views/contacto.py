@@ -19,6 +19,7 @@ class GenContactoViewSet(
     FiltrosDinamicosMixin,
     mixins.ListModelMixin,
     mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
     serializer_class = GenContactoSerializer
