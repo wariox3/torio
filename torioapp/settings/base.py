@@ -54,6 +54,7 @@ AUTH_USER_MODEL = 'seguridad.SegUsuario'
 # TenantHeaderMiddleware DEBE ir primero para resolver el schema por header X-Tenant.
 MIDDLEWARE = [
     'seguridad.middleware.TenantHeaderMiddleware',
+    'seguridad.middleware.SuscripcionActivaMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
