@@ -21,8 +21,9 @@ class CtnSuscripcionSerializer(serializers.ModelSerializer):
             'fecha_inicio',
             'fecha_fin',
             'frecuencia',
+            'precio',
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'precio']
 
     def validate(self, attrs):
         suscripcion_tipo = attrs.get('suscripcion_tipo') or getattr(self.instance, 'suscripcion_tipo', None)

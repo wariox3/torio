@@ -29,12 +29,21 @@ class CtnSuscripcion(models.Model):
         (FRECUENCIA_PRUEBA, 'Prueba'),
     ]
     frecuencia = models.CharField(max_length=1, choices=FRECUENCIA_CHOICES, default=FRECUENCIA_MENSUAL, db_default=FRECUENCIA_MENSUAL)
+    precio = models.DecimalField(max_digits=14, decimal_places=2, null=True)
     referencia_pago = models.CharField(max_length=100, null=True, blank=True)
 
     class Meta:
         db_table = 'ctn_suscripcion'
         verbose_name = 'Suscripción'
         verbose_name_plural = 'Suscripciones'
+
+    def save(self, *args, **kwargs):
+        if self.suscripcion_tipo_id:
+            self.precio = self.suscripcion_tipo.precio
+            update_fields = kwargs.get('update_fields')
+            if update_fields is not None and 'suscripcion_tipo' in update_fields and 'precio' not in update_fields:
+                kwargs['update_fields'] = list(update_fields) + ['precio']
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f'{self.cliente} ({self.fecha_inicio} → {self.fecha_fin})'
