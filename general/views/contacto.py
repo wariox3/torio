@@ -1,5 +1,7 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from general.models import GenContacto
 from general.serializers import GenContactoSerializer
@@ -51,3 +53,18 @@ class GenContactoViewSet(
     @extend_schema(parameters=_LIST_PARAMS)
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @action(detail=False, methods=['post'])
+    def validar(self, request):
+        identificacion_id = request.data.get('identificacion_id')
+        numero_identificacion = request.data.get('numero_identificacion')
+        if not identificacion_id or not numero_identificacion:
+            return Response(
+                {'detail': 'identificacion_id y numero_identificacion son requeridos'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        existe = GenContacto.objects.filter(
+            identificacion_id=identificacion_id,
+            numero_identificacion=numero_identificacion,
+        ).exists()
+        return Response({'existe': existe}, status=status.HTTP_200_OK)
