@@ -5,6 +5,7 @@ from general.models import GenContacto
 
 class GenContactoSerializer(serializers.ModelSerializer):
     identificacion_nombre = serializers.CharField(source='identificacion.nombre', read_only=True)
+    identificacion_abreviatura = serializers.CharField(source='identificacion.abreviatura', read_only=True)
     ciudad_nombre = serializers.CharField(source='ciudad.nombre', read_only=True)
     tipo_persona_nombre = serializers.CharField(source='tipo_persona.nombre', read_only=True)
 
@@ -36,6 +37,7 @@ class GenContactoSerializer(serializers.ModelSerializer):
             'fecha_vence_licencia',
             'identificacion',
             'identificacion_nombre',
+            'identificacion_abreviatura',
             'ciudad',
             'ciudad_nombre',
             'tipo_persona',
