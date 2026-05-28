@@ -41,6 +41,7 @@ class PruebaView(APIView):
         ),
     )
     def post(self, request):
+        # Esto es solo una prueba, en producción se debe validar el número y el mensaje adecuadamente
         numero = request.data.get('numero', '')
         mensaje = request.data.get('mensaje', '')
         if not numero or not mensaje:
