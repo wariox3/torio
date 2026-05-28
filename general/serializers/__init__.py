@@ -14,4 +14,5 @@ from .identificacion import GenIdentificacionSeleccionarSerializer
 from .log import GenLogSerializer
 from .plazo_pago import GenPlazoPagoSeleccionarSerializer
 from .precio import GenPrecioSeleccionarSerializer
+from .responsabilidad import GenResponsabilidadSeleccionarSerializer
 from .tipo_persona import GenTipoPersonaSeleccionarSerializer

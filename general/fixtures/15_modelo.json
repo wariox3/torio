@@ -3,6 +3,7 @@
   "data": [
     {"id": 10001, "app": "general",      "clase": "GenContacto",        "nombre": "Contacto",         "tabla": "gen_contacto",         "tipo": "A"},
     {"id": 10002, "app": "general",      "clase": "GenDocumento",       "nombre": "Documento",        "tabla": "gen_documento",        "tipo": "M"},
+    {"id": 10003, "app": "general",      "clase": "GenResponsabilidad", "nombre": "Responsabilidad",  "tabla": "gen_responsabilidad",  "tipo": "F"},
 
     {"id": 20001, "app": "contabilidad", "clase": "ConComprobante",     "nombre": "Comprobante",      "tabla": "con_comprobante",      "tipo": "F"},
     {"id": 20002, "app": "contabilidad", "clase": "ConCuenta",          "nombre": "Cuenta",           "tabla": "con_cuenta",           "tipo": "A"},

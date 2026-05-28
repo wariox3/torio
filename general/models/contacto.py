@@ -55,6 +55,9 @@ class GenContacto(models.Model):
     cuenta_banco_clase = models.ForeignKey(
         'general.GenCuentaBancoClase', null=True, on_delete=models.PROTECT,
     )
+    responsabilidad = models.ForeignKey(
+        'general.GenResponsabilidad', null=True, on_delete=models.PROTECT,
+    )
 
     class Meta:
         db_table = 'gen_contacto'

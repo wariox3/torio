@@ -21,6 +21,7 @@ from .modelo import GenModelo
 from .pais import GenPais
 from .plazo_pago import GenPlazoPago
 from .resolucion import GenResolucion
+from .responsabilidad import GenResponsabilidad
 from .precio import GenPrecio
 from .precio_detalle import GenPrecioDetalle
 from .sector import GenSector
