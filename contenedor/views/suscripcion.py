@@ -1,5 +1,7 @@
 import hashlib
+from datetime import date
 
+from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
@@ -189,8 +191,16 @@ class CtnSuscripcionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        fecha_inicio = date.today()
+        if frecuencia == CtnSuscripcion.FRECUENCIA_ANUAL:
+            fecha_fin = fecha_inicio + relativedelta(years=1)
+        else:
+            fecha_fin = fecha_inicio + relativedelta(months=1)
+
         suscripcion.suscripcion_tipo_id = suscripcion_tipo_id
         suscripcion.frecuencia = frecuencia
-        suscripcion.save(update_fields=['suscripcion_tipo', 'frecuencia'])
+        suscripcion.fecha_inicio = fecha_inicio
+        suscripcion.fecha_fin = fecha_fin
+        suscripcion.save(update_fields=['suscripcion_tipo', 'frecuencia', 'fecha_inicio', 'fecha_fin'])
 
         return Response(CtnSuscripcionSerializer(suscripcion).data, status=status.HTTP_200_OK)
