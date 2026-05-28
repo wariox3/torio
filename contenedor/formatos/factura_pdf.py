@@ -124,7 +124,8 @@ def _bloque_partes(estilos, movimiento):
 
 def _bloque_encabezado(estilos, movimiento):
     fecha = movimiento.fecha.strftime('%d/%m/%Y') if movimiento.fecha else ''
-    vence = movimiento.fecha_vence.strftime('%d/%m/%Y') if movimiento.fecha_vence else '—'
+    fecha_vence = movimiento.fecha_vence or movimiento.fecha
+    vence = fecha_vence.strftime('%d/%m/%Y') if fecha_vence else '—'
     numero = f'FAC-{movimiento.id:06d}'
 
     meta_html = (
