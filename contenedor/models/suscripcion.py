@@ -46,7 +46,7 @@ class CtnSuscripcion(models.Model):
                 'precio', flat=True,
             ).get(pk=self.suscripcion_tipo_id)
             if self.frecuencia == self.FRECUENCIA_ANUAL:
-                self.precio = precio_mensual * Decimal('12') * Decimal('0.9')
+                self.precio = precio_mensual * Decimal('0.9')
             else:
                 self.precio = precio_mensual
             update_fields = kwargs.get('update_fields')
