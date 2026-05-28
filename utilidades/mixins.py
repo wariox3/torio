@@ -6,7 +6,7 @@ from io import BytesIO
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, inline_serializer
 from openpyxl import Workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from rest_framework import serializers
 from rest_framework.decorators import action
@@ -145,9 +145,12 @@ class ExcelMixin:
         ws = wb.active
         ws.title = self.hoja_excel
 
+        fuente_encabezado = Font(bold=True)
+        fondo_encabezado = PatternFill('solid', fgColor='D9D9D9')
         for col, (_, encabezado) in enumerate(self.campos_excel, start=1):
             celda = ws.cell(row=1, column=col, value=encabezado)
-            celda.font = Font(bold=True)
+            celda.font = fuente_encabezado
+            celda.fill = fondo_encabezado
 
         for fila, obj in enumerate(qs.iterator(), start=2):
             for col, (campo, _) in enumerate(self.campos_excel, start=1):
