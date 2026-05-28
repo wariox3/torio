@@ -1,7 +1,14 @@
 {
   "model": "general.GenModelo",
   "data": [
-    {"id": 1, "app": "general", "clase": "GenContacto",  "nombre": "Contacto",  "tabla": "gen_contacto"},
-    {"id": 2, "app": "general", "clase": "GenDocumento", "nombre": "Documento", "tabla": "gen_documento"}
+    {"id": 10001, "app": "general", "clase": "GenContacto",  "nombre": "Contacto",  "tabla": "gen_contacto"},
+    {"id": 10002, "app": "general", "clase": "GenDocumento", "nombre": "Documento", "tabla": "gen_documento"},
+
+    {"id": 20001, "app": "contabilidad", "clase": "ConComprobante",     "nombre": "Comprobante",      "tabla": "con_comprobante"},
+    {"id": 20002, "app": "contabilidad", "clase": "ConCuenta",          "nombre": "Cuenta",           "tabla": "con_cuenta"},
+    {"id": 20003, "app": "contabilidad", "clase": "ConCuentaClase",     "nombre": "Cuenta clase",     "tabla": "con_cuenta_clase"},
+    {"id": 20004, "app": "contabilidad", "clase": "ConCuentaGrupo",     "nombre": "Cuenta grupo",     "tabla": "con_cuenta_grupo"},
+    {"id": 20005, "app": "contabilidad", "clase": "ConCuentaCuenta",    "nombre": "Cuenta cuenta",    "tabla": "con_cuenta_cuenta"},
+    {"id": 20006, "app": "contabilidad", "clase": "ConCuentaSubcuenta", "nombre": "Cuenta subcuenta", "tabla": "con_cuenta_subcuenta"}
   ]
 }
