@@ -1,3 +1,4 @@
+from .archivo import GenArchivoSerializer
 from .asesor import GenAsesorSeleccionarSerializer
 from .banco import GenBancoSeleccionarSerializer
 from .ciudad import GenCiudadSeleccionarSerializer

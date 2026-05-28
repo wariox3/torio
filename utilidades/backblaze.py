@@ -24,10 +24,33 @@ def _cliente_s3():
     )
 
 
+def subir(bucket: str, key: str, body: bytes, content_type: str) -> None:
+    """Sube un objeto a B2. Propaga errores tras loguearlos."""
+    try:
+        _cliente_s3().put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=body,
+            ContentType=content_type,
+        )
+    except (BotoCoreError, ClientError) as e:
+        logger.error('Error subiendo a B2 (bucket=%s key=%s): %s', bucket, key, e)
+        raise
+
+
+def eliminar(bucket: str, key: str) -> None:
+    """Elimina un objeto de B2. Propaga errores tras loguearlos."""
+    try:
+        _cliente_s3().delete_object(Bucket=bucket, Key=key)
+    except (BotoCoreError, ClientError) as e:
+        logger.error('Error eliminando de B2 (bucket=%s key=%s): %s', bucket, key, e)
+        raise
+
+
 def subir_foto_usuario(archivo, user_id: int) -> tuple[str, str]:
     """
     Valida, procesa y sube la foto de perfil a Backblaze B2.
-    Retorna (url_original, url_thumbnail).
+    Retorna (key_original, key_thumbnail).
     """
     validar_archivo_imagen(archivo)
 
@@ -39,22 +62,7 @@ def subir_foto_usuario(archivo, user_id: int) -> tuple[str, str]:
     key_original = f'usuarios/{user_id}/foto.jpg'
     key_thumbnail = f'usuarios/{user_id}/foto_thumbnail.jpg'
 
-    try:
-        s3 = _cliente_s3()
-        s3.put_object(
-            Bucket=settings.B2_BUCKET_PUBLICO,
-            Key=key_original,
-            Body=original_bytes,
-            ContentType='image/jpeg',
-        )
-        s3.put_object(
-            Bucket=settings.B2_BUCKET_PUBLICO,
-            Key=key_thumbnail,
-            Body=thumbnail_bytes,
-            ContentType='image/jpeg',
-        )
-    except (BotoCoreError, ClientError) as e:
-        logger.error('Error subiendo foto a B2 para usuario %s: %s', user_id, e)
-        raise
+    subir(settings.B2_BUCKET_PUBLICO, key_original, original_bytes, 'image/jpeg')
+    subir(settings.B2_BUCKET_PUBLICO, key_thumbnail, thumbnail_bytes, 'image/jpeg')
 
     return key_original, key_thumbnail

@@ -2,6 +2,7 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from general.views import (
+    GenArchivoViewSet,
     GenAsesorViewSet,
     GenBancoViewSet,
     GenCiudadViewSet,
@@ -17,6 +18,7 @@ from general.views import (
 )
 
 router = DefaultRouter()
+router.register(r'archivo', GenArchivoViewSet, basename='archivo')
 router.register(r'asesor', GenAsesorViewSet, basename='asesor')
 router.register(r'banco', GenBancoViewSet, basename='banco')
 router.register(r'ciudad', GenCiudadViewSet, basename='ciudad')

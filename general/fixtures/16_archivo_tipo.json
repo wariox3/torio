@@ -1,0 +1,8 @@
+{
+  "model": "general.GenArchivoTipo",
+  "data": [
+    {"id": 1, "codigo": "general", "nombre": "General"},
+    {"id": 2, "codigo": "entrega", "nombre": "Entrega"},
+    {"id": 3, "codigo": "firma",   "nombre": "Firma"}
+  ]
+}

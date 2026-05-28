@@ -1,3 +1,4 @@
+from .archivo import GenArchivoViewSet
 from .asesor import GenAsesorViewSet
 from .banco import GenBancoViewSet
 from .ciudad import GenCiudadViewSet

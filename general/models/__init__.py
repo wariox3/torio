@@ -1,4 +1,6 @@
 from .accion import GenAccion
+from .archivo import GenArchivo
+from .archivo_tipo import GenArchivoTipo
 from .asesor import GenAsesor
 from .documento import GenDocumento
 from .documento_clase import GenDocumentoClase
