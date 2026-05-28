@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 
 
@@ -40,11 +42,17 @@ class CtnSuscripcion(models.Model):
     def save(self, *args, **kwargs):
         if self.suscripcion_tipo_id:
             from contenedor.models.suscripcion_tipo import CtnSuscripcionTipo
-            self.precio = CtnSuscripcionTipo.objects.values_list(
+            precio_mensual = CtnSuscripcionTipo.objects.values_list(
                 'precio', flat=True,
             ).get(pk=self.suscripcion_tipo_id)
+            if self.frecuencia == self.FRECUENCIA_ANUAL:
+                self.precio = precio_mensual * Decimal('12') * Decimal('0.9')
+            else:
+                self.precio = precio_mensual
             update_fields = kwargs.get('update_fields')
-            if update_fields is not None and 'suscripcion_tipo' in update_fields and 'precio' not in update_fields:
+            if update_fields is not None and 'precio' not in update_fields and (
+                'suscripcion_tipo' in update_fields or 'frecuencia' in update_fields
+            ):
                 kwargs['update_fields'] = list(update_fields) + ['precio']
         super().save(*args, **kwargs)
 
