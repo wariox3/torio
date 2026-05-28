@@ -36,6 +36,12 @@ class _IntegridadResponseSerializer(serializers.Serializer):
     hash = serializers.CharField()
 
 
+class _ActualizarRequestSerializer(serializers.Serializer):
+    suscripcion_id = serializers.IntegerField(min_value=1)
+    suscripcion_tipo_id = serializers.IntegerField(min_value=1)
+    frecuencia = serializers.ChoiceField(choices=_PERIODOS_VALIDOS)
+
+
 @extend_schema(tags=['Suscripcion'])
 class CtnSuscripcionViewSet(viewsets.ModelViewSet):
     serializer_class = CtnSuscripcionSerializer
@@ -144,3 +150,42 @@ class CtnSuscripcionViewSet(viewsets.ModelViewSet):
             {'referencia': referencia, 'hash': hash_integridad},
             status=status.HTTP_200_OK,
         )
+
+    @extend_schema(
+        summary='Actualizar suscripción (tipo y frecuencia)',
+        description='Actualiza el `suscripcion_tipo` y la `frecuencia` de una suscripción del usuario autenticado. El `precio` se recalcula automáticamente en el save() del modelo.',
+        request=_ActualizarRequestSerializer,
+        responses={
+            200: CtnSuscripcionSerializer,
+            404: OpenApiResponse(
+                inline_serializer('ActualizarNotFoundSerializer', {'detail': serializers.CharField()}),
+                description='Suscripción o tipo no encontrado',
+            ),
+        },
+    )
+    @action(detail=False, methods=['post'], url_path='actualizar')
+    def actualizar(self, request):
+        serializador = _ActualizarRequestSerializer(data=request.data)
+        serializador.is_valid(raise_exception=True)
+
+        suscripcion_id = serializador.validated_data['suscripcion_id']
+        suscripcion_tipo_id = serializador.validated_data['suscripcion_tipo_id']
+        frecuencia = serializador.validated_data['frecuencia']
+
+        suscripcion = CtnSuscripcion.objects.filter(id=suscripcion_id, usuario=request.user).first()
+        if suscripcion is None:
+            return Response(
+                {'detail': f'Suscripción {suscripcion_id} no existe o no pertenece al usuario.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not CtnSuscripcionTipo.objects.filter(id=suscripcion_tipo_id).exists():
+            return Response(
+                {'detail': f'Tipo de suscripción {suscripcion_tipo_id} no existe.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        suscripcion.suscripcion_tipo_id = suscripcion_tipo_id
+        suscripcion.frecuencia = frecuencia
+        suscripcion.save(update_fields=['suscripcion_tipo', 'frecuencia'])
+
+        return Response(CtnSuscripcionSerializer(suscripcion).data, status=status.HTTP_200_OK)
