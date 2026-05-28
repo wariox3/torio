@@ -4,11 +4,11 @@
     {"id": 10001, "app": "general",      "clase": "GenContacto",        "nombre": "Contacto",         "tabla": "gen_contacto",         "tipo": "A"},
     {"id": 10002, "app": "general",      "clase": "GenDocumento",       "nombre": "Documento",        "tabla": "gen_documento",        "tipo": "M"},
 
-    {"id": 20001, "app": "contabilidad", "clase": "ConComprobante",     "nombre": "Comprobante",      "tabla": "con_comprobante",      "tipo": "A"},
+    {"id": 20001, "app": "contabilidad", "clase": "ConComprobante",     "nombre": "Comprobante",      "tabla": "con_comprobante",      "tipo": "F"},
     {"id": 20002, "app": "contabilidad", "clase": "ConCuenta",          "nombre": "Cuenta",           "tabla": "con_cuenta",           "tipo": "A"},
-    {"id": 20003, "app": "contabilidad", "clase": "ConCuentaClase",     "nombre": "Cuenta clase",     "tabla": "con_cuenta_clase",     "tipo": "A"},
-    {"id": 20004, "app": "contabilidad", "clase": "ConCuentaGrupo",     "nombre": "Cuenta grupo",     "tabla": "con_cuenta_grupo",     "tipo": "A"},
-    {"id": 20005, "app": "contabilidad", "clase": "ConCuentaCuenta",    "nombre": "Cuenta cuenta",    "tabla": "con_cuenta_cuenta",    "tipo": "A"},
-    {"id": 20006, "app": "contabilidad", "clase": "ConCuentaSubcuenta", "nombre": "Cuenta subcuenta", "tabla": "con_cuenta_subcuenta", "tipo": "A"}
+    {"id": 20003, "app": "contabilidad", "clase": "ConCuentaClase",     "nombre": "Cuenta clase",     "tabla": "con_cuenta_clase",     "tipo": "F"},
+    {"id": 20004, "app": "contabilidad", "clase": "ConCuentaGrupo",     "nombre": "Cuenta grupo",     "tabla": "con_cuenta_grupo",     "tipo": "F"},
+    {"id": 20005, "app": "contabilidad", "clase": "ConCuentaCuenta",    "nombre": "Cuenta cuenta",    "tabla": "con_cuenta_cuenta",    "tipo": "F"},
+    {"id": 20006, "app": "contabilidad", "clase": "ConCuentaSubcuenta", "nombre": "Cuenta subcuenta", "tabla": "con_cuenta_subcuenta", "tipo": "F"}
   ]
 }

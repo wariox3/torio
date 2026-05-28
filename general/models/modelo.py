@@ -6,6 +6,7 @@ class GenModelo(models.Model):
         ADMINISTRADOR = 'A', 'Administrador'
         MOVIMIENTO = 'M', 'Movimiento'
         DETALLE = 'D', 'Detalle'
+        FIXTURE = 'F', 'Fixture'
 
     id = models.BigIntegerField(primary_key=True)
     app = models.CharField(max_length=50)
