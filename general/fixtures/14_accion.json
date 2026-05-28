@@ -1,0 +1,8 @@
+{
+  "model": "general.GenAccion",
+  "data": [
+    {"id": 1, "codigo": "crear",      "nombre": "Crear"},
+    {"id": 2, "codigo": "actualizar", "nombre": "Actualizar"},
+    {"id": 3, "codigo": "eliminar",   "nombre": "Eliminar"}
+  ]
+}

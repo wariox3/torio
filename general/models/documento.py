@@ -6,6 +6,8 @@ from django.db.models import Sum
 
 
 class GenDocumento(models.Model):
+    log_auditoria = True
+
     numero = models.IntegerField(null=True)
     fecha = models.DateField(null=True)
     fecha_contable = models.DateField(null=True)

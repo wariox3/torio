@@ -1,6 +1,8 @@
 from drf_spectacular.contrib.rest_framework_simplejwt import SimpleJWTScheme
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from seguridad.contexto import _usuario_actual
+
 
 class SegCookieJWTScheme(SimpleJWTScheme):
     target_class = 'seguridad.authentication.SegCookieJWTAuthentication'
@@ -33,7 +35,9 @@ class SegCookieJWTAuthentication(JWTAuthentication):
             if token_sin_procesar is None:
                 return None
             token_validado = self.get_validated_token(token_sin_procesar)
-            return self.get_user(token_validado), token_validado
+            usuario = self.get_user(token_validado)
+            _usuario_actual.set(usuario)
+            return usuario, token_validado
 
         token_sin_procesar = request.COOKIES.get('access_token')
         if token_sin_procesar is None:
@@ -44,4 +48,6 @@ class SegCookieJWTAuthentication(JWTAuthentication):
         except Exception:
             return None
 
-        return self.get_user(token_validado), token_validado
+        usuario = self.get_user(token_validado)
+        _usuario_actual.set(usuario)
+        return usuario, token_validado

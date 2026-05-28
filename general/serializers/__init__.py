@@ -10,6 +10,7 @@ from .documento import (
 )
 from .documento_detalle import GenDocumentoDetalleSerializer
 from .identificacion import GenIdentificacionSeleccionarSerializer
+from .log import GenLogSerializer
 from .plazo_pago import GenPlazoPagoSeleccionarSerializer
 from .precio import GenPrecioSeleccionarSerializer
 from .tipo_persona import GenTipoPersonaSeleccionarSerializer

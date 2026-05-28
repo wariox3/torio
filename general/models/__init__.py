@@ -1,3 +1,4 @@
+from .accion import GenAccion
 from .asesor import GenAsesor
 from .documento import GenDocumento
 from .documento_clase import GenDocumentoClase
@@ -12,7 +13,9 @@ from .cuenta_banco_tipo import GenCuentaBancoTipo
 from .estado import GenEstado
 from .identificacion import GenIdentificacion
 from .item import GenItem
+from .log import GenLog
 from .modalidad import GenModalidad
+from .modelo import GenModelo
 from .pais import GenPais
 from .plazo_pago import GenPlazoPago
 from .resolucion import GenResolucion

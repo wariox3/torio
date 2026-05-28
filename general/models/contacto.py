@@ -2,6 +2,8 @@ from django.db import models
 
 
 class GenContacto(models.Model):
+    log_auditoria = True
+
     numero_identificacion = models.CharField(max_length=20)
     digito_verificacion = models.CharField(max_length=1, null=True)
     nombre_corto = models.CharField(max_length=200)

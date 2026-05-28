@@ -55,6 +55,7 @@ AUTH_USER_MODEL = 'seguridad.SegUsuario'
 MIDDLEWARE = [
     'seguridad.middleware.TenantHeaderMiddleware',
     'seguridad.middleware.SuscripcionActivaMiddleware',
+    'seguridad.middleware.UsuarioActualMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',

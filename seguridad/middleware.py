@@ -5,6 +5,28 @@ from django.db import connection
 from django.http import JsonResponse
 from django_tenants.utils import get_public_schema_name, get_tenant_model
 
+from seguridad.contexto import _usuario_actual
+
+
+class UsuarioActualMiddleware:
+    """
+    Garantiza el aislamiento del contextvar `_usuario_actual` entre requests:
+    lo resetea al inicio y al fin de cada request, así no se filtra el usuario
+    de un request a otro en el mismo thread (WSGI sync). El authentication
+    class (`SegCookieJWTAuthentication`) es quien efectivamente lo setea
+    cuando identifica al usuario del JWT.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        token = _usuario_actual.set(None)
+        try:
+            return self.get_response(request)
+        finally:
+            _usuario_actual.reset(token)
+
 
 class TenantHeaderMiddleware:
     """
