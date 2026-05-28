@@ -165,6 +165,11 @@ class CtnSuscripcionViewSet(viewsets.ModelViewSet):
     )
     @action(detail=False, methods=['post'], url_path='actualizar')
     def actualizar(self, request):
+        # Importante: falta validacion para que por front no me vayan a vulnerar el precio. 
+        # El precio se debe recalcular en el save() del modelo, no debe venir del front.
+        # Por ejemplo que no tengan saldo a favor y en la actualizacion me pongan un plan mayor
+        # sin pagar la diferencia. 
+        # Esto se puede manejar con una validacion custom en el serializer o directamente en la vista, pero no debe venir del front.
         serializador = _ActualizarRequestSerializer(data=request.data)
         serializador.is_valid(raise_exception=True)
 
