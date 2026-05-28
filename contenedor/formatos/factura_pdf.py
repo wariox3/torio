@@ -1,5 +1,6 @@
 from decimal import Decimal
 from io import BytesIO
+from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT
@@ -9,6 +10,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
+    Image,
     PageTemplate,
     Paragraph,
     Spacer,
@@ -16,13 +18,15 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+LOGO_PATH = Path(__file__).resolve().parent.parent / 'assets' / 'logo.jpg'
+
 EMISOR = {
-    'nombre': 'Torio SAS',
-    'nit': '901.000.000-1',
-    'direccion': 'Cra 7 #12-34',
-    'ciudad': 'Bogotá, Colombia',
-    'telefono': '+57 300 000 0000',
-    'correo': 'facturacion@torio.com',
+    'nombre': 'Semántica Digital S.A.S.',
+    'nit': '901.192.048-4',
+    'direccion': 'Cll 84 #58-20 Int 1414',
+    'ciudad': 'Itagui, Antioquia, Colombia',
+    'telefono': '+57 320 501 5059',
+    'correo': 'administracion@semantica.com.co',
 }
 
 TINTA = colors.HexColor('#111111')
@@ -132,9 +136,14 @@ def _bloque_encabezado(estilos, movimiento):
         f'<font size="10">{vence}</font>'
     )
 
+    if LOGO_PATH.exists():
+        logo = Image(str(LOGO_PATH), width=40 * mm, height=20 * mm, kind='proportional')
+        marca = logo
+    else:
+        marca = Paragraph(EMISOR['nombre'].upper(), estilos['marca'])
+
     tabla = Table(
-        [[Paragraph(EMISOR['nombre'].upper(), estilos['marca']),
-          Paragraph('FACTURA', estilos['titulo'])],
+        [[marca, Paragraph('FACTURA', estilos['titulo'])],
          ['', Paragraph(meta_html, estilos['valor_der'])]],
         colWidths=['50%', '50%'],
     )
