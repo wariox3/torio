@@ -13,7 +13,11 @@ from .documento import (
 )
 from .documento_detalle import GenDocumentoDetalleSerializer
 from .identificacion import GenIdentificacionSeleccionarSerializer
+from .item import GenItemSerializer
+from .item_exportar import GenItemExportarSerializer
+from .item_importar import GenItemImportarSerializer
 from .log import GenLogSerializer
+from .modelo import GenModeloSerializer
 from .plazo_pago import GenPlazoPagoSeleccionarSerializer
 from .precio import GenPrecioSeleccionarSerializer
 from .responsabilidad import GenResponsabilidadSeleccionarSerializer
