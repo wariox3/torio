@@ -4,6 +4,14 @@ from general.models import GenContacto
 
 
 class GenContactoSerializer(serializers.ModelSerializer):
+    # Config consumida por FiltrosDinamicosMixin y ExportarExcelMixin
+    campos_filtrables = {
+        'id', 'nombre_corto', 'numero_identificacion',
+        'cliente', 'proveedor', 'empleado', 'conductor', 'ciudad_id',
+    }
+    select_related_lista = ('identificacion', 'ciudad', 'tipo_persona')
+    ordenamiento_default_lista = ('nombre_corto',)
+
     identificacion_nombre = serializers.CharField(source='identificacion.nombre', read_only=True)
     identificacion_abreviatura = serializers.CharField(source='identificacion.abreviatura', read_only=True)
     ciudad_nombre = serializers.CharField(source='ciudad.nombre', read_only=True)

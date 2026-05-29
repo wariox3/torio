@@ -4,8 +4,12 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from general.models import GenContacto
-from general.serializers import GenContactoSerializer
-from utilidades.mixins import ExcelMixin, FiltrosDinamicosMixin
+from general.serializers import (
+    GenContactoExportarSerializer,
+    GenContactoImportarSerializer,
+    GenContactoSerializer,
+)
+from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 
 _LIST_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por nombre corto o número de identificación'),
@@ -19,41 +23,16 @@ _LIST_PARAMS = [
 @extend_schema(tags=['Contacto'])
 class GenContactoViewSet(
     FiltrosDinamicosMixin,
-    ExcelMixin,
+    ExportarExcelMixin,
+    ImportarExcelMixin,
     mixins.ListModelMixin,
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
     serializer_class = GenContactoSerializer
-
-    campos_filtrables = {
-        'id', 'nombre_corto', 'numero_identificacion', 'cliente', 'proveedor', 'empleado', 'conductor', 'ciudad_id',
-    }
-    select_related_lista = ('identificacion', 'ciudad', 'tipo_persona')
-    ordenamiento_default_lista = ('nombre_corto',)
-
-    nombre_archivo_excel = 'contactos'
-    campos_excel = (
-        ('id', 'ID'),
-        ('identificacion.nombre', 'Tipo identificación'),
-        ('numero_identificacion', 'Número identificación'),
-        ('digito_verificacion', 'DV'),
-        ('nombre_corto', 'Nombre corto'),
-        ('nombre1', 'Primer nombre'),
-        ('nombre2', 'Segundo nombre'),
-        ('apellido1', 'Primer apellido'),
-        ('apellido2', 'Segundo apellido'),
-        ('direccion', 'Dirección'),
-        ('ciudad.nombre', 'Ciudad'),
-        ('telefono', 'Teléfono'),
-        ('celular', 'Celular'),
-        ('correo', 'Correo'),
-        ('cliente', 'Cliente'),
-        ('proveedor', 'Proveedor'),
-        ('empleado', 'Empleado'),
-        ('conductor', 'Conductor'),
-    )
+    serializer_class_exportar = GenContactoExportarSerializer
+    serializer_class_importar = GenContactoImportarSerializer
 
     def get_queryset(self):
         qs = GenContacto.objects.select_related(
