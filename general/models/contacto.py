@@ -16,7 +16,7 @@ class GenContacto(models.Model):
     codigo_ciuu = models.CharField(max_length=200, null=True)
     codigo_postal = models.CharField(max_length=20, null=True)
     telefono = models.CharField(max_length=50)
-    celular = models.CharField(max_length=50, null=True)
+    celular = models.CharField(max_length=50, default='', db_default='')
     correo = models.CharField(max_length=255)
     correo_facturacion_electronica = models.CharField(max_length=255, null=True)
     cliente = models.BooleanField(default=False, db_default=False)

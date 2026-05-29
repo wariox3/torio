@@ -17,6 +17,8 @@ from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
+from utilidades.throttles import ImportarUsuarioTenantThrottle
+
 # Fuente cross-platform (Arial está en Windows/Mac y en Linux con msttcorefonts).
 # El default de openpyxl es Calibri, que no viene en LibreOffice por defecto.
 _FUENTE = 'Arial'
@@ -47,15 +49,17 @@ class ImportarExcelMixin:
 
     El ViewSet que lo herede debe declarar:
         serializer_class_importar: Serializer
-            Serializer que define la estructura del Excel y la lógica de upsert.
+            Serializer que define la estructura del Excel y la lógica de creación.
             Debe exponer:
                 model:        clase del modelo Django
                 campos_excel: tuple[tuple[campo, encabezado], ...]
-                procesar_fila(datos, fila) -> 'creado' | 'actualizado'
-                              # lanza Exception con mensaje para errores por fila
+                procesar_fila(datos, fila)
+                              # crea el registro o lanza Exception con mensaje.
+                              # Si el registro ya existe debe lanzar error
+                              # (el import solo crea, no actualiza).
 
     Si CUALQUIER fila falla, toda la transacción se revierte y se devuelve 400
-    con la lista de errores.
+    con la lista de errores. La respuesta exitosa es `{creados: N}`.
 
     Convención FK: campos con notación dotted (p.ej. `ciudad.id`) se marcan en la
     plantilla con sufijo `(ID)` y fondo amarillo para indicar al usuario que debe
@@ -63,6 +67,9 @@ class ImportarExcelMixin:
     """
 
     EXTENSIONES_VALIDAS_IMPORTAR = ('.xlsx',)
+    LIMITE_ERRORES_IMPORTAR = 100
+    MAX_FILAS_IMPORTAR = 10_000
+    MAX_TAMANO_ARCHIVO_BYTES = 5 * 1024 * 1024  # 5 MB
     serializer_class_importar = None
 
     def get_serializer_importar(self):
@@ -73,8 +80,13 @@ class ImportarExcelMixin:
         return self.serializer_class_importar()
 
     @staticmethod
-    def _encabezado_importar(campo, encabezado):
-        return f'{encabezado} (ID)' if '.' in campo else encabezado
+    def _encabezado_importar(campo, encabezado, requeridos=()):
+        sufijo = ''
+        if '.' in campo:
+            sufijo += ' (ID)'
+        if campo in requeridos:
+            sufijo += ' *'
+        return f'{encabezado}{sufijo}'
 
     def _validar_administrador(self, modelo_cls):
         GenModelo = apps.get_model('general', 'GenModelo')
@@ -112,11 +124,12 @@ class ImportarExcelMixin:
         ws.title = 'Datos'
 
         campos = serializer.campos_excel
+        requeridos = getattr(serializer, 'campos_requeridos', set())
         fondo_normal = PatternFill('solid', fgColor='D9D9D9')
         fondo_fk = PatternFill('solid', fgColor='FFF2CC')  # amarillo claro = campo FK
         for col, (campo, encabezado) in enumerate(campos, start=1):
             es_fk = '.' in campo
-            texto = self._encabezado_importar(campo, encabezado)
+            texto = self._encabezado_importar(campo, encabezado, requeridos)
             celda = ws.cell(row=1, column=col, value=texto)
             celda.font = _FUENTE_ENCABEZADO
             celda.fill = fondo_fk if es_fk else fondo_normal
@@ -159,6 +172,42 @@ class ImportarExcelMixin:
             return None
 
     @staticmethod
+    def _validar_tipo(field, valor, encabezado):
+        """Devuelve mensaje de error si `valor` no coincide con el tipo del campo, sino None."""
+        if field is None or valor in (None, ''):
+            return None
+        if isinstance(field, dj_models.BooleanField):
+            if isinstance(valor, bool):
+                return None
+            if str(valor).strip().lower() in (
+                'sí', 'si', 'no', 'true', 'false', '0', '1', 'yes', 'verdadero', 'falso',
+            ):
+                return None
+            return f'{encabezado} debe ser Sí o No (recibido: "{valor}")'
+        if isinstance(field, dj_models.DateField):
+            import datetime as _dt
+            if isinstance(valor, (_dt.date, _dt.datetime)):
+                return None
+            return f'{encabezado} debe ser una fecha (recibido: "{valor}")'
+        if isinstance(field, dj_models.DecimalField):
+            try:
+                float(valor)
+                return None
+            except (TypeError, ValueError):
+                return f'{encabezado} debe ser un número decimal (recibido: "{valor}")'
+        if isinstance(field, (
+            dj_models.BigIntegerField, dj_models.IntegerField,
+            dj_models.SmallIntegerField, dj_models.PositiveIntegerField,
+            dj_models.AutoField,
+        )):
+            try:
+                int(valor)
+                return None
+            except (TypeError, ValueError):
+                return f'{encabezado} debe ser un número entero (recibido: "{valor}")'
+        return None  # CharField, TextField, etc. aceptan cualquier valor
+
+    @staticmethod
     def _valor_ejemplo(field, fila, campo):
         if campo == 'id':
             return None
@@ -187,10 +236,15 @@ class ImportarExcelMixin:
         ),
         request={'multipart/form-data': _ImportarRequest},
     )
-    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
+    @action(
+        detail=False, methods=['post'],
+        parser_classes=[MultiPartParser],
+        throttle_classes=[ImportarUsuarioTenantThrottle],
+    )
     def importar(self, request):
         serializer = self.get_serializer_importar()
-        error = self._validar_administrador(serializer.model)
+        modelo = serializer.model
+        error = self._validar_administrador(modelo)
         if error:
             return error
 
@@ -213,8 +267,16 @@ class ImportarExcelMixin:
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if archivo.size > self.MAX_TAMANO_ARCHIVO_BYTES:
+            mb = self.MAX_TAMANO_ARCHIVO_BYTES // (1024 * 1024)
+            return Response(
+                {'detail': f'El archivo supera el tamaño máximo permitido ({mb} MB)'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
-            wb = load_workbook(archivo, data_only=True, read_only=True)
+            # data_only=False permite detectar fórmulas vía cell.data_type == 'f'
+            wb = load_workbook(archivo, data_only=False, read_only=True)
         except (InvalidFileException, BadZipFile):
             return Response(
                 {'detail': 'El archivo no es un Excel válido o está corrupto'},
@@ -228,18 +290,20 @@ class ImportarExcelMixin:
 
         try:
             ws = wb.active
-            rows = ws.iter_rows(values_only=True)
+            rows = ws.iter_rows()  # cell objects (necesario para detectar fórmulas)
 
             try:
-                headers_archivo = list(next(rows))
+                header_row = next(rows)
             except StopIteration:
                 return Response(
                     {'detail': 'El archivo no tiene contenido'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            headers_archivo = [c.value for c in header_row]
 
             campos = serializer.campos_excel
-            esperados = [self._encabezado_importar(c, e) for c, e in campos]
+            requeridos = getattr(serializer, 'campos_requeridos', set())
+            esperados = [self._encabezado_importar(c, e, requeridos) for c, e in campos]
             recibidos = [h for h in headers_archivo if h is not None]
             if recibidos != esperados:
                 return Response(
@@ -251,45 +315,129 @@ class ImportarExcelMixin:
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            mapping = {self._encabezado_importar(c, e): c for c, e in campos}
-            errores = []
-            creados = 0
-            actualizados = 0
+            mapping = {self._encabezado_importar(c, e, requeridos): c for c, e in campos}
 
-            with transaction.atomic():
-                for idx, row in enumerate(rows, start=2):
-                    datos = {}
-                    for col, header in enumerate(headers_archivo):
-                        campo = mapping.get(header)
-                        if campo:
-                            datos[campo] = row[col] if col < len(row) else None
+            # ============ FASE 1: validación estructural (sin BD) ============
+            # fórmulas, tipos de datos, campos requeridos.
+            filas_validas = []
+            errores_estructurales = []
+            filas_procesadas = 0
+            exceso_filas = False
 
-                    if not any(v not in (None, '') for v in datos.values()):
+            for idx, row in enumerate(rows, start=2):
+                datos = {}
+                formulas = []
+                for col, header in enumerate(headers_archivo):
+                    campo = mapping.get(header)
+                    if not campo:
                         continue
+                    celda = row[col] if col < len(row) else None
+                    if celda is not None and celda.data_type == 'f':
+                        formulas.append(header)
+                        datos[campo] = None
+                    else:
+                        datos[campo] = celda.value if celda is not None else None
 
-                    try:
-                        with transaction.atomic():
-                            resultado = serializer.procesar_fila(datos, idx)
-                        if resultado == 'creado':
-                            creados += 1
-                        elif resultado == 'actualizado':
-                            actualizados += 1
-                    except Exception as e:
-                        errores.append({'fila': idx, 'mensaje': str(e)})
+                if not any(v not in (None, '') for v in datos.values()) and not formulas:
+                    continue
+                filas_procesadas += 1
 
-                if errores:
-                    transaction.set_rollback(True)
+                if filas_procesadas > self.MAX_FILAS_IMPORTAR:
+                    exceso_filas = True
+                    break
+
+                if formulas:
+                    errores_estructurales.append({
+                        'fila': idx,
+                        'mensaje': f'Contiene fórmulas no permitidas en: {", ".join(formulas)}',
+                    })
+                    if len(errores_estructurales) >= self.LIMITE_ERRORES_IMPORTAR:
+                        break
+                    continue
+
+                errores_tipo = []
+                for campo, encabezado in campos:
+                    msg = self._validar_tipo(
+                        self._resolver_campo(modelo, campo),
+                        datos.get(campo),
+                        encabezado,
+                    )
+                    if msg:
+                        errores_tipo.append(msg)
+                if errores_tipo:
+                    errores_estructurales.append({'fila': idx, 'mensaje': '; '.join(errores_tipo)})
+                    if len(errores_estructurales) >= self.LIMITE_ERRORES_IMPORTAR:
+                        break
+                    continue
+
+                faltantes = [
+                    encabezado
+                    for campo, encabezado in campos
+                    if campo in requeridos and datos.get(campo) in (None, '')
+                ]
+                if faltantes:
+                    errores_estructurales.append({
+                        'fila': idx,
+                        'mensaje': f'Faltan campos requeridos: {", ".join(faltantes)}',
+                    })
+                    if len(errores_estructurales) >= self.LIMITE_ERRORES_IMPORTAR:
+                        break
+                    continue
+
+                filas_validas.append((idx, datos))
         finally:
             wb.close()
 
-        if errores:
+        if exceso_filas:
             return Response(
-                {
-                    'detail': 'No se importó nada por errores en algunas filas',
-                    'total_errores': len(errores),
-                    'errores': errores,
-                },
+                {'detail': f'El archivo supera el máximo de {self.MAX_FILAS_IMPORTAR} filas permitidas'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return Response({'creados': creados, 'actualizados': actualizados})
+        if filas_procesadas == 0:
+            return Response(
+                {'detail': 'El archivo no tiene filas para importar'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if errores_estructurales:
+            return self._respuesta_errores_importar('estructural', errores_estructurales)
+
+        # ============ FASE 2: lógica de negocio + creación (transaccional) ============
+        # El serializer procesa el lote completo: pre-carga FKs, valida, bulk_create.
+        with transaction.atomic():
+            creados, errores_negocio = serializer.procesar_lote(filas_validas)
+            if errores_negocio:
+                transaction.set_rollback(True)
+
+        if errores_negocio:
+            return self._respuesta_errores_importar('negocio', errores_negocio)
+
+        return Response({'creados': creados})
+
+    def _respuesta_errores_importar(self, fase, errores):
+        limite_alcanzado = len(errores) >= self.LIMITE_ERRORES_IMPORTAR
+        if limite_alcanzado:
+            detail = (
+                f'Se detectaron al menos {self.LIMITE_ERRORES_IMPORTAR} errores en la fase '
+                f'{fase}. Se detuvo la validación. No se importó nada — corrija y reintente.'
+            )
+        elif fase == 'estructural':
+            detail = (
+                'El archivo tiene problemas estructurales (fórmulas, tipos o requeridos). '
+                'No se procesó ningún registro.'
+            )
+        else:
+            detail = (
+                'Errores de datos al intentar guardar (FK inexistente, duplicados, etc.). '
+                'No se importó nada.'
+            )
+        return Response(
+            {
+                'detail': detail,
+                'fase': fase,
+                'total_errores': len(errores),
+                'errores': errores,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )

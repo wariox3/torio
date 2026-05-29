@@ -143,6 +143,7 @@ REST_FRAMEWORK = {
         'registro': '5/hour',
         'recuperar_clave': '3/min',
         'restablecer_clave': '5/min',
+        'importar': '10/hour',
     },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
