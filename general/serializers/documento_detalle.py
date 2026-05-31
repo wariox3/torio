@@ -4,6 +4,10 @@ from general.models import GenDocumentoDetalle
 
 
 class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
+    campos_filtrables = {'id', 'documento_id', 'item_id', 'tipo_registro', 'cuenta_id', 'contacto_id', 'modalidad_id'}
+    select_related_lista = ('item', 'modalidad', 'cuenta', 'contacto')
+    ordenamiento_default_lista = ('-id',)
+
     item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
     modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
 

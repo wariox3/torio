@@ -5,6 +5,7 @@ from .ciudad import GenCiudadViewSet
 from .contacto import GenContactoViewSet
 from .cuenta_banco_clase import GenCuentaBancoClaseViewSet
 from .documento import GenDocumentoViewSet
+from .documento_detalle import GenDocumentoDetalleViewSet
 from .identificacion import GenIdentificacionViewSet
 from .item import GenItemViewSet
 from .log import GenLogViewSet

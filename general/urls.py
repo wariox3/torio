@@ -8,6 +8,7 @@ from general.views import (
     GenCiudadViewSet,
     GenContactoViewSet,
     GenCuentaBancoClaseViewSet,
+    GenDocumentoDetalleViewSet,
     GenDocumentoViewSet,
     GenIdentificacionViewSet,
     GenItemViewSet,
@@ -28,6 +29,7 @@ router.register(r'ciudad', GenCiudadViewSet, basename='ciudad')
 router.register(r'contacto', GenContactoViewSet, basename='contacto')
 router.register(r'cuenta-banco-clase', GenCuentaBancoClaseViewSet, basename='cuenta-banco-clase')
 router.register(r'documento', GenDocumentoViewSet, basename='documento')
+router.register(r'documento-detalle', GenDocumentoDetalleViewSet, basename='documento-detalle')
 router.register(r'identificacion', GenIdentificacionViewSet, basename='identificacion')
 router.register(r'item', GenItemViewSet, basename='item')
 router.register(r'log', GenLogViewSet, basename='log')

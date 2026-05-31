@@ -5,6 +5,7 @@
     {"id": 10002, "app": "general",      "clase": "GenDocumento",       "nombre": "Documento",        "tabla": "gen_documento",        "tipo": "M"},
     {"id": 10003, "app": "general",      "clase": "GenResponsabilidad", "nombre": "Responsabilidad",  "tabla": "gen_responsabilidad",  "tipo": "F"},
     {"id": 10004, "app": "general",      "clase": "GenItem",            "nombre": "Item",             "tabla": "gen_item",             "tipo": "A"},
+    {"id": 10005, "app": "general",      "clase": "GenDocumentoDetalle","nombre": "Documento detalle","tabla": "gen_documento_detalle","tipo": "D"},
 
     {"id": 20001, "app": "contabilidad", "clase": "ConComprobante",     "nombre": "Comprobante",      "tabla": "con_comprobante",      "tipo": "F"},
     {"id": 20002, "app": "contabilidad", "clase": "ConCuenta",          "nombre": "Cuenta",           "tabla": "con_cuenta",           "tipo": "A"},
