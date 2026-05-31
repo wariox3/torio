@@ -6,6 +6,10 @@ from general.serializers.documento_detalle import GenDocumentoDetalleSerializer
 
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
+    campos_filtrables = {'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado'}
+    select_related_lista = ('documento_tipo', 'contacto', 'sector', 'modalidad')
+    ordenamiento_default_lista = ('-fecha', '-numero')
+
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
     contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
     sector_nombre = serializers.CharField(source='sector.nombre', read_only=True, default=None)

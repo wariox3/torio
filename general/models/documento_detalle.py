@@ -5,10 +5,10 @@ from django.db import models
 
 class GenDocumentoDetalle(models.Model):
     tipo_registro = models.CharField(max_length=1, default='I', db_default='I')
-    cantidad = models.FloatField(default=0, db_default=0)
-    cantidad_operada = models.FloatField(default=0, db_default=0)
-    cantidad_afectada = models.FloatField(default=0, db_default=0)
-    cantidad_pendiente = models.FloatField(default=0, db_default=0)
+    cantidad = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    cantidad_operada = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    cantidad_afectada = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    cantidad_pendiente = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     costo = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     precio = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     pago = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
@@ -105,7 +105,7 @@ class GenDocumentoDetalle(models.Model):
         return f'{self.documento_id} - {self.id}'
 
     def calcular(self):
-        cantidad = Decimal(str(self.cantidad or 0))
+        cantidad = self.cantidad or Decimal('0')
         precio = self.precio or Decimal('0')
         porcentaje = self.porcentaje_descuento or Decimal('0')
 

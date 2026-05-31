@@ -10,19 +10,27 @@ from general.serializers import (
     GenDocumentoCrearSerializer,
     GenDocumentoDetalleSerializer,
     GenDocumentoDetalleVistaSerializer,
+    GenDocumentoExportarSerializer,
+    GenDocumentoImportarSerializer,
     GenDocumentoSerializer,
 )
-from utilidades.mixins import FiltrosDinamicosMixin
+from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 
 
 @extend_schema(tags=['Documento'])
-class GenDocumentoViewSet(FiltrosDinamicosMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
-    
+class GenDocumentoViewSet(
+    FiltrosDinamicosMixin,
+    ExportarExcelMixin,
+    ImportarExcelMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
     serializer_class = GenDocumentoSerializer
-
-    campos_filtrables = {'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado'}
-    select_related_lista = ('documento_tipo', 'contacto', 'sector', 'modalidad')
-    ordenamiento_default_lista = ('-fecha', '-numero')
+    serializer_class_exportar = GenDocumentoExportarSerializer
+    serializer_class_importar = GenDocumentoImportarSerializer
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -32,10 +40,11 @@ class GenDocumentoViewSet(FiltrosDinamicosMixin, mixins.ListModelMixin, mixins.R
         return GenDocumentoSerializer
 
     def get_queryset(self):
-        queryset = GenDocumento.objects.select_related('documento_tipo', 'contacto', 'sector', 'modalidad')
+        select = GenDocumentoSerializer.select_related_lista
+        qs = GenDocumento.objects.select_related(*select)
         if self.action == 'retrieve':
-            queryset = queryset.prefetch_related('documentos_detalles_documento_rel')
-        return queryset
+            qs = qs.prefetch_related('documentos_detalles_documento_rel')
+        return qs
 
     def destroy(self, request, *args, **kwargs):
         with transaction.atomic():
