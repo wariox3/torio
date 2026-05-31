@@ -3,13 +3,14 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from general.models import GenContacto
+from general.models import GenContacto, GenIdentificacion
 from general.serializers import (
     GenContactoExportarSerializer,
     GenContactoImportarSerializer,
     GenContactoSerializer,
 )
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
+from utilidades.wolframio import Wolframio
 
 _LIST_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por nombre corto o número de identificación'),
@@ -55,6 +56,46 @@ class GenContactoViewSet(
     @extend_schema(parameters=_LIST_PARAMS)
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('identificacion_id', str, required=True),
+            OpenApiParameter('numero_identificacion', str, required=True),
+        ]
+    )
+    @action(detail=False, methods=['get'], url_path='consulta-dian')
+    def consulta_dian(self, request):
+        identificacion_id = request.query_params.get('identificacion_id')
+        numero_identificacion = request.query_params.get('numero_identificacion')
+        if not identificacion_id or not numero_identificacion:
+            return Response(
+                {'mensaje': 'identificacion_id y numero_identificacion son requeridos', 'codigo': 1},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            identificacion_id = int(identificacion_id)
+        except ValueError:
+            return Response(
+                {'mensaje': 'identificacion_id debe ser un número entero', 'codigo': 1},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if identificacion_id not in (3, 6):
+            return Response(
+                {'mensaje': 'Solo se pueden autocompletar NIT o Cédula', 'codigo': 1},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            identificacion = GenIdentificacion.objects.get(pk=identificacion_id)
+        except GenIdentificacion.DoesNotExist:
+            return Response(
+                {'mensaje': 'Identificación no encontrada', 'codigo': 1},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        datos = {'nit': numero_identificacion, 'identificacion': identificacion.codigo}
+        respuesta = Wolframio().contacto_consulta_nit(datos)
+        if respuesta['error']:
+            return Response({'mensaje': respuesta['mensaje'], 'codigo': 1}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(respuesta['datos'], status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'])
     def validar(self, request):
