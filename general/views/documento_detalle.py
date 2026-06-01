@@ -1,4 +1,4 @@
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,24 +8,21 @@ from general.serializers import GenDocumentoDetalleSerializer
 from general.servicios import LiquidadorSupervigilancia
 from utilidades.mixins import FiltrosDinamicosMixin
 
-_CALCULAR_PRECIO_SUPERVIGILANCIA_REQUEST = inline_serializer(
-    name='CalcularPrecioSupervigilanciaRequest',
-    fields={
-        'hora_desde': serializers.TimeField(),
-        'hora_hasta': serializers.TimeField(),
-        'modalidad_id': serializers.IntegerField(),
-        'sector_id': serializers.IntegerField(),
-        'precio_adicional': serializers.DecimalField(max_digits=20, decimal_places=2, default=0),
-        'lunes': serializers.BooleanField(default=False),
-        'martes': serializers.BooleanField(default=False),
-        'miercoles': serializers.BooleanField(default=False),
-        'jueves': serializers.BooleanField(default=False),
-        'viernes': serializers.BooleanField(default=False),
-        'sabado': serializers.BooleanField(default=False),
-        'domingo': serializers.BooleanField(default=False),
-        'festivo': serializers.BooleanField(default=False),
-    },
-)
+
+class CalcularPrecioSupervigilanciaRequestSerializer(serializers.Serializer):
+    hora_desde = serializers.TimeField()
+    hora_hasta = serializers.TimeField()
+    modalidad_id = serializers.IntegerField()
+    sector_id = serializers.IntegerField()
+    precio_adicional = serializers.DecimalField(max_digits=20, decimal_places=2, default=0)
+    lunes = serializers.BooleanField(default=False)
+    martes = serializers.BooleanField(default=False)
+    miercoles = serializers.BooleanField(default=False)
+    jueves = serializers.BooleanField(default=False)
+    viernes = serializers.BooleanField(default=False)
+    sabado = serializers.BooleanField(default=False)
+    domingo = serializers.BooleanField(default=False)
+    festivo = serializers.BooleanField(default=False)
 
 
 @extend_schema(tags=['DocumentoDetalle'])
@@ -42,10 +39,10 @@ class GenDocumentoDetalleViewSet(
             *GenDocumentoDetalleSerializer.select_related_lista
         )
 
-    @extend_schema(request=_CALCULAR_PRECIO_SUPERVIGILANCIA_REQUEST)
+    @extend_schema(request=CalcularPrecioSupervigilanciaRequestSerializer)
     @action(detail=False, methods=['post'], url_path='calcular-precio-supervigilancia')
     def calcular_precio_supervigilancia(self, request):
-        serializer = _CALCULAR_PRECIO_SUPERVIGILANCIA_REQUEST(data=request.data)
+        serializer = CalcularPrecioSupervigilanciaRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         datos = serializer.validated_data
 

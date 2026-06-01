@@ -1,3 +1,4 @@
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 
 
@@ -6,7 +7,7 @@ class GenLog(models.Model):
     accion = models.ForeignKey('general.GenAccion', on_delete=models.PROTECT)
     modelo = models.ForeignKey('general.GenModelo', on_delete=models.PROTECT)
     objeto_id = models.CharField(max_length=50, db_index=True)
-    datos = models.JSONField(null=True)
+    datos = models.JSONField(null=True, encoder=DjangoJSONEncoder)
     usuario_id = models.BigIntegerField(null=True, db_index=True)
     usuario_correo = models.CharField(max_length=255, null=True)
 

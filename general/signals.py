@@ -2,17 +2,17 @@
 Registro de auditoría: signals que poblan `gen_log` para cualquier modelo
 que declare `log_auditoria = True`.
 
+`datos` se deja siempre en null (se reservará para otro uso). Solo se registra
+la acción (`crear` / `actualizar` / `eliminar`), el objeto y el usuario.
+
 Limitaciones conscientes:
 - `QuerySet.update()`, `bulk_create()`, `bulk_delete()` NO disparan signals.
 - Cambios fuera de un request (shell, migraciones) quedan con usuario_id=None.
 """
 
-from django.db.models.signals import post_delete, post_save, pre_save
+from django.db.models.signals import post_delete, post_save
 
 from seguridad.contexto import obtener_usuario_actual
-
-# Campos que nunca van al diff de auditoría.
-_EXCLUIR_CAMPOS = {'fecha_creacion', 'fecha_modificacion', 'password'}
 
 # Cachés en memoria de IDs por código/dotted-path (se llenan perezosamente).
 _acciones_cache: dict[str, int] = {}
@@ -44,23 +44,6 @@ def _id_modelo(modelo_cls) -> int | None:
     return _modelos_cache[clave]
 
 
-def _snapshot(instance):
-    """Captura el valor actual de cada campo no excluido para diff posterior."""
-    return {
-        f.attname: getattr(instance, f.attname)
-        for f in instance._meta.concrete_fields
-        if f.name not in _EXCLUIR_CAMPOS and f.attname not in _EXCLUIR_CAMPOS
-    }
-
-
-def _diff(antes: dict, despues: dict) -> dict:
-    return {
-        campo: {'antes': antes.get(campo), 'despues': despues[campo]}
-        for campo in despues
-        if antes.get(campo) != despues[campo]
-    }
-
-
 def _datos_usuario():
     usuario = obtener_usuario_actual()
     if usuario is None:
@@ -86,39 +69,17 @@ def _crear_log(*, accion_codigo: str, instance, datos=None):
     )
 
 
-def _on_pre_save(sender, instance, **kwargs):
-    """Guarda el snapshot del estado anterior en el propio objeto para usarlo en post_save."""
-    if instance.pk is None:
-        instance._auditoria_antes = None
-        return
-    try:
-        anterior = sender.objects.get(pk=instance.pk)
-    except sender.DoesNotExist:
-        instance._auditoria_antes = None
-        return
-    instance._auditoria_antes = _snapshot(anterior)
-
-
 def _on_post_save(sender, instance, created, **kwargs):
-    if created:
-        _crear_log(accion_codigo='crear', instance=instance, datos=None)
-        return
-    antes = getattr(instance, '_auditoria_antes', None)
-    if antes is None:
-        return
-    datos = _diff(antes, _snapshot(instance))
-    if not datos:
-        return
-    _crear_log(accion_codigo='actualizar', instance=instance, datos=datos)
+    accion = 'crear' if created else 'actualizar'
+    _crear_log(accion_codigo=accion, instance=instance)
 
 
 def _on_post_delete(sender, instance, **kwargs):
-    _crear_log(accion_codigo='eliminar', instance=instance, datos=None)
+    _crear_log(accion_codigo='eliminar', instance=instance)
 
 
 def registrar_auditoria(modelo_cls):
     """Conecta los signals de auditoría para un modelo concreto."""
     etiqueta = f'auditoria_{modelo_cls._meta.label_lower}'
-    pre_save.connect(_on_pre_save, sender=modelo_cls, dispatch_uid=f'{etiqueta}_pre_save')
     post_save.connect(_on_post_save, sender=modelo_cls, dispatch_uid=f'{etiqueta}_post_save')
     post_delete.connect(_on_post_delete, sender=modelo_cls, dispatch_uid=f'{etiqueta}_post_delete')
