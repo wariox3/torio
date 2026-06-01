@@ -1,0 +1,10 @@
+{
+  "model": "general.GenImpuestoTipo",
+  "data": [
+    { "id": 1, "nombre": "IVA",              "codigo": "IVA" },
+    { "id": 2, "nombre": "ICA",              "codigo": "ICA" },
+    { "id": 3, "nombre": "RETENCION FUENTE", "codigo": "RTF" },
+    { "id": 4, "nombre": "RETENCION IVA",    "codigo": "RTI" },
+    { "id": 5, "nombre": "CONSUMO",          "codigo": "COM" }
+  ]
+}

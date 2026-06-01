@@ -15,6 +15,7 @@ from .documento_detalle import GenDocumentoDetalleSerializer
 from .documento_exportar import GenDocumentoExportarSerializer
 from .documento_importar import GenDocumentoImportarSerializer
 from .identificacion import GenIdentificacionSeleccionarSerializer
+from .impuesto import GenImpuestoSeleccionarSerializer
 from .item import GenItemSerializer
 from .item_exportar import GenItemExportarSerializer
 from .item_importar import GenItemImportarSerializer

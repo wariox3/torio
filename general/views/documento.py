@@ -5,7 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
-from general.models import GenDocumento, GenDocumentoDetalle
+from general.models import GenDocumento, GenDocumentoDetalle, GenDocumentoImpuesto
 from general.serializers import (
     GenDocumentoCrearSerializer,
     GenDocumentoDetalleSerializer,
@@ -15,6 +15,17 @@ from general.serializers import (
     GenDocumentoSerializer,
 )
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
+
+
+def _sincronizar_impuestos(detalle, impuestos):
+    detalle.documentos_impuestos_documento_detalle_rel.all().delete()
+    for impuesto in impuestos:
+        GenDocumentoImpuesto.objects.create(
+            documento_detalle=detalle,
+            impuesto=impuesto,
+            porcentaje=impuesto.porcentaje,
+            porcentaje_base=impuesto.porcentaje_base,
+        )
 
 
 @extend_schema(tags=['Documento'])
@@ -70,7 +81,11 @@ class GenDocumentoViewSet(
                 raise NotFound('Documento no encontrado.')
             if not documento.es_mutable():
                 raise ValidationError('El documento no es modificable.')
-            detalle = GenDocumentoDetalle(documento=documento, **serializer.validated_data)
+            datos = dict(serializer.validated_data)
+            impuestos = datos.pop('impuestos_ids', [])
+            detalle = GenDocumentoDetalle(documento=documento, **datos)
+            detalle.save()
+            _sincronizar_impuestos(detalle, impuestos)
             detalle.calcular()
             detalle.save()
             documento.recalcular_totales()
@@ -103,8 +118,12 @@ class GenDocumentoViewSet(
 
             serializer = GenDocumentoDetalleSerializer(detalle, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
-            for campo, valor in serializer.validated_data.items():
+            datos = dict(serializer.validated_data)
+            impuestos = datos.pop('impuestos_ids', None)
+            for campo, valor in datos.items():
                 setattr(detalle, campo, valor)
+            if impuestos is not None:
+                _sincronizar_impuestos(detalle, impuestos)
             detalle.calcular()
             detalle.save()
             documento.recalcular_totales()

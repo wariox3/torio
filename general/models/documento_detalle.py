@@ -108,11 +108,28 @@ class GenDocumentoDetalle(models.Model):
         cantidad = self.cantidad or Decimal('0')
         precio = self.precio or Decimal('0')
         porcentaje = self.porcentaje_descuento or Decimal('0')
+        cien = Decimal('100')
+        cuant = Decimal('0.000001')
 
         self.subtotal = cantidad * precio
-        self.descuento = (self.subtotal * porcentaje / Decimal('100')).quantize(Decimal('0.000001'))
+        self.descuento = (self.subtotal * porcentaje / cien).quantize(cuant)
         self.total_bruto = self.subtotal - self.descuento
         self.base_impuesto = self.total_bruto
-        self.impuesto = Decimal('0')
-        self.impuesto_retencion = Decimal('0')
+
+        impuesto = Decimal('0')
+        impuesto_retencion = Decimal('0')
+        if self.pk:
+            for documento_impuesto in self.documentos_impuestos_documento_detalle_rel.select_related('impuesto'):
+                base = (self.total_bruto * (documento_impuesto.porcentaje_base or Decimal('0')) / cien).quantize(cuant)
+                total = (base * (documento_impuesto.porcentaje or Decimal('0')) / cien).quantize(cuant)
+                documento_impuesto.base = base
+                documento_impuesto.total = total
+                documento_impuesto.save(update_fields=['base', 'total'])
+                if documento_impuesto.impuesto.operacion < 0:
+                    impuesto_retencion += total
+                else:
+                    impuesto += total
+
+        self.impuesto = impuesto
+        self.impuesto_retencion = impuesto_retencion
         self.total = self.total_bruto + self.impuesto - self.impuesto_retencion

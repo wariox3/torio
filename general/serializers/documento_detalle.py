@@ -1,6 +1,23 @@
 from rest_framework import serializers
 
-from general.models import GenDocumentoDetalle
+from general.models import GenDocumentoDetalle, GenDocumentoImpuesto, GenImpuesto
+
+
+class GenDocumentoImpuestoSerializer(serializers.ModelSerializer):
+    impuesto_nombre = serializers.CharField(source='impuesto.nombre', read_only=True, default=None)
+
+    class Meta:
+        model = GenDocumentoImpuesto
+        fields = [
+            'id',
+            'impuesto',
+            'impuesto_nombre',
+            'base',
+            'porcentaje',
+            'porcentaje_base',
+            'total',
+        ]
+        read_only_fields = ['id', 'base', 'porcentaje', 'porcentaje_base', 'total']
 
 
 class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
@@ -10,6 +27,17 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
 
     item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
     modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
+    impuestos = GenDocumentoImpuestoSerializer(
+        many=True,
+        read_only=True,
+        source='documentos_impuestos_documento_detalle_rel',
+    )
+    impuestos_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        write_only=True,
+        required=False,
+        queryset=GenImpuesto.objects.all(),
+    )
 
     class Meta:
         model = GenDocumentoDetalle
@@ -27,6 +55,8 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'modalidad_nombre',
             'cuenta',
             'contacto',
+            'impuestos',
+            'impuestos_ids',
             'subtotal',
             'descuento',
             'total_bruto',

@@ -7,6 +7,7 @@ from .cuenta_banco_clase import GenCuentaBancoClaseViewSet
 from .documento import GenDocumentoViewSet
 from .documento_detalle import GenDocumentoDetalleViewSet
 from .identificacion import GenIdentificacionViewSet
+from .impuesto import GenImpuestoViewSet
 from .item import GenItemViewSet
 from .log import GenLogViewSet
 from .modelo import GenModeloViewSet
