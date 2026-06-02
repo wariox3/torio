@@ -1,6 +1,16 @@
+from django.db import transaction
 from rest_framework import serializers
 
-from general.models import GenItem
+from general.models import GenImpuesto, GenItem, GenItemImpuesto
+
+
+class GenItemImpuestoSerializer(serializers.ModelSerializer):
+    impuesto_nombre = serializers.CharField(source='impuesto.nombre', read_only=True, default=None)
+
+    class Meta:
+        model = GenItemImpuesto
+        fields = ['id', 'impuesto', 'impuesto_nombre']
+        read_only_fields = ['id']
 
 
 class GenItemSerializer(serializers.ModelSerializer):
@@ -12,12 +22,24 @@ class GenItemSerializer(serializers.ModelSerializer):
     select_related_lista = (
         'cuenta_venta', 'cuenta_compra', 'cuenta_costo_venta', 'cuenta_inventario',
     )
+    prefetch_related_lista = ('items_impuestos_item_rel__impuesto',)
     ordenamiento_default_lista = ('nombre',)
 
     cuenta_venta_nombre = serializers.CharField(source='cuenta_venta.nombre', read_only=True)
     cuenta_compra_nombre = serializers.CharField(source='cuenta_compra.nombre', read_only=True)
     cuenta_costo_venta_nombre = serializers.CharField(source='cuenta_costo_venta.nombre', read_only=True)
     cuenta_inventario_nombre = serializers.CharField(source='cuenta_inventario.nombre', read_only=True)
+    impuestos = GenItemImpuestoSerializer(
+        many=True,
+        read_only=True,
+        source='items_impuestos_item_rel',
+    )
+    impuestos_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        write_only=True,
+        required=False,
+        queryset=GenImpuesto.objects.all(),
+    )
 
     class Meta:
         model = GenItem
@@ -49,5 +71,31 @@ class GenItemSerializer(serializers.ModelSerializer):
             'cuenta_costo_venta_nombre',
             'cuenta_inventario',
             'cuenta_inventario_nombre',
+            'impuestos',
+            'impuestos_ids',
         ]
         read_only_fields = ['id']
+
+    @transaction.atomic
+    def create(self, validated_data):
+        impuestos = validated_data.pop('impuestos_ids', [])
+        item = super().create(validated_data)
+        self._sincronizar_impuestos(item, impuestos)
+        return item
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        impuestos = validated_data.pop('impuestos_ids', None)
+        item = super().update(instance, validated_data)
+        if impuestos is not None:
+            self._sincronizar_impuestos(item, impuestos, reemplazar=True)
+        return item
+
+    @staticmethod
+    def _sincronizar_impuestos(item, impuestos, reemplazar=False):
+        if reemplazar:
+            item.items_impuestos_item_rel.all().delete()
+        GenItemImpuesto.objects.bulk_create(
+            [GenItemImpuesto(item=item, impuesto=impuesto) for impuesto in impuestos],
+            ignore_conflicts=True,
+        )

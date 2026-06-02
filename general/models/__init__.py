@@ -18,6 +18,7 @@ from .identificacion import GenIdentificacion
 from .impuesto import GenImpuesto
 from .impuesto_tipo import GenImpuestoTipo
 from .item import GenItem
+from .item_impuesto import GenItemImpuesto
 from .log import GenLog
 from .modalidad import GenModalidad
 from .modelo import GenModelo
