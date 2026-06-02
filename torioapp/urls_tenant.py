@@ -6,6 +6,7 @@ from django.urls import include, path
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('general/', include('general.urls')),
+    path('contabilidad/', include('contabilidad.urls')),
 ]
 
 if settings.ENABLE_API_DOCS:
