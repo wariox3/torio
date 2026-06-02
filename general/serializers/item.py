@@ -6,10 +6,32 @@ from general.models import GenImpuesto, GenItem, GenItemImpuesto
 
 class GenItemImpuestoSerializer(serializers.ModelSerializer):
     impuesto_nombre = serializers.CharField(source='impuesto.nombre', read_only=True, default=None)
+    impuesto_nombre_extendido = serializers.CharField(source='impuesto.nombre_extendido', read_only=True, default=None)
+    impuesto_porcentaje = serializers.DecimalField(
+        source='impuesto.porcentaje', max_digits=10, decimal_places=2, read_only=True, default=None,
+    )
+    impuesto_porcentaje_base = serializers.DecimalField(
+        source='impuesto.porcentaje_base', max_digits=10, decimal_places=2, read_only=True, default=None,
+    )
+    impuesto_venta = serializers.BooleanField(source='impuesto.venta', read_only=True, default=None)
+    impuesto_compra = serializers.BooleanField(source='impuesto.compra', read_only=True, default=None)
+    impuesto_operacion = serializers.IntegerField(source='impuesto.operacion', read_only=True, default=None)
+    impuesto_impuesto_tipo_id = serializers.IntegerField(source='impuesto.impuesto_tipo_id', read_only=True, default=None)
 
     class Meta:
         model = GenItemImpuesto
-        fields = ['id', 'impuesto', 'impuesto_nombre']
+        fields = [
+            'id',
+            'impuesto',
+            'impuesto_nombre',
+            'impuesto_nombre_extendido',
+            'impuesto_porcentaje',
+            'impuesto_porcentaje_base',
+            'impuesto_venta',
+            'impuesto_compra',
+            'impuesto_operacion',
+            'impuesto_impuesto_tipo_id',
+        ]
         read_only_fields = ['id']
 
 
