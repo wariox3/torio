@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from general.models import GenContacto, GenResponsabilidad
+from general.models import GenContacto
 
 
 class GenContactoSerializer(serializers.ModelSerializer):
@@ -16,12 +16,6 @@ class GenContactoSerializer(serializers.ModelSerializer):
     identificacion_abreviatura = serializers.CharField(source='identificacion.abreviatura', read_only=True)
     ciudad_nombre = serializers.CharField(source='ciudad.nombre', read_only=True)
     tipo_persona_nombre = serializers.CharField(source='tipo_persona.nombre', read_only=True)
-    responsabilidad_id = serializers.PrimaryKeyRelatedField(
-        source='responsabilidad',
-        queryset=GenResponsabilidad.objects.all(),
-        required=False,
-        allow_null=True,
-    )
     responsabilidad_nombre = serializers.CharField(source='responsabilidad.nombre', read_only=True, default=None)
 
     class Meta:
@@ -63,7 +57,7 @@ class GenContactoSerializer(serializers.ModelSerializer):
             'plazo_pago_proveedor',
             'banco',
             'cuenta_banco_clase',
-            'responsabilidad_id',
+            'responsabilidad',
             'responsabilidad_nombre',
         ]
         read_only_fields = ['id']
