@@ -36,6 +36,7 @@ class GenDocumentoViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
@@ -56,6 +57,12 @@ class GenDocumentoViewSet(
         if self.action == 'retrieve':
             qs = qs.prefetch_related('documentos_detalles_documento_rel')
         return qs
+
+    def update(self, request, *args, **kwargs):
+        instancia = self.get_object()
+        if not instancia.es_mutable():
+            raise ValidationError('El documento no es modificable.')
+        return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         with transaction.atomic():
