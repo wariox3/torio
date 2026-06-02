@@ -37,7 +37,7 @@ class GenContactoViewSet(
 
     def get_queryset(self):
         qs = GenContacto.objects.select_related(
-            'identificacion', 'ciudad', 'tipo_persona',
+            'identificacion', 'ciudad', 'tipo_persona', 'responsabilidad',
         ).order_by('nombre_corto')
 
         search = self.request.query_params.get('search', '').strip()
