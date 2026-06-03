@@ -12,6 +12,10 @@
     {"id": 20003, "app": "contabilidad", "clase": "ConCuentaClase",     "nombre": "Cuenta clase",     "tabla": "con_cuenta_clase",     "tipo": "F"},
     {"id": 20004, "app": "contabilidad", "clase": "ConCuentaGrupo",     "nombre": "Cuenta grupo",     "tabla": "con_cuenta_grupo",     "tipo": "F"},
     {"id": 20005, "app": "contabilidad", "clase": "ConCuentaCuenta",    "nombre": "Cuenta cuenta",    "tabla": "con_cuenta_cuenta",    "tipo": "F"},
-    {"id": 20006, "app": "contabilidad", "clase": "ConCuentaSubcuenta", "nombre": "Cuenta subcuenta", "tabla": "con_cuenta_subcuenta", "tipo": "F"}
+    {"id": 20006, "app": "contabilidad", "clase": "ConCuentaSubcuenta", "nombre": "Cuenta subcuenta", "tabla": "con_cuenta_subcuenta", "tipo": "F"},
+    {"id": 20007, "app": "contabilidad", "clase": "ConCentroCosto",      "nombre": "Centro de costo",  "tabla": "con_centro_costo",     "tipo": "A"},
+
+    {"id": 30001, "app": "turno",        "clase": "TurProgramador",     "nombre": "Programador",      "tabla": "tur_programador",      "tipo": "A"},
+    {"id": 30002, "app": "turno",        "clase": "TurPuesto",          "nombre": "Puesto",           "tabla": "tur_puesto",           "tipo": "A"}
   ]
 }

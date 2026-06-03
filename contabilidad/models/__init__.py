@@ -1,3 +1,4 @@
+from .centro_costo import ConCentroCosto
 from .comprobante import ConComprobante
 from .cuenta import ConCuenta
 from .cuenta_clase import ConCuentaClase

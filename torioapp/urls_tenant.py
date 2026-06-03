@@ -7,6 +7,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('general/', include('general.urls')),
     path('contabilidad/', include('contabilidad.urls')),
+    path('turno/', include('turno.urls')),
+    path('humano/', include('humano.urls')),
 ]
 
 if settings.ENABLE_API_DOCS:

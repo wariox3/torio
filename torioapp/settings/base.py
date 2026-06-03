@@ -38,6 +38,8 @@ TENANT_APPS = [
     'tenant_users.permissions',
     'general',
     'contabilidad',
+    'turno',
+    'humano',
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [
