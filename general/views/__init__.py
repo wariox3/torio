@@ -10,9 +10,11 @@ from .identificacion import GenIdentificacionViewSet
 from .impuesto import GenImpuestoViewSet
 from .item import GenItemViewSet
 from .log import GenLogViewSet
+from .modalidad import GenModalidadViewSet
 from .modelo import GenModeloViewSet
 from .plazo_pago import GenPlazoPagoViewSet
 from .precio import GenPrecioViewSet
 from .prueba import PruebaView
 from .responsabilidad import GenResponsabilidadViewSet
+from .sector import GenSectorViewSet
 from .tipo_persona import GenTipoPersonaViewSet

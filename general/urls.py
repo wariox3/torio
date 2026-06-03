@@ -14,10 +14,12 @@ from general.views import (
     GenImpuestoViewSet,
     GenItemViewSet,
     GenLogViewSet,
+    GenModalidadViewSet,
     GenModeloViewSet,
     GenPlazoPagoViewSet,
     GenPrecioViewSet,
     GenResponsabilidadViewSet,
+    GenSectorViewSet,
     GenTipoPersonaViewSet,
     PruebaView,
 )
@@ -35,10 +37,12 @@ router.register(r'identificacion', GenIdentificacionViewSet, basename='identific
 router.register(r'impuesto', GenImpuestoViewSet, basename='impuesto')
 router.register(r'item', GenItemViewSet, basename='item')
 router.register(r'log', GenLogViewSet, basename='log')
+router.register(r'modalidad', GenModalidadViewSet, basename='modalidad')
 router.register(r'modelo', GenModeloViewSet, basename='modelo')
 router.register(r'plazo-pago', GenPlazoPagoViewSet, basename='plazo-pago')
 router.register(r'precio', GenPrecioViewSet, basename='precio')
 router.register(r'responsabilidad', GenResponsabilidadViewSet, basename='responsabilidad')
+router.register(r'sector', GenSectorViewSet, basename='sector')
 router.register(r'tipo-persona', GenTipoPersonaViewSet, basename='tipo-persona')
 
 urlpatterns = [

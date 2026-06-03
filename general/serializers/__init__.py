@@ -5,6 +5,7 @@ from .ciudad import GenCiudadSeleccionarSerializer
 from .contacto import GenContactoSerializer
 from .contacto_exportar import GenContactoExportarSerializer
 from .contacto_importar import GenContactoImportarSerializer
+from .contacto_seleccionar import GenContactoSeleccionarSerializer
 from .cuenta_banco_clase import GenCuentaBancoClaseSeleccionarSerializer
 from .documento import (
     GenDocumentoCrearSerializer,
@@ -19,9 +20,12 @@ from .impuesto import GenImpuestoSeleccionarSerializer
 from .item import GenItemSerializer
 from .item_exportar import GenItemExportarSerializer
 from .item_importar import GenItemImportarSerializer
+from .item_seleccionar import GenItemSeleccionarSerializer
 from .log import GenLogSerializer
+from .modalidad import GenModalidadSeleccionarSerializer
 from .modelo import GenModeloSerializer
 from .plazo_pago import GenPlazoPagoSeleccionarSerializer
 from .precio import GenPrecioSeleccionarSerializer
 from .responsabilidad import GenResponsabilidadSeleccionarSerializer
+from .sector import GenSectorSeleccionarSerializer
 from .tipo_persona import GenTipoPersonaSeleccionarSerializer
