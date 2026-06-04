@@ -1,0 +1,30 @@
+{
+  "model": "humano.HumConceptoTipo",
+  "data": [
+    {"id": 1,  "nombre": "Salario"},
+    {"id": 2,  "nombre": "Extras"},
+    {"id": 3,  "nombre": "Devengado prestacional"},
+    {"id": 4,  "nombre": "Devengado no prestacional"},
+    {"id": 5,  "nombre": "Salud"},
+    {"id": 6,  "nombre": "Pension"},
+    {"id": 7,  "nombre": "Transporte"},
+    {"id": 8,  "nombre": "Credito"},
+    {"id": 9,  "nombre": "Fondo solidaridad pensional"},
+    {"id": 10, "nombre": "Retencion en la fuente"},
+    {"id": 11, "nombre": "Descuento"},
+    {"id": 12, "nombre": "Incapacidad por enfermedad general"},
+    {"id": 13, "nombre": "Incapacidad por enfermedad laboral"},
+    {"id": 14, "nombre": "Licencia maternidad / paternidad"},
+    {"id": 15, "nombre": "Licencia de luto"},
+    {"id": 16, "nombre": "Licencia remunerada"},
+    {"id": 17, "nombre": "Licencia no remunerada"},
+    {"id": 18, "nombre": "Vacaciones disfrutadas"},
+    {"id": 19, "nombre": "Vacaciones dinero"},
+    {"id": 20, "nombre": "Primas"},
+    {"id": 21, "nombre": "Primas liquidacion"},
+    {"id": 22, "nombre": "Cesantias"},
+    {"id": 23, "nombre": "Cesantias liquidacion"},
+    {"id": 24, "nombre": "Intereses"},
+    {"id": 25, "nombre": "Insteres liquidacion"}
+  ]
+}

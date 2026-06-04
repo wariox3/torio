@@ -1,0 +1,9 @@
+{
+  "model": "humano.HumPagoTipo",
+  "data": [
+    {"id": 1, "nombre": "Nomina",         "aplica_programacion": true},
+    {"id": 2, "nombre": "Prima",          "aplica_programacion": true},
+    {"id": 3, "nombre": "Cesantia",       "aplica_programacion": true},
+    {"id": 4, "nombre": "Interes cesantia", "aplica_programacion": true}
+  ]
+}

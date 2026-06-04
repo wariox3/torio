@@ -1,0 +1,33 @@
+{
+  "model": "humano.HumPension",
+  "data": [
+    {
+      "id": 1,
+      "nombre": "EMPLEADO 4% Y EMPLEADOR 12%",
+      "porcentaje_empleado": 4,
+      "porcentaje_empleador": 12,
+      "concepto_id": 15
+    },
+    {
+      "id": 2,
+      "nombre": "EMPLEADOR 16%",
+      "porcentaje_empleado": 0,
+      "porcentaje_empleador": 16,
+      "concepto_id": 15
+    },
+    {
+      "id": 3,
+      "nombre": "ALTO RIESGO",
+      "porcentaje_empleado": 4,
+      "porcentaje_empleador": 22,
+      "concepto_id": 15
+    },
+    {
+      "id": 4,
+      "nombre": "PENSIONADO",
+      "porcentaje_empleado": 0,
+      "porcentaje_empleador": 0,
+      "concepto_id": 15
+    }
+  ]
+}

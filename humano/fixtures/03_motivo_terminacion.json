@@ -1,0 +1,14 @@
+{
+  "model": "humano.HumMotivoTerminacion",
+  "data": [
+    {"id": 1, "nombre": "RENUNCIA VOLUNTARIA"},
+    {"id": 2, "nombre": "MUTUO ACUERDO"},
+    {"id": 3, "nombre": "CON JUSTA CAUSA"},
+    {"id": 4, "nombre": "SIN JUSTA CAUSA"},
+    {"id": 5, "nombre": "TERMINACIÓN DE CONTRATO"},
+    {"id": 6, "nombre": "PENSIÓN POR INVALIDEZ"},
+    {"id": 7, "nombre": "PENSIÓN POR VEJEZ"},
+    {"id": 8, "nombre": "MUERTE"},
+    {"id": 9, "nombre": "JUBILACIÓN"}
+  ]
+}

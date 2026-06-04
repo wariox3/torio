@@ -1,0 +1,7 @@
+{
+  "model": "humano.HumTiempo",
+  "data": [
+    {"id": 1, "nombre": "Tiempo completo"},
+    {"id": 2, "nombre": "Medio tiempo"}
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "model": "humano.HumRiesgo",
+  "data": [
+    {"id": 1, "codigo": "I",   "nombre": "I - 0.522",   "porcentaje": 0.522},
+    {"id": 2, "codigo": "II",  "nombre": "II - 1.044",  "porcentaje": 1.044},
+    {"id": 3, "codigo": "III", "nombre": "III - 2.436", "porcentaje": 2.436},
+    {"id": 4, "codigo": "IV",  "nombre": "IV - 4.350",  "porcentaje": 4.35},
+    {"id": 5, "codigo": "V",   "nombre": "V - 6.960",   "porcentaje": 6.96}
+  ]
+}

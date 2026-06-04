@@ -1,0 +1,7 @@
+{
+  "model": "humano.HumPeriodo",
+  "data": [
+    {"id": 1, "codigo": "QUI", "nombre": "QUINCENAL", "dias": 15},
+    {"id": 2, "codigo": "MEN", "nombre": "MENSUAL",   "dias": 30}
+  ]
+}

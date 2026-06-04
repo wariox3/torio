@@ -1,0 +1,12 @@
+{
+  "model": "humano.HumSubtipoCotizante",
+  "data": [
+    {"id": 1, "codigo": "00", "nombre": "SIN PENSIONAR"},
+    {"id": 2, "codigo": "01", "nombre": "Dependiente pensionado por vejez activo (SI no es pensionado es = a 00)"},
+    {"id": 3, "codigo": "02", "nombre": "Independiente pensionado por vejez activo"},
+    {"id": 4, "codigo": "03", "nombre": "Cotizante no obligado a cotización a pensiones por edad"},
+    {"id": 5, "codigo": "04", "nombre": "Cotizante con requisitos cumplidos para pensión."},
+    {"id": 6, "codigo": "05", "nombre": "Cotizante a quien se le ha reconocido indemnización sustitutiva o devolución de saldos"},
+    {"id": 7, "codigo": "06", "nombre": "Cotizante perteneciente a un régimen exceptuado de pensiones o a entidades autorizadas para recibir aportes exclusivamente de un grupo de sus propio"}
+  ]
+}

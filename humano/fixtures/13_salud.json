@@ -1,0 +1,17 @@
+{
+  "model": "humano.HumSalud",
+  "data": [
+    {
+      "id": 1,
+      "nombre": "EMPLEADO",
+      "porcentaje_empleado": 4,
+      "concepto_id": 14
+    },
+    {
+      "id": 2,
+      "nombre": "EMPLEADOR",
+      "porcentaje_empleado": 4,
+      "concepto_id": 14
+    }
+  ]
+}

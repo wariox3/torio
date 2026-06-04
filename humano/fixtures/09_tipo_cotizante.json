@@ -1,0 +1,24 @@
+{
+  "model": "humano.HumTipoCotizante",
+  "data": [
+    {"id": 1,  "codigo": "01", "nombre": "Dependiente"},
+    {"id": 2,  "codigo": "02", "nombre": "Servicio Doméstico"},
+    {"id": 3,  "codigo": "03", "nombre": "Independiente"},
+    {"id": 4,  "codigo": "04", "nombre": "Madre Comunitaria"},
+    {"id": 5,  "codigo": "12", "nombre": "Aprendiz SENA en etapa lectiva"},
+    {"id": 6,  "codigo": "15", "nombre": "Desempleado con subsidio de caja de compensación familiar"},
+    {"id": 7,  "codigo": "16", "nombre": "Independiente agremiado o asociado"},
+    {"id": 8,  "codigo": "18", "nombre": "Funcionarios públicos sin tope máximo en el IBC"},
+    {"id": 9,  "codigo": "19", "nombre": "Aprendices SENA en etapa productiva"},
+    {"id": 10, "codigo": "20", "nombre": "Estudiantes (Régimen especial-Ley 789/2002)"},
+    {"id": 11, "codigo": "21", "nombre": "Estudiantes de postgrado en salud (Decreto 190 de 1996)"},
+    {"id": 12, "codigo": "22", "nombre": "Profesor de establecimiento particular"},
+    {"id": 13, "codigo": "23", "nombre": "Estudiantes (Decreto 055 de 2015)"},
+    {"id": 14, "codigo": "30", "nombre": "Dependiente entidades o universidades públicas con régimen especial en Salud"},
+    {"id": 15, "codigo": "31", "nombre": "Cooperados o precooperativas de trabajo asociado"},
+    {"id": 16, "codigo": "32", "nombre": "Cotizante miembro de la carrera diplomática o consular de un país extranjero o funcionario de organismo multilateral no sometido a la legislación c"},
+    {"id": 17, "codigo": "33", "nombre": "Beneficiario del fondo de solidaridad pensional"},
+    {"id": 18, "codigo": "34", "nombre": "Concejal amparado por póliza de salud"},
+    {"id": 19, "codigo": "51", "nombre": "TRABAJADOR TIEMPO PARCIAL"}
+  ]
+}

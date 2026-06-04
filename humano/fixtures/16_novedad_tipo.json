@@ -1,0 +1,50 @@
+{
+  "model": "humano.HumNovedadTipo",
+  "data": [
+    {
+      "id": 1,
+      "nombre": "Incapacidad por enfermedad general",
+      "novedad_clase_id": 1,
+      "concepto_id": 23,
+      "concepto2_id": 31
+    },
+    {
+      "id": 2,
+      "nombre": "Incapacidad por enfermedad laboral",
+      "novedad_clase_id": 1,
+      "concepto_id": 24,
+      "concepto2_id": 24
+    },
+    {
+      "id": 3,
+      "nombre": "Licencia maternidad o paternidad",
+      "novedad_clase_id": 2,
+      "concepto_id": 25
+    },
+    {
+      "id": 4,
+      "nombre": "Licencia de luto",
+      "novedad_clase_id": 2,
+      "concepto_id": 26
+    },
+    {
+      "id": 5,
+      "nombre": "Licencia remunerada",
+      "novedad_clase_id": 2,
+      "concepto_id": 27
+    },
+    {
+      "id": 6,
+      "nombre": "Licencia no remunerada",
+      "novedad_clase_id": 2,
+      "concepto_id": 28
+    },
+    {
+      "id": 7,
+      "nombre": "Vacaciones",
+      "novedad_clase_id": 3,
+      "concepto_id": 29,
+      "concepto2_id": 30
+    }
+  ]
+}

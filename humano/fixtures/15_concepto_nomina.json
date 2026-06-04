@@ -1,0 +1,80 @@
+{
+  "model": "humano.HumConceptoNomina",
+  "data": [
+    {
+      "id": 1,
+      "nombre": "Diurna y/o salario",
+      "concepto_id": 1
+    },
+    {
+      "id": 2,
+      "nombre": "Nocturna",
+      "concepto_id": 2
+    },
+    {
+      "id": 3,
+      "nombre": "Festiva diurna",
+      "concepto_id": 3
+    },
+    {
+      "id": 4,
+      "nombre": "Festiva nocturna",
+      "concepto_id": 4
+    },
+    {
+      "id": 5,
+      "nombre": "Extra diurna",
+      "concepto_id": 5
+    },
+    {
+      "id": 6,
+      "nombre": "Extra nocturna",
+      "concepto_id": 6
+    },
+    {
+      "id": 7,
+      "nombre": "Extra festiva diurna",
+      "concepto_id": 7
+    },
+    {
+      "id": 8,
+      "nombre": "Extra festiva nocturna",
+      "concepto_id": 8
+    },
+    {
+      "id": 9,
+      "nombre": "Recargo nocturno",
+      "concepto_id": 9
+    },
+    {
+      "id": 10,
+      "nombre": "Recargo festivo diurno",
+      "concepto_id": 10
+    },
+    {
+      "id": 11,
+      "nombre": "Recargo festivo nocturno",
+      "concepto_id": 11
+    },
+    {
+      "id": 12,
+      "nombre": "Auxilio transporte",
+      "concepto_id": 16
+    },
+    {
+      "id": 13,
+      "nombre": "Prima",
+      "concepto_id": 32
+    },
+    {
+      "id": 14,
+      "nombre": "Cesantias anuales",
+      "concepto_id": 34
+    },
+    {
+      "id": 15,
+      "nombre": "Intereses anuales",
+      "concepto_id": 36
+    }
+  ]
+}

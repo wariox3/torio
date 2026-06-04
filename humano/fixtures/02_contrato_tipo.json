@@ -1,0 +1,10 @@
+{
+  "model": "humano.HumContratoTipo",
+  "data": [
+    {"id": 1, "nombre": "Indefinido"},
+    {"id": 2, "nombre": "Termino fijo inferior a un año"},
+    {"id": 3, "nombre": "Obra o labor"},
+    {"id": 4, "nombre": "Aprendíz del Sena"},
+    {"id": 5, "nombre": "Practica estudiantil"}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "model": "humano.HumTipoCosto",
+  "data": [
+    {"id": 1, "nombre": "Administrativo"},
+    {"id": 2, "nombre": "Administrativo operativo"},
+    {"id": 3, "nombre": "Comercial"},
+    {"id": 4, "nombre": "Operativo"}
+  ]
+}

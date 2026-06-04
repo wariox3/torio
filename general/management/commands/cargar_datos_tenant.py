@@ -13,6 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 FIXTURES_DIRS = [
     BASE_DIR / 'general' / 'fixtures',
     BASE_DIR / 'contabilidad' / 'fixtures',
+    BASE_DIR / 'humano' / 'fixtures',
 ]
 
 

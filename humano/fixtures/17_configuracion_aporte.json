@@ -1,0 +1,35 @@
+{
+  "model": "humano.HumConfiguracionAporte",
+  "data": [
+    {
+      "id": 1,
+      "tipo": "PENSION",
+      "orden": 1
+    },
+    {
+      "id": 2,
+      "tipo": "SALUD",
+      "orden": 2
+    },
+    {
+      "id": 3,
+      "tipo": "CAJA",
+      "orden": 3
+    },
+    {
+      "id": 4,
+      "tipo": "RIESGO",
+      "orden": 4
+    },
+    {
+      "id": 5,
+      "tipo": "SENA",
+      "orden": 5
+    },
+    {
+      "id": 6,
+      "tipo": "ICBF",
+      "orden": 6
+    }
+  ]
+}
