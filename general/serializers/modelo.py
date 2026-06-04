@@ -4,6 +4,10 @@ from general.models import GenModelo
 
 
 class GenModeloSerializer(serializers.ModelSerializer):
+    # Config consumida por FiltrosDinamicosMixin
+    campos_filtrables = {'id', 'app', 'clase', 'nombre', 'tabla', 'tipo'}
+    ordenamiento_default_lista = ('app', 'nombre')
+
     tipo_nombre = serializers.CharField(source='get_tipo_display', read_only=True)
 
     class Meta:

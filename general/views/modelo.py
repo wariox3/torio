@@ -9,6 +9,7 @@ from rest_framework.response import Response
 
 from general.models import GenModelo
 from general.serializers import GenModeloSerializer
+from utilidades.mixins import FiltrosDinamicosMixin
 
 
 # ---- Resolución de tipo de dato (amigable para el front) ----
@@ -90,6 +91,7 @@ class _EstructuraSerializer(serializers.Serializer):
 
 @extend_schema(tags=['Modelo'])
 class GenModeloViewSet(
+    FiltrosDinamicosMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,

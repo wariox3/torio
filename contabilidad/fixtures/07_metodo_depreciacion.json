@@ -1,0 +1,6 @@
+{
+  "model": "contabilidad.ConMetodoDepreciacion",
+  "data": [
+    {"id": 1, "nombre": "LINEA RECTA"}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "model": "contabilidad.ConActivoGrupo",
+  "data": [
+    {"id": 1, "nombre": "TERRENOS"},
+    {"id": 2, "nombre": "EQUIPO DE OFICINA"},
+    {"id": 3, "nombre": "EQUPO DE COMPUTO Y COMUNICACION"},
+    {"id": 4, "nombre": "VEHICULOS"}
+  ]
+}
