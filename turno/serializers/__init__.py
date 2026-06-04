@@ -6,3 +6,7 @@ from .puesto import TurPuestoSerializer
 from .puesto_exportar import TurPuestoExportarSerializer
 from .puesto_importar import TurPuestoImportarSerializer
 from .puesto_seleccionar import TurPuestoSeleccionarSerializer
+from .turno import TurTurnoSerializer
+from .turno_exportar import TurTurnoExportarSerializer
+from .turno_importar import TurTurnoImportarSerializer
+from .turno_seleccionar import TurTurnoSeleccionarSerializer
