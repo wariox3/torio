@@ -2,7 +2,7 @@ from django.db import models
 
 
 class ConCuenta(models.Model):
-    codigo = models.CharField(max_length=20, default='0', db_default='0')
+    codigo = models.CharField(max_length=20, unique=True)
     nombre = models.CharField(max_length=100)
     exige_base = models.BooleanField(default=False, db_default=False)
     exige_contacto = models.BooleanField(default=False, db_default=False)

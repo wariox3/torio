@@ -16,9 +16,9 @@ class GenItem(models.Model):
     favorito = models.BooleanField(default=False, db_default=False)
     venta = models.BooleanField(default=True, db_default=True)
     inactivo = models.BooleanField(default=False, db_default=False)
-    existencia = models.FloatField(default=0, db_default=0)
-    remision = models.FloatField(default=0, db_default=0)
-    disponible = models.FloatField(default=0, db_default=0)
+    existencia = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    remision = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    disponible = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     imagen = models.TextField(null=True)
     cuenta_venta = models.ForeignKey(
         'contabilidad.ConCuenta',

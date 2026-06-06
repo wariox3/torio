@@ -11,6 +11,7 @@ class ConPeriodo(models.Model):
     class Meta:
         db_table = 'con_periodo'
         ordering = ['-id']
+        unique_together = ('anio', 'mes')
         verbose_name = 'Periodo'
         verbose_name_plural = 'Periodos'
 
