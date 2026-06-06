@@ -96,6 +96,12 @@ class GenDocumentoDetalle(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_detalles_modalidad_rel',
     )
+    puesto = models.ForeignKey(
+        'turno.TurPuesto',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_detalles_puesto_rel',
+    )
 
     class Meta:
         db_table = 'gen_documento_detalle'

@@ -22,11 +22,12 @@ class GenDocumentoImpuestoSerializer(serializers.ModelSerializer):
 
 class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
     campos_filtrables = {'id', 'documento_id', 'item_id', 'tipo_registro', 'cuenta_id', 'contacto_id', 'modalidad_id'}
-    select_related_lista = ('item', 'modalidad', 'cuenta', 'contacto')
+    select_related_lista = ('item', 'modalidad', 'cuenta', 'contacto', 'puesto')
     ordenamiento_default_lista = ('-id',)
 
     item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
     modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
+    puesto_nombre = serializers.CharField(source='puesto.nombre', read_only=True, default=None)
     impuestos = GenDocumentoImpuestoSerializer(
         many=True,
         read_only=True,
@@ -53,6 +54,8 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'item_nombre',
             'modalidad',
             'modalidad_nombre',
+            'puesto',
+            'puesto_nombre',
             'cuenta',
             'contacto',
             'impuestos',
