@@ -50,10 +50,20 @@ class Command(BaseCommand):
         contenido = json.loads(archivo.read_text(encoding='utf-8'))
         modelo = apps.get_model(contenido['model'])
         actualizar_secuencia = contenido.get('actualizar_secuencia', False)
+        # solo_crear: inserta la fila únicamente si no existe y nunca la
+        # sobreescribe en ejecuciones posteriores (datos editables por el tenant).
+        solo_crear = contenido.get('solo_crear', False)
 
-        creados = actualizados = 0
+        creados = actualizados = omitidos = 0
         for item in contenido['data']:
             pk = item.pop('id')
+            if solo_crear:
+                _, nuevo = modelo.objects.get_or_create(id=pk, defaults=item)
+                if nuevo:
+                    creados += 1
+                else:
+                    omitidos += 1
+                continue
             _, nuevo = modelo.objects.update_or_create(id=pk, defaults=item)
             if nuevo:
                 creados += 1
@@ -63,9 +73,14 @@ class Command(BaseCommand):
         if actualizar_secuencia:
             self._resetear_secuencia(modelo)
 
-        self.stdout.write(
-            f'  {archivo.name} ({contenido["model"]}) — creados: {creados}, actualizados: {actualizados}'
-        )
+        if solo_crear:
+            self.stdout.write(
+                f'  {archivo.name} ({contenido["model"]}) — creados: {creados}, omitidos: {omitidos}'
+            )
+        else:
+            self.stdout.write(
+                f'  {archivo.name} ({contenido["model"]}) — creados: {creados}, actualizados: {actualizados}'
+            )
 
     def _resetear_secuencia(self, modelo):
         tabla = modelo._meta.db_table

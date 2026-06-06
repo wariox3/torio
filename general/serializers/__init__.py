@@ -2,6 +2,7 @@ from .archivo import GenArchivoSerializer
 from .asesor import GenAsesorSeleccionarSerializer
 from .banco import GenBancoSeleccionarSerializer
 from .ciudad import GenCiudadSeleccionarSerializer
+from .configuracion import GenConfiguracionSerializer
 from .contacto import GenContactoSerializer
 from .contacto_exportar import GenContactoExportarSerializer
 from .contacto_importar import GenContactoImportarSerializer

@@ -9,6 +9,7 @@ from .documento_impuesto import GenDocumentoImpuesto
 from .documento_tipo import GenDocumentoTipo
 from .banco import GenBanco
 from .ciudad import GenCiudad
+from .configuracion import GenConfiguracion
 from .contacto import GenContacto
 from .cuenta_banco import GenCuentaBanco
 from .cuenta_banco_clase import GenCuentaBancoClase

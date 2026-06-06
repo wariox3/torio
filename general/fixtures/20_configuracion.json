@@ -1,0 +1,7 @@
+{
+  "model": "general.GenConfiguracion",
+  "solo_crear": true,
+  "data": [
+    { "id": 1 }
+  ]
+}

@@ -2,6 +2,7 @@ from .archivo import GenArchivoViewSet
 from .asesor import GenAsesorViewSet
 from .banco import GenBancoViewSet
 from .ciudad import GenCiudadViewSet
+from .configuracion import GenConfiguracionViewSet
 from .contacto import GenContactoViewSet
 from .cuenta_banco_clase import GenCuentaBancoClaseViewSet
 from .documento import GenDocumentoViewSet

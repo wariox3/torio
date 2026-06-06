@@ -6,6 +6,7 @@ from general.views import (
     GenAsesorViewSet,
     GenBancoViewSet,
     GenCiudadViewSet,
+    GenConfiguracionViewSet,
     GenContactoViewSet,
     GenCuentaBancoClaseViewSet,
     GenDocumentoDetalleViewSet,
@@ -29,6 +30,7 @@ router.register(r'archivo', GenArchivoViewSet, basename='archivo')
 router.register(r'asesor', GenAsesorViewSet, basename='asesor')
 router.register(r'banco', GenBancoViewSet, basename='banco')
 router.register(r'ciudad', GenCiudadViewSet, basename='ciudad')
+router.register(r'configuracion', GenConfiguracionViewSet, basename='configuracion')
 router.register(r'contacto', GenContactoViewSet, basename='contacto')
 router.register(r'cuenta-banco-clase', GenCuentaBancoClaseViewSet, basename='cuenta-banco-clase')
 router.register(r'documento', GenDocumentoViewSet, basename='documento')
