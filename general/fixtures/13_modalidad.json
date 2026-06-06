@@ -2,8 +2,8 @@
   "model": "general.GenModalidad",
   "actualizar_secuencia": true,
   "data": [
-    {"id": 1, "nombre": "CANINO",   "codigo": "CAN", "porcentaje_comercial": 11.0, "porcentaje_residencial": 10.0},
-    {"id": 2, "nombre": "CON ARMA", "codigo": "CAR", "porcentaje_comercial": 10.0, "porcentaje_residencial": 10.0},
-    {"id": 3, "nombre": "SIN ARMA", "codigo": "SAR", "porcentaje_comercial":  8.0, "porcentaje_residencial": 10.0}
+    {"id": 1, "nombre": "CANINO",   "codigo": "CAN", "porcentaje_comercial": 11.0, "porcentaje_residencial": 10.0, "orden": 3},
+    {"id": 2, "nombre": "CON ARMA", "codigo": "CAR", "porcentaje_comercial": 10.0, "porcentaje_residencial": 10.0, "orden": 2},
+    {"id": 3, "nombre": "SIN ARMA", "codigo": "SAR", "porcentaje_comercial":  8.0, "porcentaje_residencial": 10.0, "orden": 1}
   ]
 }

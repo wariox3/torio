@@ -18,7 +18,7 @@ class GenModalidadViewSet(viewsets.GenericViewSet):
     @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=GenModalidadSeleccionarSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)
     def seleccionar(self, request):
-        qs = GenModalidad.objects.all()
+        qs = GenModalidad.objects.order_by('orden')
         search = request.query_params.get('search', '').strip()
         if search:
             qs = qs.filter(nombre__icontains=search)
