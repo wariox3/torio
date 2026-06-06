@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from general.models import GenDocumentoDetalle, GenDocumentoImpuesto, GenImpuesto
+from general.models import GenDocumento, GenDocumentoDetalle, GenDocumentoImpuesto, GenImpuesto
 
 
 class GenDocumentoImpuestoSerializer(serializers.ModelSerializer):
@@ -25,6 +25,9 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
     select_related_lista = ('item', 'modalidad', 'cuenta', 'contacto', 'puesto')
     ordenamiento_default_lista = ('-id',)
 
+    documento = serializers.PrimaryKeyRelatedField(
+        queryset=GenDocumento.objects.all(), required=False,
+    )
     item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
     modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
     modalidad_codigo = serializers.CharField(source='modalidad.codigo', read_only=True, default=None)
@@ -40,11 +43,22 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
         required=False,
         queryset=GenImpuesto.objects.all(),
     )
+    # Días/festivo: si no llegan en el create, se guardan en False.
+    # En el PATCH (partial) los que no lleguen quedan sin cambios.
+    lunes = serializers.BooleanField(required=False, default=False)
+    martes = serializers.BooleanField(required=False, default=False)
+    miercoles = serializers.BooleanField(required=False, default=False)
+    jueves = serializers.BooleanField(required=False, default=False)
+    viernes = serializers.BooleanField(required=False, default=False)
+    sabado = serializers.BooleanField(required=False, default=False)
+    domingo = serializers.BooleanField(required=False, default=False)
+    festivo = serializers.BooleanField(required=False, default=False)
 
     class Meta:
         model = GenDocumentoDetalle
         fields = [
             'id',
+            'documento',
             'tipo_registro',
             'cantidad',
             'precio',

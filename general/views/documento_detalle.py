@@ -1,11 +1,13 @@
+from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
-from general.models import GenDocumentoDetalle, GenModalidad, GenSector
+from general.models import GenDocumento, GenDocumentoDetalle, GenModalidad, GenSector
 from general.serializers import GenDocumentoDetalleSerializer
-from general.servicios import LiquidadorSupervigilancia
+from general.servicios import LiquidadorSupervigilancia, sincronizar_impuestos
 from utilidades.mixins import FiltrosDinamicosMixin
 
 
@@ -39,6 +41,73 @@ class GenDocumentoDetalleViewSet(
         return GenDocumentoDetalle.objects.select_related(
             *GenDocumentoDetalleSerializer.select_related_lista
         )
+
+    def _obtener_documento_bloqueado(self, detalle_id):
+        try:
+            detalle = GenDocumentoDetalle.objects.get(pk=detalle_id)
+        except GenDocumentoDetalle.DoesNotExist:
+            raise NotFound('Detalle no encontrado.')
+        documento = GenDocumento.objects.select_for_update().get(pk=detalle.documento_id)
+        if not documento.es_mutable():
+            raise ValidationError('El documento no es modificable.')
+        return documento
+
+    def create(self, request, *args, **kwargs):
+        serializer = GenDocumentoDetalleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = dict(serializer.validated_data)
+        documento_payload = datos.pop('documento', None)
+        if documento_payload is None:
+            raise ValidationError({'documento': 'Este campo es requerido.'})
+
+        with transaction.atomic():
+            try:
+                documento = GenDocumento.objects.select_for_update().get(pk=documento_payload.pk)
+            except GenDocumento.DoesNotExist:
+                raise NotFound('Documento no encontrado.')
+            if not documento.es_mutable():
+                raise ValidationError('El documento no es modificable.')
+            impuestos = datos.pop('impuestos_ids', [])
+            detalle = GenDocumentoDetalle(documento=documento, **datos)
+            detalle.save()
+            sincronizar_impuestos(detalle, impuestos)
+            detalle.calcular()
+            detalle.save()
+            documento.recalcular_totales()
+            documento.save()
+
+        return Response(
+            GenDocumentoDetalleSerializer(detalle).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        with transaction.atomic():
+            documento = self._obtener_documento_bloqueado(kwargs['pk'])
+            detalle = documento.documentos_detalles_documento_rel.get(pk=kwargs['pk'])
+
+            serializer = GenDocumentoDetalleSerializer(detalle, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            datos = dict(serializer.validated_data)
+            impuestos = datos.pop('impuestos_ids', None)
+            for campo, valor in datos.items():
+                setattr(detalle, campo, valor)
+            if impuestos is not None:
+                sincronizar_impuestos(detalle, impuestos)
+            detalle.calcular()
+            detalle.save()
+            documento.recalcular_totales()
+            documento.save()
+
+        return Response(GenDocumentoDetalleSerializer(detalle).data)
+
+    def destroy(self, request, *args, **kwargs):
+        with transaction.atomic():
+            documento = self._obtener_documento_bloqueado(kwargs['pk'])
+            documento.documentos_detalles_documento_rel.filter(pk=kwargs['pk']).delete()
+            documento.recalcular_totales()
+            documento.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(request=CalcularPrecioSupervigilanciaRequestSerializer)
     @action(detail=False, methods=['post'], url_path='calcular-precio-supervigilancia')

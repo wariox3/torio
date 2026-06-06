@@ -68,6 +68,8 @@ Both use the same JSON format:
 
 Optional field `"actualizar_secuencia": true` resets the PostgreSQL sequence after loading — use this when the model has a manual `BigIntegerField(primary_key=True)` and the next auto-generated PK could collide.
 
+Optional field `"solo_crear": true` (tenant loader only) inserts each row **only if it doesn't already exist** (`get_or_create`) and never overwrites it on later runs — use this for tenant-editable singletons/config seeded once at tenant creation (e.g. `GenConfiguracion`), so re-running `cargar_datos_tenant` for other catalogs doesn't clobber the tenant's edits.
+
 ### Development notes
 
 - Cookie domain is set to `.localhost` so JWT cookies work across all tenant subdomains.

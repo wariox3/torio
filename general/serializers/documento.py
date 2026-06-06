@@ -99,6 +99,7 @@ class GenDocumentoCrearSerializer(GenDocumentoSerializer):
         documento = GenDocumento.objects.create(**validated_data)
         for detalle_data in detalles_data:
             impuestos = detalle_data.pop('impuestos_ids', [])
+            detalle_data.pop('documento', None)  # el documento lo fija el padre
             detalle = GenDocumentoDetalle(documento=documento, **detalle_data)
             detalle.save()
             for impuesto in impuestos:
