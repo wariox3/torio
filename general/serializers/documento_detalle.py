@@ -66,6 +66,8 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'total',
             'hora_desde',
             'hora_hasta',
+            'fecha_desde',
+            'fecha_hasta',
             'lunes',
             'martes',
             'miercoles',

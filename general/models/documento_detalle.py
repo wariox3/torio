@@ -28,6 +28,8 @@ class GenDocumentoDetalle(models.Model):
     horas_nocturnas = models.DecimalField(max_digits=10, decimal_places=2, default=0, db_default=0)
     hora_desde = models.TimeField(null=True)
     hora_hasta = models.TimeField(null=True)
+    fecha_desde = models.DateField(null=True)
+    fecha_hasta = models.DateField(null=True)
     lunes = models.BooleanField(default=False, db_default=False)
     martes = models.BooleanField(default=False, db_default=False)
     miercoles = models.BooleanField(default=False, db_default=False)
