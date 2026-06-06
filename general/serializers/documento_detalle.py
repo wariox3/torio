@@ -27,6 +27,7 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
 
     item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
     modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
+    modalidad_codigo = serializers.CharField(source='modalidad.codigo', read_only=True, default=None)
     puesto_nombre = serializers.CharField(source='puesto.nombre', read_only=True, default=None)
     impuestos = GenDocumentoImpuestoSerializer(
         many=True,
@@ -54,6 +55,7 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'item_nombre',
             'modalidad',
             'modalidad_nombre',
+            'modalidad_codigo',
             'puesto',
             'puesto_nombre',
             'cuenta',
