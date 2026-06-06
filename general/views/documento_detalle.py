@@ -10,6 +10,7 @@ from utilidades.mixins import FiltrosDinamicosMixin
 
 
 class CalcularPrecioSupervigilanciaRequestSerializer(serializers.Serializer):
+    salario = serializers.DecimalField(max_digits=20, decimal_places=2)
     hora_desde = serializers.TimeField()
     hora_hasta = serializers.TimeField()
     modalidad_id = serializers.IntegerField()
@@ -56,6 +57,7 @@ class GenDocumentoDetalleViewSet(
             return Response({'mensaje': 'Modalidad no encontrada', 'codigo': 1}, status=status.HTTP_400_BAD_REQUEST)
 
         resultado = LiquidadorSupervigilancia.calcular_precio(
+            salario=datos['salario'],
             hora_desde=datos['hora_desde'],
             hora_hasta=datos['hora_hasta'],
             sector=sector,

@@ -9,8 +9,6 @@ class LiquidadorSupervigilancia:
     y no toca la base de datos.
     """
 
-    # Salario base usado como referencia del cálculo (parametrizable).
-    SALARIO_BASE = Decimal('1750905')
     # Frontera legal jornada diurna (Ley 2101 de 2021): diurno [06:00, 19:00), nocturno el resto.
     FRONTERA_DIURNA_INICIO = time(6, 0)
     FRONTERA_DIURNA_FIN = time(19, 0)
@@ -47,7 +45,7 @@ class LiquidadorSupervigilancia:
 
     @classmethod
     def calcular_precio(
-        cls, *, hora_desde, hora_hasta, sector, modalidad, precio_adicional=Decimal('0'),
+        cls, *, salario, hora_desde, hora_hasta, sector, modalidad, precio_adicional=Decimal('0'),
         lunes=False, martes=False, miercoles=False, jueves=False, viernes=False,
         sabado=False, domingo=False, festivo=False,
     ):
@@ -68,7 +66,7 @@ class LiquidadorSupervigilancia:
         horas_nocturnas = horas_nocturnas_unidad * total_dias
 
         # Valor base según sector y modalidad
-        valor_base_servicio = (cls.SALARIO_BASE * sector.porcentaje) + precio_adicional
+        valor_base_servicio = (salario * sector.porcentaje) + precio_adicional
         if sector.tipo == 'R':  # residencial
             porcentaje_modalidad = modalidad.porcentaje_residencial
         else:  # comercial
