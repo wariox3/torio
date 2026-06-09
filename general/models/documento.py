@@ -127,12 +127,6 @@ class GenDocumento(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_sector_rel',
     )
-    modalidad = models.ForeignKey(
-        'general.GenModalidad',
-        null=True,
-        on_delete=models.PROTECT,
-        related_name='documentos_modalidad_rel',
-    )
     estrato = models.PositiveSmallIntegerField(
         null=True,
         validators=[MinValueValidator(1), MaxValueValidator(9)],
