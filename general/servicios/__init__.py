@@ -1,2 +1,2 @@
-from .documento import sincronizar_impuestos
+from .documento import generar_documentos, sincronizar_impuestos
 from .supervigilancia import LiquidadorSupervigilancia

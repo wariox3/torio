@@ -1,6 +1,7 @@
 from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
@@ -9,9 +10,11 @@ from general.serializers import (
     GenDocumentoCrearSerializer,
     GenDocumentoDetalleVistaSerializer,
     GenDocumentoExportarSerializer,
+    GenDocumentoGenerarSerializer,
     GenDocumentoImportarSerializer,
     GenDocumentoSerializer,
 )
+from general.servicios import generar_documentos
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 
 
@@ -62,3 +65,21 @@ class GenDocumentoViewSet(
             documento.documentos_detalles_documento_rel.all().delete()
             documento.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(request=GenDocumentoGenerarSerializer, responses=GenDocumentoSerializer(many=True))
+    @action(detail=False, methods=['post'])
+    def generar(self, request):
+        serializer = GenDocumentoGenerarSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = serializer.validated_data
+        generados = generar_documentos(
+            documento_tipo_origen=datos['documento_tipo_id'],
+            documento_tipo_destino_id=datos['documento_tipo_id_destino'].pk,
+            fecha=datos['fecha'],
+            documento_ids=datos.get('documento_ids'),
+        )
+        salida = GenDocumentoSerializer(generados, many=True)
+        return Response(
+            {'generados': len(generados), 'documentos': salida.data},
+            status=status.HTTP_201_CREATED,
+        )

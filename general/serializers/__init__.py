@@ -11,6 +11,7 @@ from .cuenta_banco_clase import GenCuentaBancoClaseSeleccionarSerializer
 from .documento import (
     GenDocumentoCrearSerializer,
     GenDocumentoDetalleVistaSerializer,
+    GenDocumentoGenerarSerializer,
     GenDocumentoSerializer,
 )
 from .documento_detalle import GenDocumentoDetalleSerializer

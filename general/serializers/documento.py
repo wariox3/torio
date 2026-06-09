@@ -1,7 +1,12 @@
 from django.db import transaction
 from rest_framework import serializers
 
-from general.models import GenDocumento, GenDocumentoDetalle, GenDocumentoImpuesto
+from general.models import (
+    GenDocumento,
+    GenDocumentoDetalle,
+    GenDocumentoImpuesto,
+    GenDocumentoTipo,
+)
 from general.serializers.documento_detalle import GenDocumentoDetalleSerializer
 
 
@@ -52,6 +57,9 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'impuesto_retencion',
             'total',
             'salario',
+            'horas',
+            'horas_diurnas',
+            'horas_nocturnas',
             'estado_aprobado',
             'estado_anulado',
             'estado_contabilizado',
@@ -113,3 +121,16 @@ class GenDocumentoCrearSerializer(GenDocumentoSerializer):
         documento.recalcular_totales()
         documento.save()
         return documento
+
+
+class GenDocumentoGenerarSerializer(serializers.Serializer):
+    documento_tipo_id = serializers.PrimaryKeyRelatedField(
+        queryset=GenDocumentoTipo.objects.all(),
+    )
+    documento_tipo_id_destino = serializers.PrimaryKeyRelatedField(
+        queryset=GenDocumentoTipo.objects.all(),
+    )
+    documento_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False, allow_empty=True,
+    )
+    fecha = serializers.DateField()
