@@ -2,7 +2,7 @@
   "model": "general.GenSector",
   "actualizar_secuencia": true,
   "data": [
-    {"id": 1, "nombre": "COMERCIAL 10.04",   "porcentaje": 10.04, "tipo": "C"},
-    {"id": 2, "nombre": "RESIDENCIAL 10.04", "porcentaje": 10.04, "tipo": "R"}
+    {"id": 1, "nombre": "COMERCIAL 9.77",   "porcentaje": 9.77, "tipo": "C"},
+    {"id": 2, "nombre": "RESIDENCIAL 9.77", "porcentaje": 9.77, "tipo": "R"}
   ]
 }
