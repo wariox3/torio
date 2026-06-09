@@ -12,6 +12,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
     contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
+    tercero_numero_identificacion = serializers.CharField(source='contacto.numero_identificacion', read_only=True, default=None)
     sector_nombre = serializers.CharField(source='sector.nombre', read_only=True, default=None)
     modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
 
@@ -33,6 +34,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'documento_tipo_nombre',
             'contacto',
             'contacto_nombre',
+            'tercero_numero_identificacion',
             'resolucion',
             'plazo_pago',
             'asesor',
