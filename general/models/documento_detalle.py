@@ -11,6 +11,7 @@ class GenDocumentoDetalle(models.Model):
     cantidad_pendiente = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     costo = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     precio = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    precio_minimo = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     pago = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     pago_operado = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     subtotal = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)

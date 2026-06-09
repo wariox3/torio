@@ -62,6 +62,7 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'tipo_registro',
             'cantidad',
             'precio',
+            'precio_minimo',
             'porcentaje_descuento',
             'detalle',
             'numero',
