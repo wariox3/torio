@@ -2,6 +2,6 @@
   "model": "general.GenConfiguracion",
   "solo_crear": true,
   "data": [
-    { "id": 1 }
+    { "id": 1, "gen_uvt": 52374, "hum_factor": 7.333, "hum_salario_minimo": 1750905, "hum_auxilio_transporte": 249095 }
   ]
 }

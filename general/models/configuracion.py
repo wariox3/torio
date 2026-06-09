@@ -4,16 +4,16 @@ from django.db import models
 class GenConfiguracion(models.Model):
     id = models.BigIntegerField(primary_key=True, default=1, db_default=1)
     gen_uvt = models.DecimalField(
-        max_digits=20, decimal_places=6, default=49799, db_default=49799,
+        max_digits=20, decimal_places=6, default=0, db_default=0,
     )
     hum_factor = models.DecimalField(
-        max_digits=6, decimal_places=3, default=7.666, db_default=7.666,
+        max_digits=6, decimal_places=3, default=0, db_default=0,
     )
     hum_salario_minimo = models.DecimalField(
-        max_digits=20, decimal_places=6, default=1423500, db_default=1423500,
+        max_digits=20, decimal_places=6, default=0, db_default=0,
     )
     hum_auxilio_transporte = models.DecimalField(
-        max_digits=20, decimal_places=6, default=200000, db_default=200000,
+        max_digits=20, decimal_places=6, default=0, db_default=0,
     )
     hum_entidad_riesgo = models.ForeignKey(
         'humano.HumEntidad', null=True, on_delete=models.PROTECT,

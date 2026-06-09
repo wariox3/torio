@@ -34,6 +34,7 @@
     {"id": 31, "nombre": "TRASLADO ALMACEN",                "documento_clase_id": 502, "inventario": true, "operacion_inventario": 1},
     {"id": 32, "nombre": "FACTURA COMPRA RECURRENTE",       "documento_clase_id": 305},
     {"id": 33, "nombre": "INTERES CESANTIA",                "documento_clase_id": 701, "comprobante_id": 24, "pagar": true, "operacion": 1, "contabilidad": true},
-    {"id": 34, "nombre": "CONTRATO SERVICIO",               "documento_clase_id": 109}
+    {"id": 34, "nombre": "CONTRATO SERVICIO",               "documento_clase_id": 109},
+    {"id": 35, "nombre": "PEDIDO SERVICIO",                 "documento_clase_id": 110}
   ]
 }
