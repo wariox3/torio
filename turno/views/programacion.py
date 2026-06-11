@@ -1,24 +1,31 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
+from rest_framework.response import Response
 
-from turno.models import TurProgramacion
+from general.models import GenDocumentoDetalle
+from humano.models import HumContrato
+from turno.models import TurProgramacion, TurSecuencia
 from turno.serializers import (
     TurProgramacionExportarSerializer,
     TurProgramacionImportarSerializer,
-    TurProgramacionSeleccionarSerializer,
     TurProgramacionSerializer,
 )
+from turno.servicios import aplicar_secuencia
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
-from utilidades.paginacion import SeleccionarPaginacion
+
+
+class AplicarSecuenciaRequestSerializer(serializers.Serializer):
+    secuencia_id = serializers.IntegerField()
+    contrato_id = serializers.IntegerField()
+    anio = serializers.IntegerField(min_value=2000, max_value=2100)
+    mes = serializers.IntegerField(min_value=1, max_value=12)
+    documento_detalle_id = serializers.IntegerField(required=False, allow_null=True)
 
 _LIST_PARAMS = [
     OpenApiParameter('contrato', int, description='Filtrar por contrato'),
     OpenApiParameter('fecha', str, description='Filtrar por fecha (AAAA-MM-DD)'),
-]
-
-_SELECCIONAR_PARAMS = [
-    OpenApiParameter('contrato', int, description='Filtrar por contrato'),
 ]
 
 
@@ -57,15 +64,34 @@ class TurProgramacionViewSet(
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=TurProgramacionSeleccionarSerializer(many=True))
-    @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)
-    def seleccionar(self, request):
-        qs = TurProgramacion.objects.select_related(
-            'contrato__contacto', 'turno'
-        ).order_by('fecha', 'id')
-        contrato = request.query_params.get('contrato')
-        if contrato:
-            qs = qs.filter(contrato_id=contrato)
-        pagina = self.paginate_queryset(qs)
-        serializer = TurProgramacionSeleccionarSerializer(pagina, many=True)
-        return self.get_paginated_response(serializer.data)
+    @extend_schema(request=AplicarSecuenciaRequestSerializer)
+    @action(detail=False, methods=['post'], url_path='aplicar-secuencia')
+    def aplicar_secuencia(self, request):
+        serializer = AplicarSecuenciaRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = serializer.validated_data
+
+        try:
+            secuencia = TurSecuencia.objects.get(pk=datos['secuencia_id'])
+        except TurSecuencia.DoesNotExist:
+            raise NotFound('Secuencia no encontrada.')
+        try:
+            contrato = HumContrato.objects.get(pk=datos['contrato_id'])
+        except HumContrato.DoesNotExist:
+            raise NotFound('Contrato no encontrado.')
+
+        documento_detalle = None
+        detalle_id = datos.get('documento_detalle_id')
+        if detalle_id:
+            try:
+                documento_detalle = GenDocumentoDetalle.objects.get(pk=detalle_id)
+            except GenDocumentoDetalle.DoesNotExist:
+                raise NotFound('Documento detalle no encontrado.')
+
+        creados, actualizados = aplicar_secuencia(
+            secuencia, contrato, datos['anio'], datos['mes'], documento_detalle,
+        )
+        return Response(
+            {'creados': creados, 'actualizados': actualizados},
+            status=status.HTTP_200_OK,
+        )

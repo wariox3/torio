@@ -8,7 +8,6 @@ from .puesto_importar import TurPuestoImportarSerializer
 from .programacion import TurProgramacionSerializer
 from .programacion_exportar import TurProgramacionExportarSerializer
 from .programacion_importar import TurProgramacionImportarSerializer
-from .programacion_seleccionar import TurProgramacionSeleccionarSerializer
 from .puesto_seleccionar import TurPuestoSeleccionarSerializer
 from .secuencia import TurSecuenciaSerializer
 from .secuencia_exportar import TurSecuenciaExportarSerializer
