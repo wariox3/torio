@@ -33,8 +33,6 @@ def generar_documentos(documento_tipo_origen, documento_tipo_destino_id, fecha, 
         datos.update(overrides)
         return type(instancia)(**datos)
 
-    # Campos que NO se copian: se reinician (identidad, consecutivo, estados,
-    # datos electrónicos) o se sobreescriben explícitamente más abajo.
     excluir_documento = {
         'id', 'numero', 'fecha', 'fecha_validacion',
         'documento_tipo', 'documento_referencia',
@@ -46,12 +44,13 @@ def generar_documentos(documento_tipo_origen, documento_tipo_destino_id, fecha, 
         'estado_electronico_notificado', 'estado_electronico_evento',
         'estado_electronico_descartado',
     }
-    # Las FKs de afectación apuntan al contexto del origen; no aplican a la copia.
     excluir_detalle = {'id', 'documento', 'documento_afectado', 'documento_detalle_afectado'}
     excluir_impuesto = {'id', 'documento_detalle'}
 
-    documento_ids = documento_ids or []
-    qs = GenDocumento.objects.filter(documento_tipo=documento_tipo_origen)
+    qs = GenDocumento.objects.filter(
+        documento_tipo=documento_tipo_origen,
+        fecha__lte=fecha,
+    )
     if documento_ids:
         qs = qs.filter(id__in=documento_ids)
     qs = qs.prefetch_related(
@@ -59,19 +58,8 @@ def generar_documentos(documento_tipo_origen, documento_tipo_destino_id, fecha, 
     )
     documentos = list(qs)
 
-    if documento_ids:
-        faltantes = sorted(set(documento_ids) - {d.id for d in documentos})
-        if faltantes:
-            raise ValidationError(
-                f'Documentos no encontrados para el tipo origen: {faltantes}',
-            )
-
     if not documentos:
-        raise ValidationError('No hay documentos para generar.')
-
-    fuera_de_rango = sorted(d.id for d in documentos if d.fecha and d.fecha > fecha)
-    if fuera_de_rango:
-        raise ValidationError(f'Documentos con fecha mayor a {fecha}: {fuera_de_rango}')
+        raise ValidationError({'detail': 'No hay documentos para generar.'})
 
     generados = []
     with transaction.atomic():
