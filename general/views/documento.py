@@ -75,7 +75,8 @@ class GenDocumentoViewSet(
         generados = generar_documentos(
             documento_tipo_origen=datos['documento_tipo_id'],
             documento_tipo_destino_id=datos['documento_tipo_id_destino'].pk,
-            fecha=datos['fecha'],
+            anio=datos['anio'],
+            mes=datos['mes'],
             documento_ids=datos.get('documento_ids'),
         )
         salida = GenDocumentoSerializer(generados, many=True)

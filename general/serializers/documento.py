@@ -133,4 +133,5 @@ class GenDocumentoGenerarSerializer(serializers.Serializer):
     documento_ids = serializers.ListField(
         child=serializers.IntegerField(), required=False, allow_empty=True,
     )
-    fecha = serializers.DateField()
+    anio = serializers.IntegerField(min_value=1900, max_value=9999)
+    mes = serializers.IntegerField(min_value=1, max_value=12)

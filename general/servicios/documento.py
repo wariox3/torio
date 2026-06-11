@@ -1,3 +1,6 @@
+import calendar
+from datetime import date
+
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
@@ -16,13 +19,8 @@ def sincronizar_impuestos(detalle, impuestos):
         )
 
 
-def generar_documentos(documento_tipo_origen, documento_tipo_destino_id, fecha, documento_ids=None):
-    """Duplica documentos (cabecera, detalles e impuestos) hacia un tipo destino.
-
-    Si se pasa `documento_ids` solo se duplican esos; de lo contrario, todos los
-    del tipo origen. Siempre se valida que `fecha_documento <= fecha`.
-    Devuelve la lista de documentos generados.
-    """
+def generar_documentos(documento_tipo_origen, documento_tipo_destino_id, anio, mes, documento_ids=None):
+    fecha = date(anio, mes, calendar.monthrange(anio, mes)[1])
     def clonar(instancia, excluir, overrides):
         """Construye una copia sin guardar, omitiendo `excluir` y aplicando `overrides`."""
         datos = {
