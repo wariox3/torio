@@ -158,6 +158,9 @@ class GenDocumento(models.Model):
             impuesto=Sum('impuesto'),
             impuesto_retencion=Sum('impuesto_retencion'),
             total=Sum('total'),
+            horas=Sum('horas'),
+            horas_diurnas=Sum('horas_diurnas'),
+            horas_nocturnas=Sum('horas_nocturnas'),
         )
         cero = Decimal('0')
         self.subtotal = agregados['subtotal'] or cero
@@ -167,3 +170,6 @@ class GenDocumento(models.Model):
         self.impuesto = agregados['impuesto'] or cero
         self.impuesto_retencion = agregados['impuesto_retencion'] or cero
         self.total = agregados['total'] or cero
+        self.horas = agregados['horas'] or cero
+        self.horas_diurnas = agregados['horas_diurnas'] or cero
+        self.horas_nocturnas = agregados['horas_nocturnas'] or cero
