@@ -45,6 +45,7 @@
     {"id": 30001, "app": "turno",        "clase": "TurProgramador",     "nombre": "Programador",      "tabla": "tur_programador",      "tipo": "A"},
     {"id": 30002, "app": "turno",        "clase": "TurPuesto",          "nombre": "Puesto",           "tabla": "tur_puesto",           "tipo": "A"},
     {"id": 30003, "app": "turno",        "clase": "TurTurno",           "nombre": "Turno",            "tabla": "tur_turno",            "tipo": "A"},
+    {"id": 30004, "app": "turno",        "clase": "TurSecuencia",       "nombre": "Secuencia",        "tabla": "tur_secuencia",        "tipo": "A"},
 
     {"id": 40001, "app": "humano",       "clase": "HumConceptoTipo",      "nombre": "Concepto tipo",      "tabla": "hum_concepto_tipo",      "tipo": "F"},
     {"id": 40002, "app": "humano",       "clase": "HumContratoTipo",      "nombre": "Contrato tipo",      "tabla": "hum_contrato_tipo",      "tipo": "F"},
