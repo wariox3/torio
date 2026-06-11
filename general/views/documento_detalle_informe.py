@@ -1,30 +1,22 @@
-from decimal import Decimal
-
-from django.db.models import Q, Sum
+from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from rest_framework import viewsets
-from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.response import Response
 
 from general.models import GenDocumentoDetalle
 from general.serializers import (
-    GenDocumentoDetallePendienteFacturarExportarSerializer,
-    GenDocumentoDetallePendienteFacturarSerializer,
+    GenDocumentoDetalleInformeExportarSerializer,
+    GenDocumentoDetalleInformeSerializer,
 )
-from utilidades.filtros import aplicar_filtros
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin
-from utilidades.mixins.filtros import BusquedaRequest
 
 # Registro de informes sobre GenDocumentoDetalle.
-# Para agregar uno: crea su serializer (columnas) + exportar y registra aquí su
-# invariante (`filtro`, garantizada por el servidor) y los campos a totalizar.
+# Cada informe declara su invariante (`filtro`, garantizada por el servidor). Las
+# columnas las aporta el serializer estándar; un informe puede sobreescribirlas
+# con `serializer` / `exportar` si lo necesita.
 INFORMES = {
     'pendiente_facturar': {
-        'serializer': GenDocumentoDetallePendienteFacturarSerializer,
-        'exportar': GenDocumentoDetallePendienteFacturarExportarSerializer,
         'filtro': Q(pendiente__gt=0),
-        'totales': ('cantidad', 'total', 'afectado', 'pendiente'),
     },
 }
 
@@ -42,11 +34,10 @@ class GenDocumentoDetalleInformeViewSet(
 
     El informe se elige con el parámetro `informe` (body o query string). Cada
     informe define en `INFORMES` su invariante (filtro garantizado por el
-    servidor), columnas (serializer) y campos de totales.
+    servidor) y, opcionalmente, su serializer de columnas.
 
         POST /lista/    { "informe": "...", "filtros": [...] }
         POST /excel/    { "informe": "...", "filtros": [...] }
-        POST /totales/  { "informe": "...", "filtros": [...] }
     """
 
     def _informe(self):
@@ -72,22 +63,10 @@ class GenDocumentoDetalleInformeViewSet(
         return INFORMES[clave]
 
     def get_serializer_class(self):
-        return self._informe()['serializer']
+        return self._informe().get('serializer', GenDocumentoDetalleInformeSerializer)
 
     def get_serializer_exportar(self):
-        return self._informe()['exportar']()
+        return self._informe().get('exportar', GenDocumentoDetalleInformeExportarSerializer)()
 
     def get_queryset(self):
         return GenDocumentoDetalle.objects.filter(self._informe()['filtro'])
-
-    @extend_schema(summary='Totales del informe', request=BusquedaRequest)
-    @action(detail=False, methods=['post'])
-    def totales(self, request):
-        informe = self._informe()
-        filtros = request.data.get('filtros') or []
-        qs = aplicar_filtros(
-            self.get_queryset(), filtros, informe['serializer'].campos_filtrables,
-        )
-        agregados = qs.aggregate(**{campo: Sum(campo) for campo in informe['totales']})
-        cero = Decimal('0')
-        return Response({clave: (valor or cero) for clave, valor in agregados.items()})

@@ -3,13 +3,12 @@ from rest_framework import serializers
 from general.models import GenDocumentoDetalle
 
 
-class GenDocumentoDetallePendienteFacturarSerializer(serializers.ModelSerializer):
+class GenDocumentoDetalleInformeSerializer(serializers.ModelSerializer):
     """
-    Informe "pendiente por facturar": detalles con `pendiente > 0`.
-
-    Serializer plano de solo lectura. La invariante `pendiente > 0` la garantiza
-    el ViewSet en `get_queryset`; aquí solo se define el contrato de columnas y la
-    whitelist de filtros/orden que consume `FiltrosDinamicosMixin`.
+    Serializer estándar (plano, solo lectura) para los informes sobre
+    GenDocumentoDetalle. La invariante de cada informe la garantiza el ViewSet en
+    `get_queryset`; aquí se define el contrato común de columnas y la whitelist de
+    filtros/orden que consume `FiltrosDinamicosMixin`.
     """
 
     campos_filtrables = {
@@ -33,6 +32,7 @@ class GenDocumentoDetallePendienteFacturarSerializer(serializers.ModelSerializer
 
     documento_numero = serializers.IntegerField(source='documento.numero', read_only=True)
     documento_fecha = serializers.DateField(source='documento.fecha', read_only=True)
+    documento_tipo_id = serializers.IntegerField(source='documento.documento_tipo_id', read_only=True)
     documento_tipo_nombre = serializers.CharField(
         source='documento.documento_tipo.nombre', read_only=True, default=None,
     )
@@ -49,6 +49,7 @@ class GenDocumentoDetallePendienteFacturarSerializer(serializers.ModelSerializer
             'documento_id',
             'documento_numero',
             'documento_fecha',
+            'documento_tipo_id',
             'documento_tipo_nombre',
             'contacto_id',
             'contacto_nombre',
@@ -63,12 +64,12 @@ class GenDocumentoDetallePendienteFacturarSerializer(serializers.ModelSerializer
         ]
 
 
-class GenDocumentoDetallePendienteFacturarExportarSerializer(serializers.Serializer):
-    """Estructura del Excel del informe pendiente por facturar (usado por ExportarExcelMixin)."""
+class GenDocumentoDetalleInformeExportarSerializer(serializers.Serializer):
+    """Estructura estándar del Excel de los informes (usada por ExportarExcelMixin)."""
 
     model = GenDocumentoDetalle
-    nombre_archivo = 'pendiente_por_facturar'
-    hoja = 'Pendiente por facturar'
+    nombre_archivo = 'informe_documento_detalle'
+    hoja = 'Informe'
 
     campos_excel = (
         ('id', 'ID'),
