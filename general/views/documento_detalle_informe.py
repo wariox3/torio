@@ -16,7 +16,7 @@ from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin
 # con `serializer` / `exportar` si lo necesita.
 INFORMES = {
     'pendiente_facturar': {
-        'filtro': Q(pendiente__gt=0),
+        'filtro': Q(pendiente__gt=0, documento__documento_tipo_id=35),
     },
 }
 

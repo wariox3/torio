@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Sum
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -108,6 +109,26 @@ class GenDocumentoDetalleViewSet(
             documento.recalcular_totales()
             documento.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['post'], url_path='regenerar-afectado')
+    def regenerar_afectado(self, request):
+        """Recalcula afectado y pendiente de todos los detalles a partir de sus afectaciones."""
+        with transaction.atomic():
+            afectaciones = dict(
+                GenDocumentoDetalle.objects
+                .filter(documento_detalle_afectado__isnull=False)
+                .values_list('documento_detalle_afectado_id')
+                .annotate(total=Sum('total'))
+            )
+
+            detalles = list(GenDocumentoDetalle.objects.all())
+            for detalle in detalles:
+                detalle.afectado = afectaciones.get(detalle.pk, 0)
+                detalle.pendiente = detalle.total - detalle.afectado
+
+            GenDocumentoDetalle.objects.bulk_update(detalles, ['afectado', 'pendiente'])
+
+        return Response({'actualizados': len(detalles)}, status=status.HTTP_200_OK)
 
     @extend_schema(request=CalcularPrecioSupervigilanciaRequestSerializer)
     @action(detail=False, methods=['post'], url_path='calcular-precio-supervigilancia')

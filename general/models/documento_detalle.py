@@ -63,12 +63,6 @@ class GenDocumentoDetalle(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_detalles_documento_rel',
     )
-    documento_afectado = models.ForeignKey(
-        'general.GenDocumento',
-        null=True,
-        on_delete=models.PROTECT,
-        related_name='documentos_detalles_documento_afectado_rel',
-    )
     documento_detalle_afectado = models.ForeignKey(
         'self',
         null=True,
@@ -114,6 +108,13 @@ class GenDocumentoDetalle(models.Model):
 
     def __str__(self):
         return f'{self.documento_id} - {self.id}'
+
+    def save(self, *args, **kwargs):
+        self.pendiente = (self.total or Decimal('0')) - (self.afectado or Decimal('0'))
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None and 'pendiente' not in update_fields:
+            kwargs['update_fields'] = list(update_fields) + ['pendiente']
+        super().save(*args, **kwargs)
 
     def calcular(self):
         cantidad = self.cantidad or Decimal('0')

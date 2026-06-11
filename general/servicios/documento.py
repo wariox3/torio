@@ -43,7 +43,7 @@ def generar_documentos(documento_tipo_origen, documento_tipo_destino_id, anio, m
         'estado_electronico_notificado', 'estado_electronico_evento',
         'estado_electronico_descartado',
     }
-    excluir_detalle = {'id', 'documento', 'documento_afectado', 'documento_detalle_afectado'}
+    excluir_detalle = {'id', 'documento', 'documento_detalle_afectado'}
     excluir_impuesto = {'id', 'documento_detalle'}
 
     qs = GenDocumento.objects.filter(
