@@ -25,6 +25,7 @@
     {"id": 10022, "app": "general",      "clase": "GenCuentaBanco",     "nombre": "Cuenta banco",     "tabla": "gen_cuenta_banco",     "tipo": "A"},
     {"id": 10023, "app": "general",      "clase": "GenPrecio",          "nombre": "Precio",           "tabla": "gen_precio",           "tipo": "A"},
     {"id": 10024, "app": "general",      "clase": "GenResolucion",      "nombre": "Resolución",       "tabla": "gen_resolucion",       "tipo": "A"},
+    {"id": 10025, "app": "general",      "clase": "GenFestivo",         "nombre": "Festivo",          "tabla": "gen_festivo",          "tipo": "F"},
 
     {"id": 20001, "app": "contabilidad", "clase": "ConComprobante",     "nombre": "Comprobante",      "tabla": "con_comprobante",      "tipo": "F"},
     {"id": 20002, "app": "contabilidad", "clase": "ConCuenta",          "nombre": "Cuenta",           "tabla": "con_cuenta",           "tipo": "A"},
