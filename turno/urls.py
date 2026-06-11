@@ -1,6 +1,7 @@
 from rest_framework.routers import DefaultRouter
 
 from turno.views import (
+    TurProgramacionViewSet,
     TurProgramadorViewSet,
     TurPuestoViewSet,
     TurSecuenciaViewSet,
@@ -8,6 +9,7 @@ from turno.views import (
 )
 
 router = DefaultRouter()
+router.register(r'programacion', TurProgramacionViewSet, basename='programacion')
 router.register(r'programador', TurProgramadorViewSet, basename='programador')
 router.register(r'puesto', TurPuestoViewSet, basename='puesto')
 router.register(r'secuencia', TurSecuenciaViewSet, basename='secuencia')

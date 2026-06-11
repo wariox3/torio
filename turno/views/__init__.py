@@ -1,3 +1,4 @@
+from .programacion import TurProgramacionViewSet
 from .programador import TurProgramadorViewSet
 from .puesto import TurPuestoViewSet
 from .secuencia import TurSecuenciaViewSet
