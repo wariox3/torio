@@ -15,6 +15,10 @@ from .documento import (
     GenDocumentoSerializer,
 )
 from .documento_detalle import GenDocumentoDetalleSerializer
+from .documento_detalle_pendiente_facturar import (
+    GenDocumentoDetallePendienteFacturarExportarSerializer,
+    GenDocumentoDetallePendienteFacturarSerializer,
+)
 from .documento_exportar import GenDocumentoExportarSerializer
 from .documento_importar import GenDocumentoImportarSerializer
 from .identificacion import GenIdentificacionSeleccionarSerializer

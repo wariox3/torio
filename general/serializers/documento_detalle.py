@@ -21,7 +21,7 @@ class GenDocumentoImpuestoSerializer(serializers.ModelSerializer):
 
 
 class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
-    campos_filtrables = {'id', 'documento_id', 'item_id', 'tipo_registro', 'cuenta_id', 'contacto_id', 'modalidad_id'}
+    campos_filtrables = {'id', 'documento_id', 'item_id', 'tipo_registro', 'cuenta_id', 'contacto_id', 'modalidad_id', 'afectado', 'pendiente'}
     select_related_lista = ('item', 'modalidad', 'cuenta', 'contacto', 'puesto')
     ordenamiento_default_lista = ('-id',)
 

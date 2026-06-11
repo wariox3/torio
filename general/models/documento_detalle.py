@@ -23,6 +23,8 @@ class GenDocumentoDetalle(models.Model):
     impuesto_retencion = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     impuesto_operado = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     total = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    afectado = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    pendiente = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     hora = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     horas = models.DecimalField(max_digits=10, decimal_places=2, default=0, db_default=0)
     horas_diurnas = models.DecimalField(max_digits=10, decimal_places=2, default=0, db_default=0)

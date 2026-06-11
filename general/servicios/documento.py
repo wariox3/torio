@@ -21,7 +21,6 @@ def sincronizar_impuestos(detalle, impuestos):
 
 def generar_documentos(documento_tipo_origen, documento_tipo_destino_id, anio, mes, documento_ids=None):
     fecha = date(anio, mes, calendar.monthrange(anio, mes)[1])
-    # Primer día del mes siguiente (p. ej. junio 2026 -> 2026/07/01).
     fecha_origen = date(anio + mes // 12, mes % 12 + 1, 1)
     def clonar(instancia, excluir, overrides):
         """Construye una copia sin guardar, omitiendo `excluir` y aplicando `overrides`."""
