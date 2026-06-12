@@ -15,6 +15,8 @@ class GenDocumentoDetalleInformeSerializer(serializers.ModelSerializer):
         'id',
         'documento_id',
         'item_id',
+        'puesto_id',
+        'modalidad_id',
         'afectado',
         'pendiente',
         'documento__numero',
@@ -27,6 +29,8 @@ class GenDocumentoDetalleInformeSerializer(serializers.ModelSerializer):
         'documento__documento_tipo',
         'documento__contacto',
         'item',
+        'puesto',
+        'modalidad',
     )
     ordenamiento_default_lista = ('-documento__fecha', '-id')
 
@@ -41,6 +45,9 @@ class GenDocumentoDetalleInformeSerializer(serializers.ModelSerializer):
         source='documento.contacto.nombre_corto', read_only=True, default=None,
     )
     item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
+    puesto_nombre = serializers.CharField(source='puesto.nombre', read_only=True, default=None)
+    modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
+    modalidad_codigo = serializers.CharField(source='modalidad.codigo', read_only=True, default=None)
 
     class Meta:
         model = GenDocumentoDetalle
@@ -55,12 +62,20 @@ class GenDocumentoDetalleInformeSerializer(serializers.ModelSerializer):
             'contacto_nombre',
             'item_id',
             'item_nombre',
+            'puesto_id',
+            'puesto_nombre',
+            'modalidad_id',
+            'modalidad_nombre',
+            'modalidad_codigo',
             'detalle',
             'cantidad',
             'precio',
             'total',
             'afectado',
             'pendiente',
+            'horas',
+            'horas_diurnas',
+            'horas_nocturnas',
         ]
 
 
@@ -78,12 +93,18 @@ class GenDocumentoDetalleInformeExportarSerializer(serializers.Serializer):
         ('documento.documento_tipo.nombre', 'Tipo documento'),
         ('documento.contacto.nombre_corto', 'Contacto'),
         ('item.nombre', 'Item'),
+        ('puesto.nombre', 'Puesto'),
+        ('modalidad.nombre', 'Modalidad'),
+        ('modalidad.codigo', 'Código modalidad'),
         ('detalle', 'Detalle'),
         ('cantidad', 'Cantidad'),
         ('precio', 'Precio'),
         ('total', 'Total'),
         ('afectado', 'Afectado'),
         ('pendiente', 'Pendiente'),
+        ('horas', 'Horas'),
+        ('horas_diurnas', 'Horas diurnas'),
+        ('horas_nocturnas', 'Horas nocturnas'),
     )
 
     @staticmethod
