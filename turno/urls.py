@@ -7,6 +7,8 @@ from turno.views import (
     TurPrototipoViewSet,
     TurPuestoViewSet,
     TurSecuenciaViewSet,
+    TurSoporteDetalleViewSet,
+    TurSoporteViewSet,
     TurTurnoViewSet,
 )
 
@@ -17,6 +19,8 @@ router.register(r'programador', TurProgramadorViewSet, basename='programador')
 router.register(r'prototipo', TurPrototipoViewSet, basename='prototipo')
 router.register(r'puesto', TurPuestoViewSet, basename='puesto')
 router.register(r'secuencia', TurSecuenciaViewSet, basename='secuencia')
+router.register(r'soporte', TurSoporteViewSet, basename='soporte')
+router.register(r'soporte-detalle', TurSoporteDetalleViewSet, basename='soporte-detalle')
 router.register(r'turno', TurTurnoViewSet, basename='turno')
 
 urlpatterns = router.urls

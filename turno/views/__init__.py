@@ -4,4 +4,6 @@ from .programador import TurProgramadorViewSet
 from .prototipo import TurPrototipoViewSet
 from .puesto import TurPuestoViewSet
 from .secuencia import TurSecuenciaViewSet
+from .soporte import TurSoporteViewSet
+from .soporte_detalle import TurSoporteDetalleViewSet
 from .turno import TurTurnoViewSet

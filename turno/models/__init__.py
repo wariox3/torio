@@ -4,4 +4,6 @@ from .programador import TurProgramador
 from .prototipo import TurPrototipo
 from .puesto import TurPuesto
 from .secuencia import TurSecuencia
+from .soporte import TurSoporte
+from .soporte_detalle import TurSoporteDetalle
 from .turno import TurTurno

@@ -16,6 +16,10 @@ from .programacion_exportar import TurProgramacionExportarSerializer
 from .programacion_importar import TurProgramacionImportarSerializer
 from .puesto_seleccionar import TurPuestoSeleccionarSerializer
 from .secuencia import TurSecuenciaSerializer
+from .soporte import TurSoporteSerializer
+from .soporte_detalle import TurSoporteDetalleSerializer
+from .soporte_exportar import TurSoporteExportarSerializer
+from .soporte_importar import TurSoporteImportarSerializer
 from .secuencia_exportar import TurSecuenciaExportarSerializer
 from .secuencia_importar import TurSecuenciaImportarSerializer
 from .secuencia_seleccionar import TurSecuenciaSeleccionarSerializer
