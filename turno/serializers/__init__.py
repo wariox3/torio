@@ -2,6 +2,12 @@ from .programador import TurProgramadorSerializer
 from .programador_exportar import TurProgramadorExportarSerializer
 from .programador_importar import TurProgramadorImportarSerializer
 from .programador_seleccionar import TurProgramadorSeleccionarSerializer
+from .programacion_simulacion import TurProgramacionSimulacionSerializer
+from .programacion_simulacion_exportar import TurProgramacionSimulacionExportarSerializer
+from .programacion_simulacion_importar import TurProgramacionSimulacionImportarSerializer
+from .prototipo import TurPrototipoSerializer
+from .prototipo_exportar import TurPrototipoExportarSerializer
+from .prototipo_importar import TurPrototipoImportarSerializer
 from .puesto import TurPuestoSerializer
 from .puesto_exportar import TurPuestoExportarSerializer
 from .puesto_importar import TurPuestoImportarSerializer

@@ -1,5 +1,7 @@
 from .programacion import TurProgramacion
+from .programacion_simulacion import TurProgramacionSimulacion
 from .programador import TurProgramador
+from .prototipo import TurPrototipo
 from .puesto import TurPuesto
 from .secuencia import TurSecuencia
 from .turno import TurTurno

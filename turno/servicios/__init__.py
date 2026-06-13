@@ -1,1 +1,2 @@
 from .programacion import aplicar_secuencia
+from .programacion_simulacion import aplicar_prototipo
