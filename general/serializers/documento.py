@@ -3,11 +3,10 @@ from rest_framework import serializers
 
 from general.models import (
     GenDocumento,
-    GenDocumentoDetalle,
-    GenDocumentoImpuesto,
     GenDocumentoTipo,
 )
 from general.serializers.documento_detalle import GenDocumentoDetalleSerializer
+from general.servicios import crear_detalle
 
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
@@ -105,19 +104,7 @@ class GenDocumentoCrearSerializer(GenDocumentoSerializer):
         detalles_data = validated_data.pop('documentos_detalles_documento_rel', [])
         documento = GenDocumento.objects.create(**validated_data)
         for detalle_data in detalles_data:
-            impuestos = detalle_data.pop('impuestos_ids', [])
-            detalle_data.pop('documento', None)  # el documento lo fija el padre
-            detalle = GenDocumentoDetalle(documento=documento, **detalle_data)
-            detalle.save()
-            for impuesto in impuestos:
-                GenDocumentoImpuesto.objects.create(
-                    documento_detalle=detalle,
-                    impuesto=impuesto,
-                    porcentaje=impuesto.porcentaje,
-                    porcentaje_base=impuesto.porcentaje_base,
-                )
-            detalle.calcular()
-            detalle.save()
+            crear_detalle(documento, detalle_data)
         documento.recalcular_totales()
         documento.save()
         return documento

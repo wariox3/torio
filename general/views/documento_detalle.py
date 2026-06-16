@@ -8,7 +8,7 @@ from rest_framework.response import Response
 
 from general.models import GenDocumento, GenDocumentoDetalle, GenModalidad, GenSector
 from general.serializers import GenDocumentoDetalleSerializer
-from general.servicios import LiquidadorSupervigilancia, sincronizar_impuestos
+from general.servicios import LiquidadorSupervigilancia, crear_detalle, sincronizar_impuestos
 from utilidades.mixins import FiltrosDinamicosMixin
 
 
@@ -68,17 +68,37 @@ class GenDocumentoDetalleViewSet(
                 raise NotFound('Documento no encontrado.')
             if not documento.es_mutable():
                 raise ValidationError('El documento no es modificable.')
-            impuestos = datos.pop('impuestos_ids', [])
-            detalle = GenDocumentoDetalle(documento=documento, **datos)
-            detalle.save()
-            sincronizar_impuestos(detalle, impuestos)
-            detalle.calcular()
-            detalle.save()
+            detalle = crear_detalle(documento, datos)
             documento.recalcular_totales()
             documento.save()
 
         return Response(
             GenDocumentoDetalleSerializer(detalle).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=False, methods=['post'], url_path='masivo')
+    def masivo(self, request):
+        """Crea varios detalles a la vez sobre un documento existente."""
+        serializer = GenDocumentoDetalleSerializer(data=request.data.get('detalles', []), many=True)
+        serializer.is_valid(raise_exception=True)
+        if not serializer.validated_data:
+            raise ValidationError({'detalles': 'Debe enviar al menos un detalle.'})
+
+        with transaction.atomic():
+            try:
+                documento = GenDocumento.objects.select_for_update().get(pk=request.data.get('documento'))
+            except GenDocumento.DoesNotExist:
+                raise NotFound('Documento no encontrado.')
+            if not documento.es_mutable():
+                raise ValidationError('El documento no es modificable.')
+
+            detalles = [crear_detalle(documento, datos) for datos in serializer.validated_data]
+            documento.recalcular_totales()
+            documento.save()
+
+        return Response(
+            GenDocumentoDetalleSerializer(detalles, many=True).data,
             status=status.HTTP_201_CREATED,
         )
 
