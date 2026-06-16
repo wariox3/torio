@@ -1,6 +1,6 @@
 from django.db import transaction
 from django.db.models import Sum
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
@@ -34,6 +34,11 @@ class CalcularPrecioSupervigilanciaRequestSerializer(serializers.Serializer):
     festivo = serializers.BooleanField(default=False)
 
 
+_LIST_PARAMS = [
+    OpenApiParameter('documento_id', int, description='Filtrar por documento'),
+]
+
+
 @extend_schema(tags=['DocumentoDetalle'])
 class GenDocumentoDetalleViewSet(
     FiltrosDinamicosMixin,
@@ -44,9 +49,17 @@ class GenDocumentoDetalleViewSet(
     serializer_class = GenDocumentoDetalleSerializer
 
     def get_queryset(self):
-        return GenDocumentoDetalle.objects.select_related(
+        qs = GenDocumentoDetalle.objects.select_related(
             *GenDocumentoDetalleSerializer.select_related_lista
         )
+        documento_id = self.request.query_params.get('documento_id')
+        if documento_id:
+            qs = qs.filter(documento_id=documento_id)
+        return qs
+
+    @extend_schema(parameters=_LIST_PARAMS)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     def _bloquear_documento(self, documento_id):
         """Bloquea un documento por su PK (FOR UPDATE) y valida que sea modificable."""
