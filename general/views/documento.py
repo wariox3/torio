@@ -34,10 +34,6 @@ class GenDocumentoViewSet(
     serializer_class_exportar = GenDocumentoExportarSerializer
     serializer_class_importar = GenDocumentoImportarSerializer
 
-    # ------------------------------------------------------------------ #
-    # Métodos estándar (serializers, queryset y CRUD)
-    # ------------------------------------------------------------------ #
-
     def get_serializer_class(self):
         if self.action == 'create':
             return GenDocumentoCrearSerializer
@@ -69,10 +65,6 @@ class GenDocumentoViewSet(
             documento.documentos_detalles_documento_rel.all().delete()
             documento.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-    # ------------------------------------------------------------------ #
-    # Actions
-    # ------------------------------------------------------------------ #
 
     @extend_schema(request=GenDocumentoGenerarSerializer, responses=GenDocumentoSerializer(many=True))
     @action(detail=False, methods=['post'])

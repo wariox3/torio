@@ -43,10 +43,6 @@ class GenDocumentoDetalleViewSet(
 ):
     serializer_class = GenDocumentoDetalleSerializer
 
-    # ------------------------------------------------------------------ #
-    # Métodos estándar (queryset, helpers y CRUD)
-    # ------------------------------------------------------------------ #
-
     def get_queryset(self):
         return GenDocumentoDetalle.objects.select_related(
             *GenDocumentoDetalleSerializer.select_related_lista
@@ -113,10 +109,6 @@ class GenDocumentoDetalleViewSet(
             documento.recalcular_totales()
             documento.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-    # ------------------------------------------------------------------ #
-    # Actions
-    # ------------------------------------------------------------------ #
 
     @action(detail=False, methods=['post'], url_path='masivo')
     def masivo(self, request):
