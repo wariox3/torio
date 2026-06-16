@@ -78,17 +78,6 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         ]
 
 
-class GenDocumentoDetalleVistaSerializer(GenDocumentoSerializer):
-    detalles = GenDocumentoDetalleSerializer(
-        many=True,
-        read_only=True,
-        source='documentos_detalles_documento_rel',
-    )
-
-    class Meta(GenDocumentoSerializer.Meta):
-        fields = GenDocumentoSerializer.Meta.fields + ['detalles']
-
-
 class GenDocumentoCrearSerializer(GenDocumentoSerializer):
     detalles = GenDocumentoDetalleSerializer(
         many=True,

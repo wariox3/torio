@@ -8,7 +8,6 @@ from rest_framework.response import Response
 from general.models import GenDocumento
 from general.serializers import (
     GenDocumentoCrearSerializer,
-    GenDocumentoDetalleVistaSerializer,
     GenDocumentoExportarSerializer,
     GenDocumentoGenerarSerializer,
     GenDocumentoImportarSerializer,
@@ -37,16 +36,11 @@ class GenDocumentoViewSet(
     def get_serializer_class(self):
         if self.action == 'create':
             return GenDocumentoCrearSerializer
-        if self.action == 'retrieve':
-            return GenDocumentoDetalleVistaSerializer
         return GenDocumentoSerializer
 
     def get_queryset(self):
         select = GenDocumentoSerializer.select_related_lista
-        qs = GenDocumento.objects.select_related(*select)
-        if self.action == 'retrieve':
-            qs = qs.prefetch_related('documentos_detalles_documento_rel')
-        return qs
+        return GenDocumento.objects.select_related(*select)
 
     def update(self, request, *args, **kwargs):
         instancia = self.get_object()

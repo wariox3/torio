@@ -10,7 +10,6 @@ from .contacto_seleccionar import GenContactoSeleccionarSerializer
 from .cuenta_banco_clase import GenCuentaBancoClaseSeleccionarSerializer
 from .documento import (
     GenDocumentoCrearSerializer,
-    GenDocumentoDetalleVistaSerializer,
     GenDocumentoGenerarSerializer,
     GenDocumentoSerializer,
 )
