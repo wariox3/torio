@@ -146,8 +146,10 @@ class GenDocumentoDetalleViewSet(
         serializer_cls = GenDocumentoDetallePendienteSerializer
         ordenamientos = request.data.get('ordenamientos') or []
 
-        qs = GenDocumentoDetalle.objects.filter(pendiente__gt=0).select_related(
-            *serializer_cls.select_related_lista
+        qs = (
+            GenDocumentoDetalle.objects.filter(pendiente__gt=0)
+            .select_related(*serializer_cls.select_related_lista)
+            .prefetch_related(*serializer_cls.prefetch_related_lista)
         )
         qs = aplicar_filtros(qs, request.data.get('filtros') or [], serializer_cls.campos_filtrables)
         qs = aplicar_ordenamientos(qs, ordenamientos, serializer_cls.campos_filtrables)
