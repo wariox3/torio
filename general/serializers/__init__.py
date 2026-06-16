@@ -29,10 +29,16 @@ from .item_exportar import GenItemExportarSerializer
 from .item_importar import GenItemImportarSerializer
 from .item_seleccionar import GenItemSeleccionarSerializer
 from .log import GenLogSerializer
+from .metodo_pago import GenMetodoPagoSerializer
+from .metodo_pago_seleccionar import GenMetodoPagoSeleccionarSerializer
 from .modalidad import GenModalidadSeleccionarSerializer
 from .modelo import GenModeloSerializer
 from .plazo_pago import GenPlazoPagoSeleccionarSerializer
 from .precio import GenPrecioSeleccionarSerializer
 from .responsabilidad import GenResponsabilidadSeleccionarSerializer
 from .sector import GenSectorSeleccionarSerializer
+from .sede import GenSedeSerializer
+from .sede_exportar import GenSedeExportarSerializer
+from .sede_importar import GenSedeImportarSerializer
+from .sede_seleccionar import GenSedeSeleccionarSerializer
 from .tipo_persona import GenTipoPersonaSeleccionarSerializer

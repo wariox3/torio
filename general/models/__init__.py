@@ -22,6 +22,7 @@ from .impuesto_tipo import GenImpuestoTipo
 from .item import GenItem
 from .item_impuesto import GenItemImpuesto
 from .log import GenLog
+from .metodo_pago import GenMetodoPago
 from .modalidad import GenModalidad
 from .modelo import GenModelo
 from .pais import GenPais
@@ -31,4 +32,5 @@ from .responsabilidad import GenResponsabilidad
 from .precio import GenPrecio
 from .precio_detalle import GenPrecioDetalle
 from .sector import GenSector
+from .sede import GenSede
 from .tipo_persona import GenTipoPersona

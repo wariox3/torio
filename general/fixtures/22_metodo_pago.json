@@ -1,0 +1,9 @@
+{
+  "model": "general.GenMetodoPago",
+  "data": [
+    { "id": 1, "nombre": "Instrumento no definido", "codigo": "1"  },
+    { "id": 2, "nombre": "Crédito ACH",             "codigo": "2"  },
+    { "id": 3, "nombre": "Débito ACH",              "codigo": "3"  },
+    { "id": 4, "nombre": "Efectivo",                "codigo": "10" }
+  ]
+}
