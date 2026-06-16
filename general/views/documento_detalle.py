@@ -7,9 +7,14 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from general.models import GenDocumento, GenDocumentoDetalle, GenModalidad, GenSector
-from general.serializers import GenDocumentoDetalleSerializer
+from general.serializers import (
+    GenDocumentoDetallePendienteSerializer,
+    GenDocumentoDetalleSerializer,
+)
 from general.servicios import LiquidadorSupervigilancia, crear_detalle, sincronizar_impuestos
+from utilidades.filtros import aplicar_filtros, aplicar_ordenamientos
 from utilidades.mixins import FiltrosDinamicosMixin
+from utilidades.mixins.filtros import BusquedaRequest
 
 
 class CalcularPrecioSupervigilanciaRequestSerializer(serializers.Serializer):
@@ -38,23 +43,35 @@ class GenDocumentoDetalleViewSet(
 ):
     serializer_class = GenDocumentoDetalleSerializer
 
+    # ------------------------------------------------------------------ #
+    # Métodos estándar (queryset, helpers y CRUD)
+    # ------------------------------------------------------------------ #
+
     def get_queryset(self):
         return GenDocumentoDetalle.objects.select_related(
             *GenDocumentoDetalleSerializer.select_related_lista
         )
 
-    def _obtener_documento_bloqueado(self, detalle_id):
+    def _bloquear_documento(self, documento_id):
+        """Bloquea un documento por su PK (FOR UPDATE) y valida que sea modificable."""
         try:
-            detalle = GenDocumentoDetalle.objects.get(pk=detalle_id)
-        except GenDocumentoDetalle.DoesNotExist:
-            raise NotFound('Detalle no encontrado.')
-        documento = GenDocumento.objects.select_for_update().get(pk=detalle.documento_id)
+            documento = GenDocumento.objects.select_for_update().get(pk=documento_id)
+        except GenDocumento.DoesNotExist:
+            raise NotFound('Documento no encontrado.')
         if not documento.es_mutable():
             raise ValidationError('El documento no es modificable.')
         return documento
 
+    def _bloquear_documento_de_detalle(self, detalle_id):
+        """Bloquea el documento dueño de un detalle y valida que sea modificable."""
+        try:
+            detalle = GenDocumentoDetalle.objects.get(pk=detalle_id)
+        except GenDocumentoDetalle.DoesNotExist:
+            raise NotFound('Detalle no encontrado.')
+        return self._bloquear_documento(detalle.documento_id)
+
     def create(self, request, *args, **kwargs):
-        serializer = GenDocumentoDetalleSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         datos = dict(serializer.validated_data)
         documento_payload = datos.pop('documento', None)
@@ -62,52 +79,19 @@ class GenDocumentoDetalleViewSet(
             raise ValidationError({'documento': 'Este campo es requerido.'})
 
         with transaction.atomic():
-            try:
-                documento = GenDocumento.objects.select_for_update().get(pk=documento_payload.pk)
-            except GenDocumento.DoesNotExist:
-                raise NotFound('Documento no encontrado.')
-            if not documento.es_mutable():
-                raise ValidationError('El documento no es modificable.')
+            documento = self._bloquear_documento(documento_payload.pk)
             detalle = crear_detalle(documento, datos)
             documento.recalcular_totales()
             documento.save()
 
-        return Response(
-            GenDocumentoDetalleSerializer(detalle).data,
-            status=status.HTTP_201_CREATED,
-        )
-
-    @action(detail=False, methods=['post'], url_path='masivo')
-    def masivo(self, request):
-        """Crea varios detalles a la vez sobre un documento existente."""
-        serializer = GenDocumentoDetalleSerializer(data=request.data.get('detalles', []), many=True)
-        serializer.is_valid(raise_exception=True)
-        if not serializer.validated_data:
-            raise ValidationError({'detalles': 'Debe enviar al menos un detalle.'})
-
-        with transaction.atomic():
-            try:
-                documento = GenDocumento.objects.select_for_update().get(pk=request.data.get('documento'))
-            except GenDocumento.DoesNotExist:
-                raise NotFound('Documento no encontrado.')
-            if not documento.es_mutable():
-                raise ValidationError('El documento no es modificable.')
-
-            detalles = [crear_detalle(documento, datos) for datos in serializer.validated_data]
-            documento.recalcular_totales()
-            documento.save()
-
-        return Response(
-            GenDocumentoDetalleSerializer(detalles, many=True).data,
-            status=status.HTTP_201_CREATED,
-        )
+        return Response(self.get_serializer(detalle).data, status=status.HTTP_201_CREATED)
 
     def partial_update(self, request, *args, **kwargs):
         with transaction.atomic():
-            documento = self._obtener_documento_bloqueado(kwargs['pk'])
+            documento = self._bloquear_documento_de_detalle(kwargs['pk'])
             detalle = documento.documentos_detalles_documento_rel.get(pk=kwargs['pk'])
 
-            serializer = GenDocumentoDetalleSerializer(detalle, data=request.data, partial=True)
+            serializer = self.get_serializer(detalle, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
             datos = dict(serializer.validated_data)
             impuestos = datos.pop('impuestos_ids', None)
@@ -120,15 +104,66 @@ class GenDocumentoDetalleViewSet(
             documento.recalcular_totales()
             documento.save()
 
-        return Response(GenDocumentoDetalleSerializer(detalle).data)
+        return Response(self.get_serializer(detalle).data)
 
     def destroy(self, request, *args, **kwargs):
         with transaction.atomic():
-            documento = self._obtener_documento_bloqueado(kwargs['pk'])
+            documento = self._bloquear_documento_de_detalle(kwargs['pk'])
             documento.documentos_detalles_documento_rel.filter(pk=kwargs['pk']).delete()
             documento.recalcular_totales()
             documento.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ------------------------------------------------------------------ #
+    # Actions
+    # ------------------------------------------------------------------ #
+
+    @action(detail=False, methods=['post'], url_path='masivo')
+    def masivo(self, request):
+        """Crea varios detalles a la vez sobre un documento existente."""
+        documento_id = request.data.get('documento')
+        if documento_id is None:
+            raise ValidationError({'documento': 'Este campo es requerido.'})
+
+        serializer = self.get_serializer(data=request.data.get('detalles', []), many=True)
+        serializer.is_valid(raise_exception=True)
+        if not serializer.validated_data:
+            raise ValidationError({'detalles': 'Debe enviar al menos un detalle.'})
+
+        with transaction.atomic():
+            documento = self._bloquear_documento(documento_id)
+            detalles = [crear_detalle(documento, datos) for datos in serializer.validated_data]
+            documento.recalcular_totales()
+            documento.save()
+
+        return Response(
+            self.get_serializer(detalles, many=True).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(request=BusquedaRequest)
+    @action(detail=False, methods=['post'], url_path='pendiente')
+    def pendiente(self, request):
+        """
+        Lista detalles con saldo pendiente (> 0) usando un serializer liviano.
+
+        La invariante `pendiente > 0` la garantiza el servidor: el cliente solo
+        puede *agregar* filtros/ordenamientos (whitelist del serializer liviano),
+        nunca quitarla.
+        """
+        serializer_cls = GenDocumentoDetallePendienteSerializer
+        ordenamientos = request.data.get('ordenamientos') or []
+
+        qs = GenDocumentoDetalle.objects.filter(pendiente__gt=0).select_related(
+            *serializer_cls.select_related_lista
+        )
+        qs = aplicar_filtros(qs, request.data.get('filtros') or [], serializer_cls.campos_filtrables)
+        qs = aplicar_ordenamientos(qs, ordenamientos, serializer_cls.campos_filtrables)
+        if not ordenamientos:
+            qs = qs.order_by(*serializer_cls.ordenamiento_default_lista)
+
+        pagina = self.paginate_queryset(qs)
+        return self.get_paginated_response(serializer_cls(pagina, many=True).data)
 
     @action(detail=False, methods=['post'], url_path='regenerar-afectado')
     def regenerar_afectado(self, request):

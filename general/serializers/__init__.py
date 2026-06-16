@@ -19,6 +19,7 @@ from .documento_detalle_informe import (
     GenDocumentoDetalleInformeExportarSerializer,
     GenDocumentoDetalleInformeSerializer,
 )
+from .documento_detalle_pendiente import GenDocumentoDetallePendienteSerializer
 from .documento_exportar import GenDocumentoExportarSerializer
 from .documento_importar import GenDocumentoImportarSerializer
 from .identificacion import GenIdentificacionSeleccionarSerializer
