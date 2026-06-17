@@ -40,6 +40,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'tercero_numero_identificacion',
             'resolucion',
             'plazo_pago',
+            'metodo_pago',
             'asesor',
             'cuenta_banco',
             'comprobante',
