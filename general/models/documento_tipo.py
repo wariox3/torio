@@ -2,8 +2,19 @@ from django.db import models
 
 
 class GenDocumentoTipo(models.Model):
+    FORMATO_GENERICO = 'generico'
+    FORMATO_CHOICES = [
+        (FORMATO_GENERICO, 'Genérico'),
+    ]
+
     nombre = models.CharField(max_length=100)
     consecutivo = models.IntegerField(default=1, db_default=1)
+    formato = models.CharField(
+        max_length=20,
+        choices=FORMATO_CHOICES,
+        default=FORMATO_GENERICO,
+        db_default=FORMATO_GENERICO,
+    )
     venta = models.BooleanField(default=False, db_default=False)
     compra = models.BooleanField(default=False, db_default=False)
     cobrar = models.BooleanField(default=False, db_default=False)

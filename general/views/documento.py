@@ -1,4 +1,6 @@
 from django.db import transaction
+from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -13,8 +15,11 @@ from general.serializers import (
     GenDocumentoImportarSerializer,
     GenDocumentoSerializer,
 )
-from general.servicios import generar_documentos
+from general.servicios import documento as documento_servicio
+from general.servicios import documento_imprimir
+from utilidades.filtros import aplicar_filtros
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
+from utilidades.mixins.filtros import BusquedaRequest
 
 
 @extend_schema(tags=['Documento'])
@@ -66,7 +71,7 @@ class GenDocumentoViewSet(
         serializer = GenDocumentoGenerarSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         datos = serializer.validated_data
-        generados = generar_documentos(
+        generados = documento_servicio.generar(
             documento_tipo_origen=datos['documento_tipo_id'],
             documento_tipo_destino_id=datos['documento_tipo_id_destino'].pk,
             anio=datos['anio'],
@@ -78,3 +83,52 @@ class GenDocumentoViewSet(
             {'generados': len(generados), 'documentos': salida.data},
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=False, methods=['post'])
+    def aprobar(self, request):
+        documento_id = request.data.get('id')
+        if not documento_id:
+            raise ValidationError({'id': 'Este campo es requerido.'})
+        documento = documento_servicio.aprobar(documento_id)
+        salida = GenDocumentoSerializer(documento)
+        return Response(salida.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'])
+    def desaprobar(self, request):
+        documento_id = request.data.get('id')
+        if not documento_id:
+            raise ValidationError({'id': 'Este campo es requerido.'})
+        documento = documento_servicio.desaprobar(documento_id)
+        salida = GenDocumentoSerializer(documento)
+        return Response(salida.data, status=status.HTTP_200_OK)
+
+    def _queryset_imprimir(self, request):
+        filtros = request.data.get('filtros') or []
+        if not filtros:
+            raise ValidationError('Debe enviar al menos un filtro para imprimir.')
+        campos_filtrables = self._config_lista('campos_filtrables', set())
+        qs = self.get_queryset().select_related('documento_tipo', 'contacto').prefetch_related(
+            'documentos_detalles_documento_rel__item'
+        )
+        qs = aplicar_filtros(qs, filtros, campos_filtrables)
+        if qs.count() > 50:
+            raise ValidationError(
+                'No se pueden imprimir más de 50 documentos a la vez. Afine los filtros.'
+            )
+        return qs
+
+    @extend_schema(request=BusquedaRequest, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+    @action(detail=False, methods=['post'])
+    def imprimir(self, request):
+        contenido, nombre = documento_imprimir.imprimir(self._queryset_imprimir(request))
+        response = HttpResponse(contenido, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{nombre}"'
+        return response
+
+    @extend_schema(request=BusquedaRequest, responses={(200, 'application/zip'): OpenApiTypes.BINARY})
+    @action(detail=False, methods=['post'], url_path='imprimir-zip')
+    def imprimir_zip(self, request):
+        contenido, nombre = documento_imprimir.imprimir_zip(self._queryset_imprimir(request))
+        response = HttpResponse(contenido, content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="{nombre}"'
+        return response
