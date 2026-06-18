@@ -8,11 +8,13 @@ from .contacto_exportar import GenContactoExportarSerializer
 from .contacto_importar import GenContactoImportarSerializer
 from .contacto_seleccionar import GenContactoSeleccionarSerializer
 from .cuenta_banco_clase import GenCuentaBancoClaseSeleccionarSerializer
+from .cuenta_banco_tipo import GenCuentaBancoTipoSeleccionarSerializer
 from .documento import (
     GenDocumentoCrearSerializer,
     GenDocumentoGenerarSerializer,
     GenDocumentoSerializer,
 )
+from .documento_clase import GenDocumentoClaseSeleccionarSerializer
 from .documento_detalle import GenDocumentoDetalleSerializer
 from .documento_detalle_informe import (
     GenDocumentoDetalleInformeExportarSerializer,
@@ -21,8 +23,12 @@ from .documento_detalle_informe import (
 from .documento_detalle_pendiente import GenDocumentoDetallePendienteSerializer
 from .documento_exportar import GenDocumentoExportarSerializer
 from .documento_importar import GenDocumentoImportarSerializer
+from .documento_tipo import GenDocumentoTipoSeleccionarSerializer
+from .estado import GenEstadoSeleccionarSerializer
+from .festivo import GenFestivoSeleccionarSerializer
 from .identificacion import GenIdentificacionSeleccionarSerializer
 from .impuesto import GenImpuestoSeleccionarSerializer
+from .impuesto_tipo import GenImpuestoTipoSeleccionarSerializer
 from .item import GenItemSerializer
 from .item_exportar import GenItemExportarSerializer
 from .item_importar import GenItemImportarSerializer
@@ -32,6 +38,7 @@ from .metodo_pago import GenMetodoPagoSerializer
 from .metodo_pago_seleccionar import GenMetodoPagoSeleccionarSerializer
 from .modalidad import GenModalidadSeleccionarSerializer
 from .modelo import GenModeloSerializer
+from .pais import GenPaisSeleccionarSerializer
 from .plazo_pago import GenPlazoPagoSeleccionarSerializer
 from .precio import GenPrecioSeleccionarSerializer
 from .responsabilidad import GenResponsabilidadSeleccionarSerializer
