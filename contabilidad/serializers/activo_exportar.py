@@ -34,7 +34,7 @@ class ConActivoExportarSerializer(serializers.Serializer):
         ('metodo_depreciacion.nombre', 'Método depreciación'),
         ('cuenta_gasto.nombre', 'Cuenta gasto'),
         ('cuenta_depreciacion.nombre', 'Cuenta depreciación'),
-        ('grupo.nombre', 'Centro de costo'),
+        ('centro_costo.nombre', 'Centro de costo'),
     )
 
     @staticmethod

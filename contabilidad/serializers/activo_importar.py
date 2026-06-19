@@ -39,12 +39,12 @@ class ConActivoImportarSerializer(serializers.Serializer):
         ('metodo_depreciacion.id', 'Método depreciación'),
         ('cuenta_gasto.id', 'Cuenta gasto'),
         ('cuenta_depreciacion.id', 'Cuenta depreciación'),
-        ('grupo.id', 'Centro de costo'),
+        ('centro_costo.id', 'Centro de costo'),
     )
     campos_requeridos = {
         'codigo', 'nombre', 'fecha_compra', 'fecha_activacion',
         'activo_grupo.id', 'metodo_depreciacion.id',
-        'cuenta_gasto.id', 'cuenta_depreciacion.id', 'grupo.id',
+        'cuenta_gasto.id', 'cuenta_depreciacion.id', 'centro_costo.id',
     }
 
     LIMITE_ERRORES = 100
@@ -55,7 +55,7 @@ class ConActivoImportarSerializer(serializers.Serializer):
         'metodo_depreciacion': ('metodo_depreciacion.id', ConMetodoDepreciacion, 'Método depreciación'),
         'cuenta_gasto': ('cuenta_gasto.id', ConCuenta, 'Cuenta gasto'),
         'cuenta_depreciacion': ('cuenta_depreciacion.id', ConCuenta, 'Cuenta depreciación'),
-        'grupo': ('grupo.id', ConCentroCosto, 'Centro de costo'),
+        'centro_costo': ('centro_costo.id', ConCentroCosto, 'Centro de costo'),
     }
 
     def procesar_lote(self, filas_validas):

@@ -8,7 +8,8 @@ class HumContratoSerializer(serializers.ModelSerializer):
     campos_filtrables = {
         'id', 'fecha_desde', 'fecha_hasta', 'salario', 'estado_terminado',
         'auxilio_transporte', 'salario_integral',
-        'contacto', 'contrato_tipo', 'grupo', 'sucursal', 'cargo',
+        'contacto', 'contacto__nombre_corto', 'contacto__numero_identificacion',
+        'contrato_tipo', 'grupo', 'sucursal', 'cargo',
         'tipo_cotizante', 'subtipo_cotizante', 'riesgo', 'tiempo',
         'tipo_costo', 'motivo_terminacion',
     }

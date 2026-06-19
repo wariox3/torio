@@ -10,7 +10,7 @@ from general.servicios import crear_detalle
 
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
-    campos_filtrables = {'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado'}
+    campos_filtrables = {'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado'}
     select_related_lista = ('documento_tipo', 'contacto', 'sector')
     ordenamiento_default_lista = ('-fecha', '-numero')
 

@@ -42,7 +42,7 @@ class ConMovimientoImportarSerializer(serializers.Serializer):
         ('base', 'Base'),
         ('naturaleza', 'Naturaleza'),
         ('detalle', 'Detalle'),
-        ('grupo.id', 'Centro de costo'),
+        ('centro_costo.id', 'Centro de costo'),
         ('contacto.id', 'Tercero'),
         ('documento.id', 'Documento'),
     )
@@ -57,7 +57,7 @@ class ConMovimientoImportarSerializer(serializers.Serializer):
         'periodo': ('periodo.id', ConPeriodo, 'Periodo'),
     }
     _FKS_OPCIONALES = {
-        'grupo': ('grupo.id', ConCentroCosto, 'Centro de costo'),
+        'centro_costo': ('centro_costo.id', ConCentroCosto, 'Centro de costo'),
         'contacto': ('contacto.id', GenContacto, 'Tercero'),
         'documento': ('documento.id', GenDocumento, 'Documento'),
     }

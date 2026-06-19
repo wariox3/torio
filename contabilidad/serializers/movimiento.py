@@ -7,15 +7,16 @@ class ConMovimientoSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
     campos_filtrables = {
         'id', 'numero', 'fecha', 'naturaleza', 'cierre', 'saldo_inicial',
-        'comprobante', 'cuenta', 'grupo', 'periodo', 'contacto', 'documento',
+        'comprobante', 'cuenta', 'centro_costo', 'periodo', 'documento',
+        'contacto', 'contacto__nombre_corto', 'contacto__numero_identificacion',
     }
-    select_related_lista = ('comprobante', 'cuenta', 'grupo', 'periodo', 'contacto', 'documento')
+    select_related_lista = ('comprobante', 'cuenta', 'centro_costo', 'periodo', 'contacto', 'documento')
     ordenamiento_default_lista = ('-id',)
 
     comprobante_nombre = serializers.CharField(source='comprobante.nombre', read_only=True, default=None)
     cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, default=None)
     cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, default=None)
-    grupo_nombre = serializers.CharField(source='grupo.nombre', read_only=True, default=None)
+    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
     contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
 
     class Meta:
@@ -36,8 +37,8 @@ class ConMovimientoSerializer(serializers.ModelSerializer):
             'cuenta',
             'cuenta_codigo',
             'cuenta_nombre',
-            'grupo',
-            'grupo_nombre',
+            'centro_costo',
+            'centro_costo_nombre',
             'periodo',
             'contacto',
             'contacto_nombre',

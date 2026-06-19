@@ -32,9 +32,9 @@ class ConActivo(models.Model):
         'contabilidad.ConCuenta', on_delete=models.PROTECT,
         related_name='activos_cuenta_depreciacion_rel',
     )
-    grupo = models.ForeignKey(
+    centro_costo = models.ForeignKey(
         'contabilidad.ConCentroCosto', on_delete=models.PROTECT,
-        related_name='activos_grupo_rel',
+        related_name='activos_centro_costo_rel',
     )
 
     class Meta:

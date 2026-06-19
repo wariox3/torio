@@ -5,9 +5,9 @@ from contabilidad.models import ConActivo
 
 class ConActivoSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'codigo', 'nombre', 'activo_grupo', 'metodo_depreciacion', 'grupo'}
+    campos_filtrables = {'id', 'codigo', 'nombre', 'activo_grupo', 'metodo_depreciacion', 'centro_costo'}
     select_related_lista = (
-        'activo_grupo', 'metodo_depreciacion', 'cuenta_gasto', 'cuenta_depreciacion', 'grupo',
+        'activo_grupo', 'metodo_depreciacion', 'cuenta_gasto', 'cuenta_depreciacion', 'centro_costo',
     )
     ordenamiento_default_lista = ('-id',)
 
@@ -15,7 +15,7 @@ class ConActivoSerializer(serializers.ModelSerializer):
     metodo_depreciacion_nombre = serializers.CharField(source='metodo_depreciacion.nombre', read_only=True, default=None)
     cuenta_gasto_nombre = serializers.CharField(source='cuenta_gasto.nombre', read_only=True, default=None)
     cuenta_depreciacion_nombre = serializers.CharField(source='cuenta_depreciacion.nombre', read_only=True, default=None)
-    grupo_nombre = serializers.CharField(source='grupo.nombre', read_only=True, default=None)
+    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
 
     class Meta:
         model = ConActivo
@@ -43,8 +43,8 @@ class ConActivoSerializer(serializers.ModelSerializer):
             'cuenta_gasto_nombre',
             'cuenta_depreciacion',
             'cuenta_depreciacion_nombre',
-            'grupo',
-            'grupo_nombre',
+            'centro_costo',
+            'centro_costo_nombre',
         ]
         read_only_fields = [
             'id',

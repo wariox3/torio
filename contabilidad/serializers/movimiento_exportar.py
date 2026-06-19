@@ -27,7 +27,7 @@ class ConMovimientoExportarSerializer(serializers.Serializer):
         ('base', 'Base'),
         ('naturaleza', 'Naturaleza'),
         ('detalle', 'Detalle'),
-        ('grupo.nombre', 'Centro de costo'),
+        ('centro_costo.nombre', 'Centro de costo'),
         ('contacto.nombre_corto', 'Tercero'),
     )
 

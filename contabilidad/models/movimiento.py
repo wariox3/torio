@@ -19,9 +19,9 @@ class ConMovimiento(models.Model):
         'contabilidad.ConCuenta', on_delete=models.PROTECT,
         related_name='movimientos_cuenta_rel',
     )
-    grupo = models.ForeignKey(
+    centro_costo = models.ForeignKey(
         'contabilidad.ConCentroCosto', null=True, on_delete=models.PROTECT,
-        related_name='movimientos_grupo_rel',
+        related_name='movimientos_centro_costo_rel',
     )
     periodo = models.ForeignKey(
         'contabilidad.ConPeriodo', on_delete=models.PROTECT,
