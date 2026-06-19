@@ -4,6 +4,7 @@ from .banco import GenBancoViewSet
 from .ciudad import GenCiudadViewSet
 from .configuracion import GenConfiguracionViewSet
 from .contacto import GenContactoViewSet
+from .cuenta_banco import GenCuentaBancoViewSet
 from .cuenta_banco_clase import GenCuentaBancoClaseViewSet
 from .cuenta_banco_tipo import GenCuentaBancoTipoViewSet
 from .documento import GenDocumentoViewSet
@@ -25,6 +26,7 @@ from .pais import GenPaisViewSet
 from .plazo_pago import GenPlazoPagoViewSet
 from .precio import GenPrecioViewSet
 from .prueba import PruebaView
+from .resolucion import GenResolucionViewSet
 from .responsabilidad import GenResponsabilidadViewSet
 from .sector import GenSectorViewSet
 from .sede import GenSedeViewSet

@@ -8,6 +8,7 @@ from general.views import (
     GenCiudadViewSet,
     GenConfiguracionViewSet,
     GenContactoViewSet,
+    GenCuentaBancoViewSet,
     GenCuentaBancoClaseViewSet,
     GenCuentaBancoTipoViewSet,
     GenDocumentoClaseViewSet,
@@ -28,6 +29,7 @@ from general.views import (
     GenPaisViewSet,
     GenPlazoPagoViewSet,
     GenPrecioViewSet,
+    GenResolucionViewSet,
     GenResponsabilidadViewSet,
     GenSectorViewSet,
     GenSedeViewSet,
@@ -42,6 +44,7 @@ router.register(r'banco', GenBancoViewSet, basename='banco')
 router.register(r'ciudad', GenCiudadViewSet, basename='ciudad')
 router.register(r'configuracion', GenConfiguracionViewSet, basename='configuracion')
 router.register(r'contacto', GenContactoViewSet, basename='contacto')
+router.register(r'cuenta-banco', GenCuentaBancoViewSet, basename='cuenta-banco')
 router.register(r'cuenta-banco-clase', GenCuentaBancoClaseViewSet, basename='cuenta-banco-clase')
 router.register(r'cuenta-banco-tipo', GenCuentaBancoTipoViewSet, basename='cuenta-banco-tipo')
 router.register(r'documento', GenDocumentoViewSet, basename='documento')
@@ -66,6 +69,7 @@ router.register(r'modelo', GenModeloViewSet, basename='modelo')
 router.register(r'pais', GenPaisViewSet, basename='pais')
 router.register(r'plazo-pago', GenPlazoPagoViewSet, basename='plazo-pago')
 router.register(r'precio', GenPrecioViewSet, basename='precio')
+router.register(r'resolucion', GenResolucionViewSet, basename='resolucion')
 router.register(r'responsabilidad', GenResponsabilidadViewSet, basename='responsabilidad')
 router.register(r'sector', GenSectorViewSet, basename='sector')
 router.register(r'sede', GenSedeViewSet, basename='sede')

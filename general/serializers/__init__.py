@@ -1,5 +1,7 @@
 from .archivo import GenArchivoSerializer
-from .asesor import GenAsesorSeleccionarSerializer
+from .asesor import GenAsesorSeleccionarSerializer, GenAsesorSerializer
+from .asesor_exportar import GenAsesorExportarSerializer
+from .asesor_importar import GenAsesorImportarSerializer
 from .banco import GenBancoSeleccionarSerializer
 from .ciudad import GenCiudadSeleccionarSerializer
 from .configuracion import GenConfiguracionSerializer
@@ -7,7 +9,10 @@ from .contacto import GenContactoSerializer
 from .contacto_exportar import GenContactoExportarSerializer
 from .contacto_importar import GenContactoImportarSerializer
 from .contacto_seleccionar import GenContactoSeleccionarSerializer
+from .cuenta_banco import GenCuentaBancoSeleccionarSerializer, GenCuentaBancoSerializer
 from .cuenta_banco_clase import GenCuentaBancoClaseSeleccionarSerializer
+from .cuenta_banco_exportar import GenCuentaBancoExportarSerializer
+from .cuenta_banco_importar import GenCuentaBancoImportarSerializer
 from .cuenta_banco_tipo import GenCuentaBancoTipoSeleccionarSerializer
 from .documento import (
     GenDocumentoCrearSerializer,
@@ -40,7 +45,12 @@ from .modalidad import GenModalidadSeleccionarSerializer
 from .modelo import GenModeloSerializer
 from .pais import GenPaisSeleccionarSerializer
 from .plazo_pago import GenPlazoPagoSeleccionarSerializer
-from .precio import GenPrecioSeleccionarSerializer
+from .precio import GenPrecioSeleccionarSerializer, GenPrecioSerializer
+from .precio_exportar import GenPrecioExportarSerializer
+from .precio_importar import GenPrecioImportarSerializer
+from .resolucion import GenResolucionSeleccionarSerializer, GenResolucionSerializer
+from .resolucion_exportar import GenResolucionExportarSerializer
+from .resolucion_importar import GenResolucionImportarSerializer
 from .responsabilidad import GenResponsabilidadSeleccionarSerializer
 from .sector import GenSectorSeleccionarSerializer
 from .sede import GenSedeSerializer
