@@ -239,3 +239,23 @@ B2_ENDPOINT_URL = config('B2_ENDPOINT_URL', default='')
 B2_BUCKET_PUBLICO = config('B2_BUCKET_PUBLICO', default='')
 B2_BUCKET_PRIVADO = config('B2_BUCKET_PRIVADO', default='')
 B2_CDN_URL_PUBLICO = config('B2_CDN_URL_PUBLICO', default='')
+
+
+# Sentry (control de errores).
+# Solo se activa si SENTRY_DSN está definido, así dev queda intacto y se enciende
+# en prod/staging con solo setear la variable. La integración con Django se
+# auto-activa. El schema del tenant se etiqueta por request en TenantHeaderMiddleware.
+SENTRY_DSN = config('SENTRY_DSN', default='')
+if SENTRY_DSN:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=config('SENTRY_ENVIRONMENT', default=config('ENV', default='production')),
+        release=config('SENTRY_RELEASE', default=None) or None,
+        # Performance: 0.0 = solo errores (sin coste de trazas). Subir gradualmente.
+        traces_sample_rate=config('SENTRY_TRACES_SAMPLE_RATE', default=0.0, cast=float),
+        profiles_sample_rate=config('SENTRY_PROFILES_SAMPLE_RATE', default=0.0, cast=float),
+        # PII desactivada por defecto: no envía cookies (JWT), headers ni datos de usuario.
+        send_default_pii=config('SENTRY_SEND_PII', default=False, cast=bool),
+    )

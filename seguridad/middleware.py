@@ -7,6 +7,11 @@ from django_tenants.utils import get_public_schema_name, get_tenant_model
 
 from seguridad.contexto import _usuario_actual
 
+try:
+    import sentry_sdk
+except ImportError:  # Sentry es opcional; sin el paquete el tagging es no-op.
+    sentry_sdk = None
+
 
 class UsuarioActualMiddleware:
     """
@@ -50,11 +55,13 @@ class TenantHeaderMiddleware:
             connection.set_schema_to_public()
             request.tenant = connection.tenant
             request.urlconf = settings.PUBLIC_SCHEMA_URLCONF
+            self._etiquetar_sentry(get_public_schema_name())
             return self.get_response(request)
 
         try:
             tenant = self.tenant_model.objects.get(schema_name=slug)
         except self.tenant_model.DoesNotExist:
+            self._etiquetar_sentry(slug)
             return JsonResponse(
                 {'detail': f'Tenant "{slug}" no existe.'},
                 status=404,
@@ -62,7 +69,14 @@ class TenantHeaderMiddleware:
 
         connection.set_tenant(tenant)
         request.tenant = tenant
+        self._etiquetar_sentry(tenant.schema_name)
         return self.get_response(request)
+
+    @staticmethod
+    def _etiquetar_sentry(schema):
+        """Etiqueta el tenant en el scope de Sentry para filtrar errores por cliente."""
+        if sentry_sdk is not None:
+            sentry_sdk.set_tag('tenant', schema)
 
 
 class SuscripcionActivaMiddleware:

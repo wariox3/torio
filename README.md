@@ -98,6 +98,10 @@ Definidas en `.env` (ver `.env.example`):
 | `TURNSTILE_SECRET_KEY` | Secret key de Cloudflare Turnstile. |
 | `TURNSTILE_ENABLED` | `True` en prod/test, `False` en dev. |
 | `ENABLE_API_DOCS` | Habilita `/api/docs/`. Solo activar en dev/staging. |
+| `SENTRY_DSN` | DSN de Sentry. Vacío = control de errores desactivado (dev). |
+| `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` | Entorno y release para etiquetar eventos en Sentry. |
+| `SENTRY_TRACES_SAMPLE_RATE`, `SENTRY_PROFILES_SAMPLE_RATE` | Muestreo de performance (default `0.0`). |
+| `SENTRY_SEND_PII` | Enviar cookies/headers/usuario a Sentry (default `False`). |
 | `CORS_ALLOWED_ORIGINS` | Solo en prod. CSV de orígenes permitidos (ej. `https://reddoc.co`). |
 | `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS` | Solo en prod. |
 
@@ -194,6 +198,12 @@ El schema PostgreSQL se crea automáticamente (`auto_create_schema=True`). El `s
 - **Modelos** con prefijo de app (`Ctn*`, `Seg*`) y `db_table` explícito en `Meta`.
 - **Settings** nunca con secretos hardcodeados — siempre vía `python-decouple`.
 - **Migraciones** del schema público con `migrate_schemas --shared`; las de tenants con `migrate_schemas` (todos) o `migrate_schemas --schema=acme`.
+
+## Despliegue en producción
+
+Ver **[`DESPLIEGUE.md`](DESPLIEGUE.md)** — guía completa para servidor Linux con
+PostgreSQL + Gunicorn + Nginx + systemd (variables de entorno, migraciones por
+schema, servicio systemd, reverse proxy, TLS, backups y alta de tenants).
 
 ## Pendiente
 
