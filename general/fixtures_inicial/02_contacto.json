@@ -1,0 +1,15 @@
+{
+  "model": "general.GenContacto",
+  "data": [
+    {
+      "id": 1,
+      "nombre_corto": "Consumidor final",
+      "numero_identificacion": "222222222222",
+      "identificacion_id": 3,
+      "tipo_persona_id": 2,
+      "ciudad_id": 1,
+      "cliente": true,
+      "plazo_pago_id": 1
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "model": "contabilidad.ConCentroCosto",
+  "data": [
+    { "id": 1, "nombre": "General" }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "model": "humano.HumSucursal",
+  "data": [
+    { "id": 1, "nombre": "General", "codigo": "1" }
+  ]
+}

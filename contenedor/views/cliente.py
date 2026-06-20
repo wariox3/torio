@@ -80,7 +80,7 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         cliente.suscripcion = suscripcion
         cliente.save(update_fields=['suscripcion'])
 
-        call_command('cargar_datos_tenant', schema=schema_name, verbosity=0)
+        call_command('cargar_datos_tenant', schema=schema_name, inicial=True, verbosity=0)
 
         return Response(CtnClienteSerializer(cliente).data, status=status.HTTP_201_CREATED)
 

@@ -1,0 +1,6 @@
+{
+  "model": "humano.HumGrupo",
+  "data": [
+    { "id": 1, "nombre": "General", "periodo_id": 1 }
+  ]
+}

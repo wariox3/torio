@@ -1,0 +1,6 @@
+{
+  "model": "general.GenSede",
+  "data": [
+    { "id": 1, "nombre": "Principal", "centro_costo_id": 1 }
+  ]
+}

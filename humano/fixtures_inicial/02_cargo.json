@@ -1,0 +1,6 @@
+{
+  "model": "humano.HumCargo",
+  "data": [
+    { "id": 1, "nombre": "General", "codigo": "1" }
+  ]
+}
