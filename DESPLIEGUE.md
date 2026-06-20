@@ -11,7 +11,7 @@ Linux con **PostgreSQL + Gunicorn + Nginx + systemd**.
 ## 1. Arquitectura del despliegue
 
 ```
-              HTTPS                      proxy_pass               socket
+              HTTPS                      proxy_pass          127.0.0.1:8073
   Cliente  ─────────►  Nginx  ───────────────────────────►  Gunicorn  ──►  Django (torioapp.wsgi)
  (frontend)          (TLS, estáticos)   X-Tenant + headers   (systemd)         │
                                                                   red privada   │
@@ -47,6 +47,21 @@ Puntos clave específicos de este proyecto:
 - **HTTPS lo termina Nginx.** `prod.py` ya define
   `SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')`, así que Nginx
   debe enviar `X-Forwarded-Proto`.
+
+### Convención de rutas (FHS)
+
+La aplicación se despliega bajo **`/opt/torio`** (software de aplicación
+autocontenido, según el FHS — **no** en `/home`, que es para usuarios humanos):
+
+```
+/opt/torio/
+├── app/          # checkout de git (contiene manage.py, .env, staticfiles/)
+└── venv/         # entorno virtual (fuera del árbol de código)
+```
+
+Corre como un **usuario de sistema sin login** (`torio`), compatible con el
+endurecimiento de systemd (`ProtectHome=true`). El `.env` vive en `app/.env`
+(donde `python-decouple` lo busca) con permisos `600`.
 
 ---
 
@@ -112,27 +127,37 @@ Requisitos del servicio gestionado:
 ## 4. Código y entorno virtual
 
 ```bash
-# Como usuario de la app
-sudo useradd --system --create-home --shell /bin/bash torio
-sudo su - torio
+# Usuario de sistema sin login (no interactivo), con home en /opt/torio.
+sudo useradd --system --home-dir /opt/torio --shell /usr/sbin/nologin torio
+sudo mkdir -p /opt/torio
+sudo chown torio:torio /opt/torio
 
-git clone <repo> /home/torio/torio
-cd /home/torio/torio
-
-python3.12 -m venv /home/torio/venv
-source /home/torio/venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
+# Clonar y crear el venv como el usuario de servicio (sin shell de login).
+sudo -u torio git clone <repo> /opt/torio/app
+sudo -u torio python3.12 -m venv /opt/torio/venv
+sudo -u torio /opt/torio/venv/bin/pip install --upgrade pip
+sudo -u torio /opt/torio/venv/bin/pip install -r /opt/torio/app/requirements.txt
 ```
 
-`gunicorn` ya está en `requirements.txt`, así que no hay que instalarlo aparte.
+- `gunicorn` ya está en `requirements.txt`, no se instala aparte.
+- Como el usuario `torio` no tiene shell de login, los comandos de administración
+  se ejecutan con `sudo -u torio <ruta-venv>/python ...` (ver §6) o desde una
+  shell puntual: `sudo -u torio -s`.
+- El árbol `/opt/torio/app` queda propiedad de `torio`; el servicio solo lee
+  (escribe únicamente en `collectstatic`, ejecutado en el despliegue).
 
 ---
 
 ## 5. Variables de entorno (`.env` de producción)
 
 El proyecto lee la configuración con `python-decouple` desde un archivo `.env`
-en la raíz. **`.env` está en `.gitignore`** — créalo en el servidor con valores reales.
+en la raíz del código (`/opt/torio/app/.env`). **`.env` está en `.gitignore`** —
+créalo en el servidor con valores reales.
+
+> ⚠️ **`python-decouple` NO soporta comentarios en la misma línea del valor.**
+> Todo lo que esté a la derecha del `=` se toma como valor. Los comentarios deben
+> ir en su propia línea empezando con `#`. Es decir, `CLAVE=0.0  # nota` rompe el
+> arranque (`could not convert string to float`); usa la nota en la línea de arriba.
 
 ```ini
 # ── Núcleo ─────────────────────────────────────────────
@@ -146,7 +171,8 @@ ALLOWED_HOSTS=api.tu-dominio.com
 DATABASE_NAME=bdtorio
 DATABASE_USER=torio
 DATABASE_CLAVE=CLAVE_FUERTE_AQUI
-DATABASE_HOST=db.tu-proveedor.com     # host del PostgreSQL gestionado (no localhost)
+# host del PostgreSQL gestionado (no localhost)
+DATABASE_HOST=db.tu-proveedor.com
 DATABASE_PORT=5432
 
 # ── Logging ────────────────────────────────────────────
@@ -174,10 +200,13 @@ ENABLE_API_DOCS=False
 # ── Sentry (control de errores) ────────────────────────
 SENTRY_DSN=https://<clave>@<org>.ingest.sentry.io/<proyecto>
 SENTRY_ENVIRONMENT=production
-SENTRY_RELEASE=                       # opcional: SHA de git del despliegue
-SENTRY_TRACES_SAMPLE_RATE=0.0         # 0.0 = solo errores; subir si se quiere APM
+# Opcional: SHA de git del despliegue
+SENTRY_RELEASE=
+# Muestreo de performance: 0.0 = solo errores; subir si se quiere APM
+SENTRY_TRACES_SAMPLE_RATE=0.0
 SENTRY_PROFILES_SAMPLE_RATE=0.0
-SENTRY_SEND_PII=False                 # no enviar cookies/headers/usuario
+# No enviar cookies/headers/usuario
+SENTRY_SEND_PII=False
 
 # ── Cloudflare Turnstile ───────────────────────────────
 TURNSTILE_ENABLED=True
@@ -196,10 +225,11 @@ B2_BUCKET_PRIVADO=torio-privado-prod
 B2_CDN_URL_PUBLICO=https://torio-publico-prod.s3.us-east-005.backblazeb2.com
 ```
 
-Protege el archivo:
+Protege el archivo (solo lo lee el usuario de servicio):
 
 ```bash
-chmod 600 /home/torio/torio/.env
+sudo chown torio:torio /opt/torio/app/.env
+sudo chmod 600 /opt/torio/app/.env
 ```
 
 > **Importante:** usa buckets B2 y credenciales **de producción** distintos a los
@@ -211,34 +241,40 @@ chmod 600 /home/torio/torio/.env
 
 `django-tenants` separa migraciones del schema público y de los tenants.
 
+Los comandos se ejecutan como el usuario `torio` con el Python del venv. Para no
+repetir rutas, abre una shell puntual del usuario de servicio:
+
 ```bash
-cd /home/torio/torio
-source /home/torio/venv/bin/activate
+sudo -u torio -s
+cd /opt/torio/app
 export DJANGO_SETTINGS_MODULE=torioapp.settings.prod
+PY=/opt/torio/venv/bin/python
 
 # 1. Migrar el schema público (apps compartidas)
-python manage.py migrate_schemas --shared
+$PY manage.py migrate_schemas --shared
 
 # 2. Crear el tenant público (una sola vez, primera instalación)
-python manage.py shell <<'PY'
+$PY manage.py shell <<'PYEOF'
 from contenedor.models import CtnCliente, CtnDominio
 tenant = CtnCliente(schema_name='public', nombre='Public')
 tenant.save(verbosity=1)
 CtnDominio.objects.get_or_create(domain='api.tu-dominio.com', tenant=tenant,
                                  defaults={'is_primary': True})
-PY
+PYEOF
 
 # 3. Migrar todos los tenants existentes
-python manage.py migrate_schemas
+$PY manage.py migrate_schemas
 
 # 4. Datos de referencia del schema público (idempotente)
-python manage.py cargar_geodata
+$PY manage.py cargar_geodata
 
 # 5. Datos de referencia de los tenants (idempotente)
-python manage.py cargar_datos_tenant
+$PY manage.py cargar_datos_tenant
 
 # 6. Superusuario para el admin (schema público)
-python manage.py createsuperuser
+$PY manage.py createsuperuser
+
+exit   # salir de la shell del usuario torio
 ```
 
 > En cada **redeploy** que incluya migraciones, ejecutar `migrate_schemas --shared`
@@ -249,11 +285,12 @@ python manage.py createsuperuser
 ## 7. Archivos estáticos
 
 ```bash
-python manage.py collectstatic --noinput
+sudo -u torio DJANGO_SETTINGS_MODULE=torioapp.settings.prod \
+    /opt/torio/venv/bin/python /opt/torio/app/manage.py collectstatic --noinput
 ```
 
-Genera `staticfiles/`, servido por Nginx (ver §9). Repetir en cada release que
-cambie estáticos (el admin de Django, Swagger si se habilitara, etc.).
+Genera `/opt/torio/app/staticfiles/`, servido por Nginx (ver §9). Repetir en cada
+release que cambie estáticos (el admin de Django, Swagger si se habilitara, etc.).
 
 ---
 
@@ -263,7 +300,7 @@ Crear `/etc/systemd/system/torio.service`:
 
 ```ini
 [Unit]
-Description=Torio Gunicorn (Django)
+Description=Torio API (Gunicorn/Django)
 # La BD es externa: solo dependemos de la red, no de un postgresql local.
 After=network-online.target
 Wants=network-online.target
@@ -272,72 +309,172 @@ Wants=network-online.target
 Type=notify
 User=torio
 Group=torio
-WorkingDirectory=/home/torio/torio
+WorkingDirectory=/opt/torio/app
+
+# Entorno mínimo. El resto de la config la lee la app desde /opt/torio/app/.env
 Environment=DJANGO_SETTINGS_MODULE=torioapp.settings.prod
-ExecStart=/home/torio/venv/bin/gunicorn torioapp.wsgi:application \
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+ExecStart=/opt/torio/venv/bin/gunicorn torioapp.wsgi:application \
     --workers 3 \
-    --bind unix:/run/torio/gunicorn.sock \
+    --bind 127.0.0.1:8073 \
     --timeout 60 \
+    --graceful-timeout 30 \
+    --max-requests 1000 \
+    --max-requests-jitter 100 \
     --access-logfile - \
     --error-logfile -
 ExecReload=/bin/kill -s HUP $MAINPID
+
+# Resiliencia
 Restart=always
 RestartSec=3
-RuntimeDirectory=torio
-RuntimeDirectoryMode=0755
+TimeoutStopSec=30
+UMask=0027
+
+# Endurecimiento (sandbox de systemd)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Notas:
+Notas profesionales:
 - **Workers:** regla práctica `(2 × núcleos) + 1`. Ajusta a la VM.
-- `RuntimeDirectory=torio` crea `/run/torio` (donde vive el socket) con los permisos
-  correctos en cada arranque.
-- `--timeout 60` da margen a operaciones pesadas (importar Excel, generar PDFs).
+- **Reciclaje de workers** (`--max-requests` + `--max-requests-jitter`): recicla
+  cada worker tras ~1000 peticiones (con jitter para no reiniciarlos a la vez),
+  mitigando fugas de memoria en procesos de larga vida.
+- `--timeout 60` da margen a operaciones pesadas (importar Excel, generar PDFs);
+  `--graceful-timeout 30` deja terminar las peticiones en curso al recargar.
+- **Bind a `127.0.0.1:8073`** (solo loopback): Gunicorn escucha en el puerto 8073
+  pero **no** queda expuesto a Internet; solo Nginx (o el panel) le hace proxy
+  desde la misma máquina. No abras 8073 en el firewall.
+- **`ProtectSystem=strict`** deja todo el FS en solo-lectura salvo `/tmp` privado.
+  La app no escribe en disco en runtime (logs → journald, archivos → B2, BD
+  externa); `PYTHONDONTWRITEBYTECODE=1` evita intentos de escribir `.pyc` bajo el
+  árbol de solo-lectura.
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now torio
 sudo systemctl status torio
+# Validar el endurecimiento:
+sudo systemd-analyze security torio
 ```
 
 ---
 
 ## 9. Nginx como reverse proxy
 
-Crear `/etc/nginx/sites-available/torio`:
+Nginx hace proxy al puerto local **`127.0.0.1:8073`** donde escucha Gunicorn. Al
+ser TCP en loopback no hay permisos de socket que ajustar.
+
+> ⚠️ **Orden importante (problema huevo-gallina).** Un bloque `server` con
+> `ssl_certificate` apuntando a un cert que **aún no existe** hace fallar
+> `nginx -t` (`cannot load certificate ... No such file`), y entonces certbot
+> tampoco puede recargar Nginx. Por eso se hace en **dos fases**: primero HTTP puro
+> para emitir el certificado, luego se añade el bloque TLS.
+
+**Requisitos previos:** DNS de `api.tu-dominio.com` apuntando a la IP del servidor
+y puerto 80 abierto (certbot valida por HTTP-01). Verifica: `dig +short api.tu-dominio.com`.
+
+### Fase 1 — HTTP puro y emisión del certificado
+
+Crear `/etc/nginx/sites-available/torio` **solo con el bloque HTTP**:
 
 ```nginx
-upstream torio_app {
-    server unix:/run/torio/gunicorn.sock;
-}
-
 server {
     listen 80;
+    listen [::]:80;
     server_name api.tu-dominio.com;
-    # Redirección a HTTPS la maneja certbot o este bloque:
+
+    location / {
+        proxy_pass http://127.0.0.1:8073;   # Gunicorn (backend local único)
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/torio /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default   # quitar el host por defecto
+sudo nginx -t && sudo systemctl reload nginx
+
+# Emitir el certificado (Nginx ya es válido y puede servir el reto ACME)
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot certonly --nginx -d api.tu-dominio.com
+ls /etc/letsencrypt/live/api.tu-dominio.com/  # confirma fullchain.pem y privkey.pem
+```
+
+### Fase 2 — Añadir el bloque TLS
+
+Ya con el certificado emitido, **reemplaza** el contenido del archivo por la
+versión completa (HTTP→HTTPS + TLS):
+
+```nginx
+# HTTP → HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name api.tu-dominio.com;
     return 301 https://$host$request_uri;
 }
 
 server {
+    # HTTP/2 en la misma línea `listen` (compatible con Nginx < 1.25.1).
+    # En Nginx 1.25.1+ puedes usar la forma nueva: `listen 443 ssl;` + `http2 on;`
     listen 443 ssl http2;
+    listen [::]:443 ssl http2;
     server_name api.tu-dominio.com;
 
+    server_tokens off;   # no exponer la versión de Nginx
+
+    # Certificado
     ssl_certificate     /etc/letsencrypt/live/api.tu-dominio.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/api.tu-dominio.com/privkey.pem;
+    # Perfil TLS moderno de Mozilla + DH params (los provee certbot)
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    client_max_body_size 6M;   # importar Excel: límite del backend es 5 MB
+    # importar Excel: límite del backend es 5 MB
+    client_max_body_size 6M;
+
+    # Timeouts acordes al --timeout de Gunicorn (60s)
+    proxy_connect_timeout 10s;
+    proxy_read_timeout    60s;
+    proxy_send_timeout    60s;
+
+    # Compresión de respuestas JSON de la API
+    gzip on;
+    gzip_proxied any;
+    gzip_types application/json application/javascript text/css;
+    gzip_min_length 1024;
 
     # Estáticos servidos directo por Nginx
     location /static/ {
-        alias /home/torio/torio/staticfiles/;
+        alias /opt/torio/app/staticfiles/;
         expires 30d;
+        add_header Cache-Control "public, immutable";
         access_log off;
     }
 
     location / {
-        proxy_pass http://torio_app;
+        proxy_pass http://127.0.0.1:8073;   # Gunicorn (backend local único)
         proxy_set_header Host              $host;
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
@@ -349,47 +486,64 @@ server {
 ```
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/torio /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
-TLS con Let's Encrypt:
-
-```bash
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d api.tu-dominio.com
-```
-
-> El `client_max_body_size` debe ser ≥ al límite de importación del backend (5 MB,
-> definido en `ImportarExcelMixin.MAX_TAMANO_ARCHIVO_BYTES`). 6 MB deja margen.
+Notas:
+- HSTS, `nosniff`, `X-Frame-Options` y la redirección SSL los emite **Django**
+  (`settings/prod.py`) — no se duplican en Nginx para evitar headers repetidos.
+- `options-ssl-nginx.conf` y `ssl-dhparams.pem` fijan TLS 1.2/1.3 y cifrados
+  modernos (perfil Mozilla). Con `certbot certonly` puede que **no se creen**: si
+  `nginx -t` se queja de que faltan, comenta esas dos líneas (TLS sigue operativo)
+  o genera el dhparam con `sudo openssl dhparam -out /etc/letsencrypt/ssl-dhparams.pem 2048`.
+- El `client_max_body_size` debe ser ≥ al límite de importación del backend (5 MB,
+  definido en `ImportarExcelMixin.MAX_TAMANO_ARCHIVO_BYTES`). 6 MB deja margen.
+- Renovación automática del certificado: el timer `certbot.timer` ya viene activo;
+  verifícalo con `sudo certbot renew --dry-run`.
 
 ---
 
 ## 10. Actualizaciones (redeploy)
 
+El redeploy está automatizado en **`deploy/redeploy.sh`** (versionado en el repo).
+Hace todos los pasos como el usuario `torio` y recarga el servicio. Se ejecuta
+**como root**:
+
 ```bash
-sudo su - torio
-cd /home/torio/torio
-source /home/torio/venv/bin/activate
-export DJANGO_SETTINGS_MODULE=torioapp.settings.prod
-
-git pull
-pip install -r requirements.txt          # si cambiaron dependencias
-
-python manage.py migrate_schemas --shared
-python manage.py migrate_schemas         # tenants
-python manage.py cargar_geodata          # si cambiaron fixtures públicos
-python manage.py cargar_datos_tenant     # si cambiaron fixtures de tenant
-python manage.py collectstatic --noinput
-
-exit
-sudo systemctl restart torio
+sudo /opt/torio/app/deploy/redeploy.sh
 ```
 
-> Para un cero-downtime básico, `sudo systemctl reload torio` (HUP) reinicia los
-> workers sin cortar conexiones nuevas. Tras migraciones incompatibles, prefiere
-> `restart`.
+Qué hace, en orden: `git pull --ff-only` → `pip install` → `migrate_schemas --shared`
+→ `migrate_schemas` (tenants) → `cargar_geodata` + `cargar_datos_tenant` →
+`collectstatic` → fija `SENTRY_RELEASE` al SHA de git → `systemctl reload torio`.
+
+> La primera vez, da permiso de ejecución si hiciera falta: `sudo chmod +x /opt/torio/app/deploy/redeploy.sh`.
+
+> `reload` (HUP) recicla los workers sin downtime. **Tras migraciones de schema
+> incompatibles con la versión anterior**, edita el final del script (o ejecuta
+> `sudo systemctl restart torio`). Diseña las migraciones compatibles hacia atrás
+> cuando busques cero-downtime real (expand/contract).
+
+<details>
+<summary>Equivalente manual (si no usas el script)</summary>
+
+```bash
+sudo -u torio -s
+cd /opt/torio/app
+export DJANGO_SETTINGS_MODULE=torioapp.settings.prod
+PY=/opt/torio/venv/bin/python
+
+git pull --ff-only
+/opt/torio/venv/bin/pip install -r requirements.txt
+$PY manage.py migrate_schemas --shared
+$PY manage.py migrate_schemas
+$PY manage.py cargar_geodata
+$PY manage.py cargar_datos_tenant
+$PY manage.py collectstatic --noinput
+exit
+sudo systemctl reload torio
+```
+</details>
 
 ---
 
@@ -412,7 +566,10 @@ Verifica además:
 - [ ] `CORS_ALLOWED_ORIGINS` solo con los orígenes del frontend de prod.
 - [ ] `AUTH_COOKIE_SECURE=True` y `AUTH_COOKIE_DOMAIN` con punto inicial.
 - [ ] Credenciales y buckets B2 **de producción** (no `*-desarrollo`).
-- [ ] `.env` con `chmod 600` y fuera de git.
+- [ ] `/opt/torio/app/.env` con `chmod 600`, propiedad de `torio`, fuera de git.
+- [ ] Servicio corre como usuario de sistema sin login y con el sandbox de systemd
+      activo (`systemd-analyze security torio` con score razonable).
+- [ ] Firewall del host: solo `80/443` (y `22` restringido) expuestos a Internet.
 - [ ] Conectividad de red a la BD gestionada abierta solo desde la VM de la app
       (allowlist/security group), y TLS exigido si el proveedor lo soporta.
 - [ ] Rol PostgreSQL con privilegio de crear schemas (alta de tenants).
@@ -457,9 +614,9 @@ definido (integración Django auto-activada en `torioapp/settings/base.py`).
 Verificar la integración tras el despliegue (envía un evento de prueba):
 
 ```bash
-source /home/torio/venv/bin/activate
-export DJANGO_SETTINGS_MODULE=torioapp.settings.prod
-python -c "import sentry_sdk; sentry_sdk.capture_message('Despliegue Torio OK')"
+sudo -u torio DJANGO_SETTINGS_MODULE=torioapp.settings.prod \
+    /opt/torio/venv/bin/python /opt/torio/app/manage.py shell \
+    -c "import sentry_sdk; sentry_sdk.capture_message('Despliegue Torio OK')"
 # Debe aparecer en el dashboard de Sentry en segundos.
 ```
 
@@ -492,14 +649,20 @@ de versionado/retención del bucket en Backblaze.
 ## 14. Alta de un nuevo tenant (en producción)
 
 ```bash
-python manage.py shell <<'PY'
+sudo -u torio -s
+cd /opt/torio/app
+export DJANGO_SETTINGS_MODULE=torioapp.settings.prod
+PY=/opt/torio/venv/bin/python
+
+$PY manage.py shell <<'PYEOF'
 from contenedor.models import CtnCliente, CtnDominio
 cliente = CtnCliente.objects.create(schema_name='acme', nombre='ACME S.A.')
 CtnDominio.objects.create(domain='acme.tu-dominio.com', tenant=cliente, is_primary=True)
-PY
+PYEOF
 
 # Sembrar datos de referencia del tenant recién creado
-python manage.py cargar_datos_tenant --schema acme
+$PY manage.py cargar_datos_tenant --schema acme
+exit
 ```
 
 El schema PostgreSQL se crea automáticamente (`auto_create_schema=True`). El
@@ -512,11 +675,11 @@ dígitos y guion bajo. El frontend luego envía `X-Tenant: acme` en sus peticion
 
 1. Instalar paquetes del sistema (cliente PostgreSQL, sin servidor) (§2)
 2. Aprovisionar rol/BD en el PostgreSQL gestionado + abrir conectividad (§3)
-3. Clonar código + venv + `pip install` (§4)
-4. Crear `.env` de producción (§5)
+3. Crear usuario de sistema `torio` + clonar en `/opt/torio/app` + venv (§4)
+4. Crear `/opt/torio/app/.env` de producción (`chmod 600`) (§5)
 5. `migrate_schemas --shared` → crear tenant público → `migrate_schemas` (§6)
 6. `cargar_geodata` + `cargar_datos_tenant` + `createsuperuser` (§6)
 7. `collectstatic` (§7)
-8. systemd `torio.service` + `enable --now` (§8)
-9. Nginx + TLS (§9)
-10. `check --deploy` (§11)
+8. systemd `torio.service` endurecido + `enable --now` (§8)
+9. Nginx (proxy a `127.0.0.1:8073`) + TLS (§9)
+10. Firewall (solo 80/443, 22 restringido) + `check --deploy` + `systemd-analyze security` (§11)
