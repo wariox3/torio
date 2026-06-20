@@ -7,11 +7,11 @@ class Wolframio:
     def consumir_post(self, data, url):
         env = config('ENV')
         if env == 'prod':
-            url_base = 'https://rededoc.co' + url
+            url_base = 'http://rededoc.co' + url
         elif env == 'test':
-            url_base = 'https://prueba.rededoc.co' + url
+            url_base = 'http://rededoc.co' + url
         else:
-            url_base = 'https://prueba.rededoc.co' + url
+            url_base = 'http://rededoc.co' + url
         response = httpx.post(url_base, json=data)
         return {'status': response.status_code, 'datos': response.json()}
 

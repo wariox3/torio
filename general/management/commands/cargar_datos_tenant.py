@@ -14,6 +14,7 @@ FIXTURES_DIRS = [
     BASE_DIR / 'general' / 'fixtures',
     BASE_DIR / 'contabilidad' / 'fixtures',
     BASE_DIR / 'humano' / 'fixtures',
+    BASE_DIR / 'turno' / 'fixtures',
 ]
 
 # Carpetas con datos semilla que se siembran únicamente al crear el tenant
@@ -24,6 +25,7 @@ FIXTURES_INICIAL_DIRS = [
     BASE_DIR / 'contabilidad' / 'fixtures_inicial',
     BASE_DIR / 'general' / 'fixtures_inicial',
     BASE_DIR / 'humano' / 'fixtures_inicial',
+    BASE_DIR / 'turno' / 'fixtures_inicial',
 ]
 
 
@@ -100,7 +102,10 @@ class Command(BaseCommand):
             else:
                 actualizados += 1
 
-        if actualizar_secuencia:
+        # Los fixtures_inicial/ insertan ids explícitos en tablas con secuencia
+        # (AutoField); hay que avanzar la secuencia o el próximo INSERT del ORM
+        # colisiona con el id ya sembrado.
+        if actualizar_secuencia or inicial:
             self._resetear_secuencia(modelo)
 
         if solo_crear:
@@ -116,7 +121,11 @@ class Command(BaseCommand):
         tabla = modelo._meta.db_table
         pk_col = modelo._meta.pk.column
         with connection.cursor() as cursor:
+            cursor.execute('SELECT pg_get_serial_sequence(%s, %s)', [tabla, pk_col])
+            secuencia = cursor.fetchone()[0]
+            if not secuencia:
+                # PK manual sin secuencia (p.ej. BigIntegerField); nada que ajustar.
+                return
             cursor.execute(
-                f"SELECT setval(pg_get_serial_sequence('{tabla}', '{pk_col}'), "
-                f"COALESCE(MAX({pk_col}), 1)) FROM {tabla}"
+                f"SELECT setval('{secuencia}', COALESCE(MAX({pk_col}), 1)) FROM {tabla}"
             )

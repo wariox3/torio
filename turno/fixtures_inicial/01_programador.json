@@ -1,0 +1,6 @@
+{
+  "model": "turno.TurProgramador",
+  "data": [
+    { "id": 1, "nombre": "General" }
+  ]
+}
