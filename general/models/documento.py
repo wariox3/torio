@@ -133,6 +133,12 @@ class GenDocumento(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_sector_rel',
     )
+    sede = models.ForeignKey(
+        'general.GenSede',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_sede_rel',
+    )
     estrato = models.PositiveSmallIntegerField(
         null=True,
         validators=[MinValueValidator(1), MaxValueValidator(9)],
