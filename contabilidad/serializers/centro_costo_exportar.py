@@ -17,8 +17,8 @@ class ConCentroCostoExportarSerializer(serializers.Serializer):
 
     campos_excel = (
         ('id', 'ID'),
-        ('nombre', 'Nombre'),
         ('codigo', 'Código'),
+        ('nombre', 'Nombre'),
         ('estado_inactivo', 'Inactivo'),
     )
 

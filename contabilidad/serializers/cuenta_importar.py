@@ -1,6 +1,11 @@
 from rest_framework import serializers
 
-from contabilidad.models import ConCuenta
+from contabilidad.models import (
+    ConCuenta,
+    ConCuentaClase,
+    ConCuentaCuenta,
+    ConCuentaGrupo,
+)
 
 
 class ConCuentaImportarSerializer(serializers.Serializer):
@@ -16,6 +21,9 @@ class ConCuentaImportarSerializer(serializers.Serializer):
         campos_excel:         tuple[tuple[campo, encabezado], ...]
         campos_requeridos:    set[str]
         procesar_lote(filas)  -> (creados: int, errores: list[{fila, mensaje}])
+
+    `nivel`, `cuenta_clase`, `cuenta_grupo` y `cuenta_cuenta` NO se importan:
+    se derivan automáticamente del `codigo` (ver `_derivar`).
     """
 
     model = ConCuenta
@@ -36,28 +44,37 @@ class ConCuentaImportarSerializer(serializers.Serializer):
 
     def procesar_lote(self, filas_validas):
         """
-        Procesa todas las filas válidas en bulk:
-          1. Valida cada fila en memoria (sin BD).
-          2. `bulk_create` al final si no hay errores.
-
         filas_validas: list[(idx, datos)]
         Retorna: (creados, errores)
         """
         if not filas_validas:
             return 0, []
 
+        # 1) Precargar los PKs existentes de cada catálogo (una query por catálogo).
+        clases = set(ConCuentaClase.objects.values_list('id', flat=True))
+        grupos = set(ConCuentaGrupo.objects.values_list('id', flat=True))
+        cuentas = set(ConCuentaCuenta.objects.values_list('id', flat=True))
+
         errores = []
         nuevos = []
 
         for idx, datos in filas_validas:
             try:
+                codigo = self._texto(datos.get('codigo')) or '0'
+                clase_id, grupo_id, cuenta_id, nivel = self._derivar(codigo)
+
                 nuevos.append(ConCuenta(
-                    codigo=self._texto(datos.get('codigo')) or '0',
+                    codigo=codigo,
                     nombre=self._texto(datos.get('nombre')),
                     exige_base=self._si_no(datos.get('exige_base')),
                     exige_contacto=self._si_no(datos.get('exige_contacto')),
                     exige_grupo=self._si_no(datos.get('exige_grupo')),
                     permite_movimiento=self._si_no(datos.get('permite_movimiento')),
+                    nivel=nivel,
+                    # Si el prefijo derivado no existe en el catálogo, se deja en null.
+                    cuenta_clase_id=clase_id if clase_id in clases else None,
+                    cuenta_grupo_id=grupo_id if grupo_id in grupos else None,
+                    cuenta_cuenta_id=cuenta_id if cuenta_id in cuentas else None,
                 ))
             except Exception as e:
                 errores.append({'fila': idx, 'mensaje': str(e)})
@@ -70,6 +87,33 @@ class ConCuentaImportarSerializer(serializers.Serializer):
         if nuevos:
             ConCuenta.objects.bulk_create(nuevos, batch_size=self.BATCH_BULK_CREATE)
         return len(nuevos), []
+
+    # ---- lógica de negocio ----
+
+    @staticmethod
+    def _derivar(codigo):
+        """
+        Deriva (cuenta_clase_id, cuenta_grupo_id, cuenta_cuenta_id, nivel) a partir
+        del prefijo del código. Los catálogos usan el prefijo numérico como PK.
+        """
+        longitud = len(codigo)
+        clase_id = int(codigo[0]) if longitud >= 1 else None
+        grupo_id = int(codigo[:2]) if longitud >= 2 else None
+        cuenta_id = int(codigo[:4]) if longitud >= 4 else None
+        # subcuenta_id = int(codigo[:6]) if longitud >= 6 else None
+
+        if longitud <= 1:
+            nivel = 1
+        elif longitud == 2:
+            nivel = 2
+        elif longitud <= 4:
+            nivel = 3
+        elif longitud <= 6:
+            nivel = 4
+        else:
+            nivel = 5
+
+        return clase_id, grupo_id, cuenta_id, nivel
 
     # ---- helpers ----
 

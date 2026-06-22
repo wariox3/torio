@@ -22,8 +22,8 @@ class ConCentroCostoImportarSerializer(serializers.Serializer):
     nombre_archivo = 'centros_costo'
 
     campos_excel = (
-        ('nombre', 'Nombre'),
         ('codigo', 'Código'),
+        ('nombre', 'Nombre'),
         ('estado_inactivo', 'Inactivo'),
     )
     campos_requeridos = {'nombre'}
@@ -39,14 +39,36 @@ class ConCentroCostoImportarSerializer(serializers.Serializer):
         if not filas_validas:
             return 0, []
 
+        # Pre-cargar códigos existentes en BD para detectar duplicados (codigo es unique)
+        codigos = {
+            self._texto_o_none(datos.get('codigo'))
+            for _, datos in filas_validas
+            if self._texto_o_none(datos.get('codigo'))
+        }
+        ya_existen = set(
+            ConCentroCosto.objects
+            .filter(codigo__in=codigos)
+            .values_list('codigo', flat=True)
+        ) if codigos else set()
+
         errores = []
         nuevos = []
+        vistos = set()  # códigos duplicados intra-archivo
 
         for idx, datos in filas_validas:
             try:
+                codigo = self._texto_o_none(datos.get('codigo'))
+
+                if codigo is not None:
+                    if codigo in vistos:
+                        raise ValueError(f'El código {codigo} está duplicado dentro del archivo')
+                    vistos.add(codigo)
+                    if codigo in ya_existen:
+                        raise ValueError(f'Ya existe un centro de costo con código {codigo}')
+
                 nuevos.append(ConCentroCosto(
                     nombre=self._texto(datos.get('nombre')),
-                    codigo=self._texto_o_none(datos.get('codigo')),
+                    codigo=codigo,
                     estado_inactivo=self._si_no(datos.get('estado_inactivo')),
                 ))
             except Exception as e:
