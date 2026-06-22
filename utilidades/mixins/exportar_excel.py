@@ -100,7 +100,9 @@ class ExportarExcelMixin:
             celda.font = _FUENTE_ENCABEZADO
             celda.fill = fondo_encabezado
 
-        for fila, obj in enumerate(qs.iterator(), start=2):
+        # chunk_size es obligatorio en .iterator() cuando el queryset trae
+        # prefetch_related (Django lo exige para acotar la memoria de los prefetch).
+        for fila, obj in enumerate(qs.iterator(chunk_size=2000), start=2):
             for col, (campo, _) in enumerate(campos, start=1):
                 celda = ws.cell(row=fila, column=col, value=serializer.valor_excel(obj, campo))
                 celda.font = _FUENTE_NORMAL

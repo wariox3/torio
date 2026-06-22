@@ -305,10 +305,14 @@ class ImportarExcelMixin:
             requeridos = getattr(serializer, 'campos_requeridos', set())
             esperados = [self._encabezado_importar(c, e, requeridos) for c, e in campos]
             recibidos = [h for h in headers_archivo if h is not None]
-            if recibidos != esperados:
+            # El orden de las columnas no importa: cada celda se mapea por nombre de
+            # encabezado (ver `mapping`). Solo se exige que estén exactamente las mismas.
+            if set(recibidos) != set(esperados):
                 return Response(
                     {
                         'detail': 'Los encabezados del archivo no coinciden con la plantilla',
+                        'faltantes': [h for h in esperados if h not in recibidos],
+                        'sobrantes': [h for h in recibidos if h not in esperados],
                         'esperados': esperados,
                         'recibidos': recibidos,
                     },
