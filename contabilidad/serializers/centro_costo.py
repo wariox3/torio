@@ -10,5 +10,5 @@ class ConCentroCostoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ConCentroCosto
-        fields = ['id', 'nombre', 'codigo']
+        fields = ['id', 'nombre', 'codigo', 'estado_inactivo']
         read_only_fields = ['id']

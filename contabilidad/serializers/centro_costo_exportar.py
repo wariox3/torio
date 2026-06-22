@@ -19,6 +19,7 @@ class ConCentroCostoExportarSerializer(serializers.Serializer):
         ('id', 'ID'),
         ('nombre', 'Nombre'),
         ('codigo', 'Código'),
+        ('estado_inactivo', 'Inactivo'),
     )
 
     @staticmethod

@@ -24,6 +24,7 @@ class ConCentroCostoImportarSerializer(serializers.Serializer):
     campos_excel = (
         ('nombre', 'Nombre'),
         ('codigo', 'Código'),
+        ('estado_inactivo', 'Inactivo'),
     )
     campos_requeridos = {'nombre'}
 
@@ -46,6 +47,7 @@ class ConCentroCostoImportarSerializer(serializers.Serializer):
                 nuevos.append(ConCentroCosto(
                     nombre=self._texto(datos.get('nombre')),
                     codigo=self._texto_o_none(datos.get('codigo')),
+                    estado_inactivo=self._si_no(datos.get('estado_inactivo')),
                 ))
             except Exception as e:
                 errores.append({'fila': idx, 'mensaje': str(e)})
@@ -72,3 +74,9 @@ class ConCentroCostoImportarSerializer(serializers.Serializer):
         if v is None or str(v).strip() == '':
             return None
         return str(v).strip()
+
+    @staticmethod
+    def _si_no(v, defecto=False):
+        if v is None or v == '':
+            return defecto
+        return str(v).strip().lower() in ('sí', 'si', 'true', '1', 'yes', 'verdadero')
