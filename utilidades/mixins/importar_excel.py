@@ -88,18 +88,38 @@ class ImportarExcelMixin:
             sufijo += ' *'
         return f'{encabezado}{sufijo}'
 
+    @staticmethod
+    def _error_importar(detail, *, status_code=status.HTTP_400_BAD_REQUEST, fase=None, errores=None):
+        """
+        Construye la respuesta de error unificada de importación.
+
+        Shape estándar (todas las respuestas de error lo cumplen):
+            {
+                "detail": str,                      # siempre
+                "fase": str,                        # opcional: encabezados | estructural | negocio
+                "total_errores": int,               # presente solo si hay `errores`
+                "errores": [{"fila"?: int, "mensaje": str}]   # opcional
+            }
+        """
+        cuerpo = {'detail': detail}
+        if fase is not None:
+            cuerpo['fase'] = fase
+        if errores is not None:
+            cuerpo['total_errores'] = len(errores)
+            cuerpo['errores'] = errores
+        return Response(cuerpo, status=status_code)
+
     def _validar_administrador(self, modelo_cls):
         GenModelo = apps.get_model('general', 'GenModelo')
         gen_modelo = GenModelo.objects.filter(clase=modelo_cls.__name__).first()
         if gen_modelo is None:
-            return Response(
-                {'detail': f'El modelo {modelo_cls.__name__} no está registrado en GenModelo'},
-                status=status.HTTP_400_BAD_REQUEST,
+            return self._error_importar(
+                f'El modelo {modelo_cls.__name__} no está registrado en GenModelo'
             )
         if gen_modelo.tipo != GenModelo.Tipo.ADMINISTRADOR:
-            return Response(
-                {'detail': 'Solo los modelos tipo administrador pueden importarse'},
-                status=status.HTTP_403_FORBIDDEN,
+            return self._error_importar(
+                'Solo los modelos tipo administrador pueden importarse',
+                status_code=status.HTTP_403_FORBIDDEN,
             )
         return None
 
@@ -250,43 +270,26 @@ class ImportarExcelMixin:
 
         archivo = request.FILES.get('archivo')
         if not archivo:
-            return Response(
-                {'detail': "Debe enviar el archivo en el campo 'archivo'"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return self._error_importar("Debe enviar el archivo en el campo 'archivo'")
 
         nombre = archivo.name.lower()
         if not any(nombre.endswith(ext) for ext in self.EXTENSIONES_VALIDAS_IMPORTAR):
-            return Response(
-                {
-                    'detail': (
-                        f"Extensión no permitida. Solo se aceptan: "
-                        f"{', '.join(self.EXTENSIONES_VALIDAS_IMPORTAR)}"
-                    ),
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            return self._error_importar(
+                f"Extensión no permitida. Solo se aceptan: "
+                f"{', '.join(self.EXTENSIONES_VALIDAS_IMPORTAR)}"
             )
 
         if archivo.size > self.MAX_TAMANO_ARCHIVO_BYTES:
             mb = self.MAX_TAMANO_ARCHIVO_BYTES // (1024 * 1024)
-            return Response(
-                {'detail': f'El archivo supera el tamaño máximo permitido ({mb} MB)'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return self._error_importar(f'El archivo supera el tamaño máximo permitido ({mb} MB)')
 
         try:
             # data_only=False permite detectar fórmulas vía cell.data_type == 'f'
             wb = load_workbook(archivo, data_only=False, read_only=True)
         except (InvalidFileException, BadZipFile):
-            return Response(
-                {'detail': 'El archivo no es un Excel válido o está corrupto'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return self._error_importar('El archivo no es un Excel válido o está corrupto')
         except Exception as e:
-            return Response(
-                {'detail': f'No se pudo leer el archivo: {e}'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return self._error_importar(f'No se pudo leer el archivo: {e}')
 
         try:
             ws = wb.active
@@ -295,10 +298,7 @@ class ImportarExcelMixin:
             try:
                 header_row = next(rows)
             except StopIteration:
-                return Response(
-                    {'detail': 'El archivo no tiene contenido'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                return self._error_importar('El archivo no tiene contenido')
             headers_archivo = [c.value for c in header_row]
 
             campos = serializer.campos_excel
@@ -308,15 +308,14 @@ class ImportarExcelMixin:
             # El orden de las columnas no importa: cada celda se mapea por nombre de
             # encabezado (ver `mapping`). Solo se exige que estén exactamente las mismas.
             if set(recibidos) != set(esperados):
-                return Response(
-                    {
-                        'detail': 'Los encabezados del archivo no coinciden con la plantilla',
-                        'faltantes': [h for h in esperados if h not in recibidos],
-                        'sobrantes': [h for h in recibidos if h not in esperados],
-                        'esperados': esperados,
-                        'recibidos': recibidos,
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
+                errores_encabezados = (
+                    [{'mensaje': f'Falta la columna: {h}'} for h in esperados if h not in recibidos]
+                    + [{'mensaje': f'Columna no reconocida: {h}'} for h in recibidos if h not in esperados]
+                )
+                return self._error_importar(
+                    'Los encabezados del archivo no coinciden con la plantilla',
+                    fase='encabezados',
+                    errores=errores_encabezados,
                 )
 
             mapping = {self._encabezado_importar(c, e, requeridos): c for c, e in campos}
@@ -393,16 +392,12 @@ class ImportarExcelMixin:
             wb.close()
 
         if exceso_filas:
-            return Response(
-                {'detail': f'El archivo supera el máximo de {self.MAX_FILAS_IMPORTAR} filas permitidas'},
-                status=status.HTTP_400_BAD_REQUEST,
+            return self._error_importar(
+                f'El archivo supera el máximo de {self.MAX_FILAS_IMPORTAR} filas permitidas'
             )
 
         if filas_procesadas == 0:
-            return Response(
-                {'detail': 'El archivo no tiene filas para importar'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return self._error_importar('El archivo no tiene filas para importar')
 
         if errores_estructurales:
             return self._respuesta_errores_importar('estructural', errores_estructurales)
@@ -436,12 +431,4 @@ class ImportarExcelMixin:
                 'Errores de datos al intentar guardar (FK inexistente, duplicados, etc.). '
                 'No se importó nada.'
             )
-        return Response(
-            {
-                'detail': detail,
-                'fase': fase,
-                'total_errores': len(errores),
-                'errores': errores,
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+        return self._error_importar(detail, fase=fase, errores=errores)
