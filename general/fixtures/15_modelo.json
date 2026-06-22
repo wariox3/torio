@@ -28,6 +28,7 @@
     {"id": 10025, "app": "general",      "clase": "GenFestivo",                "nombre": "Festivo",                 "tabla": "gen_festivo",                 "tipo": "F"},
     {"id": 10026, "app": "general",      "clase": "GenMetodoPago",             "nombre": "Método de pago",          "tabla": "gen_metodo_pago",             "tipo": "F"},
     {"id": 10027, "app": "general",      "clase": "GenSede",                   "nombre": "Sede",                    "tabla": "gen_sede",                    "tipo": "A"},
+    {"id": 10028, "app": "general",      "clase": "GenFormaPago",              "nombre": "Forma de pago",           "tabla": "gen_forma_pago",              "tipo": "A"},
 
     {"id": 20001, "app": "contabilidad", "clase": "ConComprobante",            "nombre": "Comprobante",             "tabla": "con_comprobante",             "tipo": "F"},
     {"id": 20002, "app": "contabilidad", "clase": "ConCuenta",                 "nombre": "Cuenta",                  "tabla": "con_cuenta",                  "tipo": "A"},

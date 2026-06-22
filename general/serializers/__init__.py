@@ -31,6 +31,10 @@ from .documento_importar import GenDocumentoImportarSerializer
 from .documento_tipo import GenDocumentoTipoSeleccionarSerializer
 from .estado import GenEstadoSeleccionarSerializer
 from .festivo import GenFestivoSeleccionarSerializer
+from .forma_pago import GenFormaPagoSerializer
+from .forma_pago_exportar import GenFormaPagoExportarSerializer
+from .forma_pago_importar import GenFormaPagoImportarSerializer
+from .forma_pago_seleccionar import GenFormaPagoSeleccionarSerializer
 from .identificacion import GenIdentificacionSeleccionarSerializer
 from .impuesto import GenImpuestoSeleccionarSerializer
 from .impuesto_tipo import GenImpuestoTipoSeleccionarSerializer

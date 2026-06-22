@@ -5,6 +5,7 @@ from general.models import (
     GenContacto,
     GenDocumento,
     GenDocumentoTipo,
+    GenFormaPago,
     GenModalidad,
     GenPlazoPago,
     GenSector,
@@ -39,6 +40,7 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         ('remision', 'Remisión'),
         ('comentario', 'Comentario'),
         ('plazo_pago.id', 'Plazo pago'),
+        ('forma_pago.id', 'Forma pago'),
         ('asesor.id', 'Asesor'),
         ('sector.id', 'Sector'),
         ('modalidad.id', 'Modalidad'),
@@ -65,6 +67,7 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         ids_documento_tipo = self._ids_int(filas_validas, 'documento_tipo.id')
         ids_contacto = self._ids_int(filas_validas, 'contacto.id')
         ids_plazo_pago = self._ids_int(filas_validas, 'plazo_pago.id')
+        ids_forma_pago = self._ids_int(filas_validas, 'forma_pago.id')
         ids_asesor = self._ids_int(filas_validas, 'asesor.id')
         ids_sector = self._ids_int(filas_validas, 'sector.id')
         ids_modalidad = self._ids_int(filas_validas, 'modalidad.id')
@@ -72,6 +75,7 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         mapa_documento_tipo = {o.id: o for o in GenDocumentoTipo.objects.filter(id__in=ids_documento_tipo)}
         mapa_contacto = {o.id: o for o in GenContacto.objects.filter(id__in=ids_contacto)}
         mapa_plazo_pago = {o.id: o for o in GenPlazoPago.objects.filter(id__in=ids_plazo_pago)}
+        mapa_forma_pago = {o.id: o for o in GenFormaPago.objects.filter(id__in=ids_forma_pago)}
         mapa_asesor = {o.id: o for o in GenAsesor.objects.filter(id__in=ids_asesor)}
         mapa_sector = {o.id: o for o in GenSector.objects.filter(id__in=ids_sector)}
         mapa_modalidad = {o.id: o for o in GenModalidad.objects.filter(id__in=ids_modalidad)}
@@ -89,6 +93,7 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
 
                 contacto = self._fk_opcional(datos.get('contacto.id'), mapa_contacto, 'Contacto')
                 plazo_pago = self._fk_opcional(datos.get('plazo_pago.id'), mapa_plazo_pago, 'Plazo pago')
+                forma_pago = self._fk_opcional(datos.get('forma_pago.id'), mapa_forma_pago, 'Forma pago')
                 asesor = self._fk_opcional(datos.get('asesor.id'), mapa_asesor, 'Asesor')
                 sector = self._fk_opcional(datos.get('sector.id'), mapa_sector, 'Sector')
                 modalidad = self._fk_opcional(datos.get('modalidad.id'), mapa_modalidad, 'Modalidad')
@@ -103,6 +108,7 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
                     remision=self._texto_o_none(datos.get('remision')),
                     comentario=self._texto_o_none(datos.get('comentario')),
                     plazo_pago=plazo_pago,
+                    forma_pago=forma_pago,
                     asesor=asesor,
                     sector=sector,
                     modalidad=modalidad,

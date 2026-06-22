@@ -14,6 +14,7 @@ from .documento_detalle_informe import GenDocumentoDetalleInformeViewSet
 from .documento_tipo import GenDocumentoTipoViewSet
 from .estado import GenEstadoViewSet
 from .festivo import GenFestivoViewSet
+from .forma_pago import GenFormaPagoViewSet
 from .identificacion import GenIdentificacionViewSet
 from .impuesto import GenImpuestoViewSet
 from .impuesto_tipo import GenImpuestoTipoViewSet

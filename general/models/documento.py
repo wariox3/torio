@@ -97,6 +97,12 @@ class GenDocumento(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_metodo_pago_rel',
     )
+    forma_pago = models.ForeignKey(
+        'general.GenFormaPago',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_forma_pago_rel',
+    )
     asesor = models.ForeignKey(
         'general.GenAsesor',
         null=True,

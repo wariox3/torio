@@ -16,6 +16,7 @@ from .cuenta_banco_clase import GenCuentaBancoClase
 from .cuenta_banco_tipo import GenCuentaBancoTipo
 from .estado import GenEstado
 from .festivo import GenFestivo
+from .forma_pago import GenFormaPago
 from .identificacion import GenIdentificacion
 from .impuesto import GenImpuesto
 from .impuesto_tipo import GenImpuestoTipo
