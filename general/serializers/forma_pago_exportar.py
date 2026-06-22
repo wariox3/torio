@@ -18,7 +18,8 @@ class GenFormaPagoExportarSerializer(serializers.Serializer):
     campos_excel = (
         ('id', 'ID'),
         ('nombre', 'Nombre'),
-        ('cuenta.nombre', 'Cuenta'),
+        ('cuenta.codigo', 'Cuenta código'),
+        ('cuenta.nombre', 'Cuenta nombre'),
     )
 
     @staticmethod
