@@ -55,12 +55,28 @@ class ConCuentaImportarSerializer(serializers.Serializer):
         grupos = set(ConCuentaGrupo.objects.values_list('id', flat=True))
         cuentas = set(ConCuentaCuenta.objects.values_list('id', flat=True))
 
+        # 2) Precargar códigos existentes en BD para detectar duplicados (codigo es unique)
+        codigos = {self._texto(datos.get('codigo')) or '0' for _, datos in filas_validas}
+        ya_existen = set(
+            ConCuenta.objects
+            .filter(codigo__in=codigos)
+            .values_list('codigo', flat=True)
+        ) if codigos else set()
+
         errores = []
         nuevos = []
+        vistos = set()  # códigos duplicados intra-archivo
 
         for idx, datos in filas_validas:
             try:
                 codigo = self._texto(datos.get('codigo')) or '0'
+
+                if codigo in vistos:
+                    raise ValueError(f'El código {codigo} está duplicado dentro del archivo')
+                vistos.add(codigo)
+                if codigo in ya_existen:
+                    raise ValueError(f'Ya existe una cuenta con código {codigo}')
+
                 clase_id, grupo_id, cuenta_id, nivel = self._derivar(codigo)
 
                 nuevos.append(ConCuenta(
