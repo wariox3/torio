@@ -174,7 +174,10 @@ def generar(documento_tipo_origen, documento_tipo_destino_id, anio, mes, documen
             })
             nuevo.save()
             for detalle in origen.documentos_detalles_documento_rel.all():
-                nuevo_detalle = clonar(detalle, excluir_detalle, {'documento_id': nuevo.id})
+                nuevo_detalle = clonar(detalle, excluir_detalle, {
+                    'documento_id': nuevo.id,
+                    'documento_detalle_afectado_id': detalle.id,
+                })
                 nuevo_detalle.save()
                 for impuesto in detalle.documentos_impuestos_documento_detalle_rel.all():
                     clonar(impuesto, excluir_impuesto, {
