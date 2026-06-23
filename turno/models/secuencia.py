@@ -12,7 +12,6 @@ class TurSecuencia(models.Model):
     """
 
     nombre = models.CharField(max_length=60, null=True)
-    codigo = models.CharField(max_length=10, unique=True)
 
     # Ranuras por día del mes (guardan el codigo de un TurTurno)
     dia_1 = models.CharField(max_length=10, null=True)
@@ -74,4 +73,4 @@ class TurSecuencia(models.Model):
         verbose_name_plural = 'Secuencias'
 
     def __str__(self):
-        return self.nombre or self.codigo
+        return self.nombre or str(self.pk)

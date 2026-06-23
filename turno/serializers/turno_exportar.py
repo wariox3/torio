@@ -25,6 +25,7 @@ class TurTurnoExportarSerializer(serializers.Serializer):
         ('horas_diurnas', 'Horas diurnas'),
         ('horas_nocturnas', 'Horas nocturnas'),
         ('color', 'Color'),
+        ('novedad_tipo.id', 'Tipo novedad'),
         ('estado_inactivo', 'Inactivo'),
     )
 

@@ -27,7 +27,6 @@ class TurSecuenciaImportarSerializer(serializers.Serializer):
 
     campos_excel = (
         ('nombre', 'Nombre'),
-        ('codigo', 'Código'),
         *((campo, f'Día {campo.split("_")[1]}') for campo in CAMPOS_DIAS),
         *((campo, _ENCABEZADOS_SEMANA[campo]) for campo in CAMPOS_SEMANA),
         ('horas', 'Horas'),
@@ -35,7 +34,7 @@ class TurSecuenciaImportarSerializer(serializers.Serializer):
         ('homologar', 'Homologar'),
         ('estado_inactivo', 'Inactivo'),
     )
-    campos_requeridos = {'codigo'}
+    campos_requeridos = {'nombre'}
 
     LIMITE_ERRORES = 100
     BATCH_BULK_CREATE = 500
@@ -50,20 +49,19 @@ class TurSecuenciaImportarSerializer(serializers.Serializer):
 
         errores = []
         nuevos = []
-        codigos_vistos = set()
+        nombres_vistos = set()
 
         for idx, datos in filas_validas:
             try:
-                codigo = self._texto(datos.get('codigo'))
-                if not codigo:
-                    raise ValueError('El código es requerido')
-                if codigo in codigos_vistos:
-                    raise ValueError(f'Código duplicado en el archivo: "{codigo}"')
-                codigos_vistos.add(codigo)
+                nombre = self._texto(datos.get('nombre'))
+                if not nombre:
+                    raise ValueError('El nombre es requerido')
+                if nombre in nombres_vistos:
+                    raise ValueError(f'Nombre duplicado en el archivo: "{nombre}"')
+                nombres_vistos.add(nombre)
 
                 campos = {
-                    'nombre': self._texto_o_none(datos.get('nombre')),
-                    'codigo': codigo,
+                    'nombre': nombre,
                     'horas': self._entero(datos.get('horas'), 'Horas'),
                     'dias': self._entero(datos.get('dias'), 'Días'),
                     'homologar': self._si_no(datos.get('homologar')),

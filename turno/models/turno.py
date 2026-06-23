@@ -11,6 +11,10 @@ class TurTurno(models.Model):
     horas_nocturnas = models.DecimalField(max_digits=5, decimal_places=2, default=0, db_default=0)
     color = models.CharField(max_length=7, null=True)
     estado_inactivo = models.BooleanField(default=False, db_default=False)
+    novedad_tipo = models.ForeignKey(
+        'humano.HumNovedadTipo', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='turnos_novedad_tipo_rel',
+    )
 
     class Meta:
         db_table = 'tur_turno'

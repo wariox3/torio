@@ -43,7 +43,7 @@ class TurSecuenciaViewSet(
 
         search = self.request.query_params.get('search', '').strip()
         if search:
-            qs = qs.filter(nombre__icontains=search) | qs.filter(codigo__icontains=search)
+            qs = qs.filter(nombre__icontains=search)
 
         valor = self.request.query_params.get('estado_inactivo')
         if valor is not None:
@@ -61,7 +61,7 @@ class TurSecuenciaViewSet(
         qs = TurSecuencia.objects.order_by('nombre')
         search = request.query_params.get('search', '').strip()
         if search:
-            qs = qs.filter(nombre__icontains=search) | qs.filter(codigo__icontains=search)
+            qs = qs.filter(nombre__icontains=search)
         pagina = self.paginate_queryset(qs)
         serializer = TurSecuenciaSeleccionarSerializer(pagina, many=True)
         return self.get_paginated_response(serializer.data)

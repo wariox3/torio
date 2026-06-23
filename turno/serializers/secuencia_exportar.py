@@ -31,7 +31,6 @@ class TurSecuenciaExportarSerializer(serializers.Serializer):
     campos_excel = (
         ('id', 'ID'),
         ('nombre', 'Nombre'),
-        ('codigo', 'Código'),
         *((campo, f'Día {campo.split("_")[1]}') for campo in CAMPOS_DIAS),
         *((campo, _ENCABEZADOS_SEMANA[campo]) for campo in CAMPOS_SEMANA),
         ('horas', 'Horas'),

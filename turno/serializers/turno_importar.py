@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 
 from rest_framework import serializers
 
+from humano.models import HumNovedadTipo
 from turno.models import TurTurno
 
 
@@ -33,6 +34,7 @@ class TurTurnoImportarSerializer(serializers.Serializer):
         ('horas_diurnas', 'Horas diurnas'),
         ('horas_nocturnas', 'Horas nocturnas'),
         ('color', 'Color'),
+        ('novedad_tipo.id', 'Tipo novedad'),
         ('estado_inactivo', 'Inactivo'),
     )
     campos_requeridos = {'nombre', 'codigo', 'hora_inicio', 'hora_fin'}
@@ -48,6 +50,8 @@ class TurTurnoImportarSerializer(serializers.Serializer):
         if not filas_validas:
             return 0, []
 
+        mapa_novedad_tipo = self._mapa_fk(filas_validas, 'novedad_tipo.id', HumNovedadTipo)
+
         errores = []
         nuevos = []
         codigos_vistos = set()
@@ -59,6 +63,7 @@ class TurTurnoImportarSerializer(serializers.Serializer):
                     raise ValueError(f'Código duplicado en el archivo: "{codigo}"')
                 codigos_vistos.add(codigo)
 
+                novedad_tipo = self._fk_opcional(datos.get('novedad_tipo.id'), mapa_novedad_tipo, 'Tipo novedad')
                 nuevos.append(TurTurno(
                     nombre=self._texto(datos.get('nombre')),
                     codigo=codigo,
@@ -68,6 +73,7 @@ class TurTurnoImportarSerializer(serializers.Serializer):
                     horas_diurnas=self._decimal(datos.get('horas_diurnas'), 'Horas diurnas'),
                     horas_nocturnas=self._decimal(datos.get('horas_nocturnas'), 'Horas nocturnas'),
                     color=self._texto_o_none(datos.get('color')),
+                    novedad_tipo=novedad_tipo,
                     estado_inactivo=self._si_no(datos.get('estado_inactivo')),
                 ))
             except Exception as e:
@@ -83,6 +89,38 @@ class TurTurnoImportarSerializer(serializers.Serializer):
         return len(nuevos), []
 
     # ---- helpers ----
+
+    def _mapa_fk(self, filas_validas, campo, modelo):
+        ids = self._ids_int(filas_validas, campo)
+        if not ids:
+            return {}
+        return {o.id: o for o in modelo.objects.filter(id__in=ids)}
+
+    @staticmethod
+    def _ids_int(filas_validas, campo):
+        ids = set()
+        for _, datos in filas_validas:
+            valor = datos.get(campo)
+            if valor in (None, ''):
+                continue
+            try:
+                ids.add(int(valor))
+            except (TypeError, ValueError):
+                pass
+        return ids
+
+    @staticmethod
+    def _fk_opcional(valor, mapa, etiqueta):
+        if valor in (None, ''):
+            return None
+        try:
+            pk = int(valor)
+        except (TypeError, ValueError):
+            raise ValueError(f'{etiqueta} debe ser un número (PK), recibido: "{valor}"')
+        obj = mapa.get(pk)
+        if obj is None:
+            raise ValueError(f'{etiqueta} con id={pk} no existe')
+        return obj
 
     @staticmethod
     def _texto(v):

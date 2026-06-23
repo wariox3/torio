@@ -20,6 +20,7 @@ class TurTurnoSerializer(serializers.ModelSerializer):
             'horas_diurnas',
             'horas_nocturnas',
             'color',
+            'novedad_tipo',
             'estado_inactivo',
         ]
         read_only_fields = ['id']

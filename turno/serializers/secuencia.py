@@ -13,7 +13,7 @@ CAMPOS_RANURAS = CAMPOS_DIAS + CAMPOS_SEMANA
 
 class TurSecuenciaSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'nombre', 'codigo', 'estado_inactivo'}
+    campos_filtrables = {'id', 'nombre', 'estado_inactivo'}
     ordenamiento_default_lista = ('nombre',)
 
     class Meta:
@@ -21,7 +21,6 @@ class TurSecuenciaSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'nombre',
-            'codigo',
             *CAMPOS_RANURAS,
             'horas',
             'dias',
