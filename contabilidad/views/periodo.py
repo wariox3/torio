@@ -14,11 +14,16 @@ from contabilidad.serializers import (
     ConPeriodoSeleccionarSerializer,
     ConPeriodoSerializer,
 )
+from contabilidad.servicios.movimiento import analizar_inconsistencias
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
 class CrearPeriodosAnioRequestSerializer(serializers.Serializer):
     anio = serializers.IntegerField(min_value=2000, max_value=2100)
+
+
+class ConPeriodoAccionRequestSerializer(serializers.Serializer):
+    id = serializers.PrimaryKeyRelatedField(queryset=ConPeriodo.objects.all())
 
 
 _LIST_PARAMS = [
@@ -117,3 +122,80 @@ class ConPeriodoViewSet(
 
         datos = ConPeriodoSerializer(periodos, many=True).data
         return Response(datos, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        summary='Bloquear un periodo',
+        description=(
+            'Bloquea el periodo si no tiene inconsistencias. Si las tiene, lo marca '
+            'como inconsistente y devuelve el detalle de las inconsistencias encontradas.'
+        ),
+        request=ConPeriodoAccionRequestSerializer,
+        responses=ConPeriodoSerializer,
+    )
+    @action(detail=False, methods=['post'])
+    def bloquear(self, request):
+        serializer = ConPeriodoAccionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        periodo = serializer.validated_data['id']
+
+        if periodo.estado_bloqueado:
+            raise ValidationError({'detail': 'El periodo ya estaba bloqueado previamente'})
+
+        inconsistencias = analizar_inconsistencias(periodo)
+        if inconsistencias:
+            periodo.estado_inconsistencia = True
+            periodo.save(update_fields=['estado_inconsistencia'])
+            return Response(
+                {
+                    'detail': 'No se puede bloquear el periodo porque tiene inconsistencias',
+                    'inconsistencias': inconsistencias,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        periodo.estado_inconsistencia = False
+        periodo.estado_bloqueado = True
+        periodo.save(update_fields=['estado_inconsistencia', 'estado_bloqueado'])
+        return Response(ConPeriodoSerializer(periodo).data)
+
+    @extend_schema(
+        summary='Desbloquear un periodo',
+        description='Desbloquea el periodo. Falla si no está bloqueado o si ya está cerrado.',
+        request=ConPeriodoAccionRequestSerializer,
+        responses=ConPeriodoSerializer,
+    )
+    @action(detail=False, methods=['post'])
+    def desbloquear(self, request):
+        serializer = ConPeriodoAccionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        periodo = serializer.validated_data['id']
+
+        if not periodo.estado_bloqueado:
+            raise ValidationError({'detail': 'El periodo no está bloqueado'})
+        if periodo.estado_cerrado:
+            raise ValidationError({'detail': 'El periodo está cerrado y no se puede desbloquear'})
+
+        periodo.estado_bloqueado = False
+        periodo.save(update_fields=['estado_bloqueado'])
+        return Response(ConPeriodoSerializer(periodo).data)
+
+    @extend_schema(
+        summary='Cerrar un periodo',
+        description='Cierra el periodo. Requiere que esté bloqueado y que no esté ya cerrado.',
+        request=ConPeriodoAccionRequestSerializer,
+        responses=ConPeriodoSerializer,
+    )
+    @action(detail=False, methods=['post'])
+    def cerrar(self, request):
+        serializer = ConPeriodoAccionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        periodo = serializer.validated_data['id']
+
+        if not periodo.estado_bloqueado:
+            raise ValidationError({'detail': 'El periodo debe estar bloqueado para cerrar'})
+        if periodo.estado_cerrado:
+            raise ValidationError({'detail': 'El periodo ya estaba cerrado previamente'})
+
+        periodo.estado_cerrado = True
+        periodo.save(update_fields=['estado_cerrado'])
+        return Response(ConPeriodoSerializer(periodo).data)
