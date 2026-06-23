@@ -9,7 +9,7 @@ class GenContactoSerializer(serializers.ModelSerializer):
         'id', 'nombre_corto', 'numero_identificacion',
         'cliente', 'proveedor', 'empleado', 'conductor', 'ciudad_id',
     }
-    select_related_lista = ('identificacion', 'ciudad', 'tipo_persona', 'responsabilidad')
+    select_related_lista = ('identificacion', 'ciudad', 'tipo_persona', 'responsabilidad', 'banco')
     ordenamiento_default_lista = ('nombre_corto',)
 
     identificacion_nombre = serializers.CharField(source='identificacion.nombre', read_only=True)
@@ -17,6 +17,7 @@ class GenContactoSerializer(serializers.ModelSerializer):
     ciudad_nombre = serializers.CharField(source='ciudad.nombre', read_only=True)
     tipo_persona_nombre = serializers.CharField(source='tipo_persona.nombre', read_only=True)
     responsabilidad_nombre = serializers.CharField(source='responsabilidad.nombre', read_only=True, default=None)
+    banco_nombre = serializers.CharField(source='banco.nombre', read_only=True, default=None)
 
     class Meta:
         model = GenContacto
@@ -56,6 +57,7 @@ class GenContactoSerializer(serializers.ModelSerializer):
             'plazo_pago',
             'plazo_pago_proveedor',
             'banco',
+            'banco_nombre',
             'cuenta_banco_clase',
             'responsabilidad',
             'responsabilidad_nombre',
