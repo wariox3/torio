@@ -39,7 +39,7 @@ class TurTurnoViewSet(
     serializer_class_importar = TurTurnoImportarSerializer
 
     def get_queryset(self):
-        qs = TurTurno.objects.order_by('nombre')
+        qs = TurTurno.objects.select_related('novedad_tipo').order_by('nombre')
 
         search = self.request.query_params.get('search', '').strip()
         if search:
