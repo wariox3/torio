@@ -1,14 +1,14 @@
 {
   "model": "contenedor.CtnIdentificacion",
   "data": [
-    { "id": 1, "nombre": "Registro civil de nacimiento",      "orden": 3, "codigo": "11", "pais_id": "CO" },
-    { "id": 2, "nombre": "Tarjeta de identidad",              "orden": 4, "codigo": "12", "pais_id": "CO" },
-    { "id": 3, "nombre": "Cédula de ciudadanía",              "orden": 2, "codigo": "13", "pais_id": "CO" },
-    { "id": 4, "nombre": "Tarjeta de extranjería",            "orden": 5, "codigo": "21", "pais_id": "CO" },
-    { "id": 5, "nombre": "Cédula de extranjería",             "orden": 6, "codigo": "22", "pais_id": "CO" },
-    { "id": 6, "nombre": "Número de identificación tributaria","orden": 1, "codigo": "31", "pais_id": "CO" },
-    { "id": 7, "nombre": "Pasaporte",                         "orden": 7, "codigo": "41", "pais_id": "CO" },
-    { "id": 8, "nombre": "Tipo de documento extranjero",      "orden": 8, "codigo": "42", "pais_id": "CO" },
-    { "id": 9, "nombre": "Sin identificación del exterior",   "orden": 9, "codigo": "43", "pais_id": "CO" }
+    { "id": 1, "nombre": "Registro civil de nacimiento",      "orden": 3, "codigo": "11", "pais_id": 250 },
+    { "id": 2, "nombre": "Tarjeta de identidad",              "orden": 4, "codigo": "12", "pais_id": 250 },
+    { "id": 3, "nombre": "Cédula de ciudadanía",              "orden": 2, "codigo": "13", "pais_id": 250 },
+    { "id": 4, "nombre": "Tarjeta de extranjería",            "orden": 5, "codigo": "21", "pais_id": 250 },
+    { "id": 5, "nombre": "Cédula de extranjería",             "orden": 6, "codigo": "22", "pais_id": 250 },
+    { "id": 6, "nombre": "Número de identificación tributaria","orden": 1, "codigo": "31", "pais_id": 250 },
+    { "id": 7, "nombre": "Pasaporte",                         "orden": 7, "codigo": "41", "pais_id": 250 },
+    { "id": 8, "nombre": "Tipo de documento extranjero",      "orden": 8, "codigo": "42", "pais_id": 250 },
+    { "id": 9, "nombre": "Sin identificación del exterior",   "orden": 9, "codigo": "43", "pais_id": 250 }
   ]
 }

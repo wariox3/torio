@@ -1,14 +1,14 @@
 {
   "model": "general.GenIdentificacion",
   "data": [
-    { "id": 1, "nombre": "Registro civil de nacimiento",          "pais_id": "CO", "codigo": "11", "orden": 3, "abreviatura": "RC",  "aporte": "RC", "tipo_persona_id": 2 },
-    { "id": 2, "nombre": "Tarjeta de identidad",                  "pais_id": "CO", "codigo": "12", "orden": 4, "abreviatura": "TI",  "aporte": "TI", "tipo_persona_id": 2 },
-    { "id": 3, "nombre": "Cédula de ciudadanía",                  "pais_id": "CO", "codigo": "13", "orden": 2, "abreviatura": "CC",  "aporte": "CC", "tipo_persona_id": 2 },
-    { "id": 4, "nombre": "Tarjeta de extranjería",                "pais_id": "CO", "codigo": "21", "orden": 5, "abreviatura": "TE",  "aporte": "",   "tipo_persona_id": 2 },
-    { "id": 5, "nombre": "Cédula de extranjería",                 "pais_id": "CO", "codigo": "22", "orden": 6, "abreviatura": "CE",  "aporte": "CE", "tipo_persona_id": 2 },
-    { "id": 6, "nombre": "Número de identificación tributaria",   "pais_id": "CO", "codigo": "31", "orden": 1, "abreviatura": "NIT", "aporte": "",   "tipo_persona_id": 1 },
-    { "id": 7, "nombre": "Pasaporte",                             "pais_id": "CO", "codigo": "41", "orden": 7, "abreviatura": "PA",  "aporte": "PT", "tipo_persona_id": 2 },
-    { "id": 8, "nombre": "Documento de identificación extranjero","pais_id": "CO", "codigo": "42", "orden": 8, "abreviatura": "TDE", "aporte": "",   "tipo_persona_id": 2 },
-    { "id": 9, "nombre": "NIT de otro país",                      "pais_id": "CO", "codigo": "50", "orden": 9, "abreviatura": "SI",  "aporte": "",   "tipo_persona_id": 2 }
+    { "id": 1, "nombre": "Registro civil de nacimiento",          "pais_id": 250, "codigo": "11", "orden": 3, "abreviatura": "RC",  "aporte": "RC", "tipo_persona_id": 2 },
+    { "id": 2, "nombre": "Tarjeta de identidad",                  "pais_id": 250, "codigo": "12", "orden": 4, "abreviatura": "TI",  "aporte": "TI", "tipo_persona_id": 2 },
+    { "id": 3, "nombre": "Cédula de ciudadanía",                  "pais_id": 250, "codigo": "13", "orden": 2, "abreviatura": "CC",  "aporte": "CC", "tipo_persona_id": 2 },
+    { "id": 4, "nombre": "Tarjeta de extranjería",                "pais_id": 250, "codigo": "21", "orden": 5, "abreviatura": "TE",  "aporte": "",   "tipo_persona_id": 2 },
+    { "id": 5, "nombre": "Cédula de extranjería",                 "pais_id": 250, "codigo": "22", "orden": 6, "abreviatura": "CE",  "aporte": "CE", "tipo_persona_id": 2 },
+    { "id": 6, "nombre": "Número de identificación tributaria",   "pais_id": 250, "codigo": "31", "orden": 1, "abreviatura": "NIT", "aporte": "",   "tipo_persona_id": 1 },
+    { "id": 7, "nombre": "Pasaporte",                             "pais_id": 250, "codigo": "41", "orden": 7, "abreviatura": "PA",  "aporte": "PT", "tipo_persona_id": 2 },
+    { "id": 8, "nombre": "Documento de identificación extranjero","pais_id": 250, "codigo": "42", "orden": 8, "abreviatura": "TDE", "aporte": "",   "tipo_persona_id": 2 },
+    { "id": 9, "nombre": "NIT de otro país",                      "pais_id": 250, "codigo": "50", "orden": 9, "abreviatura": "SI",  "aporte": "",   "tipo_persona_id": 2 }
   ]
 }

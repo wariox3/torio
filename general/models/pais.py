@@ -2,9 +2,10 @@ from django.db import models
 
 
 class GenPais(models.Model):
-    id = models.CharField(primary_key=True, max_length=2)
+    id = models.BigIntegerField(primary_key=True)
     nombre = models.CharField(max_length=50, null=True)
     codigo = models.CharField(max_length=10, null=True)
+    estado_inactivo = models.BooleanField(default=False, db_default=False)
 
     class Meta:
         db_table = 'gen_pais'
