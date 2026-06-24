@@ -1,7 +1,12 @@
+from datetime import datetime
+from decimal import Decimal
+
 from django.db import transaction
+from django.db.models import Sum
+from django.db.models.functions import TruncMonth
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
@@ -132,3 +137,95 @@ class GenDocumentoViewSet(
         response = HttpResponse(contenido, content_type='application/zip')
         response['Content-Disposition'] = f'attachment; filename="{nombre}"'
         return response
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('fecha_desde', OpenApiTypes.DATE, description='Fecha desde (AAAA-MM-DD)'),
+            OpenApiParameter('fecha_hasta', OpenApiTypes.DATE, description='Fecha hasta (AAAA-MM-DD)'),
+        ],
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['get'], url_path='analitica-horas')
+    def analitica_horas(self, request):
+        # Recuerda: en el modelo `horas` = planeado y `horas_programadas` = ejecutado.
+        # Validación de parámetros inline.
+        fecha_desde = None
+        fecha_hasta = None
+        valor = request.query_params.get('fecha_desde')
+        if valor:
+            try:
+                fecha_desde = datetime.strptime(valor.strip(), '%Y-%m-%d').date()
+            except ValueError:
+                raise ValidationError({'fecha_desde': 'Formato inválido, use AAAA-MM-DD.'})
+        valor = request.query_params.get('fecha_hasta')
+        if valor:
+            try:
+                fecha_hasta = datetime.strptime(valor.strip(), '%Y-%m-%d').date()
+            except ValueError:
+                raise ValidationError({'fecha_hasta': 'Formato inválido, use AAAA-MM-DD.'})
+        if fecha_desde and fecha_hasta and fecha_desde > fecha_hasta:
+            raise ValidationError({'fecha_desde': 'No puede ser mayor que fecha_hasta.'})
+
+        # Solo documentos válidos (aprobados y no anulados).
+        qs = GenDocumento.objects.filter(estado_aprobado=True, estado_anulado=False)
+        if fecha_desde:
+            qs = qs.filter(fecha__gte=fecha_desde)
+        if fecha_hasta:
+            qs = qs.filter(fecha__lte=fecha_hasta)
+
+        # Una sola query: suma por mes en la BD.
+        filas = (
+            qs.annotate(periodo=TruncMonth('fecha'))
+            .values('periodo')
+            .annotate(
+                planeadas=Sum('horas'),
+                ejecutadas=Sum('horas_programadas'),
+                planeadas_diurnas=Sum('horas_diurnas'),
+                ejecutadas_diurnas=Sum('horas_diurnas_programadas'),
+                planeadas_nocturnas=Sum('horas_nocturnas'),
+                ejecutadas_nocturnas=Sum('horas_nocturnas_programadas'),
+            )
+            .order_by('periodo')
+        )
+
+        cero = Decimal('0')
+
+        def cumplimiento(ejecutadas, planeadas):
+            if not planeadas:
+                return None
+            return round(float(ejecutadas / planeadas * 100), 1)
+
+        serie = []
+        tot_plan = tot_ejec = cero
+        tot_plan_diu = tot_ejec_diu = cero
+        tot_plan_noc = tot_ejec_noc = cero
+        for fila in filas:
+            planeadas = fila['planeadas'] or cero
+            ejecutadas = fila['ejecutadas'] or cero
+            tot_plan += planeadas
+            tot_ejec += ejecutadas
+            tot_plan_diu += fila['planeadas_diurnas'] or cero
+            tot_ejec_diu += fila['ejecutadas_diurnas'] or cero
+            tot_plan_noc += fila['planeadas_nocturnas'] or cero
+            tot_ejec_noc += fila['ejecutadas_nocturnas'] or cero
+            serie.append({
+                'periodo': fila['periodo'].strftime('%Y-%m'),
+                'planeadas': planeadas,
+                'ejecutadas': ejecutadas,
+                'cumplimiento': cumplimiento(ejecutadas, planeadas),
+            })
+
+        resumen = {
+            'horas_planeadas': tot_plan,
+            'horas_ejecutadas': tot_ejec,
+            'cumplimiento': cumplimiento(tot_ejec, tot_plan),
+            'desviacion': tot_ejec - tot_plan,
+            'diurnas': {'planeadas': tot_plan_diu, 'ejecutadas': tot_ejec_diu},
+            'nocturnas': {'planeadas': tot_plan_noc, 'ejecutadas': tot_ejec_noc},
+        }
+
+        return Response({
+            'resumen': resumen,
+            'serie': serie,
+            'agrupado_por': 'mes',
+        })

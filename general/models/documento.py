@@ -31,6 +31,9 @@ class GenDocumento(models.Model):
     horas = models.DecimalField(max_digits=10, decimal_places=2, default=0, db_default=0)
     horas_diurnas = models.DecimalField(max_digits=10, decimal_places=2, default=0, db_default=0)
     horas_nocturnas = models.DecimalField(max_digits=10, decimal_places=2, default=0, db_default=0)
+    horas_programadas = models.DecimalField(max_digits=10, decimal_places=2, default=0, db_default=0)
+    horas_diurnas_programadas = models.DecimalField(max_digits=10, decimal_places=2, default=0, db_default=0)
+    horas_nocturnas_programadas = models.DecimalField(max_digits=10, decimal_places=2, default=0, db_default=0)
     salario = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     devengado = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     deduccion = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
@@ -179,6 +182,9 @@ class GenDocumento(models.Model):
             horas=Sum('horas'),
             horas_diurnas=Sum('horas_diurnas'),
             horas_nocturnas=Sum('horas_nocturnas'),
+            horas_programadas=Sum('horas_programadas'),
+            horas_diurnas_programadas=Sum('horas_diurnas_programadas'),
+            horas_nocturnas_programadas=Sum('horas_nocturnas_programadas'),
         )
         cero = Decimal('0')
         self.subtotal = agregados['subtotal'] or cero
@@ -191,3 +197,6 @@ class GenDocumento(models.Model):
         self.horas = agregados['horas'] or cero
         self.horas_diurnas = agregados['horas_diurnas'] or cero
         self.horas_nocturnas = agregados['horas_nocturnas'] or cero
+        self.horas_programadas = agregados['horas_programadas'] or cero
+        self.horas_diurnas_programadas = agregados['horas_diurnas_programadas'] or cero
+        self.horas_nocturnas_programadas = agregados['horas_nocturnas_programadas'] or cero
