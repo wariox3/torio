@@ -28,7 +28,12 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
     documento = serializers.PrimaryKeyRelatedField(
         queryset=GenDocumento.objects.all(), required=False,
     )
-    documento_detalle_afectado_id = serializers.IntegerField(read_only=True)
+    documento_detalle_afectado_id = serializers.PrimaryKeyRelatedField(
+        source='documento_detalle_afectado',
+        queryset=GenDocumentoDetalle.objects.all(),
+        required=False,
+        allow_null=True,
+    )
     item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
     modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
     modalidad_codigo = serializers.CharField(source='modalidad.codigo', read_only=True, default=None)
