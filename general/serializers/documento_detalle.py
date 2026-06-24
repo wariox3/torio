@@ -28,8 +28,7 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
     documento = serializers.PrimaryKeyRelatedField(
         queryset=GenDocumento.objects.all(), required=False,
     )
-    documento_detalle_afectado_id = serializers.PrimaryKeyRelatedField(
-        source='documento_detalle_afectado',
+    documento_detalle_afectado = serializers.PrimaryKeyRelatedField(
         queryset=GenDocumentoDetalle.objects.all(),
         required=False,
         allow_null=True,
@@ -65,7 +64,7 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'documento',
-            'documento_detalle_afectado_id',
+            'documento_detalle_afectado',
             'tipo_registro',
             'cantidad',
             'precio',
