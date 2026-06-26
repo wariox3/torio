@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from turno.models import TurSecuencia
+from turno.models import TurSecuencia, TurTurno
 
 # Ranuras de turno de la secuencia (cada una guarda el codigo de un TurTurno)
 CAMPOS_DIAS = [f'dia_{n}' for n in range(1, 32)]
@@ -28,3 +28,29 @@ class TurSecuenciaSerializer(serializers.ModelSerializer):
             'estado_inactivo',
         ]
         read_only_fields = ['id']
+
+    def validate(self, attrs):
+        # Las ranuras guardan códigos de TurTurno; todos los digitados deben existir.
+        codigos_por_campo = {
+            campo: attrs[campo].strip()
+            for campo in CAMPOS_RANURAS
+            if attrs.get(campo) and attrs[campo].strip()
+        }
+        if codigos_por_campo:
+            existentes = set(
+                TurTurno.objects
+                .filter(codigo__in=set(codigos_por_campo.values()))
+                .values_list('codigo', flat=True)
+            )
+            errores = [
+                {'campo': campo, 'codigo': codigo,
+                 'mensaje': f'El turno "{codigo}" no existe.'}
+                for campo, codigo in codigos_por_campo.items()
+                if codigo not in existentes
+            ]
+            if errores:
+                raise serializers.ValidationError({
+                    'detail': 'Uno o más turnos digitados no existen.',
+                    'errores': errores,
+                })
+        return attrs

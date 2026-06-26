@@ -2,9 +2,16 @@ from decimal import Decimal, InvalidOperation
 
 from rest_framework import serializers
 
-from turno.models import TurSecuencia
+from turno.models import TurSecuencia, TurTurno
 from turno.serializers.secuencia import CAMPOS_DIAS, CAMPOS_SEMANA
 from turno.serializers.secuencia_exportar import _ENCABEZADOS_SEMANA
+
+# Ranuras que guardan código de turno -> etiqueta (posición) mostrada en errores.
+_CAMPOS_RANURAS = (*CAMPOS_DIAS, *CAMPOS_SEMANA)
+_ETIQUETAS_RANURA = {
+    **{campo: f'Día {campo.split("_")[1]}' for campo in CAMPOS_DIAS},
+    **{campo: _ENCABEZADOS_SEMANA[campo] for campo in CAMPOS_SEMANA},
+}
 
 
 class TurSecuenciaImportarSerializer(serializers.Serializer):
@@ -47,6 +54,17 @@ class TurSecuenciaImportarSerializer(serializers.Serializer):
         if not filas_validas:
             return 0, []
 
+        # Pre-cargar los códigos de turno existentes (una sola query para todo el lote).
+        codigos_archivo = {
+            codigo
+            for _, datos in filas_validas
+            for campo in _CAMPOS_RANURAS
+            if (codigo := self._texto_o_none(datos.get(campo)))
+        }
+        codigos_existentes = set(
+            TurTurno.objects.filter(codigo__in=codigos_archivo).values_list('codigo', flat=True)
+        ) if codigos_archivo else set()
+
         errores = []
         nuevos = []
         nombres_vistos = set()
@@ -67,8 +85,14 @@ class TurSecuenciaImportarSerializer(serializers.Serializer):
                     'homologar': self._si_no(datos.get('homologar')),
                     'estado_inactivo': self._si_no(datos.get('estado_inactivo')),
                 }
-                for campo in (*CAMPOS_DIAS, *CAMPOS_SEMANA):
-                    campos[campo] = self._texto_o_none(datos.get(campo))
+                faltantes = []
+                for campo in _CAMPOS_RANURAS:
+                    codigo = self._texto_o_none(datos.get(campo))
+                    campos[campo] = codigo
+                    if codigo and codigo not in codigos_existentes:
+                        faltantes.append(f'{_ETIQUETAS_RANURA[campo]}: "{codigo}"')
+                if faltantes:
+                    raise ValueError('Turnos inexistentes -> ' + '; '.join(faltantes))
 
                 nuevos.append(TurSecuencia(**campos))
             except Exception as e:
