@@ -86,3 +86,53 @@ def aplicar_secuencia(secuencia, contrato, anio, mes, documento_detalle=None):
                 actualizados += 1
 
     return creados, actualizados
+
+
+def aplicar_programacion(contrato, anio, mes, dias, documento_detalle=None):
+    """
+    Guarda una programación manual: el front envía, por día del mes, el turno
+    elegido (o None para descanso). Upsert sobre (contrato, fecha); solo se
+    tocan los días recibidos, el resto del mes queda intacto.
+
+    - `dias` es un iterable de (dia:int, turno_id:int|None).
+    - `festivo` se marca consultando `GenFestivo`.
+    - Las horas se denormalizan desde el turno resuelto.
+
+    Retorna (creados, actualizados).
+    """
+    festivos = set(
+        GenFestivo.objects
+        .filter(fecha__year=anio, fecha__month=mes)
+        .values_list('fecha', flat=True)
+    )
+
+    turno_ids = {turno_id for _, turno_id in dias if turno_id}
+    turnos = {t.id: t for t in TurTurno.objects.filter(id__in=turno_ids)}
+
+    creados = 0
+    actualizados = 0
+    with transaction.atomic():
+        for dia, turno_id in dias:
+            fecha = date(anio, mes, dia)
+            turno = turnos.get(turno_id) if turno_id else None
+            es_festivo = fecha in festivos
+
+            defaults = {
+                'turno': turno,
+                'documento_detalle': documento_detalle,
+                'festivo': es_festivo,
+                'horas': turno.horas if turno else 0,
+                'horas_diurnas': turno.horas_diurnas if turno else 0,
+                'horas_nocturnas': turno.horas_nocturnas if turno else 0,
+            }
+            _, creado = TurProgramacion.objects.update_or_create(
+                contrato=contrato,
+                fecha=fecha,
+                defaults=defaults,
+            )
+            if creado:
+                creados += 1
+            else:
+                actualizados += 1
+
+    return creados, actualizados

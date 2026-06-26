@@ -1,3 +1,4 @@
+import calendar
 from collections import OrderedDict
 from decimal import Decimal
 
@@ -9,13 +10,13 @@ from rest_framework.response import Response
 
 from general.models import GenDocumentoDetalle
 from humano.models import HumContrato
-from turno.models import TurProgramacion, TurSecuencia
+from turno.models import TurProgramacion, TurSecuencia, TurTurno
 from turno.serializers import (
     TurProgramacionExportarSerializer,
     TurProgramacionImportarSerializer,
     TurProgramacionSerializer,
 )
-from turno.servicios import aplicar_secuencia
+from turno.servicios import aplicar_programacion, aplicar_secuencia
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 
 
@@ -25,6 +26,19 @@ class AplicarSecuenciaRequestSerializer(serializers.Serializer):
     anio = serializers.IntegerField(min_value=2000, max_value=2100)
     mes = serializers.IntegerField(min_value=1, max_value=12)
     documento_detalle_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class DiaProgramacionSerializer(serializers.Serializer):
+    dia = serializers.IntegerField(min_value=1, max_value=31)
+    turno_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class AplicarProgramacionRequestSerializer(serializers.Serializer):
+    contrato_id = serializers.IntegerField()
+    anio = serializers.IntegerField(min_value=2000, max_value=2100)
+    mes = serializers.IntegerField(min_value=1, max_value=12)
+    documento_detalle_id = serializers.IntegerField()
+    dias = DiaProgramacionSerializer(many=True, allow_empty=False)
 
 _LIST_PARAMS = [
     OpenApiParameter('contrato', int, description='Filtrar por contrato'),
@@ -93,6 +107,52 @@ class TurProgramacionViewSet(
 
         creados, actualizados = aplicar_secuencia(
             secuencia, contrato, datos['anio'], datos['mes'], documento_detalle,
+        )
+        return Response(
+            {'creados': creados, 'actualizados': actualizados},
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(request=AplicarProgramacionRequestSerializer)
+    @action(detail=False, methods=['post'], url_path='aplicar-programacion')
+    def aplicar_programacion(self, request):
+        serializer = AplicarProgramacionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = serializer.validated_data
+
+        try:
+            contrato = HumContrato.objects.get(pk=datos['contrato_id'])
+        except HumContrato.DoesNotExist:
+            raise NotFound('Contrato no encontrado.')
+        if not contrato.habilitado_turno:
+            raise ValidationError({'contrato_id': 'El contrato no está habilitado para turnos.'})
+
+        try:
+            documento_detalle = GenDocumentoDetalle.objects.get(pk=datos['documento_detalle_id'])
+        except GenDocumentoDetalle.DoesNotExist:
+            raise NotFound('Documento detalle no encontrado.')
+
+        # Validar que los días existan en el mes.
+        dias_mes = calendar.monthrange(datos['anio'], datos['mes'])[1]
+        dias = [(d['dia'], d.get('turno_id')) for d in datos['dias']]
+        fuera = sorted({dia for dia, _ in dias if dia > dias_mes})
+        if fuera:
+            raise ValidationError({'dias': f'Días fuera del mes ({dias_mes} días): {fuera}.'})
+        dias_repetidos = len(dias) != len({dia for dia, _ in dias})
+        if dias_repetidos:
+            raise ValidationError({'dias': 'Hay días repetidos.'})
+
+        # Validar que los turnos referenciados existan.
+        turno_ids = {turno_id for _, turno_id in dias if turno_id}
+        existentes = set(
+            TurTurno.objects.filter(id__in=turno_ids).values_list('id', flat=True)
+        )
+        faltantes = sorted(turno_ids - existentes)
+        if faltantes:
+            raise ValidationError({'dias': f'Turnos inexistentes: {faltantes}.'})
+
+        creados, actualizados = aplicar_programacion(
+            contrato, datos['anio'], datos['mes'], dias, documento_detalle,
         )
         return Response(
             {'creados': creados, 'actualizados': actualizados},
