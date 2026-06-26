@@ -49,6 +49,7 @@ class HumContratoImportarSerializer(serializers.Serializer):
         ('salario', 'Salario'),
         ('auxilio_transporte', 'Auxilio transporte'),
         ('salario_integral', 'Salario integral'),
+        ('habilitado_turno', 'Habilitado turno'),
         ('grupo.id', 'Grupo'),
         ('sucursal.id', 'Sucursal'),
         ('cargo.id', 'Cargo'),
@@ -126,6 +127,7 @@ class HumContratoImportarSerializer(serializers.Serializer):
                     salario=self._decimal(datos.get('salario'), 'Salario'),
                     auxilio_transporte=self._si_no(datos.get('auxilio_transporte')),
                     salario_integral=self._si_no(datos.get('salario_integral')),
+                    habilitado_turno=self._si_no(datos.get('habilitado_turno')),
                     comentario=self._texto_o_none(datos.get('comentario')),
                     **valores,
                 ))

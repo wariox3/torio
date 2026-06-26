@@ -25,6 +25,7 @@ class HumContratoExportarSerializer(serializers.Serializer):
         ('salario', 'Salario'),
         ('auxilio_transporte', 'Auxilio transporte'),
         ('salario_integral', 'Salario integral'),
+        ('habilitado_turno', 'Habilitado turno'),
         ('grupo.nombre', 'Grupo'),
         ('sucursal.nombre', 'Sucursal'),
         ('cargo.nombre', 'Cargo'),

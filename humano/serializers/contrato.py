@@ -7,7 +7,7 @@ class HumContratoSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
     campos_filtrables = {
         'id', 'fecha_desde', 'fecha_hasta', 'salario', 'estado_terminado',
-        'auxilio_transporte', 'salario_integral',
+        'auxilio_transporte', 'salario_integral', 'habilitado_turno',
         'contacto', 'contacto__nombre_corto', 'contacto__numero_identificacion',
         'contrato_tipo', 'grupo', 'sucursal', 'cargo',
         'tipo_cotizante', 'subtipo_cotizante', 'riesgo', 'tiempo',
@@ -53,6 +53,7 @@ class HumContratoSerializer(serializers.ModelSerializer):
             'auxilio_transporte',
             'salario_integral',
             'estado_terminado',
+            'habilitado_turno',
             'comentario',
             'fecha_ultimo_pago',
             'fecha_ultimo_pago_prima',

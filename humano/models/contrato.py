@@ -8,6 +8,7 @@ class HumContrato(models.Model):
     auxilio_transporte = models.BooleanField(default=False, db_default=False)
     salario_integral = models.BooleanField(default=False, db_default=False)
     estado_terminado = models.BooleanField(default=False, db_default=False)
+    habilitado_turno = models.BooleanField(default=False, db_default=False)
     comentario = models.CharField(max_length=300, null=True)
     fecha_ultimo_pago = models.DateField(null=True)
     fecha_ultimo_pago_prima = models.DateField(null=True)
