@@ -94,7 +94,7 @@ def aplicar_programacion(contrato, anio, mes, dias, documento_detalle=None):
     elegido (o None para descanso). Upsert sobre (contrato, fecha); solo se
     tocan los días recibidos, el resto del mes queda intacto.
 
-    - `dias` es un iterable de (dia:int, turno_id:int|None).
+    - `dias` es un iterable de (dia:int, turno_codigo:str|None); código vacío = descanso.
     - `festivo` se marca consultando `GenFestivo`.
     - Las horas se denormalizan desde el turno resuelto.
 
@@ -106,15 +106,15 @@ def aplicar_programacion(contrato, anio, mes, dias, documento_detalle=None):
         .values_list('fecha', flat=True)
     )
 
-    turno_ids = {turno_id for _, turno_id in dias if turno_id}
-    turnos = {t.id: t for t in TurTurno.objects.filter(id__in=turno_ids)}
+    codigos = {codigo for _, codigo in dias if codigo}
+    turnos = {t.codigo: t for t in TurTurno.objects.filter(codigo__in=codigos)}
 
     creados = 0
     actualizados = 0
     with transaction.atomic():
-        for dia, turno_id in dias:
+        for dia, codigo in dias:
             fecha = date(anio, mes, dia)
-            turno = turnos.get(turno_id) if turno_id else None
+            turno = turnos.get(codigo) if codigo else None
             es_festivo = fecha in festivos
 
             defaults = {

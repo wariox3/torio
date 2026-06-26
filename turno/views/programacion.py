@@ -30,7 +30,7 @@ class AplicarSecuenciaRequestSerializer(serializers.Serializer):
 
 class DiaProgramacionSerializer(serializers.Serializer):
     dia = serializers.IntegerField(min_value=1, max_value=31)
-    turno_id = serializers.IntegerField(required=False, allow_null=True)
+    turno_codigo = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
 
 class AplicarProgramacionRequestSerializer(serializers.Serializer):
@@ -134,7 +134,7 @@ class TurProgramacionViewSet(
 
         # Validar que los días existan en el mes.
         dias_mes = calendar.monthrange(datos['anio'], datos['mes'])[1]
-        dias = [(d['dia'], d.get('turno_id')) for d in datos['dias']]
+        dias = [(d['dia'], (d.get('turno_codigo') or '').strip() or None) for d in datos['dias']]
         fuera = sorted({dia for dia, _ in dias if dia > dias_mes})
         if fuera:
             raise ValidationError({'dias': f'Días fuera del mes ({dias_mes} días): {fuera}.'})
@@ -142,12 +142,12 @@ class TurProgramacionViewSet(
         if dias_repetidos:
             raise ValidationError({'dias': 'Hay días repetidos.'})
 
-        # Validar que los turnos referenciados existan.
-        turno_ids = {turno_id for _, turno_id in dias if turno_id}
+        # Validar que los turnos referenciados existan (por código).
+        codigos = {codigo for _, codigo in dias if codigo}
         existentes = set(
-            TurTurno.objects.filter(id__in=turno_ids).values_list('id', flat=True)
+            TurTurno.objects.filter(codigo__in=codigos).values_list('codigo', flat=True)
         )
-        faltantes = sorted(turno_ids - existentes)
+        faltantes = sorted(codigos - existentes)
         if faltantes:
             raise ValidationError({'dias': f'Turnos inexistentes: {faltantes}.'})
 

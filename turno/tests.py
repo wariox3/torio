@@ -85,8 +85,8 @@ class AplicarProgramacionTests(TenantTestCase):
             'mes': 6,
             'documento_detalle_id': self.detalle.id,
             'dias': [
-                {'dia': 1, 'turno_id': self.turno.id},
-                {'dia': 2, 'turno_id': None},
+                {'dia': 1, 'turno_codigo': self.turno.codigo},
+                {'dia': 2, 'turno_codigo': None},
             ],
         }
         data.update(overrides)
@@ -145,7 +145,7 @@ class AplicarProgramacionTests(TenantTestCase):
 
     def test_dia_fuera_del_mes(self):
         response = self._post(self._payload(
-            mes=2, dias=[{'dia': 30, 'turno_id': self.turno.id}],
+            mes=2, dias=[{'dia': 30, 'turno_codigo': self.turno.codigo}],
         ))
 
         self.assertEqual(response.status_code, 400)
@@ -153,7 +153,7 @@ class AplicarProgramacionTests(TenantTestCase):
 
     def test_turno_inexistente(self):
         response = self._post(self._payload(
-            dias=[{'dia': 1, 'turno_id': 999999}],
+            dias=[{'dia': 1, 'turno_codigo': 'XXX'}],
         ))
 
         self.assertEqual(response.status_code, 400)
