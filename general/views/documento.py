@@ -166,8 +166,10 @@ class GenDocumentoViewSet(
         if fecha_desde and fecha_hasta and fecha_desde > fecha_hasta:
             raise ValidationError({'fecha_desde': 'No puede ser mayor que fecha_hasta.'})
 
-        # Solo documentos válidos (aprobados y no anulados).
-        qs = GenDocumento.objects.filter(estado_aprobado=True, estado_anulado=False)
+        # Solo documentos tipo 35 y válidos (aprobados y no anulados).
+        qs = GenDocumento.objects.filter(
+            documento_tipo_id=35, estado_aprobado=True, estado_anulado=False
+        )
         if fecha_desde:
             qs = qs.filter(fecha__gte=fecha_desde)
         if fecha_hasta:
