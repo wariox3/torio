@@ -130,17 +130,24 @@ class CrearProgramacionTests(TenantTestCase):
         self.assertEqual(TurProgramacion.objects.count(), 0)
 
     def test_fecha_ya_existente(self):
-        self._post(self._payload())  # crea 2026-06-01 y 2026-06-02
+        self._post(self._payload())  # crea 2026-06-01 (turno D) y 2026-06-02 (descanso)
         antes = TurProgramacion.objects.count()
 
         response = self._post(self._payload(items=[
-            {'fecha': '2026-06-02', 'turno_codigo': self.turno.codigo},
+            {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},  # conflicto
             {'fecha': '2026-06-03', 'turno_codigo': self.turno.codigo},
         ]))
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('detail', response.data)
         self.assertEqual(TurProgramacion.objects.count(), antes)  # no se insertó nada
+
+        # Devuelve las programaciones en conflicto (solo la fecha en conflicto).
+        existentes = response.data['existentes']
+        self.assertEqual(len(existentes), 1)
+        self.assertEqual(existentes[0]['fecha'], '2026-06-01')
+        self.assertEqual(existentes[0]['turno_id'], self.turno.id)
+        self.assertEqual(existentes[0]['turno_codigo'], self.turno.codigo)
 
     def test_turno_inexistente(self):
         response = self._post(self._payload(items=[

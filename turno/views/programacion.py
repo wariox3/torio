@@ -15,7 +15,7 @@ from turno.serializers import (
     TurProgramacionImportarSerializer,
     TurProgramacionSerializer,
 )
-from turno.servicios import crear_programacion
+from turno.servicios import ProgramacionExistenteError, crear_programacion
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 
 
@@ -92,6 +92,27 @@ class TurProgramacionViewSet(
 
         try:
             creados = crear_programacion(contrato, documento_detalle, datos['items'])
+        except ProgramacionExistenteError as e:
+            return Response(
+                {
+                    'detail': str(e),
+                    'existentes': [
+                        {
+                            'programacion_id': p.id,
+                            'fecha': p.fecha.isoformat(),
+                            'turno_id': p.turno_id,
+                            'turno_codigo': p.turno.codigo if p.turno else None,
+                            'turno_nombre': p.turno.nombre if p.turno else None,
+                            'horas': p.horas,
+                            'horas_diurnas': p.horas_diurnas,
+                            'horas_nocturnas': p.horas_nocturnas,
+                            'festivo': p.festivo,
+                        }
+                        for p in e.programaciones
+                    ],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except ValueError as e:
             raise ValidationError({'detail': str(e)})
 

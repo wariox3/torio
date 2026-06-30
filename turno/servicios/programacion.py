@@ -4,6 +4,20 @@ from general.models import GenFestivo
 from turno.models import TurProgramacion, TurTurno
 
 
+class ProgramacionExistenteError(ValueError):
+    """
+    Se intentó crear programación en fechas que el contrato ya tiene ocupadas.
+
+    Lleva en `programaciones` las filas `TurProgramacion` en conflicto
+    (con `turno` precargado) para que la vista las devuelva al front.
+    """
+
+    def __init__(self, programaciones):
+        self.programaciones = programaciones
+        fechas = [p.fecha.isoformat() for p in programaciones]
+        super().__init__(f'Ya existe programación para: {fechas}.')
+
+
 def crear_programacion(contrato, documento_detalle, items):
     """
     Crea filas de `TurProgramacion` para un contrato a partir de una lista de
@@ -24,13 +38,14 @@ def crear_programacion(contrato, documento_detalle, items):
     if repetidas:
         raise ValueError(f'Fechas repetidas en la solicitud: {repetidas}.')
 
-    existentes = sorted(
-        f.isoformat() for f in TurProgramacion.objects
+    existentes = list(
+        TurProgramacion.objects
+        .select_related('turno')
         .filter(contrato=contrato, fecha__in=fechas)
-        .values_list('fecha', flat=True)
+        .order_by('fecha')
     )
     if existentes:
-        raise ValueError(f'Ya existe programación para: {existentes}.')
+        raise ProgramacionExistenteError(existentes)
 
     codigos = {(item.get('turno_codigo') or '').strip() for item in items}
     codigos.discard('')
