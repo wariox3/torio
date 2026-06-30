@@ -72,12 +72,6 @@ class GenDocumentoDetalle(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_detalles_documento_detalle_afectado_rel',
     )
-    documento_detalle_referencia = models.ForeignKey(
-        'self',
-        null=True,
-        on_delete=models.PROTECT,
-        related_name='documentos_detalles_documento_detalle_referencia_rel',
-    )
     item = models.ForeignKey(
         'general.GenItem',
         null=True,
