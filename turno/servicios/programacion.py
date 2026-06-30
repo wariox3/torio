@@ -1,138 +1,64 @@
-import calendar
-from datetime import date
-
 from django.db import transaction
 
 from general.models import GenFestivo
 from turno.models import TurProgramacion, TurTurno
 
-# Ranuras por día de semana, indexadas por date.weekday() (lunes=0 … domingo=6)
-_SLOTS_SEMANA = ('lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo')
-# Todas las ranuras de la secuencia que guardan un código de turno
-_CAMPOS_DIAS = tuple(f'dia_{n}' for n in range(1, 32))
-_CAMPOS_CODIGO = (*_CAMPOS_DIAS, *_SLOTS_SEMANA, 'festivo', 'domingo_festivo')
 
-
-def _codigo_para_fecha(secuencia, fecha, es_festivo):
+def crear_programacion(contrato, documento_detalle, items):
     """
-    Resuelve el código de turno de la secuencia para una fecha.
+    Crea filas de `TurProgramacion` para un contrato a partir de una lista de
+    items `{fecha, turno_codigo}` (fecha: `date`; turno_codigo vacío = descanso).
 
-    Precedencia (de mayor a menor):
-        1. festivo en domingo  -> domingo_festivo
-        2. festivo             -> festivo
-        3. día del mes         -> dia_N (si está definido)
-        4. día de la semana    -> lunes..domingo
-
-    Devuelve None (descanso) si la ranura aplicable está vacía.
-    """
-    es_domingo = fecha.weekday() == 6
-    if es_festivo and es_domingo and secuencia.domingo_festivo:
-        return secuencia.domingo_festivo
-    if es_festivo and secuencia.festivo:
-        return secuencia.festivo
-    codigo_dia = getattr(secuencia, f'dia_{fecha.day}')
-    if codigo_dia:
-        return codigo_dia
-    return getattr(secuencia, _SLOTS_SEMANA[fecha.weekday()])
-
-
-def aplicar_secuencia(secuencia, contrato, anio, mes, documento_detalle=None):
-    """
-    Explota una `TurSecuencia` en filas de `TurProgramacion` para un contrato
-    en un mes dado (una fila por día, upsert sobre (contrato, fecha)).
-
-    - El turno se resuelve por `codigo` contra `TurTurno`; código vacío = descanso.
+    - El turno se resuelve por `codigo` contra `TurTurno`.
     - `festivo` se marca consultando `GenFestivo`.
     - Las horas se denormalizan desde el turno resuelto.
+    - No hay upsert: si ya existe programación para `(contrato, fecha)` —o si el
+      array trae fechas repetidas, o un `turno_codigo` inexistente— se aborta
+      con `ValueError` sin guardar nada.
 
-    Retorna (creados, actualizados).
+    Retorna la cantidad de filas creadas.
     """
-    dias_mes = calendar.monthrange(anio, mes)[1]
+    fechas = [item['fecha'] for item in items]
 
-    festivos = set(
-        GenFestivo.objects
-        .filter(fecha__year=anio, fecha__month=mes)
+    repetidas = sorted({f.isoformat() for f in fechas if fechas.count(f) > 1})
+    if repetidas:
+        raise ValueError(f'Fechas repetidas en la solicitud: {repetidas}.')
+
+    existentes = sorted(
+        f.isoformat() for f in TurProgramacion.objects
+        .filter(contrato=contrato, fecha__in=fechas)
         .values_list('fecha', flat=True)
     )
+    if existentes:
+        raise ValueError(f'Ya existe programación para: {existentes}.')
 
-    codigos = {getattr(secuencia, campo) for campo in _CAMPOS_CODIGO if getattr(secuencia, campo)}
+    codigos = {(item.get('turno_codigo') or '').strip() for item in items}
+    codigos.discard('')
     turnos = {t.codigo: t for t in TurTurno.objects.filter(codigo__in=codigos)}
+    faltantes = sorted(codigos - turnos.keys())
+    if faltantes:
+        raise ValueError(f'Turnos inexistentes: {faltantes}.')
 
-    creados = 0
-    actualizados = 0
-    with transaction.atomic():
-        for dia in range(1, dias_mes + 1):
-            fecha = date(anio, mes, dia)
-            es_festivo = fecha in festivos
-            codigo = _codigo_para_fecha(secuencia, fecha, es_festivo)
-            turno = turnos.get(codigo) if codigo else None
-
-            defaults = {
-                'turno': turno,
-                'documento_detalle': documento_detalle,
-                'festivo': es_festivo,
-                'horas': turno.horas if turno else 0,
-                'horas_diurnas': turno.horas_diurnas if turno else 0,
-                'horas_nocturnas': turno.horas_nocturnas if turno else 0,
-            }
-            _, creado = TurProgramacion.objects.update_or_create(
-                contrato=contrato,
-                fecha=fecha,
-                defaults=defaults,
-            )
-            if creado:
-                creados += 1
-            else:
-                actualizados += 1
-
-    return creados, actualizados
-
-
-def aplicar_programacion(contrato, anio, mes, dias, documento_detalle=None):
-    """
-    Guarda una programación manual: el front envía, por día del mes, el turno
-    elegido (o None para descanso). Upsert sobre (contrato, fecha); solo se
-    tocan los días recibidos, el resto del mes queda intacto.
-
-    - `dias` es un iterable de (dia:int, turno_codigo:str|None); código vacío = descanso.
-    - `festivo` se marca consultando `GenFestivo`.
-    - Las horas se denormalizan desde el turno resuelto.
-
-    Retorna (creados, actualizados).
-    """
     festivos = set(
-        GenFestivo.objects
-        .filter(fecha__year=anio, fecha__month=mes)
-        .values_list('fecha', flat=True)
+        GenFestivo.objects.filter(fecha__in=fechas).values_list('fecha', flat=True)
     )
 
-    codigos = {codigo for _, codigo in dias if codigo}
-    turnos = {t.codigo: t for t in TurTurno.objects.filter(codigo__in=codigos)}
+    nuevos = []
+    for item in items:
+        codigo = (item.get('turno_codigo') or '').strip() or None
+        turno = turnos.get(codigo) if codigo else None
+        nuevos.append(TurProgramacion(
+            contrato=contrato,
+            fecha=item['fecha'],
+            documento_detalle=documento_detalle,
+            turno=turno,
+            festivo=item['fecha'] in festivos,
+            horas=turno.horas if turno else 0,
+            horas_diurnas=turno.horas_diurnas if turno else 0,
+            horas_nocturnas=turno.horas_nocturnas if turno else 0,
+        ))
 
-    creados = 0
-    actualizados = 0
     with transaction.atomic():
-        for dia, codigo in dias:
-            fecha = date(anio, mes, dia)
-            turno = turnos.get(codigo) if codigo else None
-            es_festivo = fecha in festivos
+        TurProgramacion.objects.bulk_create(nuevos)
 
-            defaults = {
-                'turno': turno,
-                'documento_detalle': documento_detalle,
-                'festivo': es_festivo,
-                'horas': turno.horas if turno else 0,
-                'horas_diurnas': turno.horas_diurnas if turno else 0,
-                'horas_nocturnas': turno.horas_nocturnas if turno else 0,
-            }
-            _, creado = TurProgramacion.objects.update_or_create(
-                contrato=contrato,
-                fecha=fecha,
-                defaults=defaults,
-            )
-            if creado:
-                creados += 1
-            else:
-                actualizados += 1
-
-    return creados, actualizados
+    return len(nuevos)

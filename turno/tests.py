@@ -11,6 +11,7 @@ from general.models import (
     GenDocumentoDetalle,
     GenDocumentoTipo,
     GenEstado,
+    GenFestivo,
     GenIdentificacion,
     GenPais,
     GenTipoPersona,
@@ -27,7 +28,7 @@ class _ViewSinPermisos(TurProgramacionViewSet):
     throttle_classes = []
 
 
-class AplicarProgramacionTests(TenantTestCase):
+class CrearProgramacionTests(TenantTestCase):
     @classmethod
     def setup_tenant(cls, tenant):
         tenant.nombre = 'Test'
@@ -36,7 +37,7 @@ class AplicarProgramacionTests(TenantTestCase):
 
     def setUp(self):
         self.factory = APIRequestFactory()
-        self.view = _ViewSinPermisos.as_view({'post': 'aplicar_programacion'})
+        self.view = _ViewSinPermisos.as_view({'post': 'crear_programacion'})
 
         pais = GenPais.objects.create(id=1, nombre='Colombia')
         estado = GenEstado.objects.create(id=1, nombre='Cundinamarca', pais=pais)
@@ -81,43 +82,74 @@ class AplicarProgramacionTests(TenantTestCase):
     def _payload(self, **overrides):
         data = {
             'contrato_id': self.contrato.id,
-            'anio': 2026,
-            'mes': 6,
             'documento_detalle_id': self.detalle.id,
-            'dias': [
-                {'dia': 1, 'turno_codigo': self.turno.codigo},
-                {'dia': 2, 'turno_codigo': None},
+            'items': [
+                {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},
+                {'fecha': '2026-06-02', 'turno_codigo': None},
             ],
         }
         data.update(overrides)
         return data
 
     def _post(self, data):
-        request = self.factory.post('/aplicar-programacion/', data, format='json')
+        request = self.factory.post('/crear-programacion/', data, format='json')
         return self.view(request)
 
     def test_crea_programacion(self):
         response = self._post(self._payload())
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, {'creados': 2, 'actualizados': 0})
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data, {'creados': 2})
         self.assertEqual(TurProgramacion.objects.count(), 2)
 
         dia1 = TurProgramacion.objects.get(fecha=date(2026, 6, 1))
         self.assertEqual(dia1.turno_id, self.turno.id)
         self.assertEqual(dia1.horas, self.turno.horas)
         self.assertEqual(dia1.documento_detalle_id, self.detalle.id)
+        self.assertFalse(dia1.festivo)
 
         dia2 = TurProgramacion.objects.get(fecha=date(2026, 6, 2))
         self.assertIsNone(dia2.turno_id)  # descanso
         self.assertEqual(dia2.horas, 0)
 
-    def test_segunda_llamada_hace_upsert(self):
-        self._post(self._payload())
-        response = self._post(self._payload())
+    def test_marca_festivo(self):
+        GenFestivo.objects.create(id=1, fecha=date(2026, 6, 1), nombre='Festivo')
 
-        self.assertEqual(response.data, {'creados': 0, 'actualizados': 2})
-        self.assertEqual(TurProgramacion.objects.count(), 2)
+        self._post(self._payload())
+
+        self.assertTrue(TurProgramacion.objects.get(fecha=date(2026, 6, 1)).festivo)
+
+    def test_fecha_repetida_en_request(self):
+        response = self._post(self._payload(items=[
+            {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},
+            {'fecha': '2026-06-01', 'turno_codigo': None},
+        ]))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.data)
+        self.assertEqual(TurProgramacion.objects.count(), 0)
+
+    def test_fecha_ya_existente(self):
+        self._post(self._payload())  # crea 2026-06-01 y 2026-06-02
+        antes = TurProgramacion.objects.count()
+
+        response = self._post(self._payload(items=[
+            {'fecha': '2026-06-02', 'turno_codigo': self.turno.codigo},
+            {'fecha': '2026-06-03', 'turno_codigo': self.turno.codigo},
+        ]))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.data)
+        self.assertEqual(TurProgramacion.objects.count(), antes)  # no se insertó nada
+
+    def test_turno_inexistente(self):
+        response = self._post(self._payload(items=[
+            {'fecha': '2026-06-01', 'turno_codigo': 'XXX'},
+        ]))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.data)
+        self.assertEqual(TurProgramacion.objects.count(), 0)
 
     def test_contrato_no_habilitado(self):
         self.contrato.habilitado_turno = False
@@ -126,8 +158,18 @@ class AplicarProgramacionTests(TenantTestCase):
         response = self._post(self._payload())
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('contrato_id', response.data)
+        self.assertIn('detail', response.data)
         self.assertEqual(TurProgramacion.objects.count(), 0)
+
+    def test_contrato_inexistente(self):
+        response = self._post(self._payload(contrato_id=999999))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_documento_detalle_inexistente(self):
+        response = self._post(self._payload(documento_detalle_id=999999))
+
+        self.assertEqual(response.status_code, 404)
 
     def test_documento_detalle_requerido(self):
         data = self._payload()
@@ -137,24 +179,3 @@ class AplicarProgramacionTests(TenantTestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('documento_detalle_id', response.data)
-
-    def test_contrato_inexistente(self):
-        response = self._post(self._payload(contrato_id=999999))
-
-        self.assertEqual(response.status_code, 404)
-
-    def test_dia_fuera_del_mes(self):
-        response = self._post(self._payload(
-            mes=2, dias=[{'dia': 30, 'turno_codigo': self.turno.codigo}],
-        ))
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('dias', response.data)
-
-    def test_turno_inexistente(self):
-        response = self._post(self._payload(
-            dias=[{'dia': 1, 'turno_codigo': 'XXX'}],
-        ))
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('dias', response.data)

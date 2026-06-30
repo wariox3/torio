@@ -6,7 +6,34 @@ from django.db import transaction
 from general.models import GenFestivo
 from turno.models import TurProgramacionSimulacion, TurTurno
 
-from .programacion import _CAMPOS_CODIGO, _codigo_para_fecha
+# Ranuras por día de semana, indexadas por date.weekday() (lunes=0 … domingo=6)
+_SLOTS_SEMANA = ('lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo')
+# Todas las ranuras de la secuencia que guardan un código de turno
+_CAMPOS_DIAS = tuple(f'dia_{n}' for n in range(1, 32))
+_CAMPOS_CODIGO = (*_CAMPOS_DIAS, *_SLOTS_SEMANA, 'festivo', 'domingo_festivo')
+
+
+def _codigo_para_fecha(secuencia, fecha, es_festivo):
+    """
+    Resuelve el código de turno de la secuencia para una fecha.
+
+    Precedencia (de mayor a menor):
+        1. festivo en domingo  -> domingo_festivo
+        2. festivo             -> festivo
+        3. día del mes         -> dia_N (si está definido)
+        4. día de la semana    -> lunes..domingo
+
+    Devuelve None (descanso) si la ranura aplicable está vacía.
+    """
+    es_domingo = fecha.weekday() == 6
+    if es_festivo and es_domingo and secuencia.domingo_festivo:
+        return secuencia.domingo_festivo
+    if es_festivo and secuencia.festivo:
+        return secuencia.festivo
+    codigo_dia = getattr(secuencia, f'dia_{fecha.day}')
+    if codigo_dia:
+        return codigo_dia
+    return getattr(secuencia, _SLOTS_SEMANA[fecha.weekday()])
 
 
 def aplicar_prototipo(prototipo, anio, mes, reemplazar=True):

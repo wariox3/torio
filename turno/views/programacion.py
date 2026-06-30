@@ -1,4 +1,3 @@
-import calendar
 from collections import OrderedDict
 from decimal import Decimal
 
@@ -10,35 +9,26 @@ from rest_framework.response import Response
 
 from general.models import GenDocumentoDetalle
 from humano.models import HumContrato
-from turno.models import TurProgramacion, TurSecuencia, TurTurno
+from turno.models import TurProgramacion
 from turno.serializers import (
     TurProgramacionExportarSerializer,
     TurProgramacionImportarSerializer,
     TurProgramacionSerializer,
 )
-from turno.servicios import aplicar_programacion, aplicar_secuencia
+from turno.servicios import crear_programacion
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 
 
-class AplicarSecuenciaRequestSerializer(serializers.Serializer):
-    secuencia_id = serializers.IntegerField()
-    contrato_id = serializers.IntegerField()
-    anio = serializers.IntegerField(min_value=2000, max_value=2100)
-    mes = serializers.IntegerField(min_value=1, max_value=12)
-    documento_detalle_id = serializers.IntegerField(required=False, allow_null=True)
-
-
-class DiaProgramacionSerializer(serializers.Serializer):
-    dia = serializers.IntegerField(min_value=1, max_value=31)
+class ItemCrearProgramacionSerializer(serializers.Serializer):
+    fecha = serializers.DateField()
     turno_codigo = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
 
-class AplicarProgramacionRequestSerializer(serializers.Serializer):
+class CrearProgramacionRequestSerializer(serializers.Serializer):
     contrato_id = serializers.IntegerField()
-    anio = serializers.IntegerField(min_value=2000, max_value=2100)
-    mes = serializers.IntegerField(min_value=1, max_value=12)
     documento_detalle_id = serializers.IntegerField()
-    dias = DiaProgramacionSerializer(many=True, allow_empty=False)
+    items = ItemCrearProgramacionSerializer(many=True, allow_empty=False)
+
 
 _LIST_PARAMS = [
     OpenApiParameter('contrato', int, description='Filtrar por contrato'),
@@ -81,42 +71,10 @@ class TurProgramacionViewSet(
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @extend_schema(request=AplicarSecuenciaRequestSerializer)
-    @action(detail=False, methods=['post'], url_path='aplicar-secuencia')
-    def aplicar_secuencia(self, request):
-        serializer = AplicarSecuenciaRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        datos = serializer.validated_data
-
-        try:
-            secuencia = TurSecuencia.objects.get(pk=datos['secuencia_id'])
-        except TurSecuencia.DoesNotExist:
-            raise NotFound('Secuencia no encontrada.')
-        try:
-            contrato = HumContrato.objects.get(pk=datos['contrato_id'])
-        except HumContrato.DoesNotExist:
-            raise NotFound('Contrato no encontrado.')
-
-        documento_detalle = None
-        detalle_id = datos.get('documento_detalle_id')
-        if detalle_id:
-            try:
-                documento_detalle = GenDocumentoDetalle.objects.get(pk=detalle_id)
-            except GenDocumentoDetalle.DoesNotExist:
-                raise NotFound('Documento detalle no encontrado.')
-
-        creados, actualizados = aplicar_secuencia(
-            secuencia, contrato, datos['anio'], datos['mes'], documento_detalle,
-        )
-        return Response(
-            {'creados': creados, 'actualizados': actualizados},
-            status=status.HTTP_200_OK,
-        )
-
-    @extend_schema(request=AplicarProgramacionRequestSerializer)
-    @action(detail=False, methods=['post'], url_path='aplicar-programacion')
-    def aplicar_programacion(self, request):
-        serializer = AplicarProgramacionRequestSerializer(data=request.data)
+    @extend_schema(request=CrearProgramacionRequestSerializer)
+    @action(detail=False, methods=['post'], url_path='crear-programacion')
+    def crear_programacion(self, request):
+        serializer = CrearProgramacionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         datos = serializer.validated_data
 
@@ -125,39 +83,19 @@ class TurProgramacionViewSet(
         except HumContrato.DoesNotExist:
             raise NotFound('Contrato no encontrado.')
         if not contrato.habilitado_turno:
-            raise ValidationError({'contrato_id': 'El contrato no está habilitado para turnos.'})
+            raise ValidationError({'detail': 'El contrato no está habilitado para turnos.'})
 
         try:
             documento_detalle = GenDocumentoDetalle.objects.get(pk=datos['documento_detalle_id'])
         except GenDocumentoDetalle.DoesNotExist:
             raise NotFound('Documento detalle no encontrado.')
 
-        # Validar que los días existan en el mes.
-        dias_mes = calendar.monthrange(datos['anio'], datos['mes'])[1]
-        dias = [(d['dia'], (d.get('turno_codigo') or '').strip() or None) for d in datos['dias']]
-        fuera = sorted({dia for dia, _ in dias if dia > dias_mes})
-        if fuera:
-            raise ValidationError({'dias': f'Días fuera del mes ({dias_mes} días): {fuera}.'})
-        dias_repetidos = len(dias) != len({dia for dia, _ in dias})
-        if dias_repetidos:
-            raise ValidationError({'dias': 'Hay días repetidos.'})
+        try:
+            creados = crear_programacion(contrato, documento_detalle, datos['items'])
+        except ValueError as e:
+            raise ValidationError({'detail': str(e)})
 
-        # Validar que los turnos referenciados existan (por código).
-        codigos = {codigo for _, codigo in dias if codigo}
-        existentes = set(
-            TurTurno.objects.filter(codigo__in=codigos).values_list('codigo', flat=True)
-        )
-        faltantes = sorted(codigos - existentes)
-        if faltantes:
-            raise ValidationError({'dias': f'Turnos inexistentes: {faltantes}.'})
-
-        creados, actualizados = aplicar_programacion(
-            contrato, datos['anio'], datos['mes'], dias, documento_detalle,
-        )
-        return Response(
-            {'creados': creados, 'actualizados': actualizados},
-            status=status.HTTP_200_OK,
-        )
+        return Response({'creados': creados}, status=status.HTTP_201_CREATED)
 
     @extend_schema(parameters=[
         OpenApiParameter('documento', int, required=True, description='Filtrar por documento'),
