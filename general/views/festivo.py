@@ -1,6 +1,8 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 
 from general.models import GenFestivo
 from general.serializers import GenFestivoSeleccionarSerializer
@@ -8,6 +10,11 @@ from utilidades.paginacion import SeleccionarPaginacion
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por nombre'),
+]
+
+_MES_PARAMS = [
+    OpenApiParameter('anio', int, required=True, description='Año (AAAA)'),
+    OpenApiParameter('mes', int, required=True, description='Mes (1-12)'),
 ]
 
 
@@ -25,3 +32,19 @@ class GenFestivoViewSet(viewsets.GenericViewSet):
         pagina = self.paginate_queryset(qs)
         serializer = GenFestivoSeleccionarSerializer(pagina, many=True)
         return self.get_paginated_response(serializer.data)
+
+    @extend_schema(parameters=_MES_PARAMS, responses=GenFestivoSeleccionarSerializer(many=True))
+    @action(detail=False, methods=['get'])
+    def mes(self, request):
+        """Festivos de un año/mes, para que el front marque los días festivos."""
+        try:
+            anio = int(request.query_params.get('anio'))
+            mes = int(request.query_params.get('mes'))
+        except (TypeError, ValueError):
+            raise ValidationError({'detail': 'anio y mes son obligatorios y deben ser enteros.'})
+        if not 1 <= mes <= 12:
+            raise ValidationError({'detail': 'mes debe estar entre 1 y 12.'})
+
+        qs = GenFestivo.objects.filter(fecha__year=anio, fecha__month=mes).order_by('fecha')
+        serializer = GenFestivoSeleccionarSerializer(qs, many=True)
+        return Response(serializer.data)
