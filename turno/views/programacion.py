@@ -173,6 +173,7 @@ class TurProgramacionViewSet(
         def construir_fila(detalle, contrato, por_fecha):
             return {
                 'documento_detalle_id': detalle.id,
+                'documento_detalle_referencia_id': detalle.documento_detalle_referencia_id,
                 'puesto_id': detalle.puesto_id,
                 'puesto_nombre': detalle.puesto.nombre if detalle.puesto else None,
                 'contrato_id': contrato.id if contrato else None,
