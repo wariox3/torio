@@ -35,6 +35,7 @@ class TurTurnoImportarSerializer(serializers.Serializer):
         ('horas_nocturnas', 'Horas nocturnas'),
         ('color', 'Color'),
         ('novedad_tipo.id', 'Tipo novedad'),
+        ('descanso', 'Descanso'),
         ('estado_inactivo', 'Inactivo'),
     )
     campos_requeridos = {'nombre', 'codigo', 'hora_inicio', 'hora_fin'}
@@ -74,6 +75,7 @@ class TurTurnoImportarSerializer(serializers.Serializer):
                     horas_nocturnas=self._decimal(datos.get('horas_nocturnas'), 'Horas nocturnas'),
                     color=self._texto_o_none(datos.get('color')),
                     novedad_tipo=novedad_tipo,
+                    descanso=self._si_no(datos.get('descanso')),
                     estado_inactivo=self._si_no(datos.get('estado_inactivo')),
                 ))
             except Exception as e:

@@ -5,7 +5,7 @@ from turno.models import TurTurno
 
 class TurTurnoSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'nombre', 'codigo', 'estado_inactivo'}
+    campos_filtrables = {'id', 'nombre', 'codigo', 'descanso', 'estado_inactivo'}
     ordenamiento_default_lista = ('nombre',)
 
     novedad_tipo_nombre = serializers.CharField(source='novedad_tipo.nombre', read_only=True, default=None)
@@ -24,6 +24,7 @@ class TurTurnoSerializer(serializers.ModelSerializer):
             'color',
             'novedad_tipo',
             'novedad_tipo_nombre',
+            'descanso',
             'estado_inactivo',
         ]
         read_only_fields = ['id']

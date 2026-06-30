@@ -10,6 +10,7 @@ class TurTurno(models.Model):
     horas_diurnas = models.DecimalField(max_digits=5, decimal_places=2, default=0, db_default=0)
     horas_nocturnas = models.DecimalField(max_digits=5, decimal_places=2, default=0, db_default=0)
     color = models.CharField(max_length=7, null=True)
+    descanso = models.BooleanField(default=False, db_default=False)
     estado_inactivo = models.BooleanField(default=False, db_default=False)
     novedad_tipo = models.ForeignKey(
         'humano.HumNovedadTipo', null=True, blank=True, on_delete=models.PROTECT,
