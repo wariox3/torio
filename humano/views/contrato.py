@@ -19,6 +19,8 @@ _LIST_PARAMS = [
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por empleado o identificación'),
+    OpenApiParameter('estado_terminado', bool, description='Filtrar por terminado'),
+    OpenApiParameter('habilitado_turno', bool, description='Filtrar por habilitado para turnos'),
 ]
 
 
@@ -70,6 +72,15 @@ class HumContratoViewSet(
                 qs.filter(contacto__nombre_corto__icontains=search)
                 | qs.filter(contacto__numero_identificacion__icontains=search)
             )
+
+        valor = request.query_params.get('estado_terminado')
+        if valor is not None:
+            qs = qs.filter(estado_terminado=valor.lower() == 'true')
+
+        valor = request.query_params.get('habilitado_turno')
+        if valor is not None:
+            qs = qs.filter(habilitado_turno=valor.lower() == 'true')
+
         pagina = self.paginate_queryset(qs)
         serializer = HumContratoSeleccionarSerializer(pagina, many=True)
         return self.get_paginated_response(serializer.data)

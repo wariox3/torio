@@ -94,7 +94,7 @@ class TurProgramacionViewSet(
         except ProgramacionExistenteError as e:
             return Response(
                 {
-                    'detail': str(e),
+                    'detail': 'Algunos turnos ya están asignados al contrato.',
                     'existentes': [
                         {
                             'programacion_id': p.id,
