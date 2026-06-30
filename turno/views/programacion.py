@@ -1,5 +1,4 @@
 from collections import OrderedDict
-from decimal import Decimal
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
@@ -180,8 +179,13 @@ class TurProgramacionViewSet(
                 'contrato_nombre': (
                     contrato.contacto.nombre_corto if contrato and contrato.contacto else None
                 ),
+                'horas': detalle.horas,
+                'horas_diurnas': detalle.horas_diurnas,
+                'horas_nocturnas': detalle.horas_nocturnas,
+                'horas_programadas': detalle.horas_programadas,
+                'horas_diurnas_programadas': detalle.horas_diurnas_programadas,
+                'horas_nocturnas_programadas': detalle.horas_nocturnas_programadas,
                 'dias': {iso: celda(por_fecha.get(iso)) for iso in fechas_iso},
-                'total_horas': sum((p.horas for p in por_fecha.values()), Decimal('0')),
             }
 
         filas = []
