@@ -112,12 +112,46 @@ class CrearProgramacionTests(TenantTestCase):
         self.assertIsNone(dia2.turno_id)  # descanso
         self.assertEqual(dia2.horas, 0)
 
+        # Sumó las horas al detalle (solo dia1 tiene turno: 8h diurnas).
+        self.detalle.refresh_from_db()
+        self.assertEqual(self.detalle.horas_programadas, self.turno.horas)
+        self.assertEqual(self.detalle.horas_diurnas_programadas, self.turno.horas_diurnas)
+        self.assertEqual(self.detalle.horas_nocturnas_programadas, 0)
+
     def test_marca_festivo(self):
         GenFestivo.objects.create(id=1, fecha=date(2026, 6, 1), nombre='Festivo')
 
         self._post(self._payload())
 
         self.assertTrue(TurProgramacion.objects.get(fecha=date(2026, 6, 1)).festivo)
+
+    def test_elimina_programacion(self):
+        self._post(self._payload())  # crea 2026-06-01 y 2026-06-02 en self.detalle
+        # Programación del mismo contrato en OTRO documento_detalle: NO debe borrarse.
+        otro_detalle = GenDocumentoDetalle.objects.create(documento=self.detalle.documento)
+        TurProgramacion.objects.create(
+            contrato=self.contrato, documento_detalle=otro_detalle, fecha=date(2026, 7, 1),
+        )
+
+        eliminar = _ViewSinPermisos.as_view({'post': 'eliminar_programacion'})
+        request = self.factory.post('/eliminar-programacion/', {
+            'contrato_id': self.contrato.id,
+            'documento_detalle_id': self.detalle.id,
+        }, format='json')
+        response = eliminar(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {'eliminados': 2})
+        self.assertEqual(TurProgramacion.objects.count(), 1)  # queda la del otro detalle
+        self.assertTrue(
+            TurProgramacion.objects.filter(documento_detalle=otro_detalle).exists()
+        )
+
+        # Restó las horas del detalle (vuelve a 0).
+        self.detalle.refresh_from_db()
+        self.assertEqual(self.detalle.horas_programadas, 0)
+        self.assertEqual(self.detalle.horas_diurnas_programadas, 0)
+        self.assertEqual(self.detalle.horas_nocturnas_programadas, 0)
 
     def test_fecha_repetida_en_request(self):
         response = self._post(self._payload(items=[

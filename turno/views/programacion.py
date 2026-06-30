@@ -1,5 +1,7 @@
 from collections import OrderedDict
 
+from django.db import transaction
+from django.db.models import F, Sum
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -27,6 +29,11 @@ class CrearProgramacionRequestSerializer(serializers.Serializer):
     contrato_id = serializers.IntegerField()
     documento_detalle_id = serializers.IntegerField()
     items = ItemCrearProgramacionSerializer(many=True, allow_empty=False)
+
+
+class EliminarProgramacionRequestSerializer(serializers.Serializer):
+    contrato_id = serializers.IntegerField()
+    documento_detalle_id = serializers.IntegerField()
 
 
 _LIST_PARAMS = [
@@ -117,6 +124,32 @@ class TurProgramacionViewSet(
 
         return Response({'creados': creados}, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=EliminarProgramacionRequestSerializer)
+    @action(detail=False, methods=['post'], url_path='eliminar-programacion')
+    def eliminar_programacion(self, request):
+        """Elimina las programaciones de un (contrato, documento_detalle)."""
+        serializer = EliminarProgramacionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = serializer.validated_data
+
+        qs = TurProgramacion.objects.filter(
+            contrato_id=datos['contrato_id'],
+            documento_detalle_id=datos['documento_detalle_id'],
+        )
+        with transaction.atomic():
+            agregados = qs.aggregate(
+                horas=Sum('horas'),
+                horas_diurnas=Sum('horas_diurnas'),
+                horas_nocturnas=Sum('horas_nocturnas'),
+            )
+            eliminados, _ = qs.delete()
+            GenDocumentoDetalle.objects.filter(pk=datos['documento_detalle_id']).update(
+                horas_programadas=F('horas_programadas') - (agregados['horas'] or 0),
+                horas_diurnas_programadas=F('horas_diurnas_programadas') - (agregados['horas_diurnas'] or 0),
+                horas_nocturnas_programadas=F('horas_nocturnas_programadas') - (agregados['horas_nocturnas'] or 0),
+            )
+        return Response({'eliminados': eliminados}, status=status.HTTP_200_OK)
+
     @extend_schema(parameters=[
         OpenApiParameter('documento', int, required=True, description='Filtrar por documento'),
     ])
@@ -135,7 +168,7 @@ class TurProgramacionViewSet(
         detalles = list(
             GenDocumentoDetalle.objects
             .filter(documento_id=documento_id)
-            .select_related('puesto')
+            .select_related('puesto', 'modalidad')
             .order_by('id')
         )
 
@@ -176,9 +209,16 @@ class TurProgramacionViewSet(
                 'documento_detalle_afectado_id': detalle.documento_detalle_afectado_id,
                 'puesto_id': detalle.puesto_id,
                 'puesto_nombre': detalle.puesto.nombre if detalle.puesto else None,
+                'modalidad_nombre': detalle.modalidad.nombre if detalle.modalidad else None,
+                'hora_desde': detalle.hora_desde,
+                'hora_hasta': detalle.hora_hasta,
                 'contrato_id': contrato.id if contrato else None,
-                'contrato_nombre': (
+                'contrato_contacto_id': contrato.contacto_id if contrato else None,
+                'contrato_contacto_nombre_corto': (
                     contrato.contacto.nombre_corto if contrato and contrato.contacto else None
+                ),
+                'contrato_contacto_numero_identificacion': (
+                    contrato.contacto.numero_identificacion if contrato and contrato.contacto else None
                 ),
                 'horas': detalle.horas,
                 'horas_diurnas': detalle.horas_diurnas,

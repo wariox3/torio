@@ -1,6 +1,9 @@
-from django.db import transaction
+from decimal import Decimal
 
-from general.models import GenFestivo
+from django.db import transaction
+from django.db.models import F
+
+from general.models import GenDocumentoDetalle, GenFestivo
 from turno.models import TurProgramacion, TurTurno
 
 
@@ -75,5 +78,11 @@ def crear_programacion(contrato, documento_detalle, items):
 
     with transaction.atomic():
         TurProgramacion.objects.bulk_create(nuevos)
+        if documento_detalle is not None:
+            GenDocumentoDetalle.objects.filter(pk=documento_detalle.pk).update(
+                horas_programadas=F('horas_programadas') + sum((p.horas for p in nuevos), Decimal('0')),
+                horas_diurnas_programadas=F('horas_diurnas_programadas') + sum((p.horas_diurnas for p in nuevos), Decimal('0')),
+                horas_nocturnas_programadas=F('horas_nocturnas_programadas') + sum((p.horas_nocturnas for p in nuevos), Decimal('0')),
+            )
 
     return len(nuevos)
