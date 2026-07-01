@@ -1,5 +1,5 @@
 from .programacion import (
-    ProgramacionExistenteError,
+    ProgramacionError,
     actualizar_programacion,
     crear_programacion,
 )

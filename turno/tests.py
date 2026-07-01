@@ -194,10 +194,13 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('detail', response.data)
+        self.assertEqual(len(response.data['errores']), 1)
+        self.assertEqual(response.data['errores'][0]['codigo'], 'fecha_repetida')
+        self.assertEqual(response.data['errores'][0]['fecha'], '2026-06-01')
         self.assertEqual(TurProgramacion.objects.count(), 0)
 
     def test_fecha_ya_existente(self):
-        self._post(self._payload())  # crea 2026-06-01 (turno D) y 2026-06-02 (descanso)
+        self._post(self._payload())  # crea 2026-06-01 (turno D)
         antes = TurProgramacion.objects.count()
 
         response = self._post(self._payload(items=[
@@ -209,12 +212,15 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
         self.assertIn('detail', response.data)
         self.assertEqual(TurProgramacion.objects.count(), antes)  # no se insertó nada
 
-        # Devuelve las programaciones en conflicto (solo la fecha en conflicto).
-        existentes = response.data['existentes']
-        self.assertEqual(len(existentes), 1)
-        self.assertEqual(existentes[0]['fecha'], '2026-06-01')
-        self.assertEqual(existentes[0]['turno_id'], self.turno.id)
-        self.assertEqual(existentes[0]['turno_codigo'], self.turno.codigo)
+        # Devuelve el error por día (solo la fecha en conflicto).
+        errores = response.data['errores']
+        self.assertEqual(len(errores), 1)
+        self.assertEqual(errores[0], {
+            'fecha': '2026-06-01',
+            'turno_codigo': self.turno.codigo,
+            'codigo': 'dia_ocupado',
+            'mensaje': 'Ya existe programación para este día.',
+        })
 
     def test_turno_inexistente(self):
         response = self._post(self._payload(items=[
@@ -223,7 +229,28 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('detail', response.data)
+        self.assertEqual(response.data['errores'][0]['codigo'], 'turno_inexistente')
+        self.assertEqual(response.data['errores'][0]['turno_codigo'], 'XXX')
         self.assertEqual(TurProgramacion.objects.count(), 0)
+
+    def test_acumula_varios_errores_por_dia(self):
+        self._post(self._payload(items=[
+            {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},
+        ]))  # ocupa 06-01
+
+        response = self._post(self._payload(items=[
+            {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},  # dia_ocupado
+            {'fecha': '2026-07-03', 'turno_codigo': 'XXX'},              # turno_inexistente
+        ]))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['detail'], 'Hay días con errores en la programación.')
+        # Ordenados por fecha.
+        codigos = [(e['fecha'], e['codigo']) for e in response.data['errores']]
+        self.assertEqual(codigos, [
+            ('2026-06-01', 'dia_ocupado'),
+            ('2026-07-03', 'turno_inexistente'),
+        ])
 
     def test_contrato_no_habilitado(self):
         self.contrato.habilitado_turno = False
@@ -384,8 +411,13 @@ class ActualizarProgramacionTests(_ProgramacionBaseTests):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('detail', response.data)
-        self.assertEqual(len(response.data['existentes']), 1)
-        self.assertEqual(response.data['existentes'][0]['fecha'], '2026-06-05')
+        self.assertEqual(len(response.data['errores']), 1)
+        self.assertEqual(response.data['errores'][0], {
+            'fecha': '2026-06-05',
+            'turno_codigo': self.turno.codigo,
+            'codigo': 'dia_ocupado',
+            'mensaje': 'Ya existe programación para este día.',
+        })
 
         # No se aplicó ningún cambio.
         self.assertEqual(TurProgramacion.objects.count(), antes)
@@ -399,6 +431,8 @@ class ActualizarProgramacionTests(_ProgramacionBaseTests):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('detail', response.data)
+        self.assertEqual(response.data['errores'][0]['codigo'], 'turno_inexistente')
+        self.assertEqual(response.data['errores'][0]['turno_codigo'], 'XXX')
 
     def test_contrato_no_habilitado(self):
         self.contrato.habilitado_turno = False

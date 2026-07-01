@@ -1,3 +1,4 @@
+from collections import Counter
 from decimal import Decimal
 
 from django.db import transaction
@@ -7,18 +8,29 @@ from general.models import GenDocumento, GenDocumentoDetalle, GenFestivo
 from turno.models import TurProgramacion, TurTurno
 
 
-class ProgramacionExistenteError(ValueError):
+class ProgramacionError(ValueError):
     """
-    Se intentó crear programación en fechas que el contrato ya tiene ocupadas.
+    Errores por día al crear/actualizar programación.
 
-    Lleva en `programaciones` las filas `TurProgramacion` en conflicto
-    (con `turno` precargado) para que la vista las devuelva al front.
+    Lleva en `errores` una lista de dicts `{fecha, turno_codigo, codigo, mensaje}`
+    para que la vista los devuelva junto a un `detail` general.
     """
 
-    def __init__(self, programaciones):
-        self.programaciones = programaciones
-        fechas = [p.fecha.isoformat() for p in programaciones]
-        super().__init__(f'Ya existe programación para: {fechas}.')
+    DETAIL = 'Hay días con errores en la programación.'
+
+    def __init__(self, errores, detail=DETAIL):
+        self.errores = errores
+        self.detail = detail
+        super().__init__(detail)
+
+
+def _error_dia(fecha, turno_codigo, codigo, mensaje):
+    return {
+        'fecha': fecha.isoformat(),
+        'turno_codigo': turno_codigo,
+        'codigo': codigo,
+        'mensaje': mensaje,
+    }
 
 
 def crear_programacion(contrato, documento_detalle, items):
@@ -33,41 +45,53 @@ def crear_programacion(contrato, documento_detalle, items):
     - Las horas se denormalizan desde el turno resuelto.
     - No hay upsert: si ya existe programación para `(contrato, fecha)` —o si el
       array trae fechas repetidas, o un `turno_codigo` inexistente— se aborta
-      con `ValueError` sin guardar nada.
+      con `ProgramacionError` (errores por día) sin guardar nada.
 
     Retorna la cantidad de filas creadas.
     """
-    fechas = [item['fecha'] for item in items]
-
-    repetidas = sorted({f.isoformat() for f in fechas if fechas.count(f) > 1})
-    if repetidas:
-        raise ValueError(f'Fechas repetidas en la solicitud: {repetidas}.')
-
+    conteo = Counter(item['fecha'] for item in items)
     codigos = {(item.get('turno_codigo') or '').strip() for item in items}
     codigos.discard('')
     turnos = {t.codigo: t for t in TurTurno.objects.filter(codigo__in=codigos)}
-    faltantes = sorted(codigos - turnos.keys())
-    if faltantes:
-        raise ValueError(f'Turnos inexistentes: {faltantes}.')
 
-    # Solo los items con turno resuelto generan programación.
-    con_turno = []
+    errores = []
+    repetidas_vistas = set()
+    con_turno = []  # (fecha, turno, turno_codigo) de los items válidos con turno
     for item in items:
+        fecha = item['fecha']
         codigo = (item.get('turno_codigo') or '').strip() or None
-        turno = turnos.get(codigo) if codigo else None
-        if turno is not None:
-            con_turno.append((item['fecha'], turno))
+        if conteo[fecha] > 1:
+            if fecha not in repetidas_vistas:
+                repetidas_vistas.add(fecha)
+                errores.append(_error_dia(
+                    fecha, codigo, 'fecha_repetida', 'La fecha está repetida en la solicitud.',
+                ))
+            continue
+        if codigo is None:
+            continue  # día sin turno: se ignora, no genera fila
+        turno = turnos.get(codigo)
+        if turno is None:
+            errores.append(_error_dia(
+                fecha, codigo, 'turno_inexistente', f'El turno «{codigo}» no existe.',
+            ))
+            continue
+        con_turno.append((fecha, turno, codigo))
 
-    fechas_con_turno = [fecha for fecha, _ in con_turno]
-
-    existentes = list(
+    fechas_con_turno = [fecha for fecha, _, _ in con_turno]
+    ocupadas = set(
         TurProgramacion.objects
-        .select_related('turno')
         .filter(contrato=contrato, fecha__in=fechas_con_turno)
-        .order_by('fecha')
+        .values_list('fecha', flat=True)
     )
-    if existentes:
-        raise ProgramacionExistenteError(existentes)
+    for fecha, turno, codigo in con_turno:
+        if fecha in ocupadas:
+            errores.append(_error_dia(
+                fecha, codigo, 'dia_ocupado', 'Ya existe programación para este día.',
+            ))
+
+    if errores:
+        errores.sort(key=lambda e: e['fecha'])
+        raise ProgramacionError(errores)
 
     festivos = set(
         GenFestivo.objects.filter(fecha__in=fechas_con_turno).values_list('fecha', flat=True)
@@ -84,7 +108,7 @@ def crear_programacion(contrato, documento_detalle, items):
             horas_diurnas=turno.horas_diurnas,
             horas_nocturnas=turno.horas_nocturnas,
         )
-        for fecha, turno in con_turno
+        for fecha, turno, _ in con_turno
     ]
 
     total_horas = sum((p.horas for p in nuevos), Decimal('0'))
@@ -135,27 +159,16 @@ def actualizar_programacion(contrato, documento_detalle, items):
 
     Reglas iguales a `crear_programacion`: sin fechas repetidas, turnos válidos y
     `festivo` desde `GenFestivo`. Si alguna fecha nueva con turno ya está ocupada
-    por el contrato en OTRO documento_detalle, se aborta con `ProgramacionExistenteError`.
-    El neto de horas se propaga a `documento_detalle` y a su documento padre.
+    por el contrato en OTRO documento_detalle, se aborta con `ProgramacionError`
+    (errores por día). El neto de horas se propaga a `documento_detalle` y a su
+    documento padre.
 
     Retorna `{'creados', 'actualizados', 'eliminados'}`.
     """
-    fechas = [item['fecha'] for item in items]
-
-    repetidas = sorted({f.isoformat() for f in fechas if fechas.count(f) > 1})
-    if repetidas:
-        raise ValueError(f'Fechas repetidas en la solicitud: {repetidas}.')
-
+    conteo = Counter(item['fecha'] for item in items)
     codigos = {(item.get('turno_codigo') or '').strip() for item in items}
     codigos.discard('')
     turnos = {t.codigo: t for t in TurTurno.objects.filter(codigo__in=codigos)}
-    faltantes = sorted(codigos - turnos.keys())
-    if faltantes:
-        raise ValueError(f'Turnos inexistentes: {faltantes}.')
-
-    festivos = set(
-        GenFestivo.objects.filter(fecha__in=fechas).values_list('fecha', flat=True)
-    )
 
     existentes = {
         p.fecha: p
@@ -164,27 +177,57 @@ def actualizar_programacion(contrato, documento_detalle, items):
         )
     }
 
+    errores = []
+    repetidas_vistas = set()
     deseado = {}
+    codigo_por_fecha = {}
     for item in items:
+        fecha = item['fecha']
         codigo = (item.get('turno_codigo') or '').strip() or None
-        deseado[item['fecha']] = turnos.get(codigo) if codigo else None
+        if conteo[fecha] > 1:
+            if fecha not in repetidas_vistas:
+                repetidas_vistas.add(fecha)
+                errores.append(_error_dia(
+                    fecha, codigo, 'fecha_repetida', 'La fecha está repetida en la solicitud.',
+                ))
+            continue
+        if codigo is None:
+            deseado[fecha] = None
+            continue
+        turno = turnos.get(codigo)
+        if turno is None:
+            errores.append(_error_dia(
+                fecha, codigo, 'turno_inexistente', f'El turno «{codigo}» no existe.',
+            ))
+            continue
+        deseado[fecha] = turno
+        codigo_por_fecha[fecha] = codigo
 
-    # Solo las fechas con turno que aún no existen en este detalle pueden chocar
-    # con otro documento_detalle del mismo contrato.
+    # Fechas con turno que aún no existen en este detalle: pueden chocar con otro
+    # documento_detalle del mismo contrato.
     fechas_a_crear = [
         fecha for fecha, turno in deseado.items()
         if turno is not None and fecha not in existentes
     ]
-    if fechas_a_crear:
-        conflictos = list(
-            TurProgramacion.objects
-            .select_related('turno')
-            .filter(contrato=contrato, fecha__in=fechas_a_crear)
-            .exclude(documento_detalle=documento_detalle)
-            .order_by('fecha')
-        )
-        if conflictos:
-            raise ProgramacionExistenteError(conflictos)
+    ocupadas = (
+        TurProgramacion.objects
+        .filter(contrato=contrato, fecha__in=fechas_a_crear)
+        .exclude(documento_detalle=documento_detalle)
+        .values_list('fecha', flat=True)
+    )
+    for fecha in ocupadas:
+        errores.append(_error_dia(
+            fecha, codigo_por_fecha.get(fecha), 'dia_ocupado',
+            'Ya existe programación para este día.',
+        ))
+
+    if errores:
+        errores.sort(key=lambda e: e['fecha'])
+        raise ProgramacionError(errores)
+
+    festivos = set(
+        GenFestivo.objects.filter(fecha__in=deseado).values_list('fecha', flat=True)
+    )
 
     crear = []
     actualizar = []

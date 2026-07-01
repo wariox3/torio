@@ -19,7 +19,7 @@ from turno.serializers import (
     TurProgramacionSerializer,
 )
 from turno.servicios import (
-    ProgramacionExistenteError,
+    ProgramacionError,
     actualizar_programacion,
     crear_programacion,
 )
@@ -104,29 +104,11 @@ class TurProgramacionViewSet(
 
         try:
             creados = crear_programacion(contrato, documento_detalle, datos['items'])
-        except ProgramacionExistenteError as e:
+        except ProgramacionError as e:
             return Response(
-                {
-                    'detail': 'Algunos turnos ya están asignados al contrato.',
-                    'existentes': [
-                        {
-                            'programacion_id': p.id,
-                            'fecha': p.fecha.isoformat(),
-                            'turno_id': p.turno_id,
-                            'turno_codigo': p.turno.codigo if p.turno else None,
-                            'turno_nombre': p.turno.nombre if p.turno else None,
-                            'horas': p.horas,
-                            'horas_diurnas': p.horas_diurnas,
-                            'horas_nocturnas': p.horas_nocturnas,
-                            'festivo': p.festivo,
-                        }
-                        for p in e.programaciones
-                    ],
-                },
+                {'detail': e.detail, 'errores': e.errores},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        except ValueError as e:
-            raise ValidationError({'detail': str(e)})
 
         return Response({'creados': creados}, status=status.HTTP_201_CREATED)
 
@@ -152,29 +134,11 @@ class TurProgramacionViewSet(
 
         try:
             resultado = actualizar_programacion(contrato, documento_detalle, datos['items'])
-        except ProgramacionExistenteError as e:
+        except ProgramacionError as e:
             return Response(
-                {
-                    'detail': 'Algunos turnos ya están asignados al contrato.',
-                    'existentes': [
-                        {
-                            'programacion_id': p.id,
-                            'fecha': p.fecha.isoformat(),
-                            'turno_id': p.turno_id,
-                            'turno_codigo': p.turno.codigo if p.turno else None,
-                            'turno_nombre': p.turno.nombre if p.turno else None,
-                            'horas': p.horas,
-                            'horas_diurnas': p.horas_diurnas,
-                            'horas_nocturnas': p.horas_nocturnas,
-                            'festivo': p.festivo,
-                        }
-                        for p in e.programaciones
-                    ],
-                },
+                {'detail': e.detail, 'errores': e.errores},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        except ValueError as e:
-            raise ValidationError({'detail': str(e)})
 
         return Response(resultado, status=status.HTTP_200_OK)
 
