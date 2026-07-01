@@ -12,9 +12,19 @@ from general.serializers import (
     GenDocumentoDetalleSerializer,
 )
 from general.servicios import LiquidadorSupervigilancia, crear_detalle, sincronizar_impuestos
+from turno.models import TurProgramacion
 from utilidades.filtros import aplicar_filtros, aplicar_ordenamientos
 from utilidades.mixins import FiltrosDinamicosMixin
 from utilidades.mixins.filtros import BusquedaRequest
+
+
+# Solo se regeneran horas de los documentos de este tipo (programación de turnos).
+DOCUMENTO_TIPO_REGENERAR_HORAS = 35
+
+
+class RegenerarHorasRequestSerializer(serializers.Serializer):
+    anio = serializers.IntegerField()
+    mes = serializers.IntegerField(min_value=1, max_value=12)
 
 
 class CalcularPrecioSupervigilanciaRequestSerializer(serializers.Serializer):
@@ -191,6 +201,75 @@ class GenDocumentoDetalleViewSet(
             GenDocumentoDetalle.objects.bulk_update(detalles, ['afectado', 'pendiente'])
 
         return Response({'actualizados': len(detalles)}, status=status.HTTP_200_OK)
+
+    @extend_schema(request=RegenerarHorasRequestSerializer)
+    @action(detail=False, methods=['post'], url_path='regenerar-horas')
+    def regenerar_horas(self, request):
+        """
+        Regenera las horas programadas de los detalles de un periodo (anio/mes).
+
+        Toma los documento_detalle de documentos con `fecha` en el anio/mes,
+        deja sus horas programadas (diurnas/nocturnas) en cero y les asigna la
+        suma de todas sus programaciones relacionadas.
+        """
+        serializer = RegenerarHorasRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        anio = serializer.validated_data['anio']
+        mes = serializer.validated_data['mes']
+
+        with transaction.atomic():
+            agregados = {
+                fila['documento_detalle']: fila
+                for fila in TurProgramacion.objects
+                .filter(
+                    documento_detalle__documento__documento_tipo_id=DOCUMENTO_TIPO_REGENERAR_HORAS,
+                    documento_detalle__documento__fecha__year=anio,
+                    documento_detalle__documento__fecha__month=mes,
+                )
+                .values('documento_detalle')
+                .annotate(
+                    horas=Sum('horas'),
+                    horas_diurnas=Sum('horas_diurnas'),
+                    horas_nocturnas=Sum('horas_nocturnas'),
+                )
+            }
+
+            detalles = list(
+                GenDocumentoDetalle.objects.filter(
+                    documento__documento_tipo_id=DOCUMENTO_TIPO_REGENERAR_HORAS,
+                    documento__fecha__year=anio,
+                    documento__fecha__month=mes,
+                )
+            )
+            for detalle in detalles:
+                fila = agregados.get(detalle.pk)
+                detalle.horas_programadas = fila['horas'] if fila else 0
+                detalle.horas_diurnas_programadas = fila['horas_diurnas'] if fila else 0
+                detalle.horas_nocturnas_programadas = fila['horas_nocturnas'] if fila else 0
+
+            GenDocumentoDetalle.objects.bulk_update(
+                detalles,
+                ['horas_programadas', 'horas_diurnas_programadas', 'horas_nocturnas_programadas'],
+            )
+
+            documentos = list(
+                GenDocumento.objects.filter(
+                    documento_tipo_id=DOCUMENTO_TIPO_REGENERAR_HORAS,
+                    fecha__year=anio,
+                    fecha__month=mes,
+                )
+            )
+            for documento in documentos:
+                documento.recalcular_totales()
+            GenDocumento.objects.bulk_update(
+                documentos,
+                ['horas_programadas', 'horas_diurnas_programadas', 'horas_nocturnas_programadas'],
+            )
+
+        return Response(
+            {'actualizados': len(detalles), 'documentos': len(documentos)},
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(request=CalcularPrecioSupervigilanciaRequestSerializer)
     @action(detail=False, methods=['post'], url_path='calcular-precio-supervigilancia')
