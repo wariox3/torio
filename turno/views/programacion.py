@@ -8,7 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
-from general.models import GenDocumentoDetalle
+from general.models import GenDocumento, GenDocumentoDetalle
 from humano.models import HumContrato
 from turno.models import TurProgramacion
 from turno.serializers import (
@@ -16,7 +16,11 @@ from turno.serializers import (
     TurProgramacionImportarSerializer,
     TurProgramacionSerializer,
 )
-from turno.servicios import ProgramacionExistenteError, crear_programacion
+from turno.servicios import (
+    ProgramacionExistenteError,
+    actualizar_programacion,
+    crear_programacion,
+)
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 
 
@@ -124,6 +128,54 @@ class TurProgramacionViewSet(
 
         return Response({'creados': creados}, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=CrearProgramacionRequestSerializer)
+    @action(detail=False, methods=['post'], url_path='actualizar-programacion')
+    def actualizar_programacion(self, request):
+        """Sincroniza las programaciones de un (contrato, documento_detalle) con los items enviados."""
+        serializer = CrearProgramacionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = serializer.validated_data
+
+        try:
+            contrato = HumContrato.objects.get(pk=datos['contrato_id'])
+        except HumContrato.DoesNotExist:
+            raise NotFound('Contrato no encontrado.')
+        if not contrato.habilitado_turno:
+            raise ValidationError({'detail': 'El contrato no está habilitado para turnos.'})
+
+        try:
+            documento_detalle = GenDocumentoDetalle.objects.get(pk=datos['documento_detalle_id'])
+        except GenDocumentoDetalle.DoesNotExist:
+            raise NotFound('Documento detalle no encontrado.')
+
+        try:
+            resultado = actualizar_programacion(contrato, documento_detalle, datos['items'])
+        except ProgramacionExistenteError as e:
+            return Response(
+                {
+                    'detail': 'Algunos turnos ya están asignados al contrato.',
+                    'existentes': [
+                        {
+                            'programacion_id': p.id,
+                            'fecha': p.fecha.isoformat(),
+                            'turno_id': p.turno_id,
+                            'turno_codigo': p.turno.codigo if p.turno else None,
+                            'turno_nombre': p.turno.nombre if p.turno else None,
+                            'horas': p.horas,
+                            'horas_diurnas': p.horas_diurnas,
+                            'horas_nocturnas': p.horas_nocturnas,
+                            'festivo': p.festivo,
+                        }
+                        for p in e.programaciones
+                    ],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ValueError as e:
+            raise ValidationError({'detail': str(e)})
+
+        return Response(resultado, status=status.HTTP_200_OK)
+
     @extend_schema(request=EliminarProgramacionRequestSerializer)
     @action(detail=False, methods=['post'], url_path='eliminar-programacion')
     def eliminar_programacion(self, request):
@@ -142,11 +194,22 @@ class TurProgramacionViewSet(
                 horas_diurnas=Sum('horas_diurnas'),
                 horas_nocturnas=Sum('horas_nocturnas'),
             )
+            total_horas = agregados['horas'] or 0
+            total_diurnas = agregados['horas_diurnas'] or 0
+            total_nocturnas = agregados['horas_nocturnas'] or 0
+
             eliminados, _ = qs.delete()
             GenDocumentoDetalle.objects.filter(pk=datos['documento_detalle_id']).update(
-                horas_programadas=F('horas_programadas') - (agregados['horas'] or 0),
-                horas_diurnas_programadas=F('horas_diurnas_programadas') - (agregados['horas_diurnas'] or 0),
-                horas_nocturnas_programadas=F('horas_nocturnas_programadas') - (agregados['horas_nocturnas'] or 0),
+                horas_programadas=F('horas_programadas') - total_horas,
+                horas_diurnas_programadas=F('horas_diurnas_programadas') - total_diurnas,
+                horas_nocturnas_programadas=F('horas_nocturnas_programadas') - total_nocturnas,
+            )
+            GenDocumento.objects.filter(
+                documentos_detalles_documento_rel__pk=datos['documento_detalle_id']
+            ).update(
+                horas_programadas=F('horas_programadas') - total_horas,
+                horas_diurnas_programadas=F('horas_diurnas_programadas') - total_diurnas,
+                horas_nocturnas_programadas=F('horas_nocturnas_programadas') - total_nocturnas,
             )
         return Response({'eliminados': eliminados}, status=status.HTTP_200_OK)
 
