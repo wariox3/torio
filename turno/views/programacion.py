@@ -273,6 +273,7 @@ class TurProgramacionViewSet(
                 'puesto_id': detalle.puesto_id,
                 'puesto_nombre': detalle.puesto.nombre if detalle.puesto else None,
                 'modalidad_nombre': detalle.modalidad.nombre if detalle.modalidad else None,
+                'fecha_desde': detalle.fecha_desde,
                 'hora_desde': detalle.hora_desde,
                 'hora_hasta': detalle.hora_hasta,
                 'contrato_id': contrato.id if contrato else None,
