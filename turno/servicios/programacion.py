@@ -27,6 +27,8 @@ def crear_programacion(contrato, documento_detalle, items):
     items `{fecha, turno_codigo}` (fecha: `date`; turno_codigo vacío = descanso).
 
     - El turno se resuelve por `codigo` contra `TurTurno`.
+    - Los items **sin turno** (turno_codigo vacío/null) se ignoran: no crean
+      fila, así no ocupan `(contrato, fecha)` ni bloquean a otro documento_detalle.
     - `festivo` se marca consultando `GenFestivo`.
     - Las horas se denormalizan desde el turno resuelto.
     - No hay upsert: si ya existe programación para `(contrato, fecha)` —o si el
@@ -41,15 +43,6 @@ def crear_programacion(contrato, documento_detalle, items):
     if repetidas:
         raise ValueError(f'Fechas repetidas en la solicitud: {repetidas}.')
 
-    existentes = list(
-        TurProgramacion.objects
-        .select_related('turno')
-        .filter(contrato=contrato, fecha__in=fechas)
-        .order_by('fecha')
-    )
-    if existentes:
-        raise ProgramacionExistenteError(existentes)
-
     codigos = {(item.get('turno_codigo') or '').strip() for item in items}
     codigos.discard('')
     turnos = {t.codigo: t for t in TurTurno.objects.filter(codigo__in=codigos)}
@@ -57,24 +50,42 @@ def crear_programacion(contrato, documento_detalle, items):
     if faltantes:
         raise ValueError(f'Turnos inexistentes: {faltantes}.')
 
-    festivos = set(
-        GenFestivo.objects.filter(fecha__in=fechas).values_list('fecha', flat=True)
-    )
-
-    nuevos = []
+    # Solo los items con turno resuelto generan programación.
+    con_turno = []
     for item in items:
         codigo = (item.get('turno_codigo') or '').strip() or None
         turno = turnos.get(codigo) if codigo else None
-        nuevos.append(TurProgramacion(
+        if turno is not None:
+            con_turno.append((item['fecha'], turno))
+
+    fechas_con_turno = [fecha for fecha, _ in con_turno]
+
+    existentes = list(
+        TurProgramacion.objects
+        .select_related('turno')
+        .filter(contrato=contrato, fecha__in=fechas_con_turno)
+        .order_by('fecha')
+    )
+    if existentes:
+        raise ProgramacionExistenteError(existentes)
+
+    festivos = set(
+        GenFestivo.objects.filter(fecha__in=fechas_con_turno).values_list('fecha', flat=True)
+    )
+
+    nuevos = [
+        TurProgramacion(
             contrato=contrato,
-            fecha=item['fecha'],
+            fecha=fecha,
             documento_detalle=documento_detalle,
             turno=turno,
-            festivo=item['fecha'] in festivos,
-            horas=turno.horas if turno else 0,
-            horas_diurnas=turno.horas_diurnas if turno else 0,
-            horas_nocturnas=turno.horas_nocturnas if turno else 0,
-        ))
+            festivo=fecha in festivos,
+            horas=turno.horas,
+            horas_diurnas=turno.horas_diurnas,
+            horas_nocturnas=turno.horas_nocturnas,
+        )
+        for fecha, turno in con_turno
+    ]
 
     total_horas = sum((p.horas for p in nuevos), Decimal('0'))
     total_diurnas = sum((p.horas_diurnas for p in nuevos), Decimal('0'))
@@ -117,13 +128,14 @@ def actualizar_programacion(contrato, documento_detalle, items):
     lista deseada `items` `{fecha, turno_codigo}`, comparándola con el estado
     actual y aplicando solo las diferencias:
 
-    - fecha nueva            -> se crea la programación (suma horas).
-    - fecha ausente en items -> se elimina la programación (resta horas).
+    - fecha nueva con turno    -> se crea la programación (suma horas).
+    - fecha ausente en items   -> se elimina la programación (resta horas).
     - fecha con turno distinto -> se actualiza la fila (ajusta el delta de horas).
+    - fecha sin turno (descanso) -> no se persiste; si existía fila, se elimina.
 
     Reglas iguales a `crear_programacion`: sin fechas repetidas, turnos válidos y
-    `festivo` desde `GenFestivo`. Si alguna fecha nueva ya está ocupada por el
-    contrato en OTRO documento_detalle, se aborta con `ProgramacionExistenteError`.
+    `festivo` desde `GenFestivo`. Si alguna fecha nueva con turno ya está ocupada
+    por el contrato en OTRO documento_detalle, se aborta con `ProgramacionExistenteError`.
     El neto de horas se propaga a `documento_detalle` y a su documento padre.
 
     Retorna `{'creados', 'actualizados', 'eliminados'}`.
@@ -152,22 +164,27 @@ def actualizar_programacion(contrato, documento_detalle, items):
         )
     }
 
-    fechas_nuevas = [f for f in fechas if f not in existentes]
-    if fechas_nuevas:
+    deseado = {}
+    for item in items:
+        codigo = (item.get('turno_codigo') or '').strip() or None
+        deseado[item['fecha']] = turnos.get(codigo) if codigo else None
+
+    # Solo las fechas con turno que aún no existen en este detalle pueden chocar
+    # con otro documento_detalle del mismo contrato.
+    fechas_a_crear = [
+        fecha for fecha, turno in deseado.items()
+        if turno is not None and fecha not in existentes
+    ]
+    if fechas_a_crear:
         conflictos = list(
             TurProgramacion.objects
             .select_related('turno')
-            .filter(contrato=contrato, fecha__in=fechas_nuevas)
+            .filter(contrato=contrato, fecha__in=fechas_a_crear)
             .exclude(documento_detalle=documento_detalle)
             .order_by('fecha')
         )
         if conflictos:
             raise ProgramacionExistenteError(conflictos)
-
-    deseado = {}
-    for item in items:
-        codigo = (item.get('turno_codigo') or '').strip() or None
-        deseado[item['fecha']] = turnos.get(codigo) if codigo else None
 
     crear = []
     actualizar = []
@@ -175,9 +192,16 @@ def actualizar_programacion(contrato, documento_detalle, items):
     delta_horas = delta_diurnas = delta_nocturnas = Decimal('0')
 
     for fecha, turno in deseado.items():
-        horas, diurnas, nocturnas = _horas_de(turno)
         actual = existentes.get(fecha)
-        turno_id = turno.id if turno else None
+        if turno is None:
+            # Día sin turno: no se persiste; si había fila, se elimina.
+            if actual is not None:
+                eliminar_ids.append(actual.pk)
+                delta_horas -= actual.horas
+                delta_diurnas -= actual.horas_diurnas
+                delta_nocturnas -= actual.horas_nocturnas
+            continue
+        horas, diurnas, nocturnas = _horas_de(turno)
         if actual is None:
             crear.append(TurProgramacion(
                 contrato=contrato,
@@ -192,7 +216,7 @@ def actualizar_programacion(contrato, documento_detalle, items):
             delta_horas += horas
             delta_diurnas += diurnas
             delta_nocturnas += nocturnas
-        elif actual.turno_id != turno_id:
+        elif actual.turno_id != turno.id:
             delta_horas += horas - actual.horas
             delta_diurnas += diurnas - actual.horas_diurnas
             delta_nocturnas += nocturnas - actual.horas_nocturnas

@@ -1,4 +1,6 @@
+import calendar
 from collections import OrderedDict
+from datetime import date
 
 from django.db import transaction
 from django.db.models import F, Sum
@@ -228,6 +230,8 @@ class TurProgramacionViewSet(
         except (TypeError, ValueError):
             raise ValidationError({'documento': 'Debe ser un entero.'})
 
+        documento = GenDocumento.objects.filter(pk=documento_id).only('id', 'fecha').first()
+
         detalles = list(
             GenDocumentoDetalle.objects
             .filter(documento_id=documento_id)
@@ -242,8 +246,17 @@ class TurProgramacionViewSet(
             .order_by('fecha', 'id')
         )
 
-        # Columnas: unión ordenada de fechas presentes.
-        fechas = sorted({p.fecha for p in programaciones})
+        # Columnas: el mes completo de documento.fecha, más cualquier fecha
+        # programada fuera de ese mes para no ocultar datos.
+        fechas_mes = set()
+        fecha_documento = documento.fecha if documento else None
+        if fecha_documento:
+            dias_mes = calendar.monthrange(fecha_documento.year, fecha_documento.month)[1]
+            fechas_mes = {
+                date(fecha_documento.year, fecha_documento.month, dia)
+                for dia in range(1, dias_mes + 1)
+            }
+        fechas = sorted(fechas_mes | {p.fecha for p in programaciones})
         fechas_iso = [f.isoformat() for f in fechas]
 
         # Agrupar por detalle -> contrato -> {fecha_iso: programacion}.

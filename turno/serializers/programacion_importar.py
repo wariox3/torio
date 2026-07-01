@@ -55,8 +55,8 @@ class TurProgramacionImportarSerializer(serializers.Serializer):
         for idx, datos in filas_validas:
             try:
                 contrato = self._fk_obligatorio(datos.get('contrato.id'), mapa_contrato, 'Contrato')
-                documento_detalle = self._fk_opcional(datos.get('documento_detalle.id'), mapa_detalle, 'Documento detalle')
-                turno = self._fk_opcional(datos.get('turno.id'), mapa_turno, 'Turno')
+                documento_detalle = self._fk_obligatorio(datos.get('documento_detalle.id'), mapa_detalle, 'Documento detalle')
+                turno = self._fk_obligatorio(datos.get('turno.id'), mapa_turno, 'Turno')
                 nuevos.append(TurProgramacion(
                     fecha=self._fecha(datos.get('fecha'), 'Fecha'),
                     horas=self._decimal(datos.get('horas'), 'Horas'),

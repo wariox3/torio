@@ -14,13 +14,11 @@ class TurProgramacion(models.Model):
     )
     documento_detalle = models.ForeignKey(
         'general.GenDocumentoDetalle',
-        null=True,
         on_delete=models.PROTECT,
         related_name='programaciones_documento_detalle_rel',
     )
     turno = models.ForeignKey(
         'turno.TurTurno',
-        null=True,
         on_delete=models.PROTECT,
         related_name='programaciones_turno_rel',
     )

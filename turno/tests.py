@@ -106,8 +106,8 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
         response = self._post(self._payload())
 
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data, {'creados': 2})
-        self.assertEqual(TurProgramacion.objects.count(), 2)
+        self.assertEqual(response.data, {'creados': 1})  # el día sin turno no se persiste
+        self.assertEqual(TurProgramacion.objects.count(), 1)
 
         dia1 = TurProgramacion.objects.get(fecha=date(2026, 6, 1))
         self.assertEqual(dia1.turno_id, self.turno.id)
@@ -115,15 +115,40 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
         self.assertEqual(dia1.documento_detalle_id, self.detalle.id)
         self.assertFalse(dia1.festivo)
 
-        dia2 = TurProgramacion.objects.get(fecha=date(2026, 6, 2))
-        self.assertIsNone(dia2.turno_id)  # descanso
-        self.assertEqual(dia2.horas, 0)
+        # El día sin turno (06-02, descanso) no genera fila.
+        self.assertFalse(TurProgramacion.objects.filter(fecha=date(2026, 6, 2)).exists())
 
         # Sumó las horas al detalle (solo dia1 tiene turno: 8h diurnas).
         self.detalle.refresh_from_db()
         self.assertEqual(self.detalle.horas_programadas, self.turno.horas)
         self.assertEqual(self.detalle.horas_diurnas_programadas, self.turno.horas_diurnas)
         self.assertEqual(self.detalle.horas_nocturnas_programadas, 0)
+
+    def test_dia_sin_turno_no_se_crea(self):
+        response = self._post(self._payload(items=[
+            {'fecha': '2026-06-01', 'turno_codigo': None},
+            {'fecha': '2026-06-02', 'turno_codigo': None},
+        ]))
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data, {'creados': 0})
+        self.assertEqual(TurProgramacion.objects.count(), 0)
+
+    def test_dias_libres_no_bloquean_otro_detalle(self):
+        # detalle A ocupa 06-01 con turno.
+        self._post(self._payload(items=[
+            {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},
+        ]))
+        # detalle B toma 06-02 (libre, nunca se persistió como descanso) -> OK.
+        otro_detalle = GenDocumentoDetalle.objects.create(documento=self.detalle.documento)
+        response = self._post(self._payload(
+            documento_detalle_id=otro_detalle.id,
+            items=[{'fecha': '2026-06-02', 'turno_codigo': self.turno.codigo}],
+        ))
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data, {'creados': 1})
+        self.assertEqual(TurProgramacion.objects.count(), 2)
 
     def test_marca_festivo(self):
         GenFestivo.objects.create(id=1, fecha=date(2026, 6, 1), nombre='Festivo')
@@ -133,11 +158,12 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
         self.assertTrue(TurProgramacion.objects.get(fecha=date(2026, 6, 1)).festivo)
 
     def test_elimina_programacion(self):
-        self._post(self._payload())  # crea 2026-06-01 y 2026-06-02 en self.detalle
+        self._post(self._payload())  # crea solo 2026-06-01 (06-02 sin turno no se persiste)
         # Programación del mismo contrato en OTRO documento_detalle: NO debe borrarse.
         otro_detalle = GenDocumentoDetalle.objects.create(documento=self.detalle.documento)
         TurProgramacion.objects.create(
             contrato=self.contrato, documento_detalle=otro_detalle, fecha=date(2026, 7, 1),
+            turno=self.turno,
         )
 
         eliminar = _ViewSinPermisos.as_view({'post': 'eliminar_programacion'})
@@ -148,7 +174,7 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
         response = eliminar(request)
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, {'eliminados': 2})
+        self.assertEqual(response.data, {'eliminados': 1})
         self.assertEqual(TurProgramacion.objects.count(), 1)  # queda la del otro detalle
         self.assertTrue(
             TurProgramacion.objects.filter(documento_detalle=otro_detalle).exists()
@@ -267,9 +293,8 @@ class ActualizarProgramacionTests(_ProgramacionBaseTests):
         return self.actualizar(request)
 
     def test_agrega_y_elimina(self):
-        # Mantiene 06-01 (D), quita 06-02 (descanso, 0h) y agrega 06-03 (D, +8h).
+        # Estado inicial: solo 06-01 (D). Se omite 06-01 (se elimina) y se agrega 06-03.
         response = self._post([
-            {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},
             {'fecha': '2026-06-03', 'turno_codigo': self.turno.codigo},
         ])
 
@@ -277,13 +302,26 @@ class ActualizarProgramacionTests(_ProgramacionBaseTests):
         self.assertEqual(response.data, {'creados': 1, 'actualizados': 0, 'eliminados': 1})
 
         fechas = set(TurProgramacion.objects.values_list('fecha', flat=True))
-        self.assertEqual(fechas, {date(2026, 6, 1), date(2026, 6, 3)})
+        self.assertEqual(fechas, {date(2026, 6, 3)})
 
-        # 06-01 (8h) + 06-03 (8h) = 16h diurnas en el detalle.
+        # -06-01 (8h) +06-03 (8h) = 8h diurnas en el detalle.
         self.detalle.refresh_from_db()
-        self.assertEqual(self.detalle.horas_programadas, 16)
-        self.assertEqual(self.detalle.horas_diurnas_programadas, 16)
+        self.assertEqual(self.detalle.horas_programadas, 8)
+        self.assertEqual(self.detalle.horas_diurnas_programadas, 8)
         self.assertEqual(self.detalle.horas_nocturnas_programadas, 0)
+
+    def test_dia_sin_turno_elimina_existente(self):
+        # 06-01 tenía turno; reenviarlo como descanso (null) elimina la fila.
+        response = self._post([
+            {'fecha': '2026-06-01', 'turno_codigo': None},
+        ])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {'creados': 0, 'actualizados': 0, 'eliminados': 1})
+        self.assertFalse(TurProgramacion.objects.filter(fecha=date(2026, 6, 1)).exists())
+
+        self.detalle.refresh_from_db()
+        self.assertEqual(self.detalle.horas_programadas, 0)
 
     def test_cambia_turno(self):
         # 06-01 pasa de D (8h diurnas) a N (10h nocturnas); 06-02 se conserva.
@@ -372,3 +410,80 @@ class ActualizarProgramacionTests(_ProgramacionBaseTests):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('detail', response.data)
+
+
+class DetalleTests(_ProgramacionBaseTests):
+    def setUp(self):
+        super().setUp()
+        self.view = _ViewSinPermisos.as_view({'get': 'detalle'})
+        # documento en junio 2026 (30 días).
+        self.documento.fecha = date(2026, 6, 15)
+        self.documento.save(update_fields=['fecha'])
+
+    def _get(self, documento_id):
+        request = self.factory.get('/detalle/', {'documento': documento_id})
+        return self.view(request)
+
+    def test_devuelve_mes_completo(self):
+        # Una sola programación en el mes, pero se deben listar los 30 días.
+        TurProgramacion.objects.create(
+            contrato=self.contrato,
+            documento_detalle=self.detalle,
+            fecha=date(2026, 6, 1),
+            turno=self.turno,
+            horas=8,
+            horas_diurnas=8,
+        )
+
+        response = self._get(self.documento.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['documento'], self.documento.id)
+
+        fechas = response.data['fechas']
+        self.assertEqual(len(fechas), 30)  # junio 2026
+        self.assertEqual(fechas[0], '2026-06-01')
+        self.assertEqual(fechas[-1], '2026-06-30')
+
+        # La única fila trae la celda del 06-01 y null en los días sin turno.
+        self.assertEqual(len(response.data['filas']), 1)
+        dias = response.data['filas'][0]['dias']
+        self.assertEqual(set(dias.keys()), set(fechas))
+        self.assertIsNotNone(dias['2026-06-01'])
+        self.assertEqual(dias['2026-06-01']['turno_id'], self.turno.id)
+        self.assertIsNone(dias['2026-06-02'])
+
+    def test_incluye_fecha_fuera_del_mes(self):
+        # Programación fuera del mes de documento.fecha: no debe ocultarse.
+        TurProgramacion.objects.create(
+            contrato=self.contrato,
+            documento_detalle=self.detalle,
+            fecha=date(2026, 7, 5),
+            turno=self.turno,
+            horas=8,
+            horas_diurnas=8,
+        )
+
+        response = self._get(self.documento.id)
+
+        fechas = response.data['fechas']
+        self.assertEqual(len(fechas), 31)  # 30 de junio + el 05-07
+        self.assertIn('2026-07-05', fechas)
+        self.assertEqual(fechas[-1], '2026-07-05')
+
+    def test_sin_fecha_documento_usa_programaciones(self):
+        # Si documento.fecha es null, cae al comportamiento previo (solo programadas).
+        self.documento.fecha = None
+        self.documento.save(update_fields=['fecha'])
+        TurProgramacion.objects.create(
+            contrato=self.contrato,
+            documento_detalle=self.detalle,
+            fecha=date(2026, 6, 1),
+            turno=self.turno,
+            horas=8,
+            horas_diurnas=8,
+        )
+
+        response = self._get(self.documento.id)
+
+        self.assertEqual(response.data['fechas'], ['2026-06-01'])
