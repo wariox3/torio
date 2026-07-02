@@ -247,7 +247,9 @@ class TurProgramacionViewSet(
         except (TypeError, ValueError):
             raise ValidationError({'documento': 'Debe ser un entero.'})
 
-        documento = GenDocumento.objects.filter(pk=documento_id).only('id', 'fecha').first()
+        documento = (
+            GenDocumento.objects.select_related('contacto').filter(pk=documento_id).first()
+        )
 
         detalles = list(
             GenDocumentoDetalle.objects
@@ -333,8 +335,27 @@ class TurProgramacionViewSet(
                 contrato = next(iter(por_fecha.values())).contrato
                 filas.append(construir_fila(detalle, contrato, por_fecha))
 
+        documento_info = None
+        if documento is not None:
+            contacto = documento.contacto
+            documento_info = {
+                'id': documento.id,
+                'numero': documento.numero,
+                'fecha': documento.fecha,
+                'horas': documento.horas,
+                'horas_diurnas': documento.horas_diurnas,
+                'horas_nocturnas': documento.horas_nocturnas,
+                'horas_programadas': documento.horas_programadas,
+                'horas_diurnas_programadas': documento.horas_diurnas_programadas,
+                'horas_nocturnas_programadas': documento.horas_nocturnas_programadas,
+                'contacto_nombre_corto': contacto.nombre_corto if contacto else None,
+                'contacto_numero_identificacion': (
+                    contacto.numero_identificacion if contacto else None
+                ),
+            }
+
         return Response({
-            'documento': documento_id,
+            'documento': documento_info,
             'fechas': fechas_iso,
             'filas': filas,
         })

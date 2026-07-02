@@ -45,7 +45,7 @@ class _ProgramacionBaseTests(TenantTestCase):
         ciudad = GenCiudad.objects.create(id=1, nombre='Bogotá', estado=estado)
         identificacion = GenIdentificacion.objects.create(id=1, nombre='CC')
         tipo_persona = GenTipoPersona.objects.create(id=1, nombre='Natural')
-        contacto = GenContacto.objects.create(
+        self.contacto = GenContacto.objects.create(
             numero_identificacion='123',
             nombre_corto='Empleado',
             direccion='Calle 1',
@@ -61,7 +61,7 @@ class _ProgramacionBaseTests(TenantTestCase):
             fecha_desde=date(2026, 1, 1),
             fecha_hasta=date(2026, 12, 31),
             contrato_tipo=contrato_tipo,
-            contacto=contacto,
+            contacto=self.contacto,
             grupo=grupo,
             habilitado_turno=True,
         )
@@ -502,9 +502,19 @@ class DetalleTests(_ProgramacionBaseTests):
     def setUp(self):
         super().setUp()
         self.view = _ViewSinPermisos.as_view({'get': 'detalle'})
-        # documento en junio 2026 (30 días).
+        # documento en junio 2026 (30 días), con contacto y horas.
+        self.documento.numero = 55
         self.documento.fecha = date(2026, 6, 15)
-        self.documento.save(update_fields=['fecha'])
+        self.documento.contacto = self.contacto
+        self.documento.horas = 240
+        self.documento.horas_diurnas = 160
+        self.documento.horas_nocturnas = 80
+        self.documento.horas_programadas = 8
+        self.documento.horas_diurnas_programadas = 8
+        self.documento.save(update_fields=[
+            'numero', 'fecha', 'contacto', 'horas', 'horas_diurnas', 'horas_nocturnas',
+            'horas_programadas', 'horas_diurnas_programadas',
+        ])
 
     def _get(self, documento_id):
         request = self.factory.get('/detalle/', {'documento': documento_id})
@@ -524,7 +534,18 @@ class DetalleTests(_ProgramacionBaseTests):
         response = self._get(self.documento.id)
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['documento'], self.documento.id)
+
+        doc = response.data['documento']
+        self.assertEqual(doc['id'], self.documento.id)
+        self.assertEqual(doc['numero'], 55)
+        self.assertEqual(doc['fecha'], date(2026, 6, 15))
+        self.assertEqual(doc['horas'], 240)
+        self.assertEqual(doc['horas_diurnas'], 160)
+        self.assertEqual(doc['horas_nocturnas'], 80)
+        self.assertEqual(doc['horas_programadas'], 8)
+        self.assertEqual(doc['horas_diurnas_programadas'], 8)
+        self.assertEqual(doc['contacto_nombre_corto'], 'Empleado')
+        self.assertEqual(doc['contacto_numero_identificacion'], '123')
 
         fechas = response.data['fechas']
         self.assertEqual(len(fechas), 30)  # junio 2026
