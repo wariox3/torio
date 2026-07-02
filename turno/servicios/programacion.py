@@ -2,7 +2,7 @@ from collections import Counter
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Sum
 
 from general.models import GenDocumento, GenDocumentoDetalle, GenFestivo
 from turno.models import TurProgramacion, TurTurno
@@ -339,3 +339,40 @@ def actualizar_programacion(contrato, documento_detalle, items):
         'actualizados': len(actualizar),
         'eliminados': len(eliminar_ids),
     }
+
+
+def eliminar_programaciones(contrato_id, documento_detalle_id):
+    """
+    Borra todas las programaciones de un `(contrato, documento_detalle)` y descuenta
+    sus horas del detalle y de su documento padre. Retorna cuántas eliminó.
+
+    Debe llamarse dentro de una transacción (lo hacen las vistas).
+    """
+    qs = TurProgramacion.objects.filter(
+        contrato_id=contrato_id, documento_detalle_id=documento_detalle_id
+    )
+    agregados = qs.aggregate(
+        horas=Sum('horas'),
+        horas_diurnas=Sum('horas_diurnas'),
+        horas_nocturnas=Sum('horas_nocturnas'),
+    )
+    eliminados, _ = qs.delete()
+    if not eliminados:
+        return 0
+
+    total_horas = agregados['horas'] or Decimal('0')
+    total_diurnas = agregados['horas_diurnas'] or Decimal('0')
+    total_nocturnas = agregados['horas_nocturnas'] or Decimal('0')
+    GenDocumentoDetalle.objects.filter(pk=documento_detalle_id).update(
+        horas_programadas=F('horas_programadas') - total_horas,
+        horas_diurnas_programadas=F('horas_diurnas_programadas') - total_diurnas,
+        horas_nocturnas_programadas=F('horas_nocturnas_programadas') - total_nocturnas,
+    )
+    GenDocumento.objects.filter(
+        documentos_detalles_documento_rel__pk=documento_detalle_id
+    ).update(
+        horas_programadas=F('horas_programadas') - total_horas,
+        horas_diurnas_programadas=F('horas_diurnas_programadas') - total_diurnas,
+        horas_nocturnas_programadas=F('horas_nocturnas_programadas') - total_nocturnas,
+    )
+    return eliminados

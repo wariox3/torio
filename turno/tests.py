@@ -204,11 +204,32 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
         self.assertEqual(response.data['errores'][0]['fecha'], '2026-06-01')
         self.assertEqual(TurProgramacion.objects.count(), 0)
 
+    def test_par_ya_tiene_programacion(self):
+        self._post(self._payload(items=[
+            {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},
+        ]))
+
+        # Reintentar crear sobre el MISMO par -> rechazado (debe usarse actualizar).
+        response = self._post(self._payload(items=[
+            {'fecha': '2026-06-05', 'turno_codigo': self.turno.codigo},
+        ]))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('use actualizar', response.data['detail'])
+        self.assertEqual(TurProgramacion.objects.count(), 1)  # no agregó nada
+
     def test_fecha_ya_existente(self):
-        self._post(self._payload())  # crea 2026-06-01 (turno D)
+        # El contrato ocupa 06-01 en detalle A; se crea en OTRO detalle (par nuevo)
+        # con la misma fecha -> conflicto por día contra el detalle A.
+        self._post(self._payload(items=[
+            {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},
+        ]))
+        otro = GenDocumentoDetalle.objects.create(
+            documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
+        )
         antes = TurProgramacion.objects.count()
 
-        response = self._post(self._payload(items=[
+        response = self._post(self._payload(documento_detalle_id=otro.id, items=[
             {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},  # conflicto
             {'fecha': '2026-06-03', 'turno_codigo': self.turno.codigo},
         ]))
@@ -241,9 +262,12 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
     def test_acumula_varios_errores_por_dia(self):
         self._post(self._payload(items=[
             {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},
-        ]))  # ocupa 06-01
+        ]))  # ocupa 06-01 en detalle A
+        otro = GenDocumentoDetalle.objects.create(
+            documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
+        )
 
-        response = self._post(self._payload(items=[
+        response = self._post(self._payload(documento_detalle_id=otro.id, items=[
             {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},  # dia_ocupado
             {'fecha': '2026-07-03', 'turno_codigo': 'XXX'},              # turno_inexistente
         ]))
@@ -666,6 +690,33 @@ class ActualizarProgramacionMasivoTests(_ProgramacionBaseTests):
         self.detalle.refresh_from_db()
         self.assertEqual(self.detalle.horas_programadas, 0)
 
+    def test_valida_tope_horas_por_elemento(self):
+        # detalle con planeado 8h diurnas; el elemento pide 16h -> excede.
+        self.detalle.horas_diurnas = 8
+        self.detalle.save(update_fields=['horas_diurnas'])
+
+        response = self._post([
+            {  # excede el tope
+                'contrato_id': self.contrato.id,
+                'documento_detalle_id': self.detalle.id,
+                'items': [
+                    {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},
+                    {'fecha': '2026-06-03', 'turno_codigo': self.turno.codigo},
+                ],
+            },
+            {  # válido
+                'contrato_id': self.contrato.id,
+                'documento_detalle_id': self.detalle2.id,
+                'items': [{'fecha': '2026-06-02', 'turno_codigo': self.turno.codigo}],
+            },
+        ])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['resultados'][0]['errores'][0]['codigo'], 'horas_diurnas_excedidas')
+
+        # Todo el lote revertido.
+        self.assertEqual(TurProgramacion.objects.count(), 0)
+
     def test_contrato_inexistente_en_elemento(self):
         response = self._post([
             {
@@ -680,3 +731,65 @@ class ActualizarProgramacionMasivoTests(_ProgramacionBaseTests):
             'indice': 0, 'detail': 'Contrato no encontrado.',
         })
         self.assertEqual(TurProgramacion.objects.count(), 0)
+
+
+class EliminarProgramacionMasivoTests(_ProgramacionBaseTests):
+    def setUp(self):
+        super().setUp()
+        self.view = _ViewSinPermisos.as_view({'post': 'eliminar_programacion_masivo'})
+        self.detalle2 = GenDocumentoDetalle.objects.create(
+            documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
+        )
+        # Siembra: detalle 8h (06-01), detalle2 8h (06-02).
+        TurProgramacion.objects.create(
+            contrato=self.contrato, documento_detalle=self.detalle,
+            fecha=date(2026, 6, 1), turno=self.turno, horas=8, horas_diurnas=8,
+        )
+        TurProgramacion.objects.create(
+            contrato=self.contrato, documento_detalle=self.detalle2,
+            fecha=date(2026, 6, 2), turno=self.turno, horas=8, horas_diurnas=8,
+        )
+        GenDocumentoDetalle.objects.filter(pk=self.detalle.pk).update(
+            horas_programadas=8, horas_diurnas_programadas=8)
+        GenDocumentoDetalle.objects.filter(pk=self.detalle2.pk).update(
+            horas_programadas=8, horas_diurnas_programadas=8)
+        GenDocumento.objects.filter(pk=self.documento.pk).update(
+            horas_programadas=16, horas_diurnas_programadas=16)
+
+    def _post(self, programaciones):
+        request = self.factory.post(
+            '/eliminar-programacion-masivo/',
+            {'programaciones': programaciones},
+            format='json',
+        )
+        return self.view(request)
+
+    def test_elimina_varios_pares(self):
+        response = self._post([
+            {'contrato_id': self.contrato.id, 'documento_detalle_id': self.detalle.id},
+            {'contrato_id': self.contrato.id, 'documento_detalle_id': self.detalle2.id},
+        ])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {'eliminados': 2})
+        self.assertEqual(TurProgramacion.objects.count(), 0)
+
+        # Horas descontadas en ambos detalles y en el documento padre.
+        self.detalle.refresh_from_db()
+        self.detalle2.refresh_from_db()
+        self.documento.refresh_from_db()
+        self.assertEqual(self.detalle.horas_programadas, 0)
+        self.assertEqual(self.detalle2.horas_programadas, 0)
+        self.assertEqual(self.documento.horas_programadas, 0)
+
+    def test_solo_borra_los_pares_enviados(self):
+        response = self._post([
+            {'contrato_id': self.contrato.id, 'documento_detalle_id': self.detalle.id},
+        ])
+
+        self.assertEqual(response.data, {'eliminados': 1})
+        self.assertEqual(TurProgramacion.objects.count(), 1)  # queda la del detalle2
+        self.detalle.refresh_from_db()
+        self.documento.refresh_from_db()
+        self.assertEqual(self.detalle.horas_programadas, 0)
+        self.assertEqual(self.documento.horas_programadas, 8)  # 16 - 8

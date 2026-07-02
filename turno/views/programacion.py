@@ -3,7 +3,6 @@ from collections import OrderedDict
 from datetime import date
 
 from django.db import transaction
-from django.db.models import F, Sum
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -22,6 +21,7 @@ from turno.servicios import (
     ProgramacionError,
     actualizar_programacion,
     crear_programacion,
+    eliminar_programaciones,
 )
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 
@@ -44,6 +44,10 @@ class EliminarProgramacionRequestSerializer(serializers.Serializer):
 
 class ActualizarProgramacionMasivoRequestSerializer(serializers.Serializer):
     programaciones = CrearProgramacionRequestSerializer(many=True, allow_empty=False)
+
+
+class EliminarProgramacionMasivoRequestSerializer(serializers.Serializer):
+    programaciones = EliminarProgramacionRequestSerializer(many=True, allow_empty=False)
 
 
 _LIST_PARAMS = [
@@ -105,6 +109,13 @@ class TurProgramacionViewSet(
             documento_detalle = GenDocumentoDetalle.objects.get(pk=datos['documento_detalle_id'])
         except GenDocumentoDetalle.DoesNotExist:
             raise NotFound('Documento detalle no encontrado.')
+
+        if TurProgramacion.objects.filter(
+            contrato=contrato, documento_detalle=documento_detalle
+        ).exists():
+            raise ValidationError(
+                {'detail': 'Ya existe programación para este contrato y puesto; use actualizar.'}
+            )
 
         try:
             creados = crear_programacion(contrato, documento_detalle, datos['items'])
@@ -203,36 +214,29 @@ class TurProgramacionViewSet(
         serializer.is_valid(raise_exception=True)
         datos = serializer.validated_data
 
-        qs = TurProgramacion.objects.filter(
-            contrato_id=datos['contrato_id'],
-            documento_detalle_id=datos['documento_detalle_id'],
-        )
         with transaction.atomic():
-            agregados = qs.aggregate(
-                horas=Sum('horas'),
-                horas_diurnas=Sum('horas_diurnas'),
-                horas_nocturnas=Sum('horas_nocturnas'),
+            eliminados = eliminar_programaciones(
+                datos['contrato_id'], datos['documento_detalle_id']
             )
-            total_horas = agregados['horas'] or 0
-            total_diurnas = agregados['horas_diurnas'] or 0
-            total_nocturnas = agregados['horas_nocturnas'] or 0
+        return Response({'eliminados': eliminados}, status=status.HTTP_200_OK)
 
-            eliminados, _ = qs.delete()
-            GenDocumentoDetalle.objects.filter(pk=datos['documento_detalle_id']).update(
-                horas_programadas=F('horas_programadas') - total_horas,
-                horas_diurnas_programadas=F('horas_diurnas_programadas') - total_diurnas,
-                horas_nocturnas_programadas=F('horas_nocturnas_programadas') - total_nocturnas,
-            )
-            GenDocumento.objects.filter(
-                documentos_detalles_documento_rel__pk=datos['documento_detalle_id']
-            ).update(
-                horas_programadas=F('horas_programadas') - total_horas,
-                horas_diurnas_programadas=F('horas_diurnas_programadas') - total_diurnas,
-                horas_nocturnas_programadas=F('horas_nocturnas_programadas') - total_nocturnas,
+    @extend_schema(request=EliminarProgramacionMasivoRequestSerializer)
+    @action(detail=False, methods=['post'], url_path='eliminar-programacion-masivo')
+    def eliminar_programacion_masivo(self, request):
+        """Elimina las programaciones de varios (contrato, documento_detalle) en un lote (todo o nada)."""
+        serializer = EliminarProgramacionMasivoRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        lote = serializer.validated_data['programaciones']
+
+        with transaction.atomic():
+            eliminados = sum(
+                eliminar_programaciones(elem['contrato_id'], elem['documento_detalle_id'])
+                for elem in lote
             )
         return Response({'eliminados': eliminados}, status=status.HTTP_200_OK)
 
     @extend_schema(parameters=[
+        
         OpenApiParameter('documento', int, required=True, description='Filtrar por documento'),
     ])
     @action(detail=False, methods=['get'], url_path='detalle')
