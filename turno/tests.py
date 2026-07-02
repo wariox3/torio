@@ -68,7 +68,10 @@ class _ProgramacionBaseTests(TenantTestCase):
 
         documento_tipo = GenDocumentoTipo.objects.create(nombre='Programación')
         self.documento = GenDocumento.objects.create(documento_tipo=documento_tipo)
-        self.detalle = GenDocumentoDetalle.objects.create(documento=self.documento)
+        # Horas planeadas amplias para no chocar con la validación de límite.
+        self.detalle = GenDocumentoDetalle.objects.create(
+            documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
+        )
 
         self.turno = TurTurno.objects.create(
             nombre='Diurno',
@@ -140,7 +143,9 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
             {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},
         ]))
         # detalle B toma 06-02 (libre, nunca se persistió como descanso) -> OK.
-        otro_detalle = GenDocumentoDetalle.objects.create(documento=self.detalle.documento)
+        otro_detalle = GenDocumentoDetalle.objects.create(
+            documento=self.detalle.documento, horas_diurnas=500, horas_nocturnas=500,
+        )
         response = self._post(self._payload(
             documento_detalle_id=otro_detalle.id,
             items=[{'fecha': '2026-06-02', 'turno_codigo': self.turno.codigo}],
@@ -252,6 +257,35 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
             ('2026-07-03', 'turno_inexistente'),
         ])
 
+    def test_horas_diurnas_exceden_planeadas(self):
+        # Planeado 8h diurnas; 2 días de turno D (8h c/u) = 16h > 8h -> bloquea.
+        self.detalle.horas_diurnas = 8
+        self.detalle.save(update_fields=['horas_diurnas'])
+
+        response = self._post(self._payload(items=[
+            {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},
+            {'fecha': '2026-06-03', 'turno_codigo': self.turno.codigo},
+        ]))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['errores'][0]['codigo'], 'horas_diurnas_excedidas')
+        self.assertEqual(TurProgramacion.objects.count(), 0)  # no guardó nada
+        self.detalle.refresh_from_db()
+        self.assertEqual(self.detalle.horas_diurnas_programadas, 0)
+
+    def test_horas_en_el_limite_permite(self):
+        # Planeado exactamente 16h diurnas; 2 días de 8h = 16h (igual, no sobrepasa).
+        self.detalle.horas_diurnas = 16
+        self.detalle.save(update_fields=['horas_diurnas'])
+
+        response = self._post(self._payload(items=[
+            {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},
+            {'fecha': '2026-06-03', 'turno_codigo': self.turno.codigo},
+        ]))
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data, {'creados': 2})
+
     def test_contrato_no_habilitado(self):
         self.contrato.habilitado_turno = False
         self.contrato.save(update_fields=['habilitado_turno'])
@@ -349,6 +383,24 @@ class ActualizarProgramacionTests(_ProgramacionBaseTests):
 
         self.detalle.refresh_from_db()
         self.assertEqual(self.detalle.horas_programadas, 0)
+
+    def test_horas_diurnas_exceden_planeadas(self):
+        # Ya hay 8h programadas (06-01); planeado 8h. Agregar 06-03 (+8h) -> 16h > 8h.
+        self.detalle.horas_diurnas = 8
+        self.detalle.save(update_fields=['horas_diurnas'])
+
+        response = self._post([
+            {'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo},
+            {'fecha': '2026-06-03', 'turno_codigo': self.turno.codigo},
+        ])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['errores'][0]['codigo'], 'horas_diurnas_excedidas')
+
+        # No se aplicó ningún cambio.
+        self.assertEqual(TurProgramacion.objects.count(), 1)
+        self.detalle.refresh_from_db()
+        self.assertEqual(self.detalle.horas_diurnas_programadas, 8)
 
     def test_cambia_turno(self):
         # 06-01 pasa de D (8h diurnas) a N (10h nocturnas); 06-02 se conserva.
@@ -527,7 +579,9 @@ class ActualizarProgramacionMasivoTests(_ProgramacionBaseTests):
     def setUp(self):
         super().setUp()
         self.view = _ViewSinPermisos.as_view({'post': 'actualizar_programacion_masivo'})
-        self.detalle2 = GenDocumentoDetalle.objects.create(documento=self.documento)
+        self.detalle2 = GenDocumentoDetalle.objects.create(
+            documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
+        )
 
     def _post(self, programaciones):
         request = self.factory.post(

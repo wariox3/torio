@@ -115,6 +115,13 @@ def crear_programacion(contrato, documento_detalle, items):
     total_diurnas = sum((p.horas_diurnas for p in nuevos), Decimal('0'))
     total_nocturnas = sum((p.horas_nocturnas for p in nuevos), Decimal('0'))
 
+    if documento_detalle is not None:
+        _validar_limite_horas(
+            documento_detalle,
+            (documento_detalle.horas_diurnas_programadas or Decimal('0')) + total_diurnas,
+            (documento_detalle.horas_nocturnas_programadas or Decimal('0')) + total_nocturnas,
+        )
+
     with transaction.atomic():
         TurProgramacion.objects.bulk_create(nuevos)
         if documento_detalle is not None:
@@ -144,6 +151,36 @@ def _aplicar_delta_horas(documento_detalle, delta_horas, delta_diurnas, delta_no
         horas_diurnas_programadas=F('horas_diurnas_programadas') + delta_diurnas,
         horas_nocturnas_programadas=F('horas_nocturnas_programadas') + delta_nocturnas,
     )
+
+
+def _validar_limite_horas(documento_detalle, diurnas_resultantes, nocturnas_resultantes):
+    """
+    Aborta si las horas programadas resultantes superan las planeadas del detalle
+    (`horas_diurnas`/`horas_nocturnas`). Se evalúa por separado diurnas y nocturnas.
+    """
+    errores = []
+    if diurnas_resultantes > documento_detalle.horas_diurnas:
+        errores.append({
+            'fecha': None,
+            'turno_codigo': None,
+            'codigo': 'horas_diurnas_excedidas',
+            'mensaje': (
+                f'Las horas diurnas programadas ({diurnas_resultantes}) superan '
+                f'las planeadas del puesto ({documento_detalle.horas_diurnas}).'
+            ),
+        })
+    if nocturnas_resultantes > documento_detalle.horas_nocturnas:
+        errores.append({
+            'fecha': None,
+            'turno_codigo': None,
+            'codigo': 'horas_nocturnas_excedidas',
+            'mensaje': (
+                f'Las horas nocturnas programadas ({nocturnas_resultantes}) superan '
+                f'las planeadas del puesto ({documento_detalle.horas_nocturnas}).'
+            ),
+        })
+    if errores:
+        raise ProgramacionError(errores, detail='Las horas programadas superan las planeadas del puesto.')
 
 
 def actualizar_programacion(contrato, documento_detalle, items):
@@ -276,6 +313,13 @@ def actualizar_programacion(contrato, documento_detalle, items):
             delta_horas -= actual.horas
             delta_diurnas -= actual.horas_diurnas
             delta_nocturnas -= actual.horas_nocturnas
+
+    if documento_detalle is not None:
+        _validar_limite_horas(
+            documento_detalle,
+            (documento_detalle.horas_diurnas_programadas or Decimal('0')) + delta_diurnas,
+            (documento_detalle.horas_nocturnas_programadas or Decimal('0')) + delta_nocturnas,
+        )
 
     with transaction.atomic():
         if crear:
