@@ -42,6 +42,10 @@ class EliminarProgramacionRequestSerializer(serializers.Serializer):
     documento_detalle_id = serializers.IntegerField()
 
 
+class ActualizarProgramacionMasivoRequestSerializer(serializers.Serializer):
+    programaciones = CrearProgramacionRequestSerializer(many=True, allow_empty=False)
+
+
 _LIST_PARAMS = [
     OpenApiParameter('contrato', int, description='Filtrar por contrato'),
     OpenApiParameter('fecha', str, description='Filtrar por fecha (AAAA-MM-DD)'),
@@ -141,6 +145,55 @@ class TurProgramacionViewSet(
             )
 
         return Response(resultado, status=status.HTTP_200_OK)
+
+    @extend_schema(request=ActualizarProgramacionMasivoRequestSerializer)
+    @action(detail=False, methods=['post'], url_path='actualizar-programacion-masivo')
+    def actualizar_programacion_masivo(self, request):
+        """
+        Reconcilia varias programaciones (contrato, documento_detalle) en un lote.
+
+        Es todo o nada: si algún elemento tiene errores, se revierte todo el lote
+        y se devuelven los resultados/errores por índice.
+        """
+        serializer = ActualizarProgramacionMasivoRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        lote = serializer.validated_data['programaciones']
+
+        resultados = []
+        hay_errores = False
+        with transaction.atomic():
+            for indice, elem in enumerate(lote):
+                contrato = HumContrato.objects.filter(pk=elem['contrato_id']).first()
+                if contrato is None:
+                    resultados.append({'indice': indice, 'detail': 'Contrato no encontrado.'})
+                    hay_errores = True
+                    continue
+                if not contrato.habilitado_turno:
+                    resultados.append({'indice': indice, 'detail': 'El contrato no está habilitado para turnos.'})
+                    hay_errores = True
+                    continue
+                documento_detalle = GenDocumentoDetalle.objects.filter(pk=elem['documento_detalle_id']).first()
+                if documento_detalle is None:
+                    resultados.append({'indice': indice, 'detail': 'Documento detalle no encontrado.'})
+                    hay_errores = True
+                    continue
+                try:
+                    resultado = actualizar_programacion(contrato, documento_detalle, elem['items'])
+                except ProgramacionError as e:
+                    resultados.append({'indice': indice, 'errores': e.errores})
+                    hay_errores = True
+                    continue
+                resultados.append({'indice': indice, **resultado})
+
+            if hay_errores:
+                transaction.set_rollback(True)
+
+        if hay_errores:
+            return Response(
+                {'detail': 'Hay elementos con errores.', 'resultados': resultados},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({'resultados': resultados}, status=status.HTTP_200_OK)
 
     @extend_schema(request=EliminarProgramacionRequestSerializer)
     @action(detail=False, methods=['post'], url_path='eliminar-programacion')

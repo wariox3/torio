@@ -521,3 +521,87 @@ class DetalleTests(_ProgramacionBaseTests):
         response = self._get(self.documento.id)
 
         self.assertEqual(response.data['fechas'], ['2026-06-01'])
+
+
+class ActualizarProgramacionMasivoTests(_ProgramacionBaseTests):
+    def setUp(self):
+        super().setUp()
+        self.view = _ViewSinPermisos.as_view({'post': 'actualizar_programacion_masivo'})
+        self.detalle2 = GenDocumentoDetalle.objects.create(documento=self.documento)
+
+    def _post(self, programaciones):
+        request = self.factory.post(
+            '/actualizar-programacion-masivo/',
+            {'programaciones': programaciones},
+            format='json',
+        )
+        return self.view(request)
+
+    def test_lote_valido(self):
+        response = self._post([
+            {
+                'contrato_id': self.contrato.id,
+                'documento_detalle_id': self.detalle.id,
+                'items': [{'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo}],
+            },
+            {
+                'contrato_id': self.contrato.id,
+                'documento_detalle_id': self.detalle2.id,
+                'items': [{'fecha': '2026-06-02', 'turno_codigo': self.turno.codigo}],
+            },
+        ])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['resultados'], [
+            {'indice': 0, 'creados': 1, 'actualizados': 0, 'eliminados': 0},
+            {'indice': 1, 'creados': 1, 'actualizados': 0, 'eliminados': 0},
+        ])
+        self.assertEqual(TurProgramacion.objects.count(), 2)
+
+        # Cada detalle recibió sus horas.
+        self.detalle.refresh_from_db()
+        self.detalle2.refresh_from_db()
+        self.assertEqual(self.detalle.horas_programadas, 8)
+        self.assertEqual(self.detalle2.horas_programadas, 8)
+
+    def test_todo_o_nada_revierte_lote(self):
+        response = self._post([
+            {  # válido
+                'contrato_id': self.contrato.id,
+                'documento_detalle_id': self.detalle.id,
+                'items': [{'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo}],
+            },
+            {  # turno inexistente
+                'contrato_id': self.contrato.id,
+                'documento_detalle_id': self.detalle2.id,
+                'items': [{'fecha': '2026-06-02', 'turno_codigo': 'XXX'}],
+            },
+        ])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['detail'], 'Hay elementos con errores.')
+        self.assertEqual(response.data['resultados'][0], {
+            'indice': 0, 'creados': 1, 'actualizados': 0, 'eliminados': 0,
+        })
+        self.assertEqual(response.data['resultados'][1]['indice'], 1)
+        self.assertEqual(response.data['resultados'][1]['errores'][0]['codigo'], 'turno_inexistente')
+
+        # Se revirtió TODO el lote: nada persistido, horas en cero.
+        self.assertEqual(TurProgramacion.objects.count(), 0)
+        self.detalle.refresh_from_db()
+        self.assertEqual(self.detalle.horas_programadas, 0)
+
+    def test_contrato_inexistente_en_elemento(self):
+        response = self._post([
+            {
+                'contrato_id': 999999,
+                'documento_detalle_id': self.detalle.id,
+                'items': [{'fecha': '2026-06-01', 'turno_codigo': self.turno.codigo}],
+            },
+        ])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['resultados'][0], {
+            'indice': 0, 'detail': 'Contrato no encontrado.',
+        })
+        self.assertEqual(TurProgramacion.objects.count(), 0)
