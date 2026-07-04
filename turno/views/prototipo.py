@@ -10,6 +10,7 @@ from turno.serializers import (
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 
 _LIST_PARAMS = [
+    OpenApiParameter('contrato', int, description='Filtrar por contrato'),
     OpenApiParameter('documento_detalle', int, description='Filtrar por documento detalle'),
     OpenApiParameter('secuencia', int, description='Filtrar por secuencia'),
     OpenApiParameter('fecha_inicio', str, description='Filtrar por fecha inicio (AAAA-MM-DD)'),
@@ -36,6 +37,10 @@ class TurPrototipoViewSet(
         qs = TurPrototipo.objects.select_related(
             *TurPrototipoSerializer.select_related_lista
         ).order_by('fecha', 'id')
+
+        contrato = self.request.query_params.get('contrato')
+        if contrato:
+            qs = qs.filter(contrato_id=contrato)
 
         documento_detalle = self.request.query_params.get('documento_detalle')
         if documento_detalle:

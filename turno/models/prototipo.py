@@ -6,6 +6,12 @@ from django.utils import timezone
 class TurPrototipo(models.Model):
     fecha = models.DateTimeField(default=timezone.now, db_default=Now())
     fecha_inicio = models.DateField()
+    posicion = models.IntegerField(default=1, db_default=1)
+    contrato = models.ForeignKey(
+        'humano.HumContrato',
+        on_delete=models.PROTECT,
+        related_name='prototipos_contrato_rel',
+    )
     documento_detalle = models.ForeignKey(
         'general.GenDocumentoDetalle',
         on_delete=models.PROTECT,
@@ -13,7 +19,6 @@ class TurPrototipo(models.Model):
     )
     secuencia = models.ForeignKey(
         'turno.TurSecuencia',
-        null=True,
         on_delete=models.PROTECT,
         related_name='prototipos_secuencia_rel',
     )
