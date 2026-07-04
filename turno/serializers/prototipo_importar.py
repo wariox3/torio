@@ -3,6 +3,7 @@ import datetime
 from rest_framework import serializers
 
 from general.models import GenDocumentoDetalle
+from humano.models import HumContrato
 from turno.models import TurPrototipo, TurSecuencia
 
 
@@ -26,10 +27,12 @@ class TurPrototipoImportarSerializer(serializers.Serializer):
 
     campos_excel = (
         ('fecha_inicio', 'Fecha inicio'),
+        ('posicion', 'Posición'),
+        ('contrato.id', 'Contrato'),
         ('documento_detalle.id', 'Documento detalle'),
         ('secuencia.id', 'Secuencia'),
     )
-    campos_requeridos = {'fecha_inicio', 'documento_detalle.id'}
+    campos_requeridos = {'fecha_inicio', 'posicion', 'contrato.id', 'documento_detalle.id', 'secuencia.id'}
 
     LIMITE_ERRORES = 100
     BATCH_BULK_CREATE = 500
@@ -38,6 +41,7 @@ class TurPrototipoImportarSerializer(serializers.Serializer):
         if not filas_validas:
             return 0, []
 
+        mapa_contrato = self._mapa_fk(filas_validas, 'contrato.id', HumContrato)
         mapa_detalle = self._mapa_fk(filas_validas, 'documento_detalle.id', GenDocumentoDetalle)
         mapa_secuencia = self._mapa_fk(filas_validas, 'secuencia.id', TurSecuencia)
 
@@ -46,12 +50,16 @@ class TurPrototipoImportarSerializer(serializers.Serializer):
 
         for idx, datos in filas_validas:
             try:
+                contrato = self._fk_obligatorio(
+                    datos.get('contrato.id'), mapa_contrato, 'Contrato')
                 documento_detalle = self._fk_obligatorio(
                     datos.get('documento_detalle.id'), mapa_detalle, 'Documento detalle')
-                secuencia = self._fk_opcional(
+                secuencia = self._fk_obligatorio(
                     datos.get('secuencia.id'), mapa_secuencia, 'Secuencia')
                 nuevos.append(TurPrototipo(
                     fecha_inicio=self._fecha(datos.get('fecha_inicio'), 'Fecha inicio'),
+                    posicion=self._entero(datos.get('posicion'), 'Posición'),
+                    contrato=contrato,
                     documento_detalle=documento_detalle,
                     secuencia=secuencia,
                 ))
@@ -106,6 +114,15 @@ class TurPrototipoImportarSerializer(serializers.Serializer):
         if obj is None:
             raise ValueError(f'{etiqueta} es obligatorio')
         return obj
+
+    @staticmethod
+    def _entero(v, etiqueta):
+        if v is None or str(v).strip() == '':
+            raise ValueError(f'{etiqueta} es obligatoria')
+        try:
+            return int(str(v).strip())
+        except (TypeError, ValueError):
+            raise ValueError(f'{etiqueta} debe ser un número entero, recibido: "{v}"')
 
     @staticmethod
     def _fecha(v, etiqueta):

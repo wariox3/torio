@@ -17,12 +17,21 @@ from general.models import (
     GenTipoPersona,
 )
 from humano.models import HumContrato, HumContratoTipo, HumGrupo
-from turno.models import TurProgramacion, TurTurno
+from turno.models import TurProgramacion, TurPrototipo, TurSecuencia, TurTurno
+from turno.serializers import TurPrototipoImportarSerializer
 from turno.views.programacion import TurProgramacionViewSet
+from turno.views.prototipo import TurPrototipoViewSet
 
 
 class _ViewSinPermisos(TurProgramacionViewSet):
     """Variante de la vista sin auth/permiso/throttle para probar el action aislado."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class _PrototipoViewSinPermisos(TurPrototipoViewSet):
+    """Variante sin auth/permiso/throttle para probar el CRUD de prototipos."""
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
     throttle_classes = []
@@ -793,3 +802,122 @@ class EliminarProgramacionMasivoTests(_ProgramacionBaseTests):
         self.documento.refresh_from_db()
         self.assertEqual(self.detalle.horas_programadas, 0)
         self.assertEqual(self.documento.horas_programadas, 8)  # 16 - 8
+
+
+class _PrototipoBaseTests(_ProgramacionBaseTests):
+    """Reutiliza las fixtures de programación y añade una secuencia para prototipos."""
+
+    def setUp(self):
+        super().setUp()
+        self.secuencia = TurSecuencia.objects.create(nombre='Sec 1')
+
+
+class CrudPrototipoTests(_PrototipoBaseTests):
+    def _crear_prototipo(self, **overrides):
+        return TurPrototipo.objects.create(**{
+            'fecha_inicio': date(2026, 6, 1),
+            'posicion': 1,
+            'contrato': self.contrato,
+            'documento_detalle': self.detalle,
+            'secuencia': self.secuencia,
+            **overrides,
+        })
+
+    def test_crea_prototipo(self):
+        view = _PrototipoViewSinPermisos.as_view({'post': 'create'})
+        payload = {
+            'fecha_inicio': '2026-06-01',
+            'posicion': 2,
+            'contrato': self.contrato.id,
+            'documento_detalle': self.detalle.id,
+            'secuencia': self.secuencia.id,
+        }
+        request = self.factory.post('/prototipo/', payload, format='json')
+        response = view(request)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(TurPrototipo.objects.count(), 1)
+        proto = TurPrototipo.objects.get()
+        self.assertEqual(proto.posicion, 2)
+        self.assertEqual(proto.contrato_id, self.contrato.id)
+        self.assertEqual(proto.documento_detalle_id, self.detalle.id)
+        self.assertEqual(proto.secuencia_id, self.secuencia.id)
+
+    def test_crear_requiere_contrato_secuencia(self):
+        view = _PrototipoViewSinPermisos.as_view({'post': 'create'})
+        payload = {
+            'fecha_inicio': '2026-06-01',
+            'documento_detalle': self.detalle.id,
+        }
+        request = self.factory.post('/prototipo/', payload, format='json')
+        response = view(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('contrato', response.data)
+        self.assertIn('secuencia', response.data)
+
+    def test_lista_filtra_por_documento_detalle(self):
+        detalle2 = GenDocumentoDetalle.objects.create(
+            documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
+        )
+        self._crear_prototipo(documento_detalle=self.detalle)
+        self._crear_prototipo(documento_detalle=detalle2, posicion=2)
+
+        view = _PrototipoViewSinPermisos.as_view({'get': 'list'})
+        request = self.factory.get('/prototipo/', {'documento_detalle': self.detalle.id})
+        response = view(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['documento_detalle'], self.detalle.id)
+
+    def test_elimina_prototipo(self):
+        proto = self._crear_prototipo()
+        view = _PrototipoViewSinPermisos.as_view({'delete': 'destroy'})
+        request = self.factory.delete(f'/prototipo/{proto.id}/')
+        response = view(request, pk=proto.id)
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(TurPrototipo.objects.count(), 0)
+
+
+class ImportarPrototipoTests(_PrototipoBaseTests):
+    def _procesar(self, fila):
+        serializer = TurPrototipoImportarSerializer()
+        # (indice, dict de datos por campo del campos_excel)
+        return serializer.procesar_lote([(2, fila)])
+
+    def _fila_valida(self, **overrides):
+        return {
+            'fecha_inicio': '2026-06-01',
+            'posicion': 3,
+            'contrato.id': self.contrato.id,
+            'documento_detalle.id': self.detalle.id,
+            'secuencia.id': self.secuencia.id,
+            **overrides,
+        }
+
+    def test_importa_fila_valida(self):
+        creados, errores = self._procesar(self._fila_valida())
+
+        self.assertEqual(errores, [])
+        self.assertEqual(creados, 1)
+        proto = TurPrototipo.objects.get()
+        self.assertEqual(proto.posicion, 3)
+        self.assertEqual(proto.contrato_id, self.contrato.id)
+        self.assertEqual(proto.secuencia_id, self.secuencia.id)
+
+    def test_posicion_vacia_da_error(self):
+        creados, errores = self._procesar(self._fila_valida(posicion=''))
+
+        self.assertEqual(creados, 0)
+        self.assertEqual(len(errores), 1)
+        self.assertIn('Posición', errores[0]['mensaje'])
+        self.assertEqual(TurPrototipo.objects.count(), 0)
+
+    def test_secuencia_inexistente_da_error(self):
+        creados, errores = self._procesar(self._fila_valida(**{'secuencia.id': 9999}))
+
+        self.assertEqual(creados, 0)
+        self.assertEqual(len(errores), 1)
+        self.assertIn('Secuencia', errores[0]['mensaje'])

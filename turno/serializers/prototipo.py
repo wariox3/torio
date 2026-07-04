@@ -13,12 +13,23 @@ class TurPrototipoSerializer(serializers.ModelSerializer):
         'contrato__contacto',
         'documento_detalle',
         'documento_detalle__puesto',
+        'documento_detalle__documento',
+        'documento_detalle__documento__documento_tipo',
         'secuencia',
     )
     ordenamiento_default_lista = ('fecha', 'id')
 
     contrato_nombre = serializers.CharField(
         source='contrato.contacto.nombre_corto', read_only=True, default=None,
+    )
+    documento_numero = serializers.IntegerField(
+        source='documento_detalle.documento.numero', read_only=True, default=None,
+    )
+    documento_fecha = serializers.DateField(
+        source='documento_detalle.documento.fecha', read_only=True, default=None,
+    )
+    documento_documento_tipo_nombre = serializers.CharField(
+        source='documento_detalle.documento.documento_tipo.nombre', read_only=True, default=None,
     )
     puesto_nombre = serializers.CharField(
         source='documento_detalle.puesto.nombre', read_only=True, default=None,
@@ -37,6 +48,9 @@ class TurPrototipoSerializer(serializers.ModelSerializer):
             'contrato',
             'contrato_nombre',
             'documento_detalle',
+            'documento_numero',
+            'documento_fecha',
+            'documento_documento_tipo_nombre',
             'puesto_nombre',
             'secuencia',
             'secuencia_nombre',

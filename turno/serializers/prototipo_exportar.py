@@ -19,6 +19,8 @@ class TurPrototipoExportarSerializer(serializers.Serializer):
         ('id', 'ID'),
         ('fecha', 'Fecha'),
         ('fecha_inicio', 'Fecha inicio'),
+        ('posicion', 'Posición'),
+        ('contrato.contacto.nombre_corto', 'Contrato'),
         ('documento_detalle.puesto.nombre', 'Puesto'),
         ('secuencia.nombre', 'Secuencia'),
     )
