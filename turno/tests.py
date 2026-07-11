@@ -971,6 +971,40 @@ class AplicarPrototipoSimulacionTests(_PrototipoBaseTests):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_detalle_retorna_grilla(self):
+        TurPrototipo.objects.create(
+            fecha_inicio=date(2026, 6, 1), posicion=1,
+            contrato=self.contrato, documento_detalle=self.detalle, secuencia=self.secuencia,
+        )
+        simular(self.detalle.id, 2026, 6)
+
+        view = _SimulacionViewSinPermisos.as_view({'get': 'detalle'})
+        request = self.factory.get(
+            '/programacion-simulacion/detalle/', {'documento': self.documento.id},
+        )
+        response = view(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['fechas']), 30)
+
+        fila = next(
+            f for f in response.data['filas'] if f['documento_detalle_id'] == self.detalle.id
+        )
+        self.assertEqual(fila['contrato_id'], self.contrato.id)
+        self.assertEqual(fila['contrato_contacto_numero_identificacion'], '123')
+        self.assertEqual(fila['posicion'], 1)
+        # Día impar con turno, día par descanso.
+        self.assertEqual(fila['dias']['2026-06-01']['turno_id'], self.turno.id)
+        self.assertIsNone(fila['dias']['2026-06-02']['turno_id'])
+
+    def test_detalle_requiere_documento(self):
+        view = _SimulacionViewSinPermisos.as_view({'get': 'detalle'})
+        request = self.factory.get('/programacion-simulacion/detalle/')
+        response = view(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('documento', response.data)
+
 
 class ImportarPrototipoTests(_PrototipoBaseTests):
     def _procesar(self, fila):
