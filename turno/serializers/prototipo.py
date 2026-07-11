@@ -22,6 +22,9 @@ class TurPrototipoSerializer(serializers.ModelSerializer):
     contrato_nombre = serializers.CharField(
         source='contrato.contacto.nombre_corto', read_only=True, default=None,
     )
+    contrato_contacto_numero_identificacion = serializers.CharField(
+        source='contrato.contacto.numero_identificacion', read_only=True, default=None,
+    )
     documento_numero = serializers.IntegerField(
         source='documento_detalle.documento.numero', read_only=True, default=None,
     )
@@ -47,6 +50,7 @@ class TurPrototipoSerializer(serializers.ModelSerializer):
             'posicion',
             'contrato',
             'contrato_nombre',
+            'contrato_contacto_numero_identificacion',
             'documento_detalle',
             'documento_numero',
             'documento_fecha',
