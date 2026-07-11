@@ -4,5 +4,5 @@ from .programacion import (
     crear_programacion,
     eliminar_programaciones,
 )
-from .programacion_simulacion import aplicar_prototipo
+from .programacion_simulacion import simular
 from .secuencia import calcular_mes

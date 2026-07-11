@@ -7,6 +7,19 @@ class TurProgramacionSimulacion(models.Model):
     horas_diurnas = models.DecimalField(max_digits=5, decimal_places=2, default=0, db_default=0)
     horas_nocturnas = models.DecimalField(max_digits=5, decimal_places=2, default=0, db_default=0)
     festivo = models.BooleanField(default=False, db_default=False)
+    posicion = models.IntegerField(default=1, db_default=1)
+    contrato = models.ForeignKey(
+        'humano.HumContrato',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='programaciones_simulacion_contrato_rel',
+    )
+    documento_detalle = models.ForeignKey(
+        'general.GenDocumentoDetalle',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='programaciones_simulacion_documento_detalle_rel',
+    )
     turno = models.ForeignKey(
         'turno.TurTurno',
         null=True,

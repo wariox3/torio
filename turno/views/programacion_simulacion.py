@@ -4,26 +4,27 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
-from turno.models import TurProgramacionSimulacion, TurPrototipo
+from general.models import GenDocumentoDetalle
+from turno.models import TurProgramacionSimulacion
 from turno.serializers import (
     TurProgramacionSimulacionExportarSerializer,
     TurProgramacionSimulacionImportarSerializer,
     TurProgramacionSimulacionSerializer,
 )
-from turno.servicios import aplicar_prototipo
+from turno.servicios import simular as simular_servicio
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 
 
-class AplicarPrototipoRequestSerializer(serializers.Serializer):
-    prototipo_id = serializers.IntegerField()
+class SimularRequestSerializer(serializers.Serializer):
+    documento_detalle_id = serializers.IntegerField()
     anio = serializers.IntegerField(min_value=2000, max_value=2100)
     mes = serializers.IntegerField(min_value=1, max_value=12)
-    reemplazar = serializers.BooleanField(required=False, default=True)
 
 
 _LIST_PARAMS = [
     OpenApiParameter('fecha', str, description='Filtrar por fecha (AAAA-MM-DD)'),
     OpenApiParameter('turno', int, description='Filtrar por turno'),
+    OpenApiParameter('documento_detalle', int, description='Filtrar por documento detalle'),
 ]
 
 
@@ -56,26 +57,27 @@ class TurProgramacionSimulacionViewSet(
         if turno:
             qs = qs.filter(turno_id=turno)
 
+        documento_detalle = self.request.query_params.get('documento_detalle')
+        if documento_detalle:
+            qs = qs.filter(documento_detalle_id=documento_detalle)
+
         return qs
 
     @extend_schema(parameters=_LIST_PARAMS)
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @extend_schema(request=AplicarPrototipoRequestSerializer)
-    @action(detail=False, methods=['post'], url_path='aplicar-prototipo')
-    def aplicar_prototipo(self, request):
-        serializer = AplicarPrototipoRequestSerializer(data=request.data)
+    @extend_schema(request=SimularRequestSerializer)
+    @action(detail=False, methods=['post'], url_path='simular')
+    def simular(self, request):
+        serializer = SimularRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         datos = serializer.validated_data
 
-        try:
-            prototipo = TurPrototipo.objects.select_related('secuencia').get(
-                pk=datos['prototipo_id'])
-        except TurPrototipo.DoesNotExist:
-            raise NotFound('Prototipo no encontrado.')
+        if not GenDocumentoDetalle.objects.filter(pk=datos['documento_detalle_id']).exists():
+            raise NotFound('Documento detalle no encontrado.')
 
-        creados = aplicar_prototipo(
-            prototipo, datos['anio'], datos['mes'], datos['reemplazar'],
+        creados = simular_servicio(
+            datos['documento_detalle_id'], datos['anio'], datos['mes'],
         )
         return Response({'creados': creados}, status=status.HTTP_200_OK)

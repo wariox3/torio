@@ -17,14 +17,29 @@ from general.models import (
     GenTipoPersona,
 )
 from humano.models import HumContrato, HumContratoTipo, HumGrupo
-from turno.models import TurProgramacion, TurPrototipo, TurSecuencia, TurTurno
+from turno.models import (
+    TurProgramacion,
+    TurProgramacionSimulacion,
+    TurPrototipo,
+    TurSecuencia,
+    TurTurno,
+)
 from turno.serializers import TurPrototipoImportarSerializer
+from turno.servicios import simular
 from turno.views.programacion import TurProgramacionViewSet
+from turno.views.programacion_simulacion import TurProgramacionSimulacionViewSet
 from turno.views.prototipo import TurPrototipoViewSet
 
 
 class _ViewSinPermisos(TurProgramacionViewSet):
     """Variante de la vista sin auth/permiso/throttle para probar el action aislado."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class _SimulacionViewSinPermisos(TurProgramacionSimulacionViewSet):
+    """Variante sin auth/permiso/throttle para probar la simulación aislada."""
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
     throttle_classes = []
@@ -879,6 +894,82 @@ class CrudPrototipoTests(_PrototipoBaseTests):
 
         self.assertEqual(response.status_code, 204)
         self.assertEqual(TurPrototipo.objects.count(), 0)
+
+
+class AplicarPrototipoSimulacionTests(_PrototipoBaseTests):
+    def setUp(self):
+        super().setUp()
+        # Secuencia cíclica de 2 días: día 1 con turno 'D', día 2 descanso.
+        self.secuencia.dias = 2
+        self.secuencia.dia_1 = 'D'
+        self.secuencia.dia_2 = None
+        self.secuencia.save()
+
+    def test_aplica_prototipos_del_documento_detalle(self):
+        TurPrototipo.objects.create(
+            fecha_inicio=date(2026, 6, 1), posicion=1,
+            contrato=self.contrato, documento_detalle=self.detalle, secuencia=self.secuencia,
+        )
+
+        creados = simular(self.detalle.id, 2026, 6)
+
+        # Una fila por día del mes (junio: 30 días).
+        self.assertEqual(creados, 30)
+        self.assertEqual(TurProgramacionSimulacion.objects.count(), 30)
+
+        filas = {f.fecha: f for f in TurProgramacionSimulacion.objects.all()}
+        # posicion 1 en fecha_inicio -> días impares con turno, pares descanso.
+        con_turno = filas[date(2026, 6, 1)]
+        self.assertEqual(con_turno.turno_id, self.turno.id)
+        self.assertEqual(con_turno.horas, self.turno.horas)
+        self.assertEqual(con_turno.contrato_id, self.contrato.id)
+        self.assertEqual(con_turno.documento_detalle_id, self.detalle.id)
+
+        descanso = filas[date(2026, 6, 2)]
+        self.assertIsNone(descanso.turno_id)
+        self.assertEqual(descanso.horas, 0)
+
+        self.assertEqual(
+            TurProgramacionSimulacion.objects.filter(turno=self.turno).count(), 15,
+        )
+
+    def test_posicion_desplaza_el_patron(self):
+        # posicion 2 arranca el patrón en el descanso: día 1 sin turno.
+        TurPrototipo.objects.create(
+            fecha_inicio=date(2026, 6, 1), posicion=2,
+            contrato=self.contrato, documento_detalle=self.detalle, secuencia=self.secuencia,
+        )
+
+        simular(self.detalle.id, 2026, 6)
+
+        filas = {f.fecha: f for f in TurProgramacionSimulacion.objects.all()}
+        self.assertIsNone(filas[date(2026, 6, 1)].turno_id)
+        self.assertEqual(filas[date(2026, 6, 2)].turno_id, self.turno.id)
+
+    def test_vacia_el_buffer_en_cada_corrida(self):
+        TurProgramacionSimulacion.objects.create(fecha=date(2020, 1, 1))
+        TurPrototipo.objects.create(
+            fecha_inicio=date(2026, 6, 1), posicion=1,
+            contrato=self.contrato, documento_detalle=self.detalle, secuencia=self.secuencia,
+        )
+
+        simular(self.detalle.id, 2026, 6)
+
+        # La fila previa (fuera del mes) fue eliminada.
+        self.assertFalse(
+            TurProgramacionSimulacion.objects.filter(fecha=date(2020, 1, 1)).exists()
+        )
+        self.assertEqual(TurProgramacionSimulacion.objects.count(), 30)
+
+    def test_endpoint_documento_detalle_inexistente_404(self):
+        view = _SimulacionViewSinPermisos.as_view({'post': 'simular'})
+        request = self.factory.post(
+            '/programacion-simulacion/simular/',
+            {'documento_detalle_id': 999999, 'anio': 2026, 'mes': 6}, format='json',
+        )
+        response = view(request)
+
+        self.assertEqual(response.status_code, 404)
 
 
 class ImportarPrototipoTests(_PrototipoBaseTests):
