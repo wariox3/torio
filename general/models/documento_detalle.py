@@ -47,6 +47,7 @@ class GenDocumentoDetalle(models.Model):
     programar = models.BooleanField(default=False, db_default=False)
     cortesia = models.BooleanField(default=False, db_default=False)
     compuesto = models.BooleanField(default=False, db_default=False)
+    generado = models.BooleanField(default=False, db_default=False)
     dias = models.BigIntegerField(default=0, db_default=0)
     base_cotizacion = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     base_prestacion = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)

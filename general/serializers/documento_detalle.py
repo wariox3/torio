@@ -111,6 +111,7 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'programar',
             'cortesia',
             'compuesto',
+            'generado',
         ]
         read_only_fields = [
             'id',
