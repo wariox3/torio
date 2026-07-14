@@ -28,6 +28,12 @@ class TurPrototipo(models.Model):
         ordering = ['fecha', 'id']
         verbose_name = 'Prototipo'
         verbose_name_plural = 'Prototipos'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['contrato', 'documento_detalle'],
+                name='tur_prototipo_contrato_documento_detalle_unico',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.id} - {self.fecha_inicio}'

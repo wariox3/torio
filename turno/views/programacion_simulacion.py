@@ -90,11 +90,13 @@ class TurProgramacionSimulacionViewSet(
         OpenApiParameter(
             'documento_detalle', int, required=True, description='Documento detalle simulado',
         ),
+        OpenApiParameter('anio', int, required=True, description='Año de la grilla'),
+        OpenApiParameter('mes', int, required=True, description='Mes de la grilla (1-12)'),
     ])
     @action(detail=False, methods=['get'], url_path='detalle')
     def detalle(self, request):
         # Grilla horizontal del documento_detalle pedido: una fila por contrato simulado,
-        # columnas = los días del mes de su fecha_desde.
+        # columnas = los días del mes pedido.
         valor = request.query_params.get('documento_detalle')
         if not valor:
             raise ValidationError({'detail': 'El parámetro documento_detalle es obligatorio.'})
@@ -105,17 +107,31 @@ class TurProgramacionSimulacionViewSet(
                 {'detail': 'El parámetro documento_detalle debe ser un entero.'}
             )
 
+        valor = request.query_params.get('anio')
+        if not valor:
+            raise ValidationError({'detail': 'El parámetro anio es obligatorio.'})
+        try:
+            anio = int(valor)
+        except (TypeError, ValueError):
+            raise ValidationError({'detail': 'El parámetro anio debe ser un entero.'})
+        if anio < 2000 or anio > 2100:
+            raise ValidationError({'detail': 'El parámetro anio debe estar entre 2000 y 2100.'})
+
+        valor = request.query_params.get('mes')
+        if not valor:
+            raise ValidationError({'detail': 'El parámetro mes es obligatorio.'})
+        try:
+            mes = int(valor)
+        except (TypeError, ValueError):
+            raise ValidationError({'detail': 'El parámetro mes debe ser un entero.'})
+        if mes < 1 or mes > 12:
+            raise ValidationError({'detail': 'El parámetro mes debe estar entre 1 y 12.'})
+
         detalle = GenDocumentoDetalle.objects.filter(pk=documento_detalle_id).first()
         if detalle is None:
             raise NotFound('Documento detalle no encontrado.')
-        if detalle.fecha_desde is None:
-            raise ValidationError(
-                {'detail': 'El documento detalle no tiene fecha_desde.'}
-            )
 
-        # Columnas: los días del mes de fecha_desde del detalle.
-        anio = detalle.fecha_desde.year
-        mes = detalle.fecha_desde.month
+        # Columnas: los días del mes pedido.
         dias_mes = calendar.monthrange(anio, mes)[1]
         fechas_iso = [
             date(anio, mes, dia).isoformat() for dia in range(1, dias_mes + 1)

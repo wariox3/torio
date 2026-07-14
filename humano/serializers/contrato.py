@@ -101,3 +101,33 @@ class HumContratoSerializer(serializers.ModelSerializer):
             'motivo_terminacion_nombre',
         ]
         read_only_fields = ['id']
+
+    def validate(self, attrs):
+        def valor(campo, default=None):
+            return attrs.get(campo, getattr(self.instance, campo, default))
+
+        contacto = valor('contacto')
+        fecha_desde = valor('fecha_desde')
+        fecha_hasta = valor('fecha_hasta')
+
+        if fecha_desde and fecha_hasta and fecha_hasta < fecha_desde:
+            raise serializers.ValidationError(
+                {'detail': 'La fecha hasta no puede ser anterior a la fecha desde.'}
+            )
+
+        otros = HumContrato.objects.filter(contacto=contacto)
+        if self.instance is not None:
+            otros = otros.exclude(pk=self.instance.pk)
+
+        if otros.filter(estado_terminado=False).exists():
+            raise serializers.ValidationError(
+                {'detail': 'El contacto ya tiene un contrato sin terminar.'}
+            )
+
+        # Se cruzan si cada contrato empieza antes de que el otro termine.
+        if otros.filter(fecha_desde__lte=fecha_hasta, fecha_hasta__gte=fecha_desde).exists():
+            raise serializers.ValidationError(
+                {'detail': 'Las fechas se cruzan con otro contrato del contacto.'}
+            )
+
+        return attrs

@@ -45,6 +45,13 @@ class TurPrototipoImportarSerializer(serializers.Serializer):
         mapa_detalle = self._mapa_fk(filas_validas, 'documento_detalle.id', GenDocumentoDetalle)
         mapa_secuencia = self._mapa_fk(filas_validas, 'secuencia.id', TurSecuencia)
 
+        # Pares (contrato, documento_detalle) ya usados: en la BD y en el propio archivo.
+        existentes = set(
+            TurPrototipo.objects
+            .filter(contrato_id__in=mapa_contrato, documento_detalle_id__in=mapa_detalle)
+            .values_list('contrato_id', 'documento_detalle_id')
+        )
+
         errores = []
         nuevos = []
 
@@ -56,6 +63,12 @@ class TurPrototipoImportarSerializer(serializers.Serializer):
                     datos.get('documento_detalle.id'), mapa_detalle, 'Documento detalle')
                 secuencia = self._fk_obligatorio(
                     datos.get('secuencia.id'), mapa_secuencia, 'Secuencia')
+                par = (contrato.id, documento_detalle.id)
+                if par in existentes:
+                    raise ValueError(
+                        'Ya existe un prototipo para ese contrato y documento detalle'
+                    )
+                existentes.add(par)
                 nuevos.append(TurPrototipo(
                     fecha_inicio=self._fecha(datos.get('fecha_inicio'), 'Fecha inicio'),
                     posicion=self._entero(datos.get('posicion'), 'Posición'),

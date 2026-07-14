@@ -871,6 +871,52 @@ class CrudPrototipoTests(_PrototipoBaseTests):
         self.assertIn('contrato', response.data)
         self.assertIn('secuencia', response.data)
 
+    def test_crear_rechaza_contrato_documento_detalle_duplicado(self):
+        self._crear_prototipo()
+
+        view = _PrototipoViewSinPermisos.as_view({'post': 'create'})
+        payload = {
+            'fecha_inicio': '2026-07-01',
+            'posicion': 5,
+            'contrato': self.contrato.id,
+            'documento_detalle': self.detalle.id,
+            'secuencia': self.secuencia.id,
+        }
+        request = self.factory.post('/prototipo/', payload, format='json')
+        response = view(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.data)
+        self.assertEqual(TurPrototipo.objects.count(), 1)
+
+    def test_actualizar_no_choca_consigo_mismo(self):
+        proto = self._crear_prototipo()
+
+        view = _PrototipoViewSinPermisos.as_view({'patch': 'partial_update'})
+        request = self.factory.patch('/prototipo/', {'posicion': 4}, format='json')
+        response = view(request, pk=proto.pk)
+
+        self.assertEqual(response.status_code, 200)
+        proto.refresh_from_db()
+        self.assertEqual(proto.posicion, 4)
+
+    def test_actualizar_rechaza_duplicado(self):
+        detalle2 = GenDocumentoDetalle.objects.create(
+            documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
+        )
+        self._crear_prototipo()
+        proto2 = self._crear_prototipo(documento_detalle=detalle2)
+
+        # Mover proto2 al detalle ya ocupado por el primero.
+        view = _PrototipoViewSinPermisos.as_view({'patch': 'partial_update'})
+        request = self.factory.patch(
+            '/prototipo/', {'documento_detalle': self.detalle.id}, format='json',
+        )
+        response = view(request, pk=proto2.pk)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.data)
+
     def test_lista_filtra_por_documento_detalle(self):
         detalle2 = GenDocumentoDetalle.objects.create(
             documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
@@ -971,27 +1017,25 @@ class AplicarPrototipoSimulacionTests(_PrototipoBaseTests):
 
         self.assertEqual(response.status_code, 404)
 
-    def _detalle(self, documento_detalle_id):
+    def _detalle(self, documento_detalle_id, anio=2026, mes=6):
         view = _SimulacionViewSinPermisos.as_view({'get': 'detalle'})
         request = self.factory.get(
             '/programacion-simulacion/detalle/',
-            {'documento_detalle': documento_detalle_id},
+            {'documento_detalle': documento_detalle_id, 'anio': anio, 'mes': mes},
         )
         return view(request)
 
     def test_detalle_retorna_grilla(self):
-        self.detalle.fecha_desde = date(2026, 6, 1)
-        self.detalle.save()
         TurPrototipo.objects.create(
             fecha_inicio=date(2026, 6, 1), posicion=1,
             contrato=self.contrato, documento_detalle=self.detalle, secuencia=self.secuencia,
         )
         simular(self.detalle.id, 2026, 6)
 
-        response = self._detalle(self.detalle.id)
+        response = self._detalle(self.detalle.id, anio=2026, mes=6)
 
         self.assertEqual(response.status_code, 200)
-        # Columnas: el mes de fecha_desde del detalle.
+        # Columnas: los días del mes pedido.
         self.assertEqual(len(response.data['fechas']), 30)
         self.assertEqual(response.data['fechas'][0], '2026-06-01')
         self.assertEqual(len(response.data['filas']), 1)
@@ -1008,11 +1052,15 @@ class AplicarPrototipoSimulacionTests(_PrototipoBaseTests):
         self.assertEqual(fila['dias']['2026-06-01']['turno_id'], self.turno.id)
         self.assertIsNone(fila['dias']['2026-06-02']['turno_id'])
 
-    def test_detalle_sin_simulacion_retorna_fila_vacia(self):
-        self.detalle.fecha_desde = date(2026, 8, 1)
-        self.detalle.save()
+    def test_detalle_mes_sin_simulacion_retorna_fila_vacia(self):
+        TurPrototipo.objects.create(
+            fecha_inicio=date(2026, 6, 1), posicion=1,
+            contrato=self.contrato, documento_detalle=self.detalle, secuencia=self.secuencia,
+        )
+        simular(self.detalle.id, 2026, 6)
 
-        response = self._detalle(self.detalle.id)
+        # Se pide agosto: las fechas simuladas de junio no se cuelan.
+        response = self._detalle(self.detalle.id, anio=2026, mes=8)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['fechas']), 31)
@@ -1023,10 +1071,20 @@ class AplicarPrototipoSimulacionTests(_PrototipoBaseTests):
         self.assertIsNone(fila['contrato_id'])
         self.assertTrue(all(c is None for c in fila['dias'].values()))
 
-    def test_detalle_requiere_documento_detalle(self):
+    def test_detalle_requiere_documento_detalle_anio_y_mes(self):
         view = _SimulacionViewSinPermisos.as_view({'get': 'detalle'})
-        response = view(self.factory.get('/programacion-simulacion/detalle/'))
 
+        response = view(self.factory.get('/programacion-simulacion/detalle/'))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.data)
+
+        response = view(self.factory.get(
+            '/programacion-simulacion/detalle/', {'documento_detalle': self.detalle.id},
+        ))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.data)
+
+        response = self._detalle(self.detalle.id, anio=2026, mes=13)
         self.assertEqual(response.status_code, 400)
         self.assertIn('detail', response.data)
 
@@ -1034,12 +1092,6 @@ class AplicarPrototipoSimulacionTests(_PrototipoBaseTests):
         response = self._detalle(999999)
 
         self.assertEqual(response.status_code, 404)
-
-    def test_detalle_sin_fecha_desde_400(self):
-        response = self._detalle(self.detalle.id)
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('detail', response.data)
 
 
 class ImportarPrototipoTests(_PrototipoBaseTests):
@@ -1082,3 +1134,28 @@ class ImportarPrototipoTests(_PrototipoBaseTests):
         self.assertEqual(creados, 0)
         self.assertEqual(len(errores), 1)
         self.assertIn('Secuencia', errores[0]['mensaje'])
+
+    def test_duplicado_contra_bd_da_error(self):
+        TurPrototipo.objects.create(
+            fecha_inicio=date(2026, 6, 1), posicion=1,
+            contrato=self.contrato, documento_detalle=self.detalle, secuencia=self.secuencia,
+        )
+
+        creados, errores = self._procesar(self._fila_valida())
+
+        self.assertEqual(creados, 0)
+        self.assertEqual(len(errores), 1)
+        self.assertIn('Ya existe un prototipo', errores[0]['mensaje'])
+        self.assertEqual(TurPrototipo.objects.count(), 1)
+
+    def test_duplicado_dentro_del_archivo_da_error(self):
+        serializer = TurPrototipoImportarSerializer()
+        filas = [(2, self._fila_valida()), (3, self._fila_valida(posicion=4))]
+
+        creados, errores = serializer.procesar_lote(filas)
+
+        self.assertEqual(creados, 0)
+        self.assertEqual(len(errores), 1)
+        self.assertEqual(errores[0]['fila'], 3)
+        self.assertIn('Ya existe un prototipo', errores[0]['mensaje'])
+        self.assertEqual(TurPrototipo.objects.count(), 0)

@@ -60,3 +60,23 @@ class TurPrototipoSerializer(serializers.ModelSerializer):
             'secuencia_nombre',
         ]
         read_only_fields = ['id']
+        # El unique_together lo reporta validate() con `detail`, no con non_field_errors.
+        validators = []
+
+    def validate(self, attrs):
+        contrato = attrs.get('contrato', getattr(self.instance, 'contrato', None))
+        documento_detalle = attrs.get(
+            'documento_detalle', getattr(self.instance, 'documento_detalle', None),
+        )
+
+        qs = TurPrototipo.objects.filter(
+            contrato=contrato, documento_detalle=documento_detalle,
+        )
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                {'detail': 'Ya existe un prototipo para ese contrato y documento detalle.'}
+            )
+
+        return attrs
