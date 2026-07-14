@@ -1162,7 +1162,12 @@ class ImportarPrototipoTests(_PrototipoBaseTests):
 
 
 class GenerarProgramacionTests(_PrototipoBaseTests):
-    """Materialización del buffer de simulación en TurProgramacion."""
+    """
+    Materialización del buffer de simulación en TurProgramacion.
+
+    `self.detalle` es el ORIGEN (tiene los prototipos y la simulación); `self.destino`
+    es el detalle que se envía a generar y apunta al origen vía documento_detalle_afectado.
+    """
 
     def setUp(self):
         super().setUp()
@@ -1171,6 +1176,13 @@ class GenerarProgramacionTests(_PrototipoBaseTests):
         self.secuencia.dia_1 = 'D'
         self.secuencia.dia_2 = None
         self.secuencia.save()
+
+        self.destino = GenDocumentoDetalle.objects.create(
+            documento=self.documento,
+            documento_detalle_afectado=self.detalle,
+            horas_diurnas=500,
+            horas_nocturnas=500,
+        )
 
     def _simular(self):
         TurPrototipo.objects.create(
@@ -1181,7 +1193,7 @@ class GenerarProgramacionTests(_PrototipoBaseTests):
 
     def _generar(self, documento_detalle_id=None):
         view = _ViewSinPermisos.as_view({'post': 'generar'})
-        payload = {'documento_detalle_id': documento_detalle_id or self.detalle.id}
+        payload = {'documento_detalle_id': documento_detalle_id or self.destino.id}
         return view(self.factory.post('/programacion/generar/', payload, format='json'))
 
     def test_genera_solo_dias_con_turno(self):
@@ -1194,21 +1206,29 @@ class GenerarProgramacionTests(_PrototipoBaseTests):
         self.assertEqual(response.data['creados'], 15)
         self.assertEqual(TurProgramacion.objects.count(), 15)
         self.assertTrue(all(p.turno_id == self.turno.id for p in TurProgramacion.objects.all()))
+        # Las programaciones cuelgan del destino, no del origen.
+        self.assertEqual(
+            TurProgramacion.objects.filter(documento_detalle=self.destino).count(), 15,
+        )
 
-    def test_generar_propaga_horas_y_vacia_el_buffer(self):
+    def test_generar_propaga_horas_al_destino_y_vacia_el_buffer(self):
         self._simular()
 
         self._generar()
 
+        self.destino.refresh_from_db()
         self.detalle.refresh_from_db()
         self.documento.refresh_from_db()
-        # 15 días × 8h diurnas.
-        self.assertEqual(self.detalle.horas_programadas, 120)
-        self.assertEqual(self.detalle.horas_diurnas_programadas, 120)
+        # 15 días × 8h diurnas, sumadas al destino.
+        self.assertEqual(self.destino.horas_programadas, 120)
+        self.assertEqual(self.destino.horas_diurnas_programadas, 120)
         self.assertEqual(self.documento.horas_programadas, 120)
-        # El buffer se vacía y el detalle queda marcado.
+        # El origen no acumula horas ni se marca.
+        self.assertEqual(self.detalle.horas_programadas, 0)
+        self.assertFalse(self.detalle.generado)
+        # El buffer se vacía y el destino queda marcado.
         self.assertEqual(TurProgramacionSimulacion.objects.count(), 0)
-        self.assertTrue(self.detalle.generado)
+        self.assertTrue(self.destino.generado)
 
     def test_no_regenera_un_detalle_ya_generado(self):
         self._simular()
@@ -1221,6 +1241,18 @@ class GenerarProgramacionTests(_PrototipoBaseTests):
         self.assertEqual(response.status_code, 400)
         self.assertIn('ya fue generado', response.data['detail'])
         self.assertEqual(TurProgramacion.objects.count(), 15)
+
+    def test_sin_documento_detalle_afectado_da_error(self):
+        self._simular()
+        suelto = GenDocumentoDetalle.objects.create(
+            documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
+        )
+
+        response = self._generar(documento_detalle_id=suelto.id)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('afectado', response.data['detail'])
+        self.assertEqual(TurProgramacion.objects.count(), 0)
 
     def test_sin_simulacion_da_error(self):
         response = self._generar()
@@ -1246,13 +1278,13 @@ class GenerarProgramacionTests(_PrototipoBaseTests):
         self.assertEqual(response.data['errores'][0]['codigo'], 'dia_ocupado')
         # No se creó nada nuevo: sigue solo la programación previa.
         self.assertEqual(TurProgramacion.objects.count(), 1)
-        self.detalle.refresh_from_db()
-        self.assertFalse(self.detalle.generado)
+        self.destino.refresh_from_db()
+        self.assertFalse(self.destino.generado)
 
     def test_horas_excedidas_aborta(self):
-        # Planeadas insuficientes: 15 días × 8h = 120h diurnas.
-        self.detalle.horas_diurnas = 50
-        self.detalle.save()
+        # Las planeadas que topan son las del destino: 15 días × 8h = 120h diurnas.
+        self.destino.horas_diurnas = 50
+        self.destino.save()
         self._simular()
 
         response = self._generar()
@@ -1275,5 +1307,70 @@ class GenerarProgramacionTests(_PrototipoBaseTests):
 
     def test_documento_detalle_inexistente_404(self):
         response = self._generar(documento_detalle_id=999999)
+
+        self.assertEqual(response.status_code, 404)
+
+    # ---- desgenerar ----
+
+    def _desgenerar(self, documento_detalle_id=None):
+        view = _ViewSinPermisos.as_view({'post': 'desgenerar'})
+        payload = {'documento_detalle_id': documento_detalle_id or self.destino.id}
+        return view(self.factory.post('/programacion/desgenerar/', payload, format='json'))
+
+    def test_desgenera_borra_programacion_descuenta_horas_y_desmarca(self):
+        self._simular()
+        self._generar()
+
+        response = self._desgenerar()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['eliminados'], 15)
+        self.assertEqual(TurProgramacion.objects.count(), 0)
+
+        self.destino.refresh_from_db()
+        self.documento.refresh_from_db()
+        self.assertFalse(self.destino.generado)
+        self.assertEqual(self.destino.horas_programadas, 0)
+        self.assertEqual(self.destino.horas_diurnas_programadas, 0)
+        self.assertEqual(self.documento.horas_programadas, 0)
+
+    def test_desgenerar_permite_volver_a_generar(self):
+        self._simular()
+        self._generar()
+        self._desgenerar()
+
+        # El buffer no se repuebla solo: hay que simular de nuevo.
+        simular(self.detalle.id, 2026, 6)
+        response = self._generar()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(TurProgramacion.objects.count(), 15)
+
+    def test_desgenerar_no_toca_programacion_de_otro_detalle(self):
+        self._simular()
+        self._generar()
+        otro_detalle = GenDocumentoDetalle.objects.create(
+            documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
+        )
+        TurProgramacion.objects.create(
+            contrato=self.contrato, fecha=date(2026, 7, 1),
+            documento_detalle=otro_detalle, turno=self.turno,
+        )
+
+        self._desgenerar()
+
+        self.assertEqual(TurProgramacion.objects.count(), 1)
+        self.assertTrue(
+            TurProgramacion.objects.filter(documento_detalle=otro_detalle).exists()
+        )
+
+    def test_desgenerar_un_detalle_no_generado_da_error(self):
+        response = self._desgenerar()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('no ha sido generado', response.data['detail'])
+
+    def test_desgenerar_documento_detalle_inexistente_404(self):
+        response = self._desgenerar(documento_detalle_id=999999)
 
         self.assertEqual(response.status_code, 404)

@@ -343,16 +343,20 @@ def actualizar_programacion(contrato, documento_detalle, items):
 
 def generar_programacion(documento_detalle):
     """
-    Materializa el buffer de `TurProgramacionSimulacion` en `TurProgramacion`
-    para un `documento_detalle`.
+    Materializa el buffer de `TurProgramacionSimulacion` en `TurProgramacion`.
+
+    `documento_detalle` es el **destino**: las programaciones creadas cuelgan de él,
+    sus horas se le suman (a él y a su documento padre) y es el que se marca como
+    `generado`. La simulación, en cambio, se lee del **origen**, que es su
+    `documento_detalle_afectado` (donde viven los prototipos).
 
     - Las filas simuladas **sin turno** (descanso) se ignoran: no crean fila, así
       no ocupan `(contrato, fecha)` ni bloquean a otro documento_detalle.
     - Aborta con `ProgramacionError` si alguna fila simulada no tiene contrato, si
       el contrato no está habilitado para turnos, si el par `(contrato, fecha)` ya
-      está programado, o si las horas resultantes superan las planeadas del puesto.
+      está programado, o si las horas resultantes superan las planeadas del destino.
     - Las horas y `festivo` se toman de la simulación (es lo que el usuario vio en
-      la grilla), y el neto se propaga al detalle y a su documento padre.
+      la grilla).
     - Al terminar marca `documento_detalle.generado` y vacía el buffer completo.
 
     Retorna la cantidad de filas creadas.
@@ -362,9 +366,14 @@ def generar_programacion(documento_detalle):
             [], detail='El documento detalle ya fue generado.',
         )
 
+    if documento_detalle.documento_detalle_afectado_id is None:
+        raise ProgramacionError(
+            [], detail='El documento detalle no tiene documento detalle afectado.',
+        )
+
     simulaciones = list(
         TurProgramacionSimulacion.objects
-        .filter(documento_detalle=documento_detalle)
+        .filter(documento_detalle_id=documento_detalle.documento_detalle_afectado_id)
         .select_related('contrato', 'turno')
         .order_by('fecha', 'id')
     )
@@ -446,6 +455,41 @@ def generar_programacion(documento_detalle):
         TurProgramacionSimulacion.objects.all().delete()
 
     return len(nuevos)
+
+
+def desgenerar_programacion(documento_detalle):
+    """
+    Revierte `generar_programacion`: borra todas las programaciones que cuelgan del
+    `documento_detalle` (de todos sus contratos), descuenta sus horas del detalle y
+    de su documento padre, y lo desmarca como `generado`.
+
+    No repuebla el buffer de simulación: para volver a generar hay que simular de nuevo.
+
+    Retorna la cantidad de filas eliminadas.
+    """
+    if not documento_detalle.generado:
+        raise ProgramacionError(
+            [], detail='El documento detalle no ha sido generado.',
+        )
+
+    qs = TurProgramacion.objects.filter(documento_detalle=documento_detalle)
+    agregados = qs.aggregate(
+        horas=Sum('horas'),
+        horas_diurnas=Sum('horas_diurnas'),
+        horas_nocturnas=Sum('horas_nocturnas'),
+    )
+
+    with transaction.atomic():
+        eliminados, _ = qs.delete()
+        _aplicar_delta_horas(
+            documento_detalle,
+            -(agregados['horas'] or Decimal('0')),
+            -(agregados['horas_diurnas'] or Decimal('0')),
+            -(agregados['horas_nocturnas'] or Decimal('0')),
+        )
+        GenDocumentoDetalle.objects.filter(pk=documento_detalle.pk).update(generado=False)
+
+    return eliminados
 
 
 def eliminar_programaciones(contrato_id, documento_detalle_id):

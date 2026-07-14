@@ -21,6 +21,7 @@ from turno.servicios import (
     ProgramacionError,
     actualizar_programacion,
     crear_programacion,
+    desgenerar_programacion,
     eliminar_programaciones,
     generar_programacion,
 )
@@ -156,6 +157,31 @@ class TurProgramacionViewSet(
             )
 
         return Response({'creados': creados}, status=status.HTTP_201_CREATED)
+
+    @extend_schema(request=GenerarProgramacionRequestSerializer)
+    @action(detail=False, methods=['post'], url_path='desgenerar')
+    def desgenerar(self, request):
+        """Revierte la generación: borra la programación del documento_detalle y lo desmarca."""
+        serializer = GenerarProgramacionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = serializer.validated_data
+
+        try:
+            documento_detalle = GenDocumentoDetalle.objects.get(
+                pk=datos['documento_detalle_id']
+            )
+        except GenDocumentoDetalle.DoesNotExist:
+            raise NotFound('Documento detalle no encontrado.')
+
+        try:
+            eliminados = desgenerar_programacion(documento_detalle)
+        except ProgramacionError as e:
+            return Response(
+                {'detail': e.detail, 'errores': e.errores},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({'eliminados': eliminados}, status=status.HTTP_200_OK)
 
     @extend_schema(request=CrearProgramacionRequestSerializer)
     @action(detail=False, methods=['post'], url_path='actualizar')

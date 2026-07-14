@@ -2,6 +2,7 @@ from .programacion import (
     ProgramacionError,
     actualizar_programacion,
     crear_programacion,
+    desgenerar_programacion,
     eliminar_programaciones,
     generar_programacion,
 )
