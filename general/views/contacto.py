@@ -16,6 +16,10 @@ from utilidades.wolframio import Wolframio
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por nombre corto o número de identificación'),
+    OpenApiParameter('cliente', bool, description='Filtrar por cliente'),
+    OpenApiParameter('proveedor', bool, description='Filtrar por proveedor'),
+    OpenApiParameter('empleado', bool, description='Filtrar por empleado'),
+    OpenApiParameter('conductor', bool, description='Filtrar por conductor'),
 ]
 
 _LIST_PARAMS = [
@@ -74,6 +78,12 @@ class GenContactoViewSet(
             qs = qs.filter(nombre_corto__icontains=search) | qs.filter(
                 numero_identificacion__icontains=search
             )
+
+        for filtro in ('cliente', 'proveedor', 'empleado', 'conductor'):
+            valor = request.query_params.get(filtro)
+            if valor is not None:
+                qs = qs.filter(**{filtro: valor.lower() == 'true'})
+
         pagina = self.paginate_queryset(qs)
         serializer = GenContactoSeleccionarSerializer(pagina, many=True)
         return self.get_paginated_response(serializer.data)
