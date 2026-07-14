@@ -15,12 +15,14 @@ from utilidades.paginacion import SeleccionarPaginacion
 _LIST_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por empleado o identificación'),
     OpenApiParameter('estado_terminado', bool, description='Filtrar por terminado'),
+    OpenApiParameter('empleado', bool, description='Filtrar por contacto empleado'),
 ]
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por empleado o identificación'),
     OpenApiParameter('estado_terminado', bool, description='Filtrar por terminado'),
     OpenApiParameter('habilitado_turno', bool, description='Filtrar por habilitado para turnos'),
+    OpenApiParameter('empleado', bool, description='Filtrar por contacto empleado'),
 ]
 
 
@@ -56,6 +58,10 @@ class HumContratoViewSet(
         if valor is not None:
             qs = qs.filter(estado_terminado=valor.lower() == 'true')
 
+        valor = self.request.query_params.get('empleado')
+        if valor is not None:
+            qs = qs.filter(contacto__empleado=valor.lower() == 'true')
+
         return qs
 
     @extend_schema(parameters=_LIST_PARAMS)
@@ -80,6 +86,10 @@ class HumContratoViewSet(
         valor = request.query_params.get('habilitado_turno')
         if valor is not None:
             qs = qs.filter(habilitado_turno=valor.lower() == 'true')
+
+        valor = request.query_params.get('empleado')
+        if valor is not None:
+            qs = qs.filter(contacto__empleado=valor.lower() == 'true')
 
         pagina = self.paginate_queryset(qs)
         serializer = HumContratoSeleccionarSerializer(pagina, many=True)
