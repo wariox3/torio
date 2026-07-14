@@ -8,7 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
-from general.models import GenDocumento, GenDocumentoDetalle
+from general.models import GenDocumentoDetalle
 from turno.models import TurProgramacionSimulacion
 from turno.serializers import (
     TurProgramacionSimulacionExportarSerializer,
@@ -87,56 +87,62 @@ class TurProgramacionSimulacionViewSet(
         return Response({'creados': creados}, status=status.HTTP_200_OK)
 
     @extend_schema(parameters=[
-        OpenApiParameter('documento', int, required=True, description='Filtrar por documento'),
+        OpenApiParameter(
+            'documento_detalle', int, required=True, description='Documento detalle simulado',
+        ),
     ])
     @action(detail=False, methods=['get'], url_path='detalle')
     def detalle(self, request):
-        # Grilla horizontal: una fila por (documento_detalle, contrato), columnas = fechas.
-        # Se listan todos los documento_detalles del documento, aun sin simulación.
-        valor = request.query_params.get('documento')
+        # Grilla horizontal del documento_detalle pedido: una fila por contrato simulado,
+        # columnas = los días del mes de su fecha_desde.
+        valor = request.query_params.get('documento_detalle')
         if not valor:
-            raise ValidationError({'documento': 'Este parámetro es obligatorio.'})
+            raise ValidationError({'detail': 'El parámetro documento_detalle es obligatorio.'})
         try:
-            documento_id = int(valor)
+            documento_detalle_id = int(valor)
         except (TypeError, ValueError):
-            raise ValidationError({'documento': 'Debe ser un entero.'})
+            raise ValidationError(
+                {'detail': 'El parámetro documento_detalle debe ser un entero.'}
+            )
 
-        documento = (
-            GenDocumento.objects.select_related('contacto').filter(pk=documento_id).first()
-        )
-
-        detalles = list(
+        detalle = (
             GenDocumentoDetalle.objects
-            .filter(documento_id=documento_id)
-            .select_related('puesto', 'modalidad')
-            .order_by('id')
+            .select_related('puesto', 'modalidad', 'documento__contacto')
+            .filter(pk=documento_detalle_id)
+            .first()
         )
+        if detalle is None:
+            raise NotFound('Documento detalle no encontrado.')
+        if detalle.fecha_desde is None:
+            raise ValidationError(
+                {'detail': 'El documento detalle no tiene fecha_desde.'}
+            )
+
+        documento = detalle.documento
+
+        # Columnas: los días del mes de fecha_desde del detalle.
+        anio = detalle.fecha_desde.year
+        mes = detalle.fecha_desde.month
+        dias_mes = calendar.monthrange(anio, mes)[1]
+        fechas_iso = [
+            date(anio, mes, dia).isoformat() for dia in range(1, dias_mes + 1)
+        ]
 
         simulaciones = (
             TurProgramacionSimulacion.objects
-            .filter(documento_detalle__documento_id=documento_id)
+            .filter(
+                documento_detalle_id=documento_detalle_id,
+                fecha__year=anio,
+                fecha__month=mes,
+            )
             .select_related('contrato__contacto', 'turno')
             .order_by('fecha', 'id')
         )
 
-        # Columnas: el mes completo de documento.fecha, más cualquier fecha
-        # simulada fuera de ese mes para no ocultar datos.
-        fechas_mes = set()
-        fecha_documento = documento.fecha if documento else None
-        if fecha_documento:
-            dias_mes = calendar.monthrange(fecha_documento.year, fecha_documento.month)[1]
-            fechas_mes = {
-                date(fecha_documento.year, fecha_documento.month, dia)
-                for dia in range(1, dias_mes + 1)
-            }
-        fechas = sorted(fechas_mes | {s.fecha for s in simulaciones})
-        fechas_iso = [f.isoformat() for f in fechas]
-
-        # Agrupar por detalle -> contrato -> {fecha_iso: simulacion}.
+        # Agrupar por contrato -> {fecha_iso: simulacion}.
         grupos = OrderedDict()
         for s in simulaciones:
-            grupos.setdefault(s.documento_detalle_id, OrderedDict()) \
-                  .setdefault(s.contrato_id, {})[s.fecha.isoformat()] = s
+            grupos.setdefault(s.contrato_id, {})[s.fecha.isoformat()] = s
 
         def celda(s):
             if s is None:
@@ -152,7 +158,7 @@ class TurProgramacionSimulacionViewSet(
                 'festivo': s.festivo,
             }
 
-        def construir_fila(detalle, contrato, posicion, por_fecha):
+        def construir_fila(contrato, posicion, por_fecha):
             return {
                 'documento_detalle_id': detalle.id,
                 'documento_detalle_afectado_id': detalle.documento_detalle_afectado_id,
@@ -181,16 +187,11 @@ class TurProgramacionSimulacionViewSet(
             }
 
         filas = []
-        for detalle in detalles:
-            contratos = grupos.get(detalle.id)
-            if not contratos:
-                filas.append(construir_fila(detalle, None, None, {}))
-                continue
-            for por_fecha in contratos.values():
-                fila_ref = next(iter(por_fecha.values()))
-                filas.append(construir_fila(
-                    detalle, fila_ref.contrato, fila_ref.posicion, por_fecha,
-                ))
+        if not grupos:
+            filas.append(construir_fila(None, None, {}))
+        for por_fecha in grupos.values():
+            fila_ref = next(iter(por_fecha.values()))
+            filas.append(construir_fila(fila_ref.contrato, fila_ref.posicion, por_fecha))
 
         documento_info = None
         if documento is not None:

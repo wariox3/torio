@@ -971,39 +971,75 @@ class AplicarPrototipoSimulacionTests(_PrototipoBaseTests):
 
         self.assertEqual(response.status_code, 404)
 
+    def _detalle(self, documento_detalle_id):
+        view = _SimulacionViewSinPermisos.as_view({'get': 'detalle'})
+        request = self.factory.get(
+            '/programacion-simulacion/detalle/',
+            {'documento_detalle': documento_detalle_id},
+        )
+        return view(request)
+
     def test_detalle_retorna_grilla(self):
+        self.detalle.fecha_desde = date(2026, 6, 1)
+        self.detalle.save()
         TurPrototipo.objects.create(
             fecha_inicio=date(2026, 6, 1), posicion=1,
             contrato=self.contrato, documento_detalle=self.detalle, secuencia=self.secuencia,
         )
         simular(self.detalle.id, 2026, 6)
 
-        view = _SimulacionViewSinPermisos.as_view({'get': 'detalle'})
-        request = self.factory.get(
-            '/programacion-simulacion/detalle/', {'documento': self.documento.id},
-        )
-        response = view(request)
+        response = self._detalle(self.detalle.id)
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['documento']['id'], self.documento.id)
+        # Columnas: el mes de fecha_desde del detalle.
         self.assertEqual(len(response.data['fechas']), 30)
+        self.assertEqual(response.data['fechas'][0], '2026-06-01')
+        self.assertEqual(len(response.data['filas']), 1)
 
-        fila = next(
-            f for f in response.data['filas'] if f['documento_detalle_id'] == self.detalle.id
-        )
+        fila = response.data['filas'][0]
+        self.assertEqual(fila['documento_detalle_id'], self.detalle.id)
         self.assertEqual(fila['contrato_id'], self.contrato.id)
         self.assertEqual(fila['contrato_contacto_numero_identificacion'], '123')
         self.assertEqual(fila['posicion'], 1)
+        # Todas las columnas del mes tienen celda; ninguna fecha ajena se cuela.
+        self.assertEqual(len(fila['dias']), 30)
+        self.assertFalse([f for f, c in fila['dias'].items() if c is None])
         # Día impar con turno, día par descanso.
         self.assertEqual(fila['dias']['2026-06-01']['turno_id'], self.turno.id)
         self.assertIsNone(fila['dias']['2026-06-02']['turno_id'])
 
-    def test_detalle_requiere_documento(self):
+    def test_detalle_sin_simulacion_retorna_fila_vacia(self):
+        self.detalle.fecha_desde = date(2026, 8, 1)
+        self.detalle.save()
+
+        response = self._detalle(self.detalle.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['fechas']), 31)
+        self.assertEqual(response.data['fechas'][0], '2026-08-01')
+
+        fila = response.data['filas'][0]
+        self.assertIsNone(fila['contrato_id'])
+        self.assertTrue(all(c is None for c in fila['dias'].values()))
+
+    def test_detalle_requiere_documento_detalle(self):
         view = _SimulacionViewSinPermisos.as_view({'get': 'detalle'})
-        request = self.factory.get('/programacion-simulacion/detalle/')
-        response = view(request)
+        response = view(self.factory.get('/programacion-simulacion/detalle/'))
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('documento', response.data)
+        self.assertIn('detail', response.data)
+
+    def test_detalle_documento_detalle_inexistente_404(self):
+        response = self._detalle(999999)
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_detalle_sin_fecha_desde_400(self):
+        response = self._detalle(self.detalle.id)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.data)
 
 
 class ImportarPrototipoTests(_PrototipoBaseTests):
