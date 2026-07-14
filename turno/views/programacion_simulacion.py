@@ -105,20 +105,13 @@ class TurProgramacionSimulacionViewSet(
                 {'detail': 'El parámetro documento_detalle debe ser un entero.'}
             )
 
-        detalle = (
-            GenDocumentoDetalle.objects
-            .select_related('puesto', 'modalidad', 'documento__contacto')
-            .filter(pk=documento_detalle_id)
-            .first()
-        )
+        detalle = GenDocumentoDetalle.objects.filter(pk=documento_detalle_id).first()
         if detalle is None:
             raise NotFound('Documento detalle no encontrado.')
         if detalle.fecha_desde is None:
             raise ValidationError(
                 {'detail': 'El documento detalle no tiene fecha_desde.'}
             )
-
-        documento = detalle.documento
 
         # Columnas: los días del mes de fecha_desde del detalle.
         anio = detalle.fecha_desde.year
@@ -139,7 +132,7 @@ class TurProgramacionSimulacionViewSet(
             .order_by('fecha', 'id')
         )
 
-        # Agrupar por contrato -> {fecha_iso: simulacion}.
+        # Agrupar por contrato -> {fecha_iso: simulacion}: una fila por contrato.
         grupos = OrderedDict()
         for s in simulaciones:
             grupos.setdefault(s.contrato_id, {})[s.fecha.isoformat()] = s
@@ -158,62 +151,29 @@ class TurProgramacionSimulacionViewSet(
                 'festivo': s.festivo,
             }
 
-        def construir_fila(contrato, posicion, por_fecha):
+        def construir_fila(contrato, por_fecha):
+            contacto = contrato.contacto if contrato else None
             return {
                 'documento_detalle_id': detalle.id,
-                'documento_detalle_afectado_id': detalle.documento_detalle_afectado_id,
-                'puesto_id': detalle.puesto_id,
-                'puesto_nombre': detalle.puesto.nombre if detalle.puesto else None,
-                'modalidad_nombre': detalle.modalidad.nombre if detalle.modalidad else None,
-                'fecha_desde': detalle.fecha_desde,
-                'hora_desde': detalle.hora_desde,
-                'hora_hasta': detalle.hora_hasta,
-                'posicion': posicion,
                 'contrato_id': contrato.id if contrato else None,
                 'contrato_contacto_id': contrato.contacto_id if contrato else None,
                 'contrato_contacto_nombre_corto': (
-                    contrato.contacto.nombre_corto if contrato and contrato.contacto else None
+                    contacto.nombre_corto if contacto else None
                 ),
                 'contrato_contacto_numero_identificacion': (
-                    contrato.contacto.numero_identificacion if contrato and contrato.contacto else None
+                    contacto.numero_identificacion if contacto else None
                 ),
-                'horas': detalle.horas,
-                'horas_diurnas': detalle.horas_diurnas,
-                'horas_nocturnas': detalle.horas_nocturnas,
-                'horas_programadas': detalle.horas_programadas,
-                'horas_diurnas_programadas': detalle.horas_diurnas_programadas,
-                'horas_nocturnas_programadas': detalle.horas_nocturnas_programadas,
                 'dias': {iso: celda(por_fecha.get(iso)) for iso in fechas_iso},
             }
 
-        filas = []
-        if not grupos:
-            filas.append(construir_fila(None, None, {}))
-        for por_fecha in grupos.values():
-            fila_ref = next(iter(por_fecha.values()))
-            filas.append(construir_fila(fila_ref.contrato, fila_ref.posicion, por_fecha))
-
-        documento_info = None
-        if documento is not None:
-            contacto = documento.contacto
-            documento_info = {
-                'id': documento.id,
-                'numero': documento.numero,
-                'fecha': documento.fecha,
-                'horas': documento.horas,
-                'horas_diurnas': documento.horas_diurnas,
-                'horas_nocturnas': documento.horas_nocturnas,
-                'horas_programadas': documento.horas_programadas,
-                'horas_diurnas_programadas': documento.horas_diurnas_programadas,
-                'horas_nocturnas_programadas': documento.horas_nocturnas_programadas,
-                'contacto_nombre_corto': contacto.nombre_corto if contacto else None,
-                'contacto_numero_identificacion': (
-                    contacto.numero_identificacion if contacto else None
-                ),
-            }
+        filas = [
+            construir_fila(next(iter(por_fecha.values())).contrato, por_fecha)
+            for por_fecha in grupos.values()
+        ]
+        if not filas:
+            filas.append(construir_fila(None, {}))
 
         return Response({
-            'documento': documento_info,
             'fechas': fechas_iso,
             'filas': filas,
         })

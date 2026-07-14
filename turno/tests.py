@@ -991,7 +991,6 @@ class AplicarPrototipoSimulacionTests(_PrototipoBaseTests):
         response = self._detalle(self.detalle.id)
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['documento']['id'], self.documento.id)
         # Columnas: el mes de fecha_desde del detalle.
         self.assertEqual(len(response.data['fechas']), 30)
         self.assertEqual(response.data['fechas'][0], '2026-06-01')
@@ -1000,8 +999,8 @@ class AplicarPrototipoSimulacionTests(_PrototipoBaseTests):
         fila = response.data['filas'][0]
         self.assertEqual(fila['documento_detalle_id'], self.detalle.id)
         self.assertEqual(fila['contrato_id'], self.contrato.id)
+        self.assertEqual(fila['contrato_contacto_id'], self.contrato.contacto_id)
         self.assertEqual(fila['contrato_contacto_numero_identificacion'], '123')
-        self.assertEqual(fila['posicion'], 1)
         # Todas las columnas del mes tienen celda; ninguna fecha ajena se cuela.
         self.assertEqual(len(fila['dias']), 30)
         self.assertFalse([f for f, c in fila['dias'].items() if c is None])
@@ -1020,6 +1019,7 @@ class AplicarPrototipoSimulacionTests(_PrototipoBaseTests):
         self.assertEqual(response.data['fechas'][0], '2026-08-01')
 
         fila = response.data['filas'][0]
+        self.assertEqual(fila['documento_detalle_id'], self.detalle.id)
         self.assertIsNone(fila['contrato_id'])
         self.assertTrue(all(c is None for c in fila['dias'].values()))
 
