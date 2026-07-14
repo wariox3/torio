@@ -5,7 +5,7 @@ from django.db import transaction
 from django.db.models import F, Sum
 
 from general.models import GenDocumento, GenDocumentoDetalle, GenFestivo
-from turno.models import TurProgramacion, TurTurno
+from turno.models import TurProgramacion, TurProgramacionSimulacion, TurTurno
 
 
 class ProgramacionError(ValueError):
@@ -339,6 +339,113 @@ def actualizar_programacion(contrato, documento_detalle, items):
         'actualizados': len(actualizar),
         'eliminados': len(eliminar_ids),
     }
+
+
+def generar_programacion(documento_detalle):
+    """
+    Materializa el buffer de `TurProgramacionSimulacion` en `TurProgramacion`
+    para un `documento_detalle`.
+
+    - Las filas simuladas **sin turno** (descanso) se ignoran: no crean fila, así
+      no ocupan `(contrato, fecha)` ni bloquean a otro documento_detalle.
+    - Aborta con `ProgramacionError` si alguna fila simulada no tiene contrato, si
+      el contrato no está habilitado para turnos, si el par `(contrato, fecha)` ya
+      está programado, o si las horas resultantes superan las planeadas del puesto.
+    - Las horas y `festivo` se toman de la simulación (es lo que el usuario vio en
+      la grilla), y el neto se propaga al detalle y a su documento padre.
+    - Al terminar marca `documento_detalle.generado` y vacía el buffer completo.
+
+    Retorna la cantidad de filas creadas.
+    """
+    if documento_detalle.generado:
+        raise ProgramacionError(
+            [], detail='El documento detalle ya fue generado.',
+        )
+
+    simulaciones = list(
+        TurProgramacionSimulacion.objects
+        .filter(documento_detalle=documento_detalle)
+        .select_related('contrato', 'turno')
+        .order_by('fecha', 'id')
+    )
+    if not simulaciones:
+        raise ProgramacionError([], detail='No hay simulación para generar.')
+
+    # Los días de descanso (sin turno) no se materializan.
+    con_turno = [s for s in simulaciones if s.turno_id is not None]
+    if not con_turno:
+        raise ProgramacionError([], detail='La simulación no tiene días con turno.')
+
+    errores = []
+
+    sin_contrato = [s for s in con_turno if s.contrato_id is None]
+    for s in sin_contrato:
+        errores.append(_error_dia(
+            s.fecha, s.turno.codigo, 'sin_contrato',
+            'La simulación no tiene contrato asignado.',
+        ))
+
+    contratos = {s.contrato_id: s.contrato for s in con_turno if s.contrato_id is not None}
+    for contrato in contratos.values():
+        if not contrato.habilitado_turno:
+            errores.append({
+                'fecha': None,
+                'turno_codigo': None,
+                'codigo': 'contrato_no_habilitado',
+                'mensaje': f'El contrato {contrato.id} no está habilitado para turnos.',
+            })
+
+    # El unique es (contrato, fecha) global: el día puede estar ocupado por otro puesto.
+    ocupadas = set(
+        TurProgramacion.objects
+        .filter(
+            contrato_id__in=contratos,
+            fecha__in={s.fecha for s in con_turno},
+        )
+        .values_list('contrato_id', 'fecha')
+    )
+    for s in con_turno:
+        if (s.contrato_id, s.fecha) in ocupadas:
+            errores.append(_error_dia(
+                s.fecha, s.turno.codigo, 'dia_ocupado',
+                'Ya existe programación para este día.',
+            ))
+
+    if errores:
+        errores.sort(key=lambda e: (e['fecha'] or ''))
+        raise ProgramacionError(errores)
+
+    nuevos = [
+        TurProgramacion(
+            contrato_id=s.contrato_id,
+            fecha=s.fecha,
+            documento_detalle=documento_detalle,
+            turno_id=s.turno_id,
+            festivo=s.festivo,
+            horas=s.horas,
+            horas_diurnas=s.horas_diurnas,
+            horas_nocturnas=s.horas_nocturnas,
+        )
+        for s in con_turno
+    ]
+
+    total_horas = sum((p.horas for p in nuevos), Decimal('0'))
+    total_diurnas = sum((p.horas_diurnas for p in nuevos), Decimal('0'))
+    total_nocturnas = sum((p.horas_nocturnas for p in nuevos), Decimal('0'))
+
+    _validar_limite_horas(
+        documento_detalle,
+        (documento_detalle.horas_diurnas_programadas or Decimal('0')) + total_diurnas,
+        (documento_detalle.horas_nocturnas_programadas or Decimal('0')) + total_nocturnas,
+    )
+
+    with transaction.atomic():
+        TurProgramacion.objects.bulk_create(nuevos)
+        _aplicar_delta_horas(documento_detalle, total_horas, total_diurnas, total_nocturnas)
+        GenDocumentoDetalle.objects.filter(pk=documento_detalle.pk).update(generado=True)
+        TurProgramacionSimulacion.objects.all().delete()
+
+    return len(nuevos)
 
 
 def eliminar_programaciones(contrato_id, documento_detalle_id):

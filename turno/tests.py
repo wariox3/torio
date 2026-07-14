@@ -111,7 +111,7 @@ class _ProgramacionBaseTests(TenantTestCase):
 class CrearProgramacionTests(_ProgramacionBaseTests):
     def setUp(self):
         super().setUp()
-        self.view = _ViewSinPermisos.as_view({'post': 'crear_programacion'})
+        self.view = _ViewSinPermisos.as_view({'post': 'crear'})
 
     def _payload(self, **overrides):
         data = {
@@ -126,7 +126,7 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
         return data
 
     def _post(self, data):
-        request = self.factory.post('/crear-programacion/', data, format='json')
+        request = self.factory.post('/programacion/crear/', data, format='json')
         return self.view(request)
 
     def test_crea_programacion(self):
@@ -195,8 +195,8 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
             turno=self.turno,
         )
 
-        eliminar = _ViewSinPermisos.as_view({'post': 'eliminar_programacion'})
-        request = self.factory.post('/eliminar-programacion/', {
+        eliminar = _ViewSinPermisos.as_view({'post': 'eliminar'})
+        request = self.factory.post('/programacion/eliminar/', {
             'contrato_id': self.contrato.id,
             'documento_detalle_id': self.detalle.id,
         }, format='json')
@@ -367,8 +367,8 @@ class CrearProgramacionTests(_ProgramacionBaseTests):
 class ActualizarProgramacionTests(_ProgramacionBaseTests):
     def setUp(self):
         super().setUp()
-        self.crear = _ViewSinPermisos.as_view({'post': 'crear_programacion'})
-        self.actualizar = _ViewSinPermisos.as_view({'post': 'actualizar_programacion'})
+        self.crear = _ViewSinPermisos.as_view({'post': 'crear'})
+        self.actualizar = _ViewSinPermisos.as_view({'post': 'actualizar'})
 
         # Turno nocturno para probar cambios de turno.
         self.turno_noche = TurTurno.objects.create(
@@ -382,7 +382,7 @@ class ActualizarProgramacionTests(_ProgramacionBaseTests):
         )
 
         # Estado inicial: 2026-06-01 turno D (8h diurnas), 2026-06-02 descanso.
-        self.crear(self.factory.post('/crear-programacion/', {
+        self.crear(self.factory.post('/programacion/crear/', {
             'contrato_id': self.contrato.id,
             'documento_detalle_id': self.detalle.id,
             'items': [
@@ -398,7 +398,7 @@ class ActualizarProgramacionTests(_ProgramacionBaseTests):
             'items': items,
         }
         data.update(overrides)
-        request = self.factory.post('/actualizar-programacion/', data, format='json')
+        request = self.factory.post('/programacion/actualizar/', data, format='json')
         return self.actualizar(request)
 
     def test_agrega_y_elimina(self):
@@ -647,14 +647,14 @@ class DetalleTests(_ProgramacionBaseTests):
 class ActualizarProgramacionMasivoTests(_ProgramacionBaseTests):
     def setUp(self):
         super().setUp()
-        self.view = _ViewSinPermisos.as_view({'post': 'actualizar_programacion_masivo'})
+        self.view = _ViewSinPermisos.as_view({'post': 'actualizar_masivo'})
         self.detalle2 = GenDocumentoDetalle.objects.create(
             documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
         )
 
     def _post(self, programaciones):
         request = self.factory.post(
-            '/actualizar-programacion-masivo/',
+            '/programacion/actualizar-masivo/',
             {'programaciones': programaciones},
             format='json',
         )
@@ -760,7 +760,7 @@ class ActualizarProgramacionMasivoTests(_ProgramacionBaseTests):
 class EliminarProgramacionMasivoTests(_ProgramacionBaseTests):
     def setUp(self):
         super().setUp()
-        self.view = _ViewSinPermisos.as_view({'post': 'eliminar_programacion_masivo'})
+        self.view = _ViewSinPermisos.as_view({'post': 'eliminar_masivo'})
         self.detalle2 = GenDocumentoDetalle.objects.create(
             documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
         )
@@ -782,7 +782,7 @@ class EliminarProgramacionMasivoTests(_ProgramacionBaseTests):
 
     def _post(self, programaciones):
         request = self.factory.post(
-            '/eliminar-programacion-masivo/',
+            '/programacion/eliminar-masivo/',
             {'programaciones': programaciones},
             format='json',
         )
@@ -1159,3 +1159,121 @@ class ImportarPrototipoTests(_PrototipoBaseTests):
         self.assertEqual(errores[0]['fila'], 3)
         self.assertIn('Ya existe un prototipo', errores[0]['mensaje'])
         self.assertEqual(TurPrototipo.objects.count(), 0)
+
+
+class GenerarProgramacionTests(_PrototipoBaseTests):
+    """Materialización del buffer de simulación en TurProgramacion."""
+
+    def setUp(self):
+        super().setUp()
+        # Secuencia cíclica de 2 días: día 1 con turno 'D' (8h diurnas), día 2 descanso.
+        self.secuencia.dias = 2
+        self.secuencia.dia_1 = 'D'
+        self.secuencia.dia_2 = None
+        self.secuencia.save()
+
+    def _simular(self):
+        TurPrototipo.objects.create(
+            fecha_inicio=date(2026, 6, 1), posicion=1,
+            contrato=self.contrato, documento_detalle=self.detalle, secuencia=self.secuencia,
+        )
+        simular(self.detalle.id, 2026, 6)
+
+    def _generar(self, documento_detalle_id=None):
+        view = _ViewSinPermisos.as_view({'post': 'generar'})
+        payload = {'documento_detalle_id': documento_detalle_id or self.detalle.id}
+        return view(self.factory.post('/programacion/generar/', payload, format='json'))
+
+    def test_genera_solo_dias_con_turno(self):
+        self._simular()
+
+        response = self._generar()
+
+        self.assertEqual(response.status_code, 201)
+        # Junio: 15 días con turno, 15 de descanso que no se materializan.
+        self.assertEqual(response.data['creados'], 15)
+        self.assertEqual(TurProgramacion.objects.count(), 15)
+        self.assertTrue(all(p.turno_id == self.turno.id for p in TurProgramacion.objects.all()))
+
+    def test_generar_propaga_horas_y_vacia_el_buffer(self):
+        self._simular()
+
+        self._generar()
+
+        self.detalle.refresh_from_db()
+        self.documento.refresh_from_db()
+        # 15 días × 8h diurnas.
+        self.assertEqual(self.detalle.horas_programadas, 120)
+        self.assertEqual(self.detalle.horas_diurnas_programadas, 120)
+        self.assertEqual(self.documento.horas_programadas, 120)
+        # El buffer se vacía y el detalle queda marcado.
+        self.assertEqual(TurProgramacionSimulacion.objects.count(), 0)
+        self.assertTrue(self.detalle.generado)
+
+    def test_no_regenera_un_detalle_ya_generado(self):
+        self._simular()
+        self._generar()
+
+        # Se vuelve a llenar el buffer (el prototipo ya existe).
+        simular(self.detalle.id, 2026, 6)
+        response = self._generar()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('ya fue generado', response.data['detail'])
+        self.assertEqual(TurProgramacion.objects.count(), 15)
+
+    def test_sin_simulacion_da_error(self):
+        response = self._generar()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.data)
+        self.assertEqual(TurProgramacion.objects.count(), 0)
+
+    def test_dia_ocupado_por_otro_puesto_aborta(self):
+        self._simular()
+        # El contrato ya está programado el 1 de junio en otro documento_detalle.
+        detalle2 = GenDocumentoDetalle.objects.create(
+            documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
+        )
+        TurProgramacion.objects.create(
+            contrato=self.contrato, fecha=date(2026, 6, 1),
+            documento_detalle=detalle2, turno=self.turno,
+        )
+
+        response = self._generar()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['errores'][0]['codigo'], 'dia_ocupado')
+        # No se creó nada nuevo: sigue solo la programación previa.
+        self.assertEqual(TurProgramacion.objects.count(), 1)
+        self.detalle.refresh_from_db()
+        self.assertFalse(self.detalle.generado)
+
+    def test_horas_excedidas_aborta(self):
+        # Planeadas insuficientes: 15 días × 8h = 120h diurnas.
+        self.detalle.horas_diurnas = 50
+        self.detalle.save()
+        self._simular()
+
+        response = self._generar()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['errores'][0]['codigo'], 'horas_diurnas_excedidas')
+        self.assertEqual(TurProgramacion.objects.count(), 0)
+        self.assertEqual(TurProgramacionSimulacion.objects.count(), 30)
+
+    def test_contrato_no_habilitado_aborta(self):
+        self.contrato.habilitado_turno = False
+        self.contrato.save()
+        self._simular()
+
+        response = self._generar()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['errores'][0]['codigo'], 'contrato_no_habilitado')
+        self.assertEqual(TurProgramacion.objects.count(), 0)
+
+    def test_documento_detalle_inexistente_404(self):
+        response = self._generar(documento_detalle_id=999999)
+
+        self.assertEqual(response.status_code, 404)

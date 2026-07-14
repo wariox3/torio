@@ -22,6 +22,7 @@ from turno.servicios import (
     actualizar_programacion,
     crear_programacion,
     eliminar_programaciones,
+    generar_programacion,
 )
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 
@@ -39,6 +40,10 @@ class CrearProgramacionRequestSerializer(serializers.Serializer):
 
 class EliminarProgramacionRequestSerializer(serializers.Serializer):
     contrato_id = serializers.IntegerField()
+    documento_detalle_id = serializers.IntegerField()
+
+
+class GenerarProgramacionRequestSerializer(serializers.Serializer):
     documento_detalle_id = serializers.IntegerField()
 
 
@@ -92,8 +97,8 @@ class TurProgramacionViewSet(
         return super().list(request, *args, **kwargs)
 
     @extend_schema(request=CrearProgramacionRequestSerializer)
-    @action(detail=False, methods=['post'], url_path='crear-programacion')
-    def crear_programacion(self, request):
+    @action(detail=False, methods=['post'], url_path='crear')
+    def crear(self, request):
         serializer = CrearProgramacionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         datos = serializer.validated_data
@@ -127,9 +132,34 @@ class TurProgramacionViewSet(
 
         return Response({'creados': creados}, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=GenerarProgramacionRequestSerializer)
+    @action(detail=False, methods=['post'], url_path='generar')
+    def generar(self, request):
+        """Materializa el buffer de simulación de un documento_detalle en programación real."""
+        serializer = GenerarProgramacionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = serializer.validated_data
+
+        try:
+            documento_detalle = GenDocumentoDetalle.objects.get(
+                pk=datos['documento_detalle_id']
+            )
+        except GenDocumentoDetalle.DoesNotExist:
+            raise NotFound('Documento detalle no encontrado.')
+
+        try:
+            creados = generar_programacion(documento_detalle)
+        except ProgramacionError as e:
+            return Response(
+                {'detail': e.detail, 'errores': e.errores},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({'creados': creados}, status=status.HTTP_201_CREATED)
+
     @extend_schema(request=CrearProgramacionRequestSerializer)
-    @action(detail=False, methods=['post'], url_path='actualizar-programacion')
-    def actualizar_programacion(self, request):
+    @action(detail=False, methods=['post'], url_path='actualizar')
+    def actualizar(self, request):
         """Sincroniza las programaciones de un (contrato, documento_detalle) con los items enviados."""
         serializer = CrearProgramacionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -158,8 +188,8 @@ class TurProgramacionViewSet(
         return Response(resultado, status=status.HTTP_200_OK)
 
     @extend_schema(request=ActualizarProgramacionMasivoRequestSerializer)
-    @action(detail=False, methods=['post'], url_path='actualizar-programacion-masivo')
-    def actualizar_programacion_masivo(self, request):
+    @action(detail=False, methods=['post'], url_path='actualizar-masivo')
+    def actualizar_masivo(self, request):
         """
         Reconcilia varias programaciones (contrato, documento_detalle) en un lote.
 
@@ -207,8 +237,8 @@ class TurProgramacionViewSet(
         return Response({'resultados': resultados}, status=status.HTTP_200_OK)
 
     @extend_schema(request=EliminarProgramacionRequestSerializer)
-    @action(detail=False, methods=['post'], url_path='eliminar-programacion')
-    def eliminar_programacion(self, request):
+    @action(detail=False, methods=['post'], url_path='eliminar')
+    def eliminar(self, request):
         """Elimina las programaciones de un (contrato, documento_detalle)."""
         serializer = EliminarProgramacionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -221,8 +251,8 @@ class TurProgramacionViewSet(
         return Response({'eliminados': eliminados}, status=status.HTTP_200_OK)
 
     @extend_schema(request=EliminarProgramacionMasivoRequestSerializer)
-    @action(detail=False, methods=['post'], url_path='eliminar-programacion-masivo')
-    def eliminar_programacion_masivo(self, request):
+    @action(detail=False, methods=['post'], url_path='eliminar-masivo')
+    def eliminar_masivo(self, request):
         """Elimina las programaciones de varios (contrato, documento_detalle) en un lote (todo o nada)."""
         serializer = EliminarProgramacionMasivoRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
