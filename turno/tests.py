@@ -1017,6 +1017,31 @@ class AplicarPrototipoSimulacionTests(_PrototipoBaseTests):
 
         self.assertEqual(response.status_code, 404)
 
+    def _limpiar(self):
+        view = _SimulacionViewSinPermisos.as_view({'post': 'limpiar'})
+        return view(self.factory.post('/programacion-simulacion/limpiar/'))
+
+    def test_limpiar_vacia_el_buffer(self):
+        TurPrototipo.objects.create(
+            fecha_inicio=date(2026, 6, 1), posicion=1,
+            contrato=self.contrato, documento_detalle=self.detalle, secuencia=self.secuencia,
+        )
+        simular(self.detalle.id, 2026, 6)
+
+        response = self._limpiar()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['eliminados'], 30)
+        self.assertEqual(TurProgramacionSimulacion.objects.count(), 0)
+        # No toca los prototipos: solo el buffer.
+        self.assertEqual(TurPrototipo.objects.count(), 1)
+
+    def test_limpiar_con_buffer_vacio_no_falla(self):
+        response = self._limpiar()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['eliminados'], 0)
+
     def _detalle(self, documento_detalle_id, anio=2026, mes=6):
         view = _SimulacionViewSinPermisos.as_view({'get': 'detalle'})
         request = self.factory.get(

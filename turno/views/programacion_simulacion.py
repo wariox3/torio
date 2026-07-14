@@ -86,6 +86,13 @@ class TurProgramacionSimulacionViewSet(
         )
         return Response({'creados': creados}, status=status.HTTP_200_OK)
 
+    @extend_schema(request=None)
+    @action(detail=False, methods=['post'], url_path='limpiar')
+    def limpiar(self, request):
+        """Vacía el buffer de simulación (es de una sola corrida: se borra completo)."""
+        eliminados, _ = TurProgramacionSimulacion.objects.all().delete()
+        return Response({'eliminados': eliminados}, status=status.HTTP_200_OK)
+
     @extend_schema(parameters=[
         OpenApiParameter(
             'documento_detalle', int, required=True, description='Documento detalle simulado',
