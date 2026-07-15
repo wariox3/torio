@@ -310,6 +310,10 @@ class TurProgramacionViewSet(
         documento = (
             GenDocumento.objects.select_related('contacto').filter(pk=documento_id).first()
         )
+        if documento is None:
+            raise NotFound('Documento no encontrado.')
+        if documento.fecha is None:
+            raise ValidationError({'detail': 'El documento no tiene fecha.'})
 
         detalles = list(
             GenDocumentoDetalle.objects
@@ -318,25 +322,25 @@ class TurProgramacionViewSet(
             .order_by('id')
         )
 
+        # Columnas: los días del mes de documento.fecha. Las programaciones se
+        # acotan a ese mes: la grilla no muestra fechas fuera de él.
+        anio = documento.fecha.year
+        mes = documento.fecha.month
+        dias_mes = calendar.monthrange(anio, mes)[1]
+        fechas_iso = [
+            date(anio, mes, dia).isoformat() for dia in range(1, dias_mes + 1)
+        ]
+
         programaciones = (
             TurProgramacion.objects
-            .filter(documento_detalle__documento_id=documento_id)
+            .filter(
+                documento_detalle__documento_id=documento_id,
+                fecha__year=anio,
+                fecha__month=mes,
+            )
             .select_related('contrato__contacto', 'turno')
             .order_by('fecha', 'id')
         )
-
-        # Columnas: el mes completo de documento.fecha, más cualquier fecha
-        # programada fuera de ese mes para no ocultar datos.
-        fechas_mes = set()
-        fecha_documento = documento.fecha if documento else None
-        if fecha_documento:
-            dias_mes = calendar.monthrange(fecha_documento.year, fecha_documento.month)[1]
-            fechas_mes = {
-                date(fecha_documento.year, fecha_documento.month, dia)
-                for dia in range(1, dias_mes + 1)
-            }
-        fechas = sorted(fechas_mes | {p.fecha for p in programaciones})
-        fechas_iso = [f.isoformat() for f in fechas]
 
         # Agrupar por detalle -> contrato -> {fecha_iso: programacion}.
         grupos = OrderedDict()
@@ -395,24 +399,22 @@ class TurProgramacionViewSet(
                 contrato = next(iter(por_fecha.values())).contrato
                 filas.append(construir_fila(detalle, contrato, por_fecha))
 
-        documento_info = None
-        if documento is not None:
-            contacto = documento.contacto
-            documento_info = {
-                'id': documento.id,
-                'numero': documento.numero,
-                'fecha': documento.fecha,
-                'horas': documento.horas,
-                'horas_diurnas': documento.horas_diurnas,
-                'horas_nocturnas': documento.horas_nocturnas,
-                'horas_programadas': documento.horas_programadas,
-                'horas_diurnas_programadas': documento.horas_diurnas_programadas,
-                'horas_nocturnas_programadas': documento.horas_nocturnas_programadas,
-                'contacto_nombre_corto': contacto.nombre_corto if contacto else None,
-                'contacto_numero_identificacion': (
-                    contacto.numero_identificacion if contacto else None
-                ),
-            }
+        contacto = documento.contacto
+        documento_info = {
+            'id': documento.id,
+            'numero': documento.numero,
+            'fecha': documento.fecha,
+            'horas': documento.horas,
+            'horas_diurnas': documento.horas_diurnas,
+            'horas_nocturnas': documento.horas_nocturnas,
+            'horas_programadas': documento.horas_programadas,
+            'horas_diurnas_programadas': documento.horas_diurnas_programadas,
+            'horas_nocturnas_programadas': documento.horas_nocturnas_programadas,
+            'contacto_nombre_corto': contacto.nombre_corto if contacto else None,
+            'contacto_numero_identificacion': (
+                contacto.numero_identificacion if contacto else None
+            ),
+        }
 
         return Response({
             'documento': documento_info,

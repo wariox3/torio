@@ -1,11 +1,10 @@
-import calendar
 from datetime import date
 
 from general.models import GenFestivo
 from turno.models import TurTurno
 
 
-def calcular_mes(secuencia, anio, mes, posicion_inicial):
+def calcular_mes(secuencia, anio, mes, posicion_inicial, dia_desde, dia_hasta):
     """
     Aplica la secuencia como patrón cíclico sobre un mes (no persiste).
 
@@ -14,7 +13,11 @@ def calcular_mes(secuencia, anio, mes, posicion_inicial):
     repite cada `secuencia.dias` días a lo largo del mes; `posicion_inicial`
     (1-based) indica qué slot del patrón corresponde al día 1 del mes.
 
-    Retorna una lista de dicts, uno por día del mes:
+    Solo se devuelven los días entre `dia_desde` y `dia_hasta` (inclusive), pero el
+    ciclo sigue anclado en el día 1: cada día conserva el turno que le toca del
+    patrón, aunque el rango empiece más tarde.
+
+    Retorna una lista de dicts, uno por día dentro del rango:
         {dia, fecha, turno_codigo, turno_id, turno_nombre,
          horas, horas_diurnas, horas_nocturnas, festivo}
     """
@@ -22,8 +25,6 @@ def calcular_mes(secuencia, anio, mes, posicion_inicial):
 
     # Patrón cíclico: codigo de turno por cada posición (vacío = descanso).
     patron = [getattr(secuencia, f'dia_{i}') or None for i in range(1, n + 1)]
-
-    dias_mes = calendar.monthrange(anio, mes)[1]
 
     festivos = set(
         GenFestivo.objects
@@ -35,7 +36,7 @@ def calcular_mes(secuencia, anio, mes, posicion_inicial):
     turnos = {t.codigo: t for t in TurTurno.objects.filter(codigo__in=codigos)}
 
     dias = []
-    for dia in range(1, dias_mes + 1):
+    for dia in range(dia_desde, dia_hasta + 1):
         indice = ((posicion_inicial - 1) + (dia - 1)) % n
         codigo = patron[indice]
         turno = turnos.get(codigo) if codigo else None

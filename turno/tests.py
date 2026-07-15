@@ -29,6 +29,7 @@ from turno.servicios import simular
 from turno.views.programacion import TurProgramacionViewSet
 from turno.views.programacion_simulacion import TurProgramacionSimulacionViewSet
 from turno.views.prototipo import TurPrototipoViewSet
+from turno.views.secuencia import TurSecuenciaViewSet
 
 
 class _ViewSinPermisos(TurProgramacionViewSet):
@@ -608,8 +609,9 @@ class DetalleTests(_ProgramacionBaseTests):
         self.assertEqual(dias['2026-06-01']['turno_id'], self.turno.id)
         self.assertIsNone(dias['2026-06-02'])
 
-    def test_incluye_fecha_fuera_del_mes(self):
-        # Programación fuera del mes de documento.fecha: no debe ocultarse.
+    def test_excluye_fecha_fuera_del_mes(self):
+        # La grilla es el mes de documento.fecha (junio): una programación de julio
+        # no agrega columna ni aparece como celda.
         TurProgramacion.objects.create(
             contrato=self.contrato,
             documento_detalle=self.detalle,
@@ -622,26 +624,23 @@ class DetalleTests(_ProgramacionBaseTests):
         response = self._get(self.documento.id)
 
         fechas = response.data['fechas']
-        self.assertEqual(len(fechas), 31)  # 30 de junio + el 05-07
-        self.assertIn('2026-07-05', fechas)
-        self.assertEqual(fechas[-1], '2026-07-05')
+        self.assertEqual(len(fechas), 30)  # solo junio
+        self.assertNotIn('2026-07-05', fechas)
+        self.assertEqual(fechas[-1], '2026-06-30')
 
-    def test_sin_fecha_documento_usa_programaciones(self):
-        # Si documento.fecha es null, cae al comportamiento previo (solo programadas).
+    def test_sin_fecha_documento_da_error(self):
         self.documento.fecha = None
         self.documento.save(update_fields=['fecha'])
-        TurProgramacion.objects.create(
-            contrato=self.contrato,
-            documento_detalle=self.detalle,
-            fecha=date(2026, 6, 1),
-            turno=self.turno,
-            horas=8,
-            horas_diurnas=8,
-        )
 
         response = self._get(self.documento.id)
 
-        self.assertEqual(response.data['fechas'], ['2026-06-01'])
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.data)
+
+    def test_documento_inexistente_404(self):
+        response = self._get(999999)
+
+        self.assertEqual(response.status_code, 404)
 
 
 class ActualizarProgramacionMasivoTests(_ProgramacionBaseTests):
@@ -1399,3 +1398,87 @@ class GenerarProgramacionTests(_PrototipoBaseTests):
         response = self._desgenerar(documento_detalle_id=999999)
 
         self.assertEqual(response.status_code, 404)
+
+
+class _SecuenciaViewSinPermisos(TurSecuenciaViewSet):
+    """Variante sin auth/permiso/throttle para probar calcular-mes aislado."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class CalcularMesTests(TenantTestCase):
+    """calcular-mes con rango dia_desde/dia_hasta: patrón anclado en el día 1."""
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.telefono = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.turno = TurTurno.objects.create(
+            nombre='Diurno', codigo='D',
+            hora_inicio=time(6, 0), hora_fin=time(14, 0),
+            horas=8, horas_diurnas=8, horas_nocturnas=0,
+        )
+        # Ciclo de 2 días: día 1 con turno 'D', día 2 descanso.
+        self.secuencia = TurSecuencia.objects.create(nombre='Sec 1', dias=2, dia_1='D', dia_2=None)
+
+    def _post(self, **overrides):
+        view = _SecuenciaViewSinPermisos.as_view({'post': 'calcular_mes'})
+        payload = {
+            'secuencia_id': self.secuencia.id,
+            'posicion_inicial': 1,
+            'anio': 2026, 'mes': 6,
+            'dia_desde': 10, 'dia_hasta': 15,
+        }
+        payload.update(overrides)
+        return view(self.factory.post('/secuencia/calcular-mes/', payload, format='json'))
+
+    def test_solo_devuelve_dias_del_rango(self):
+        response = self._post(dia_desde=10, dia_hasta=15)
+
+        self.assertEqual(response.status_code, 200)
+        dias = response.data['dias']
+        self.assertEqual([d['dia'] for d in dias], [10, 11, 12, 13, 14, 15])
+
+    def test_patron_anclado_en_dia_1(self):
+        # Con posicion_inicial=1: días impares -> turno 'D', pares -> descanso.
+        response = self._post(dia_desde=10, dia_hasta=13)
+
+        por_dia = {d['dia']: d for d in response.data['dias']}
+        self.assertIsNone(por_dia[10]['turno_id'])          # par -> descanso
+        self.assertEqual(por_dia[11]['turno_id'], self.turno.id)  # impar -> turno
+        self.assertIsNone(por_dia[12]['turno_id'])
+        self.assertEqual(por_dia[13]['turno_id'], self.turno.id)
+
+    def test_rango_de_un_solo_dia(self):
+        response = self._post(dia_desde=11, dia_hasta=11)
+
+        dias = response.data['dias']
+        self.assertEqual(len(dias), 1)
+        self.assertEqual(dias[0]['dia'], 11)
+        self.assertEqual(dias[0]['turno_id'], self.turno.id)
+
+    def test_dia_desde_mayor_que_hasta_da_error(self):
+        response = self._post(dia_desde=15, dia_hasta=10)
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_dia_hasta_fuera_del_mes_da_error(self):
+        # Junio tiene 30 días.
+        response = self._post(dia_desde=1, dia_hasta=31)
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_dia_desde_y_hasta_requeridos(self):
+        view = _SecuenciaViewSinPermisos.as_view({'post': 'calcular_mes'})
+        response = view(self.factory.post('/secuencia/calcular-mes/', {
+            'secuencia_id': self.secuencia.id,
+            'posicion_inicial': 1,
+            'anio': 2026, 'mes': 6,
+        }, format='json'))
+
+        self.assertEqual(response.status_code, 400)

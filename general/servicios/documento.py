@@ -1,11 +1,18 @@
 import calendar
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import transaction
 from rest_framework.exceptions import NotFound, ValidationError
 
-from general.models import GenDocumento, GenDocumentoDetalle, GenDocumentoImpuesto, GenDocumentoTipo
+from general.models import (
+    GenDocumento,
+    GenDocumentoDetalle,
+    GenDocumentoImpuesto,
+    GenDocumentoTipo,
+    GenFestivo,
+)
+from general.servicios.supervigilancia import LiquidadorSupervigilancia
 
 
 def sincronizar_impuestos(detalle, impuestos):
@@ -124,8 +131,85 @@ def desaprobar(documento_id):
 
 
 def generar(documento_tipo_origen, documento_tipo_destino_id, anio, mes, documento_ids=None):
+    # Ventana del periodo: los detalles generados viven dentro de este mes.
+    primer_dia = date(anio, mes, 1)
     fecha = date(anio, mes, calendar.monthrange(anio, mes)[1])
     fecha_origen = date(anio + mes // 12, mes % 12 + 1, 1)
+
+    def acotar_al_periodo(detalle):
+        """
+        Recorta `[fecha_desde, fecha_hasta]` del detalle origen a la ventana del mes.
+
+        Retorna `None` si el rango no se solapa con el periodo (el detalle no se
+        genera). Aborta si al detalle le falta alguna de las dos fechas.
+        """
+        if detalle.fecha_desde is None or detalle.fecha_hasta is None:
+            raise ValidationError({
+                'detail': (
+                    f'El detalle {detalle.id} del documento {detalle.documento_id} '
+                    f'no tiene fecha desde y fecha hasta.'
+                )
+            })
+        if detalle.fecha_desde > fecha or detalle.fecha_hasta < primer_dia:
+            return None
+        return (
+            max(detalle.fecha_desde, primer_dia),
+            min(detalle.fecha_hasta, fecha),
+        )
+
+    festivos = set(
+        GenFestivo.objects
+        .filter(fecha__range=(primer_dia, fecha))
+        .values_list('fecha', flat=True)
+    )
+
+    def calcular_horas(detalle, fecha_desde, fecha_hasta):
+        """
+        Recalcula horas/diurnas/nocturnas y días del detalle para su rango acotado,
+        contando día a día el calendario real del periodo.
+
+        Un día cuenta si es festivo y el detalle marca `festivo`, o si no es festivo
+        y su día de la semana está marcado. En un festivo manda el flag `festivo`:
+        un lunes festivo con `festivo=False` no cuenta aunque `lunes` esté marcado.
+        """
+        if detalle.hora_desde is None or detalle.hora_hasta is None:
+            raise ValidationError({
+                'detail': (
+                    f'El detalle {detalle.id} del documento {detalle.documento_id} '
+                    f'no tiene hora desde y hora hasta.'
+                )
+            })
+
+        diurnas_dia, nocturnas_dia = LiquidadorSupervigilancia.particionar_horas(
+            detalle.hora_desde, detalle.hora_hasta,
+        )
+        # Indexado por date.weekday(): 0=lunes ... 6=domingo.
+        dias_semana = (
+            detalle.lunes, detalle.martes, detalle.miercoles, detalle.jueves,
+            detalle.viernes, detalle.sabado, detalle.domingo,
+        )
+
+        dias = 0
+        dia = fecha_desde
+        while dia <= fecha_hasta:
+            if dia in festivos:
+                aplica = detalle.festivo
+            else:
+                aplica = dias_semana[dia.weekday()]
+            if aplica:
+                dias += 1
+            dia += timedelta(days=1)
+
+        centavos = Decimal('0.01')
+        horas_diurnas = (diurnas_dia * dias).quantize(centavos)
+        horas_nocturnas = (nocturnas_dia * dias).quantize(centavos)
+        return {
+            'dias': dias,
+            'horas': horas_diurnas + horas_nocturnas,
+            'horas_diurnas': horas_diurnas,
+            'horas_nocturnas': horas_nocturnas,
+        }
+
     def clonar(instancia, excluir, overrides):
         """Construye una copia sin guardar, omitiendo `excluir` y aplicando `overrides`."""
         datos = {
@@ -167,16 +251,30 @@ def generar(documento_tipo_origen, documento_tipo_destino_id, anio, mes, documen
     generados = []
     with transaction.atomic():
         for origen in documentos:
+            # Solo los detalles cuyo rango se solapa con el periodo, ya acotados a él.
+            detalles = []
+            for detalle in origen.documentos_detalles_documento_rel.all():
+                rango = acotar_al_periodo(detalle)
+                if rango is not None:
+                    detalles.append((detalle, rango))
+
+            # Sin detalles vigentes en el periodo no se genera el documento.
+            if not detalles:
+                continue
+
             nuevo = clonar(origen, excluir_documento, {
                 'documento_tipo_id': documento_tipo_destino_id,
                 'fecha': fecha,
                 'documento_referencia_id': origen.id,
             })
             nuevo.save()
-            for detalle in origen.documentos_detalles_documento_rel.all():
+            for detalle, (fecha_desde, fecha_hasta) in detalles:
                 nuevo_detalle = clonar(detalle, excluir_detalle, {
                     'documento_id': nuevo.id,
                     'documento_detalle_afectado_id': detalle.id,
+                    'fecha_desde': fecha_desde,
+                    'fecha_hasta': fecha_hasta,
+                    **calcular_horas(detalle, fecha_desde, fecha_hasta),
                 })
                 nuevo_detalle.save()
                 for impuesto in detalle.documentos_impuestos_documento_detalle_rel.all():
@@ -190,5 +288,10 @@ def generar(documento_tipo_origen, documento_tipo_destino_id, anio, mes, documen
             origen.save(update_fields=['fecha'])
 
             generados.append(nuevo)
+
+    if not generados:
+        raise ValidationError(
+            {'detail': 'Ningún documento tiene detalles vigentes en el periodo.'}
+        )
 
     return generados

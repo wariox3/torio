@@ -1,3 +1,5 @@
+import calendar
+
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -30,6 +32,8 @@ class CalcularMesRequestSerializer(serializers.Serializer):
     posicion_inicial = serializers.IntegerField(min_value=1)
     anio = serializers.IntegerField(min_value=2000, max_value=2100)
     mes = serializers.IntegerField(min_value=1, max_value=12)
+    dia_desde = serializers.IntegerField(min_value=1, max_value=31)
+    dia_hasta = serializers.IntegerField(min_value=1, max_value=31)
 
 
 @extend_schema(tags=['Turno'])
@@ -101,7 +105,24 @@ class TurSecuenciaViewSet(
         if datos['posicion_inicial'] > n:
             raise ValidationError({'posicion_inicial': f'Debe estar entre 1 y {n} (días del ciclo).'})
 
-        dias = calcular_mes(secuencia, datos['anio'], datos['mes'], datos['posicion_inicial'])
+        dias_mes = calendar.monthrange(datos['anio'], datos['mes'])[1]
+        if datos['dia_desde'] > dias_mes:
+            raise ValidationError(
+                {'dia_desde': f'Debe estar entre 1 y {dias_mes} (días del mes).'}
+            )
+        if datos['dia_hasta'] > dias_mes:
+            raise ValidationError(
+                {'dia_hasta': f'Debe estar entre 1 y {dias_mes} (días del mes).'}
+            )
+        if datos['dia_desde'] > datos['dia_hasta']:
+            raise ValidationError(
+                {'dia_desde': 'No puede ser mayor que dia_hasta.'}
+            )
+
+        dias = calcular_mes(
+            secuencia, datos['anio'], datos['mes'], datos['posicion_inicial'],
+            datos['dia_desde'], datos['dia_hasta'],
+        )
 
         return Response(
             {
