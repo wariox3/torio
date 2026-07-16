@@ -565,9 +565,35 @@ class DetalleTests(_ProgramacionBaseTests):
             'horas_programadas', 'horas_diurnas_programadas',
         ])
 
-    def _get(self, documento_id):
-        request = self.factory.get('/detalle/', {'documento': documento_id})
+    def _get(self, documento_id, documento_detalle_id=None):
+        params = {'documento': documento_id}
+        if documento_detalle_id is not None:
+            params['documento_detalle'] = documento_detalle_id
+        request = self.factory.get('/detalle/', params)
         return self.view(request)
+
+    def test_filtra_por_documento_detalle(self):
+        otro_detalle = GenDocumentoDetalle.objects.create(
+            documento=self.documento, horas_diurnas=500, horas_nocturnas=500,
+        )
+        TurProgramacion.objects.create(
+            contrato=self.contrato, documento_detalle=self.detalle,
+            fecha=date(2026, 6, 1), turno=self.turno, horas=8, horas_diurnas=8,
+        )
+
+        response = self._get(self.documento.id, documento_detalle_id=self.detalle.id)
+
+        self.assertEqual(response.status_code, 200)
+        detalles_ids = {f['documento_detalle_id'] for f in response.data['filas']}
+        self.assertEqual(detalles_ids, {self.detalle.id})
+        self.assertNotIn(otro_detalle.id, detalles_ids)
+
+    def test_documento_detalle_no_entero_da_error(self):
+        response = self.view(self.factory.get(
+            '/detalle/', {'documento': self.documento.id, 'documento_detalle': 'x'},
+        ))
+
+        self.assertEqual(response.status_code, 400)
 
     def test_devuelve_mes_completo(self):
         # Una sola programación en el mes, pero se deben listar los 30 días.

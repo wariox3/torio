@@ -292,13 +292,17 @@ class TurProgramacionViewSet(
         return Response({'eliminados': eliminados}, status=status.HTTP_200_OK)
 
     @extend_schema(parameters=[
-        
         OpenApiParameter('documento', int, required=True, description='Filtrar por documento'),
+        OpenApiParameter(
+            'documento_detalle', int, required=False,
+            description='Acotar la grilla a un solo documento detalle',
+        ),
     ])
     @action(detail=False, methods=['get'], url_path='detalle')
     def detalle(self, request):
         # Grilla horizontal: una fila por (documento_detalle, contrato), columnas = fechas.
         # Se listan todos los documento_detalles del documento, aun sin programación.
+        # Con `documento_detalle` la grilla se acota a ese único detalle.
         valor = request.query_params.get('documento')
         if not valor:
             raise ValidationError({'documento': 'Este parámetro es obligatorio.'})
@@ -306,6 +310,14 @@ class TurProgramacionViewSet(
             documento_id = int(valor)
         except (TypeError, ValueError):
             raise ValidationError({'documento': 'Debe ser un entero.'})
+
+        documento_detalle_id = None
+        valor = request.query_params.get('documento_detalle')
+        if valor:
+            try:
+                documento_detalle_id = int(valor)
+            except (TypeError, ValueError):
+                raise ValidationError({'documento_detalle': 'Debe ser un entero.'})
 
         documento = (
             GenDocumento.objects.select_related('contacto').filter(pk=documento_id).first()
@@ -315,12 +327,15 @@ class TurProgramacionViewSet(
         if documento.fecha is None:
             raise ValidationError({'detail': 'El documento no tiene fecha.'})
 
-        detalles = list(
+        detalles_qs = (
             GenDocumentoDetalle.objects
             .filter(documento_id=documento_id)
             .select_related('puesto', 'modalidad')
             .order_by('id')
         )
+        if documento_detalle_id is not None:
+            detalles_qs = detalles_qs.filter(pk=documento_detalle_id)
+        detalles = list(detalles_qs)
 
         # Columnas: los días del mes de documento.fecha. Las programaciones se
         # acotan a ese mes: la grilla no muestra fechas fuera de él.
@@ -334,7 +349,7 @@ class TurProgramacionViewSet(
         programaciones = (
             TurProgramacion.objects
             .filter(
-                documento_detalle__documento_id=documento_id,
+                documento_detalle__in=detalles,
                 fecha__year=anio,
                 fecha__month=mes,
             )
