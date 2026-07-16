@@ -1444,17 +1444,27 @@ class CalcularMesTests(TenantTestCase):
         dias = response.data['dias']
         self.assertEqual([d['dia'] for d in dias], [10, 11, 12, 13, 14, 15])
 
-    def test_patron_anclado_en_dia_1(self):
-        # Con posicion_inicial=1: días impares -> turno 'D', pares -> descanso.
+    def test_patron_arranca_en_dia_desde(self):
+        # El ciclo empieza en dia_desde: con posicion_inicial=1, ese día toma el
+        # slot 1 (turno 'D') y a partir de ahí alterna turno/descanso.
         response = self._post(dia_desde=10, dia_hasta=13)
 
         por_dia = {d['dia']: d for d in response.data['dias']}
-        self.assertIsNone(por_dia[10]['turno_id'])          # par -> descanso
-        self.assertEqual(por_dia[11]['turno_id'], self.turno.id)  # impar -> turno
-        self.assertIsNone(por_dia[12]['turno_id'])
-        self.assertEqual(por_dia[13]['turno_id'], self.turno.id)
+        self.assertEqual(por_dia[10]['turno_id'], self.turno.id)  # slot 1 -> turno
+        self.assertIsNone(por_dia[11]['turno_id'])                # slot 2 -> descanso
+        self.assertEqual(por_dia[12]['turno_id'], self.turno.id)
+        self.assertIsNone(por_dia[13]['turno_id'])
+
+    def test_posicion_inicial_desplaza_desde_dia_desde(self):
+        # Con posicion_inicial=2, dia_desde toma el slot 2 (descanso).
+        response = self._post(dia_desde=10, dia_hasta=11, posicion_inicial=2)
+
+        por_dia = {d['dia']: d for d in response.data['dias']}
+        self.assertIsNone(por_dia[10]['turno_id'])               # slot 2 -> descanso
+        self.assertEqual(por_dia[11]['turno_id'], self.turno.id)  # slot 1 -> turno
 
     def test_rango_de_un_solo_dia(self):
+        # dia_desde toma el slot 1 (turno 'D') con posicion_inicial=1.
         response = self._post(dia_desde=11, dia_hasta=11)
 
         dias = response.data['dias']

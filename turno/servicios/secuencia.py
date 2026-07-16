@@ -13,9 +13,9 @@ def calcular_mes(secuencia, anio, mes, posicion_inicial, dia_desde, dia_hasta):
     repite cada `secuencia.dias` días a lo largo del mes; `posicion_inicial`
     (1-based) indica qué slot del patrón corresponde al día 1 del mes.
 
-    Solo se devuelven los días entre `dia_desde` y `dia_hasta` (inclusive), pero el
-    ciclo sigue anclado en el día 1: cada día conserva el turno que le toca del
-    patrón, aunque el rango empiece más tarde.
+    Solo se devuelven los días entre `dia_desde` y `dia_hasta` (inclusive), y el
+    ciclo arranca en `dia_desde`: ese día toma `posicion_inicial` y el patrón se
+    cuenta desde ahí.
 
     Retorna una lista de dicts, uno por día dentro del rango:
         {dia, fecha, turno_codigo, turno_id, turno_nombre,
@@ -37,7 +37,7 @@ def calcular_mes(secuencia, anio, mes, posicion_inicial, dia_desde, dia_hasta):
 
     dias = []
     for dia in range(dia_desde, dia_hasta + 1):
-        indice = ((posicion_inicial - 1) + (dia - 1)) % n
+        indice = ((posicion_inicial - 1) + (dia - dia_desde)) % n
         codigo = patron[indice]
         turno = turnos.get(codigo) if codigo else None
         fecha = date(anio, mes, dia)
