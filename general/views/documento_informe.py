@@ -3,45 +3,45 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
-from general.models import GenDocumentoDetalle
+from general.models import GenDocumento
 from general.serializers import (
-    GenDocumentoDetalleInformeExportarSerializer,
-    GenDocumentoDetalleInformeSerializer,
+    GenDocumentoInformeExportarSerializer,
+    GenDocumentoInformeSerializer,
 )
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin
 
-# Registro de informes sobre GenDocumentoDetalle.
+# Registro de informes sobre GenDocumento.
 # Cada informe declara su invariante (`filtro`, garantizada por el servidor). Las
 # columnas las aporta el serializer estándar; un informe puede sobreescribirlas
 # con `serializer` / `exportar` si lo necesita.
 INFORMES = {
-    'pendiente_facturar': {
+    'cobrar_pendiente': {
         'filtro': Q(
             pendiente__gt=0,
-            documento__documento_tipo_id=35,
-            documento__estado_aprobado=True,
+            documento_tipo__cobrar=True,
+            estado_aprobado=True,
+            estado_anulado=False,
         ),
     },
-    'venta_item': {
+    'pagar_pendiente': {
         'filtro': Q(
-            documento__documento_tipo__venta=True,
-            documento__estado_aprobado=True,
-            documento__estado_anulado=False,
+            pendiente__gt=0,
+            documento_tipo__pagar=True,
+            estado_aprobado=True,
+            estado_anulado=False,
         ),
     },
 }
 
-_INFORME_DEFAULT = 'pendiente_facturar'
 
-
-@extend_schema(tags=['Informe: Documento detalle'])
-class GenDocumentoDetalleInformeViewSet(
+@extend_schema(tags=['Informe: Documento'])
+class GenDocumentoInformeViewSet(
     FiltrosDinamicosMixin,
     ExportarExcelMixin,
     viewsets.GenericViewSet,
 ):
     """
-    Punto único de informes sobre GenDocumentoDetalle.
+    Punto único de informes sobre GenDocumento.
 
     El informe se elige con el parámetro `informe` (body o query string). Cada
     informe define en `INFORMES` su invariante (filtro garantizado por el
@@ -52,9 +52,9 @@ class GenDocumentoDetalleInformeViewSet(
     """
 
     def _informe(self):
-        # Generación de esquema (drf-spectacular): no hay request real, usar default.
+        # Generación de esquema (drf-spectacular): no hay request real, no filtrar.
         if getattr(self, 'swagger_fake_view', False):
-            return INFORMES[_INFORME_DEFAULT]
+            return {'filtro': Q()}
 
         request = getattr(self, 'request', None)
         clave = None
@@ -74,10 +74,10 @@ class GenDocumentoDetalleInformeViewSet(
         return INFORMES[clave]
 
     def get_serializer_class(self):
-        return self._informe().get('serializer', GenDocumentoDetalleInformeSerializer)
+        return self._informe().get('serializer', GenDocumentoInformeSerializer)
 
     def get_serializer_exportar(self):
-        return self._informe().get('exportar', GenDocumentoDetalleInformeExportarSerializer)()
+        return self._informe().get('exportar', GenDocumentoInformeExportarSerializer)()
 
     def get_queryset(self):
-        return GenDocumentoDetalle.objects.filter(self._informe()['filtro'])
+        return GenDocumento.objects.filter(self._informe()['filtro'])

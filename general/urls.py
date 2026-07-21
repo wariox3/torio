@@ -14,6 +14,7 @@ from general.views import (
     GenDocumentoClaseViewSet,
     GenDocumentoDetalleInformeViewSet,
     GenDocumentoDetalleViewSet,
+    GenDocumentoInformeViewSet,
     GenDocumentoTipoViewSet,
     GenDocumentoViewSet,
     GenEstadoViewSet,
@@ -56,6 +57,7 @@ router.register(
     GenDocumentoDetalleInformeViewSet,
     basename='documento-detalle-informe',
 )
+router.register(r'documento-informe', GenDocumentoInformeViewSet, basename='documento-informe')
 router.register(r'documento-tipo', GenDocumentoTipoViewSet, basename='documento-tipo')
 router.register(r'estado', GenEstadoViewSet, basename='estado')
 router.register(r'festivo', GenFestivoViewSet, basename='festivo')

@@ -11,6 +11,7 @@ from .documento import GenDocumentoViewSet
 from .documento_clase import GenDocumentoClaseViewSet
 from .documento_detalle import GenDocumentoDetalleViewSet
 from .documento_detalle_informe import GenDocumentoDetalleInformeViewSet
+from .documento_informe import GenDocumentoInformeViewSet
 from .documento_tipo import GenDocumentoTipoViewSet
 from .estado import GenEstadoViewSet
 from .festivo import GenFestivoViewSet

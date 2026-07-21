@@ -28,6 +28,10 @@ from .documento_detalle_informe import (
 from .documento_detalle_pendiente import GenDocumentoDetallePendienteSerializer
 from .documento_exportar import GenDocumentoExportarSerializer
 from .documento_importar import GenDocumentoImportarSerializer
+from .documento_informe import (
+    GenDocumentoInformeExportarSerializer,
+    GenDocumentoInformeSerializer,
+)
 from .documento_tipo import GenDocumentoTipoSeleccionarSerializer
 from .estado import GenEstadoSeleccionarSerializer
 from .festivo import GenFestivoSeleccionarSerializer
