@@ -6,4 +6,4 @@ from general.models import GenPlazoPago
 class GenPlazoPagoSeleccionarSerializer(serializers.ModelSerializer):
     class Meta:
         model = GenPlazoPago
-        fields = ['id', 'nombre']
+        fields = ['id', 'nombre', 'dias']
