@@ -9,6 +9,7 @@ from turno.serializers import (
     TurTurnoSeleccionarSerializer,
     TurTurnoSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -37,6 +38,7 @@ class TurTurnoViewSet(
     serializer_class = TurTurnoSerializer
     serializer_class_exportar = TurTurnoExportarSerializer
     serializer_class_importar = TurTurnoImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = TurTurno.objects.select_related('novedad_tipo').order_by('nombre')

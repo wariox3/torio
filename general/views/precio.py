@@ -9,6 +9,7 @@ from general.serializers import (
     GenPrecioSeleccionarSerializer,
     GenPrecioSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -38,6 +39,7 @@ class GenPrecioViewSet(
     serializer_class = GenPrecioSerializer
     serializer_class_exportar = GenPrecioExportarSerializer
     serializer_class_importar = GenPrecioImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = GenPrecio.objects.order_by('-id')

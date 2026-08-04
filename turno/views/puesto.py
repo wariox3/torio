@@ -9,6 +9,7 @@ from turno.serializers import (
     TurPuestoSeleccionarSerializer,
     TurPuestoSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -37,6 +38,7 @@ class TurPuestoViewSet(
     serializer_class = TurPuestoSerializer
     serializer_class_exportar = TurPuestoExportarSerializer
     serializer_class_importar = TurPuestoImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = TurPuesto.objects.select_related(

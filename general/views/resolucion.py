@@ -9,6 +9,7 @@ from general.serializers import (
     GenResolucionSeleccionarSerializer,
     GenResolucionSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -36,6 +37,7 @@ class GenResolucionViewSet(
     serializer_class = GenResolucionSerializer
     serializer_class_exportar = GenResolucionExportarSerializer
     serializer_class_importar = GenResolucionImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = GenResolucion.objects.order_by('numero')

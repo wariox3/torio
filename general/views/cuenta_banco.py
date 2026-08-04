@@ -9,6 +9,7 @@ from general.serializers import (
     GenCuentaBancoSeleccionarSerializer,
     GenCuentaBancoSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -36,6 +37,7 @@ class GenCuentaBancoViewSet(
     serializer_class = GenCuentaBancoSerializer
     serializer_class_exportar = GenCuentaBancoExportarSerializer
     serializer_class_importar = GenCuentaBancoImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = GenCuentaBanco.objects.select_related(

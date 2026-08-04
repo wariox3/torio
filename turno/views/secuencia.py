@@ -14,6 +14,7 @@ from turno.serializers import (
     TurSecuenciaSerializer,
 )
 from turno.servicios import calcular_mes
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -51,6 +52,7 @@ class TurSecuenciaViewSet(
     serializer_class = TurSecuenciaSerializer
     serializer_class_exportar = TurSecuenciaExportarSerializer
     serializer_class_importar = TurSecuenciaImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = TurSecuencia.objects.order_by('nombre')

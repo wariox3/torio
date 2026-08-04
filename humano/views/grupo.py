@@ -9,6 +9,7 @@ from humano.serializers import (
     HumGrupoSeleccionarSerializer,
     HumGrupoSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -36,6 +37,7 @@ class HumGrupoViewSet(
     serializer_class = HumGrupoSerializer
     serializer_class_exportar = HumGrupoExportarSerializer
     serializer_class_importar = HumGrupoImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = HumGrupo.objects.select_related('periodo').order_by('nombre')

@@ -9,6 +9,7 @@ from contabilidad.serializers import (
     ConCentroCostoSeleccionarSerializer,
     ConCentroCostoSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -36,6 +37,7 @@ class ConCentroCostoViewSet(
     serializer_class = ConCentroCostoSerializer
     serializer_class_exportar = ConCentroCostoExportarSerializer
     serializer_class_importar = ConCentroCostoImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = ConCentroCosto.objects.order_by('codigo')

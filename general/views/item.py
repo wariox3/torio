@@ -9,6 +9,7 @@ from general.serializers import (
     GenItemSeleccionarSerializer,
     GenItemSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -41,6 +42,7 @@ class GenItemViewSet(
     serializer_class = GenItemSerializer
     serializer_class_exportar = GenItemExportarSerializer
     serializer_class_importar = GenItemImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = GenItem.objects.select_related(

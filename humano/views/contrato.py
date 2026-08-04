@@ -9,6 +9,7 @@ from humano.serializers import (
     HumContratoSeleccionarSerializer,
     HumContratoSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -41,6 +42,7 @@ class HumContratoViewSet(
     serializer_class = HumContratoSerializer
     serializer_class_exportar = HumContratoExportarSerializer
     serializer_class_importar = HumContratoImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = HumContrato.objects.select_related(

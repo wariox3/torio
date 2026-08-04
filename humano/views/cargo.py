@@ -9,6 +9,7 @@ from humano.serializers import (
     HumCargoSeleccionarSerializer,
     HumCargoSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -37,6 +38,7 @@ class HumCargoViewSet(
     serializer_class = HumCargoSerializer
     serializer_class_exportar = HumCargoExportarSerializer
     serializer_class_importar = HumCargoImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = HumCargo.objects.order_by('nombre')

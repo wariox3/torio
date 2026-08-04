@@ -9,6 +9,7 @@ from contabilidad.serializers import (
     ConCuentaSeleccionarSerializer,
     ConCuentaSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -40,6 +41,7 @@ class ConCuentaViewSet(
     serializer_class = ConCuentaSerializer
     serializer_class_exportar = ConCuentaExportarSerializer
     serializer_class_importar = ConCuentaImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = ConCuenta.objects.select_related(

@@ -9,6 +9,7 @@ from general.serializers import (
     GenSedeSeleccionarSerializer,
     GenSedeSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -36,6 +37,7 @@ class GenSedeViewSet(
     serializer_class = GenSedeSerializer
     serializer_class_exportar = GenSedeExportarSerializer
     serializer_class_importar = GenSedeImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = GenSede.objects.select_related('centro_costo').order_by('nombre')

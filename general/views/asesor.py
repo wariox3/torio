@@ -9,6 +9,7 @@ from general.serializers import (
     GenAsesorSeleccionarSerializer,
     GenAsesorSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -36,6 +37,7 @@ class GenAsesorViewSet(
     serializer_class = GenAsesorSerializer
     serializer_class_exportar = GenAsesorExportarSerializer
     serializer_class_importar = GenAsesorImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = GenAsesor.objects.order_by('nombre_corto')

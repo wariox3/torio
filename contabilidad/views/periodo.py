@@ -15,6 +15,7 @@ from contabilidad.serializers import (
     ConPeriodoSerializer,
 )
 from contabilidad.servicios.movimiento import analizar_inconsistencias
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -51,6 +52,7 @@ class ConPeriodoViewSet(
     serializer_class = ConPeriodoSerializer
     serializer_class_exportar = ConPeriodoExportarSerializer
     serializer_class_importar = ConPeriodoImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = ConPeriodo.objects.order_by('-anio', '-mes')

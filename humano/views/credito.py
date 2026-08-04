@@ -9,6 +9,7 @@ from humano.serializers import (
     HumCreditoSeleccionarSerializer,
     HumCreditoSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -37,6 +38,7 @@ class HumCreditoViewSet(
     serializer_class = HumCreditoSerializer
     serializer_class_exportar = HumCreditoExportarSerializer
     serializer_class_importar = HumCreditoImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = HumCredito.objects.select_related(

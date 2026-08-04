@@ -9,6 +9,7 @@ from humano.serializers import (
     HumAdicionalSeleccionarSerializer,
     HumAdicionalSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -37,6 +38,7 @@ class HumAdicionalViewSet(
     serializer_class = HumAdicionalSerializer
     serializer_class_exportar = HumAdicionalExportarSerializer
     serializer_class_importar = HumAdicionalImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = HumAdicional.objects.select_related(

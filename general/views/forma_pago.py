@@ -9,6 +9,7 @@ from general.serializers import (
     GenFormaPagoSeleccionarSerializer,
     GenFormaPagoSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
@@ -36,6 +37,7 @@ class GenFormaPagoViewSet(
     serializer_class = GenFormaPagoSerializer
     serializer_class_exportar = GenFormaPagoExportarSerializer
     serializer_class_importar = GenFormaPagoImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = GenFormaPago.objects.select_related('cuenta').order_by('id')
