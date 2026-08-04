@@ -10,6 +10,7 @@ from general.serializers import (
     GenContactoSeleccionarSerializer,
     GenContactoSerializer,
 )
+from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
 from utilidades.wolframio import Wolframio
@@ -46,6 +47,7 @@ class GenContactoViewSet(
     serializer_class = GenContactoSerializer
     serializer_class_exportar = GenContactoExportarSerializer
     serializer_class_importar = GenContactoImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = GenContacto.objects.select_related(

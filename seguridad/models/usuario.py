@@ -33,15 +33,6 @@ class SegUsuario(UserProfile):
     def __str__(self):
         return self.email
 
-    def tiene_permiso(self, codigo, tenant):
-        if self.is_superuser:
-            return True
-        return self.membresias.filter(
-            cliente=tenant,
-            rol__activo=True,
-            rol__permisos__codigo=codigo,
-        ).exists()
-
     def rol_en(self, tenant):
         membresia = self.membresias.filter(cliente=tenant).select_related('rol').first()
         return membresia.rol if membresia else None

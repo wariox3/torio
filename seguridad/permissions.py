@@ -2,6 +2,7 @@ from django.db import connection
 from django.utils import timezone
 from django_tenants.utils import get_public_schema_name
 from rest_framework import permissions
+from rest_framework.permissions import DjangoModelPermissions
 
 
 class EsMiembroDelTenant(permissions.IsAuthenticated):
@@ -63,27 +64,10 @@ class SuscripcionVigente(permissions.BasePermission):
 
 class TienePermiso(EsMiembroDelTenant):
     """
-    Membresía en el tenant + suscripción vigente + permiso específico.
-
-    Uso simple:
-        class FacturaViewSet(ModelViewSet):
-            permission_classes = [TienePermiso]
-            permiso_requerido = 'factura.crear'
-
-    Uso por acción:
-        class FacturaViewSet(ModelViewSet):
-            permission_classes = [TienePermiso]
-            permisos_por_accion = {
-                'list': 'factura.ver',
-                'retrieve': 'factura.ver',
-                'create': 'factura.crear',
-                'update': 'factura.editar',
-                'partial_update': 'factura.editar',
-                'destroy': 'factura.eliminar',
-            }
+    Membresía en el tenant + suscripción vigente + rol activo asignado.
     """
 
-    message = 'No tienes permiso para realizar esta acción.'
+    message = 'No tienes un rol asignado en este contenedor.'
 
     def has_permission(self, request, view):
         if not super().has_permission(request, view):
@@ -94,17 +78,41 @@ class TienePermiso(EsMiembroDelTenant):
             self.message = suscripcion.message
             return False
 
-        codigo = self._codigo_requerido(view)
-        if not codigo:
+        if request.user.is_superuser:
             return True
 
-        return request.user.tiene_permiso(codigo, connection.tenant)
+        rol = request.user.rol_en(connection.tenant)
+        return rol is not None and rol.activo
 
-    def _codigo_requerido(self, view):
-        permisos_por_accion = getattr(view, 'permisos_por_accion', None)
-        if permisos_por_accion:
-            action = getattr(view, 'action', None)
-            codigo = permisos_por_accion.get(action)
-            if codigo:
-                return codigo
-        return getattr(view, 'permiso_requerido', None)
+
+class _DjangoModelPermissionsConVer(DjangoModelPermissions):
+    """DjangoModelPermissions no exige nada en GET por defecto; acá sí exige `view_<modelo>`."""
+
+    perms_map = {
+        **DjangoModelPermissions.perms_map,
+        'GET': ['%(app_label)s.view_%(model_name)s'],
+    }
+
+
+class TienePermisoModelo(EsMiembroDelTenant):
+    """
+    Membresía en el tenant + suscripción vigente + permiso Django (ver/crear/editar/eliminar)
+    sobre el modelo del ViewSet, resuelto vía los grupos/permisos del usuario en este tenant
+    (UserTenantPermissions, django-tenant-users).
+    """
+
+    message = 'No tienes permiso para realizar esta acción sobre este recurso.'
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+
+        suscripcion = SuscripcionVigente()
+        if not suscripcion.has_permission(request, view):
+            self.message = suscripcion.message
+            return False
+
+        if request.user.is_superuser:
+            return True
+
+        return _DjangoModelPermissionsConVer().has_permission(request, view)
