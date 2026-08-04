@@ -89,6 +89,14 @@ class _EstructuraSerializer(serializers.Serializer):
     campos_filtrables = _CampoEstructuraSerializer(many=True)
 
 
+class _PermisoSerializer(serializers.Serializer):
+    """Solo para documentación del schema."""
+    ver = serializers.BooleanField()
+    crear = serializers.BooleanField()
+    editar = serializers.BooleanField()
+    eliminar = serializers.BooleanField()
+
+
 @extend_schema(tags=['Modelo'])
 class GenModeloViewSet(
     FiltrosDinamicosMixin,
@@ -153,6 +161,31 @@ class GenModeloViewSet(
             'nombre': modelo.nombre,
             'campos_lista': campos_lista,
             'campos_filtrables': campos_filtrables,
+        })
+
+    @extend_schema(
+        summary='Permisos del usuario sobre este modelo',
+        description=(
+            'Ver/crear/editar/eliminar del usuario autenticado sobre este modelo en el '
+            'tenant actual. Si el modelo no es tipo Administrador, no está restringido '
+            'por TienePermisoModelo y siempre devuelve todo en true.'
+        ),
+        responses=_PermisoSerializer,
+    )
+    @action(detail=True, methods=['get'])
+    def permiso(self, request, pk=None):
+        modelo = self.get_object()
+
+        if modelo.tipo != GenModelo.Tipo.ADMINISTRADOR:
+            return Response({'ver': True, 'crear': True, 'editar': True, 'eliminar': True})
+
+        app_label = modelo.app
+        codename = modelo.clase.lower()
+        return Response({
+            'ver': request.user.has_perm(f'{app_label}.view_{codename}'),
+            'crear': request.user.has_perm(f'{app_label}.add_{codename}'),
+            'editar': request.user.has_perm(f'{app_label}.change_{codename}'),
+            'eliminar': request.user.has_perm(f'{app_label}.delete_{codename}'),
         })
 
     @staticmethod
