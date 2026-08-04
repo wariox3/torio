@@ -13,6 +13,7 @@ from utilidades.mixins import FiltrosDinamicosMixin
 class SegUsuarioClienteViewSet(
     FiltrosDinamicosMixin,
     mixins.ListModelMixin,
+    mixins.UpdateModelMixin,
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):

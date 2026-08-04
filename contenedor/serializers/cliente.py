@@ -68,6 +68,8 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
             'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
             'suscripcion_suscripcion_tipo_nombre',
             'rol_id', 'rol_nombre',
+            'acceso_venta', 'acceso_compra', 'acceso_tesoreria', 'acceso_cartera',
+            'acceso_inventario', 'acceso_humano', 'acceso_contabilidad',
         ]
 
     def get_dominio(self, obj):

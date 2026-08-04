@@ -19,6 +19,13 @@ class SegUsuarioCliente(models.Model):
         on_delete=models.SET_NULL,
         related_name='membresias',
     )
+    acceso_venta = models.BooleanField(default=True, db_default=True)
+    acceso_compra = models.BooleanField(default=True, db_default=True)
+    acceso_tesoreria = models.BooleanField(default=True, db_default=True)
+    acceso_cartera = models.BooleanField(default=True, db_default=True)
+    acceso_inventario = models.BooleanField(default=True, db_default=True)
+    acceso_humano = models.BooleanField(default=True, db_default=True)
+    acceso_contabilidad = models.BooleanField(default=True, db_default=True)
 
     class Meta:
         db_table = 'seg_usuario_cliente'

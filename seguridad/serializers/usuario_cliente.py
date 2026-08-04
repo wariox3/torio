@@ -18,5 +18,12 @@ class SegUsuarioClienteSerializer(serializers.ModelSerializer):
             'cliente_id',
             'rol_id',
             'rol_nombre',
+            'acceso_venta',
+            'acceso_compra',
+            'acceso_tesoreria',
+            'acceso_cartera',
+            'acceso_inventario',
+            'acceso_humano',
+            'acceso_contabilidad',
         ]
         read_only_fields = ['id']
