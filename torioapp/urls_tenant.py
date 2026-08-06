@@ -9,6 +9,7 @@ urlpatterns = [
     path('contabilidad/', include('contabilidad.urls')),
     path('turno/', include('turno.urls')),
     path('humano/', include('humano.urls')),
+    path('seguridad/', include('seguridad.urls_tenant')),
 ]
 
 if settings.ENABLE_API_DOCS:
