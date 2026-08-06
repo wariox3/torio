@@ -22,8 +22,13 @@ Claves admitidas dentro de cada grupo:
 TODAS = ('add', 'change', 'delete', 'view')
 VER = ('view',)
 
-# {nombre del Group: {objetivo: (acciones,)}}
-PERMISOS_POR_GRUPO = {
-    'Venta': {'general.gencontacto': TODAS},
-    'Compra': {'general.gencontacto': TODAS},
+# {id del Group: (nombre, {objetivo: (acciones,)})}
+#
+# El id se fija a propósito, igual que en los fixtures JSON del proyecto: es lo
+# que el front manda en `grupo_ids` al invitar, y tiene que significar lo mismo
+# en desarrollo, en pruebas y en producción. Si se crearan solo por nombre, cada
+# entorno les asignaría un id distinto.
+GRUPOS = {
+    1: ('Venta', {'general.gencontacto': TODAS}),
+    2: ('Compra', {'general.gencontacto': TODAS}),
 }

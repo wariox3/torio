@@ -20,9 +20,24 @@ class Command(BaseCommand):
         )
         if not archivos:
             self.stdout.write(self.style.WARNING('No se encontraron archivos JSON en fixtures/'))
-            return
         for archivo in archivos:
             self._cargar(archivo)
+
+        self._cargar_grupos()
+
+    def _cargar_grupos(self):
+        """
+        Los grupos de permisos son datos fijos del producto, igual que el resto
+        de fixtures de este comando, pero no caben en el formato JSON de arriba:
+        sus permisos son una M2M y los ids de `auth_permission` no son estables
+        entre entornos. Se declaran en `seguridad/grupos.py` y se aplican acá
+        para que cualquier entorno recién montado los tenga sin pasos extra.
+        """
+        # Import diferido: seguridad importa modelos que exigen apps cargadas.
+        from seguridad.servicios import sincronizar_grupos
+
+        for nombre, cantidad in sorted(sincronizar_grupos().items()):
+            self.stdout.write(f'grupo {nombre} — {cantidad} permisos')
 
     def _cargar(self, archivo: Path):
         contenido = json.loads(archivo.read_text(encoding='utf-8'))

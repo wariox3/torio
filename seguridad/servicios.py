@@ -7,15 +7,16 @@ en el schema de ese tenant, y lo escribe `CtnCliente.add_user`.
 """
 
 from django.contrib.auth.models import Group, Permission
+from django.db import connection
 from django_tenants.utils import get_public_schema_name, schema_context
 
-from seguridad.grupos import PERMISOS_POR_GRUPO
+from seguridad.grupos import GRUPOS
 
 
 def sincronizar_grupos():
     """
-    Crea los grupos declarados que falten y reemplaza sus permisos por los de la
-    declaración. Idempotente.
+    Crea los grupos declarados con su id fijo y reemplaza sus permisos por los de
+    la declaración. Idempotente.
 
     No borra los grupos ausentes de la declaración: se asume que pueden crearse
     y administrarse también desde fuera.
@@ -24,12 +25,26 @@ def sincronizar_grupos():
     """
     resumen = {}
     with schema_context(get_public_schema_name()):
-        for nombre, matriz in PERMISOS_POR_GRUPO.items():
-            grupo, _ = Group.objects.get_or_create(name=nombre)
+        for pk, (nombre, matriz) in GRUPOS.items():
+            grupo, _ = Group.objects.update_or_create(id=pk, defaults={'name': nombre})
             permisos = permisos_declarados(matriz)
             grupo.permissions.set(permisos)
             resumen[nombre] = len(permisos)
+        _resetear_secuencia()
     return resumen
+
+
+def _resetear_secuencia():
+    """
+    Avanza la secuencia de `auth_group` tras insertar ids explícitos, o el
+    próximo grupo que cree Django colisionaría. Mismo cuidado que toma
+    `cargar_datos_tenant` con los fixtures de id manual.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT setval(pg_get_serial_sequence('auth_group', 'id'), "
+            'COALESCE((SELECT MAX(id) FROM auth_group), 1))'
+        )
 
 
 def permisos_declarados(matriz):
