@@ -1,6 +1,0 @@
-{
-  "model": "auth.Group",
-  "data": [
-    {"id": 1, "name": "Vendedor"}
-  ]
-}
