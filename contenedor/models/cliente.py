@@ -1,5 +1,13 @@
-from django.db import models
-from tenant_users.tenants.models import TenantBase
+from django.db import models, transaction
+from tenant_users.permissions.models import UserTenantPermissions
+from tenant_users.tenants.models import (
+    DeleteError,
+    ExistsError,
+    TenantBase,
+    schema_required,
+    tenant_user_added,
+    tenant_user_removed,
+)
 
 
 class CtnCliente(TenantBase):
@@ -35,3 +43,75 @@ class CtnCliente(TenantBase):
 
     def __str__(self):
         return self.nombre
+
+    @schema_required
+    @transaction.atomic
+    def add_user(self, user_obj, *, rol=None, grupos=None, is_superuser=False, is_staff=False):
+        """
+        Vincula un usuario al contenedor.
+
+        Sobreescribe el `add_user` de `TenantBase` porque la membresía de este
+        proyecto lleva datos que la librería no conoce (`rol` y los flags
+        `acceso_*` de `SegUsuarioCliente`). Hace lo mismo que el original y en el
+        mismo orden: la fila de permisos en el schema del tenant y la de
+        membresía en el público, ambas dentro de la misma transacción.
+
+        Las dos escrituras van juntas a propósito. `SegUsuarioCliente` dice de
+        qué contenedores es miembro el usuario; `UserTenantPermissions` es lo
+        único que `has_perm()` lee dentro de un tenant. Si falta la segunda, el
+        usuario entra al contenedor sin ningún permiso.
+
+        `rol` es solo una etiqueta de presentación; quien autoriza es `grupos`.
+        Un usuario sin grupos entra al contenedor pero no pasa
+        `TienePermisoModelo` en ningún recurso protegido.
+
+        `@schema_required` conmuta al schema del tenant: `UserTenantPermissions`
+        y sus grupos caen ahí, y `seg_usuario_cliente` y `auth_group` se
+        resuelven a `public` por el search_path.
+        """
+        from seguridad.models import SegUsuarioCliente
+
+        if SegUsuarioCliente.objects.filter(usuario=user_obj, cliente=self).exists():
+            raise ExistsError(f'El usuario ya es miembro de {self.nombre}.')
+
+        permisos = UserTenantPermissions.objects.create(
+            profile=user_obj,
+            is_staff=is_staff,
+            is_superuser=is_superuser,
+        )
+        if grupos:
+            permisos.groups.set(grupos)
+
+        membresia = SegUsuarioCliente.objects.create(
+            usuario=user_obj,
+            cliente=self,
+            rol=rol,
+        )
+
+        tenant_user_added.send(sender=self.__class__, user=user_obj, tenant=self)
+        return membresia
+
+    @schema_required
+    @transaction.atomic
+    def remove_user(self, user_obj):
+        """
+        Desvincula un usuario del contenedor: borra su `UserTenantPermissions`
+        del schema del tenant y su fila de `SegUsuarioCliente`.
+
+        Sobreescribe el de `TenantBase` por la misma razón que `add_user`, y
+        porque el original prohíbe sacar al owner apoyándose en `self.owner.pk`,
+        que en este proyecto es nulable.
+
+        Borrar la fila de permisos no es opcional: `UserTenantPermissions.profile`
+        es OneToOne, así que una fila huérfana impide volver a invitar al mismo
+        usuario a este contenedor.
+        """
+        from seguridad.models import SegUsuarioCliente
+
+        if user_obj.pk == self.owner_id:
+            raise DeleteError(f'No se puede desvincular al owner de {self.nombre}.')
+
+        UserTenantPermissions.objects.filter(profile=user_obj).delete()
+        SegUsuarioCliente.objects.filter(usuario=user_obj, cliente=self).delete()
+
+        tenant_user_removed.send(sender=self.__class__, user=user_obj, tenant=self)

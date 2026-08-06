@@ -3,6 +3,7 @@ from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from tenant_users.tenants.models import DeleteError
 
 from seguridad.models import SegUsuarioCliente
 from seguridad.serializers import SegUsuarioClienteSerializer
@@ -49,12 +50,22 @@ class SegUsuarioClienteViewSet(
     )
     def destroy(self, request, *args, **kwargs):
         try:
-            return super().destroy(request, *args, **kwargs)
+            membresia = self.get_object()
         except Exception:
             return Response(
                 {'detail': 'No se encontró el acceso de usuario a cliente.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+        # remove_user borra también el UserTenantPermissions dentro del schema
+        # del contenedor. Sin eso quedaría una fila huérfana, y como su campo
+        # `profile` es OneToOne, impediría volver a invitar al mismo usuario.
+        try:
+            membresia.cliente.remove_user(membresia.usuario)
+        except DeleteError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_409_CONFLICT)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=['get'], url_path='lista-cliente')
     def lista_cliente(self, request):

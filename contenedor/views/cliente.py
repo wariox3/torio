@@ -60,7 +60,11 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
 
         CtnDominio.objects.create(domain=dominio, is_primary=True, tenant=cliente)
         rol_owner = SegRol.objects.filter(codigo='owner').first()
-        SegUsuarioCliente.objects.create(usuario=request.user, cliente=cliente, rol=rol_owner)
+        # add_user crea la membresía y, dentro del schema recién creado, los
+        # permisos del usuario. El owner no necesita grupos: is_superuser le
+        # basta para saltarse TienePermisoModelo, y aplica solo a este
+        # contenedor porque vive en su UserTenantPermissions, no en el usuario.
+        cliente.add_user(request.user, rol=rol_owner, is_superuser=True)
 
         fecha_inicio = date.today()
         if frecuencia == CtnSuscripcion.FRECUENCIA_PRUEBA:
@@ -117,7 +121,7 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 queryset=CtnDominio.objects.filter(is_primary=True),
                 to_attr='_dominio_primario',
             )
-        )
+        ).order_by('cliente__nombre')
 
         nombre = request.query_params.get('nombre')
         if nombre:

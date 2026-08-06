@@ -1,11 +1,13 @@
 import logging
 
 from django.conf import settings
+from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from tenant_users.tenants.models import ExistsError
 
 from contenedor.models import CtnInvitacion
 from contenedor.serializers import CtnInvitacionClienteSerializer, CtnInvitacionCrearSerializer, CtnInvitacionSerializer
@@ -46,6 +48,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         cliente = serializador.validated_data['cliente']
         usuario_id = serializador.validated_data['usuario_id']
         rol = serializador.validated_data.get('rol')
+        grupos = serializador.validated_data.get('grupos') or []
 
         if cliente.owner_id != request.user.id:
             return Response(
@@ -94,6 +97,10 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
                 rol=rol,
                 estado=CtnInvitacion.ESTADO_PENDIENTE,
             )
+
+        # Los grupos se fijan en los dos caminos: al reinvitar hay que reemplazar
+        # los de la invitación anterior, no acumularlos.
+        invitacion.grupos.set(grupos)
 
         link = f'{settings.FRONTEND_CUENTA_URL}/invitaciones'
         html = (
@@ -158,6 +165,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         },
     )
     @action(detail=True, methods=['post'], url_path='aceptar')
+    @transaction.atomic
     def aceptar(self, request, pk=None):
         try:
             invitacion = CtnInvitacion.objects.select_related('cliente').get(pk=pk)
@@ -170,10 +178,17 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         if invitacion.estado != CtnInvitacion.ESTADO_PENDIENTE:
             return Response({'detail': 'La invitación ya fue procesada.'}, status=status.HTTP_409_CONFLICT)
 
-        if SegUsuarioCliente.objects.filter(usuario=request.user, cliente=invitacion.cliente).exists():
+        # add_user vuelve a comprobar la membresía dentro de su transacción, así
+        # que dos aceptaciones simultáneas terminan en 409 y no en un 500.
+        try:
+            invitacion.cliente.add_user(
+                request.user,
+                rol=invitacion.rol,
+                grupos=list(invitacion.grupos.all()),
+            )
+        except ExistsError:
             return Response({'detail': 'Ya eres miembro de este contenedor.'}, status=status.HTTP_409_CONFLICT)
 
-        SegUsuarioCliente.objects.create(usuario=request.user, cliente=invitacion.cliente, rol=invitacion.rol)
         invitacion.estado = CtnInvitacion.ESTADO_ACEPTADA
         invitacion.save(update_fields=['estado'])
 

@@ -6,6 +6,7 @@ from seguridad.views import (
     LogoutView,
     MeView,
     RefreshView,
+    SegGrupoViewSet,
     SegRolViewSet,
     SegUsuarioViewSet,
     SegUsuarioClienteViewSet,
@@ -15,6 +16,7 @@ router = DefaultRouter()
 router.register(r'usuario', SegUsuarioViewSet)
 router.register(r'usuario-cliente', SegUsuarioClienteViewSet, basename='usuario-cliente')
 router.register(r'rol', SegRolViewSet)
+router.register(r'grupo', SegGrupoViewSet)
 
 urlpatterns = [
     path('login/', LoginView.as_view()),

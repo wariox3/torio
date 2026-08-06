@@ -33,8 +33,11 @@ SHARED_APPS = [
     'corsheaders',
 ]
 
+# django.contrib.contenttypes NO va acá: debe existir una sola django_content_type,
+# la del schema público. Si cada tenant tiene la suya, sus ids no coinciden con los
+# de public.auth_permission (que es compartida) y el JOIN que resuelve los permisos
+# cruza filas equivocadas, perdiendo permisos sin dar ningún error.
 TENANT_APPS = [
-    'django.contrib.contenttypes',
     'tenant_users.permissions',
     'general',
     'contabilidad',
