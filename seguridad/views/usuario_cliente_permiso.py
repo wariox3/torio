@@ -53,7 +53,7 @@ class SegUsuarioClientePermisoViewSet(mixins.ListModelMixin, viewsets.GenericVie
         return SegUsuarioCliente.objects.filter(
             cliente=self.request.tenant,
             usuario_id=self._usuario_id(),
-        ).select_related('usuario', 'rol')
+        ).select_related('usuario', 'rol').order_by('id')
 
     def get_serializer_context(self):
         """
