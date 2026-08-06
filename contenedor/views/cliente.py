@@ -24,6 +24,15 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = CtnCliente.objects.all()
 
+    def get_queryset(self):
+        # Un usuario solo ve y opera sobre los contenedores de los que es
+        # miembro. `create` no usa el queryset, así que no queda bloqueado.
+        # La autorización fina de escritura (update/destroy) la refina cada
+        # acción contra is_superuser del contenedor.
+        return CtnCliente.objects.filter(
+            segusuariocliente__usuario=self.request.user,
+        ).distinct()
+
     def get_serializer_class(self):
         if self.action in ('update', 'partial_update'):
             return CtnClienteActualizarSerializer
@@ -88,6 +97,36 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
 
         return Response(CtnClienteSerializer(cliente).data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        summary='Actualizar contenedor',
+        responses={
+            200: CtnClienteActualizarSerializer,
+            403: OpenApiResponse(
+                inline_serializer('ClienteForbiddenSerializer', {'detail': serializers.CharField()}),
+                description='Sin permisos de superusuario en el contenedor',
+            ),
+        },
+    )
+    def update(self, request, *args, **kwargs):
+        cliente = self.get_object()
+        if not cliente.es_superusuario(request.user):
+            return Response(
+                {'detail': 'Solo un superusuario del contenedor puede modificarlo.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().update(request, *args, **kwargs)
+
+    @extend_schema(
+        summary='Eliminar contenedor',
+        description='Elimina el cliente y su schema. Solo un superusuario del contenedor puede hacerlo.',
+        responses={
+            204: None,
+            403: OpenApiResponse(
+                inline_serializer('ClienteDeleteForbiddenSerializer', {'detail': serializers.CharField()}),
+                description='Sin permisos de superusuario en el contenedor',
+            ),
+        },
+    )
     def destroy(self, request, *args, **kwargs):
         try:
             cliente = self.get_object()
@@ -96,6 +135,16 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 {'detail': f'El cliente con id "{kwargs.get("pk")}" no existe.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+        # La autorización se resuelve contra permissions_usertenantpermissions
+        # del schema del contenedor (is_superuser), no contra owner_id: esa es
+        # la fuente de verdad de permisos y es la que puebla add_user al crear.
+        if not cliente.es_superusuario(request.user):
+            return Response(
+                {'detail': 'Solo un superusuario del contenedor puede eliminarlo.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         cliente.delete(force_drop=True)
         return Response(status=status.HTTP_204_NO_CONTENT)
 

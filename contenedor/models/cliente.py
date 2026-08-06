@@ -115,3 +115,24 @@ class CtnCliente(TenantBase):
         SegUsuarioCliente.objects.filter(usuario=user_obj, cliente=self).delete()
 
         tenant_user_removed.send(sender=self.__class__, user=user_obj, tenant=self)
+
+    @schema_required
+    def es_superusuario(self, usuario):
+        """
+        ¿El usuario tiene `is_superuser` DENTRO de este contenedor?
+
+        La fuente de verdad es `permissions_usertenantpermissions` del schema del
+        tenant — la misma que consulta `has_perm()` — y no `owner_id`, que es un
+        dato informativo y nulable. `add_user` marca `is_superuser=True` al owner
+        cuando se crea el contenedor.
+
+        Nota: el contenedor del schema público queda protegido por construcción,
+        porque su tabla de permisos solo tiene filas si se crea un superusuario
+        de plataforma con `createsuperuser`.
+        """
+        if usuario is None or not usuario.is_authenticated:
+            return False
+        return UserTenantPermissions.objects.filter(
+            profile_id=usuario.pk,
+            is_superuser=True,
+        ).exists()
