@@ -2,6 +2,9 @@ from django.contrib.auth.models import Group, Permission
 from rest_framework import serializers
 
 from seguridad.models import SegUsuarioCliente
+# Import directo del módulo, no del paquete: `seguridad.serializers.__init__`
+# importa este archivo y volver a entrar por ahí sería circular.
+from seguridad.serializers.permiso import SegPermisoSerializer
 
 
 class SegGrupoUsuarioSerializer(serializers.Serializer):
@@ -90,13 +93,8 @@ class SegUsuarioClientePermisoSerializer(serializers.ModelSerializer):
             'created_at': fila.created_at,
             'modified_at': fila.modified_at,
             'grupos': [{'id': g.id, 'nombre': g.name} for g in fila.groups.all()],
-            'permisos': [
-                {
-                    'id': p.id,
-                    'app': p.content_type.app_label,
-                    'modelo': p.content_type.model,
-                    'codename': p.codename,
-                }
-                for p in fila.user_permissions.all()
-            ],
+            # Mismo serializer que usan /seguridad/permiso/ y las respuestas de
+            # agregar-permiso / quitar-permiso, para que el front reciba siempre
+            # la misma forma (incluye modelo_label, accion y nombre).
+            'permisos': SegPermisoSerializer(fila.user_permissions.all(), many=True).data,
         }
