@@ -1,10 +1,15 @@
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import mixins, serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from tenant_users.permissions.models import UserTenantPermissions
 
 from seguridad.models import SegUsuarioCliente
-from seguridad.serializers import SegUsuarioClientePermisoSerializer
+from seguridad.serializers import (
+    SegGrupoSerializer,
+    SegGrupoUsuarioSerializer,
+    SegUsuarioClientePermisoSerializer,
+)
 
 _RespuestaDetalle = inline_serializer(
     name='UsuarioClientePermisoDetailResponse',
@@ -27,13 +32,14 @@ class SegUsuarioClientePermisoViewSet(mixins.ListModelMixin, viewsets.GenericVie
     el CRUD de la membresía en el schema público, y ésta lee una tabla distinta,
     en otro schema, bajo una precondición distinta.
 
-    Solo lectura: las filas de permisos las gobiernan `CtnCliente.add_user` y
-    `remove_user`, para que no se desincronicen de `SegUsuarioCliente`.
+    Las filas en sí (alta y baja) las gobiernan `CtnCliente.add_user` y
+    `remove_user`, para que no se desincronicen de `SegUsuarioCliente`. Acá solo
+    se leen, y se agregan o quitan grupos sobre una fila existente.
 
-    TODO: definir la restricción de acceso. Hoy hereda las permission classes
+    TODO: definir la restricción de LECTURA. Hoy hereda las permission classes
     por defecto (`EsMiembroDelTenant` + `SuscripcionVigente`), así que cualquier
     miembro del contenedor puede consultar los permisos de otro pasando su
-    `usuario_id`.
+    `usuario_id`. La escritura sí está restringida al owner.
     """
 
     serializer_class = SegUsuarioClientePermisoSerializer
@@ -91,3 +97,123 @@ class SegUsuarioClientePermisoViewSet(mixins.ListModelMixin, viewsets.GenericVie
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary='Agregar un grupo a un usuario en este contenedor',
+        request=SegGrupoUsuarioSerializer,
+        responses={
+            200: SegGrupoSerializer(many=True),
+            403: OpenApiResponse(_RespuestaDetalle, description='No eres el owner'),
+            404: OpenApiResponse(_RespuestaDetalle, description='El usuario no es miembro'),
+            409: OpenApiResponse(
+                _RespuestaDetalle,
+                description='El usuario ya tiene el grupo, o la membresía no tiene permisos creados',
+            ),
+        },
+    )
+    @action(detail=False, methods=['post'], url_path='agregar-grupo')
+    def agregar_grupo(self, request):
+        """
+        Agrega un grupo al usuario.
+
+        No es idempotente a propósito: si el usuario ya tiene el grupo se
+        responde 409 en vez de dejarlo pasar en silencio, para que el front
+        pueda avisar que la asignación ya existía.
+        """
+        # Cambiar permisos es potestad del dueño del contenedor, igual que
+        # invitar (ver CtnInvitacionViewSet.create). Sin esto, cualquier miembro
+        # podría auto-asignarse cualquier grupo.
+        if request.tenant.owner_id != request.user.id:
+            return Response(
+                {'detail': 'Solo el owner del contenedor puede cambiar los grupos.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializador = SegGrupoUsuarioSerializer(data=request.data)
+        serializador.is_valid(raise_exception=True)
+        usuario_id = serializador.validated_data['usuario_id']
+        grupo = serializador.validated_data['grupo']
+
+        if not SegUsuarioCliente.objects.filter(
+            cliente=request.tenant, usuario_id=usuario_id,
+        ).exists():
+            return Response(
+                {'detail': 'El usuario no es miembro de este contenedor.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        permisos = UserTenantPermissions.objects.filter(profile_id=usuario_id).first()
+        if permisos is None:
+            return Response(
+                {'detail': 'La membresía no tiene permisos creados; debió crearse con add_user.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        if permisos.groups.filter(pk=grupo.pk).exists():
+            return Response(
+                {'detail': f'El usuario ya tiene el grupo "{grupo.name}".'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        permisos.groups.add(grupo)
+        return Response(SegGrupoSerializer(permisos.groups.all(), many=True).data)
+
+    @extend_schema(
+        summary='Quitar un grupo a un usuario en este contenedor',
+        request=SegGrupoUsuarioSerializer,
+        responses={
+            200: SegGrupoSerializer(many=True),
+            403: OpenApiResponse(_RespuestaDetalle, description='No eres el owner'),
+            404: OpenApiResponse(_RespuestaDetalle, description='El usuario no es miembro'),
+            409: OpenApiResponse(
+                _RespuestaDetalle,
+                description='El usuario no tiene el grupo, o la membresía no tiene permisos creados',
+            ),
+        },
+    )
+    @action(detail=False, methods=['post'], url_path='quitar-grupo')
+    def quitar_grupo(self, request):
+        """
+        Quita un grupo al usuario.
+
+        No es idempotente a propósito: si el usuario no tiene el grupo se
+        responde 409 en vez de dejarlo pasar en silencio, igual que hace
+        `agregar_grupo` con el caso contrario.
+        """
+        # Cambiar permisos es potestad del dueño del contenedor, igual que
+        # invitar (ver CtnInvitacionViewSet.create). Sin esto, cualquier miembro
+        # podría quitarle grupos a otro.
+        if request.tenant.owner_id != request.user.id:
+            return Response(
+                {'detail': 'Solo el owner del contenedor puede cambiar los grupos.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializador = SegGrupoUsuarioSerializer(data=request.data)
+        serializador.is_valid(raise_exception=True)
+        usuario_id = serializador.validated_data['usuario_id']
+        grupo = serializador.validated_data['grupo']
+
+        if not SegUsuarioCliente.objects.filter(
+            cliente=request.tenant, usuario_id=usuario_id,
+        ).exists():
+            return Response(
+                {'detail': 'El usuario no es miembro de este contenedor.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        permisos = UserTenantPermissions.objects.filter(profile_id=usuario_id).first()
+        if permisos is None:
+            return Response(
+                {'detail': 'La membresía no tiene permisos creados; debió crearse con add_user.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        if not permisos.groups.filter(pk=grupo.pk).exists():
+            return Response(
+                {'detail': f'El usuario no tiene el grupo "{grupo.name}".'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        permisos.groups.remove(grupo)
+        return Response(SegGrupoSerializer(permisos.groups.all(), many=True).data)
