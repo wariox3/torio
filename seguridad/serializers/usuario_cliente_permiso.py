@@ -1,16 +1,36 @@
-from django.contrib.auth.models import Group
+from django.contrib.auth.models import Group, Permission
 from rest_framework import serializers
 
 from seguridad.models import SegUsuarioCliente
 
 
 class SegGrupoUsuarioSerializer(serializers.Serializer):
-    """Cuerpo para agregar o quitar un grupo a un usuario del contenedor."""
+    """
+    Cuerpo para agregar o quitar un grupo a un usuario del contenedor.
+
+    Opera sobre `permissions_usertenantpermissions_groups`.
+    """
 
     usuario_id = serializers.IntegerField()
     grupo_id = serializers.PrimaryKeyRelatedField(
         queryset=Group.objects.all(),
         source='grupo',
+    )
+
+
+class SegPermisoUsuarioSerializer(serializers.Serializer):
+    """
+    Cuerpo para agregar o quitar un permiso individual a un usuario del
+    contenedor.
+
+    Opera sobre `permissions_usertenantpermissions_user_permissions`, que es el
+    permiso concedido directamente a la persona, al margen de sus grupos.
+    """
+
+    usuario_id = serializers.IntegerField()
+    permiso_id = serializers.PrimaryKeyRelatedField(
+        queryset=Permission.objects.all(),
+        source='permiso',
     )
 
 

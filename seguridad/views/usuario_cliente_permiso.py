@@ -8,6 +8,8 @@ from seguridad.models import SegUsuarioCliente
 from seguridad.serializers import (
     SegGrupoSerializer,
     SegGrupoUsuarioSerializer,
+    SegPermisoSerializer,
+    SegPermisoUsuarioSerializer,
     SegUsuarioClientePermisoSerializer,
 )
 
@@ -217,3 +219,135 @@ class SegUsuarioClientePermisoViewSet(mixins.ListModelMixin, viewsets.GenericVie
 
         permisos.groups.remove(grupo)
         return Response(SegGrupoSerializer(permisos.groups.all(), many=True).data)
+
+    @extend_schema(
+        summary='Agregar un permiso individual a un usuario en este contenedor',
+        description=(
+            'Escribe en `permissions_usertenantpermissions_user_permissions`: el '
+            'permiso queda concedido a la persona directamente, al margen de sus '
+            'grupos.'
+        ),
+        request=SegPermisoUsuarioSerializer,
+        responses={
+            200: SegPermisoSerializer(many=True),
+            403: OpenApiResponse(_RespuestaDetalle, description='No eres el owner'),
+            404: OpenApiResponse(_RespuestaDetalle, description='El usuario no es miembro'),
+            409: OpenApiResponse(
+                _RespuestaDetalle,
+                description='El usuario ya tiene el permiso, o la membresía no tiene permisos creados',
+            ),
+        },
+    )
+    @action(detail=False, methods=['post'], url_path='agregar-permiso')
+    def agregar_permiso(self, request):
+        """
+        Agrega un permiso individual al usuario.
+
+        No es idempotente a propósito: si el usuario ya lo tiene se responde 409
+        en vez de dejarlo pasar en silencio.
+        """
+        # Cambiar permisos es potestad del dueño del contenedor, igual que
+        # invitar (ver CtnInvitacionViewSet.create). Sin esto, cualquier miembro
+        # podría auto-asignarse cualquier permiso.
+        if request.tenant.owner_id != request.user.id:
+            return Response(
+                {'detail': 'Solo el owner del contenedor puede cambiar los permisos.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializador = SegPermisoUsuarioSerializer(data=request.data)
+        serializador.is_valid(raise_exception=True)
+        usuario_id = serializador.validated_data['usuario_id']
+        permiso = serializador.validated_data['permiso']
+
+        if not SegUsuarioCliente.objects.filter(
+            cliente=request.tenant, usuario_id=usuario_id,
+        ).exists():
+            return Response(
+                {'detail': 'El usuario no es miembro de este contenedor.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        permisos = UserTenantPermissions.objects.filter(profile_id=usuario_id).first()
+        if permisos is None:
+            return Response(
+                {'detail': 'La membresía no tiene permisos creados; debió crearse con add_user.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        if permisos.user_permissions.filter(pk=permiso.pk).exists():
+            return Response(
+                {'detail': f'El usuario ya tiene el permiso "{permiso.codename}".'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        permisos.user_permissions.add(permiso)
+        consulta = permisos.user_permissions.select_related('content_type')
+        return Response(SegPermisoSerializer(consulta, many=True).data)
+
+    @extend_schema(
+        summary='Quitar un permiso individual a un usuario en este contenedor',
+        description=(
+            'Borra de `permissions_usertenantpermissions_user_permissions`. No '
+            'toca los permisos que el usuario tenga por pertenecer a un grupo.'
+        ),
+        request=SegPermisoUsuarioSerializer,
+        responses={
+            200: SegPermisoSerializer(many=True),
+            403: OpenApiResponse(_RespuestaDetalle, description='No eres el owner'),
+            404: OpenApiResponse(_RespuestaDetalle, description='El usuario no es miembro'),
+            409: OpenApiResponse(
+                _RespuestaDetalle,
+                description='El usuario no tiene el permiso, o la membresía no tiene permisos creados',
+            ),
+        },
+    )
+    @action(detail=False, methods=['post'], url_path='quitar-permiso')
+    def quitar_permiso(self, request):
+        """
+        Quita un permiso individual al usuario.
+
+        No es idempotente a propósito: si el usuario no lo tiene se responde 409,
+        igual que hace `agregar_permiso` con el caso contrario.
+
+        Solo afecta a los permisos directos. Si el permiso además le llega por un
+        grupo, lo sigue teniendo: para eso hay que quitarle el grupo.
+        """
+        # Cambiar permisos es potestad del dueño del contenedor, igual que
+        # invitar (ver CtnInvitacionViewSet.create). Sin esto, cualquier miembro
+        # podría quitarle permisos a otro.
+        if request.tenant.owner_id != request.user.id:
+            return Response(
+                {'detail': 'Solo el owner del contenedor puede cambiar los permisos.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializador = SegPermisoUsuarioSerializer(data=request.data)
+        serializador.is_valid(raise_exception=True)
+        usuario_id = serializador.validated_data['usuario_id']
+        permiso = serializador.validated_data['permiso']
+
+        if not SegUsuarioCliente.objects.filter(
+            cliente=request.tenant, usuario_id=usuario_id,
+        ).exists():
+            return Response(
+                {'detail': 'El usuario no es miembro de este contenedor.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        permisos = UserTenantPermissions.objects.filter(profile_id=usuario_id).first()
+        if permisos is None:
+            return Response(
+                {'detail': 'La membresía no tiene permisos creados; debió crearse con add_user.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        if not permisos.user_permissions.filter(pk=permiso.pk).exists():
+            return Response(
+                {'detail': f'El usuario no tiene el permiso "{permiso.codename}".'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        permisos.user_permissions.remove(permiso)
+        consulta = permisos.user_permissions.select_related('content_type')
+        return Response(SegPermisoSerializer(consulta, many=True).data)
