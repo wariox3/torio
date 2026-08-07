@@ -85,6 +85,8 @@
     {"id": 40031, "app": "humano",       "clase": "HumAporteContrato",         "nombre": "Aporte contrato",         "tabla": "hum_aporte_contrato",         "tipo": "D"},
     {"id": 40032, "app": "humano",       "clase": "HumAporteDetalle",          "nombre": "Aporte detalle",          "tabla": "hum_aporte_detalle",          "tipo": "D"},
     {"id": 40033, "app": "humano",       "clase": "HumAporteEntidad",          "nombre": "Aporte entidad",          "tabla": "hum_aporte_entidad",          "tipo": "D"},
-    {"id": 40034, "app": "humano",       "clase": "HumLiquidacionAdicional",   "nombre": "Liquidación adicional",   "tabla": "hum_liquidacion_adicional",   "tipo": "D"}
+    {"id": 40034, "app": "humano",       "clase": "HumLiquidacionAdicional",   "nombre": "Liquidación adicional",   "tabla": "hum_liquidacion_adicional",   "tipo": "D"},
+
+    {"id": 50001, "app": "inventario",   "clase": "InvAlmacen",                "nombre": "Almacén",                 "tabla": "inv_almacen",                 "tipo": "A"}
   ]
 }

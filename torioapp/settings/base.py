@@ -43,6 +43,7 @@ TENANT_APPS = [
     'contabilidad',
     'turno',
     'humano',
+    'inventario',
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [

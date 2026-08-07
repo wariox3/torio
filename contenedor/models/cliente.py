@@ -46,7 +46,7 @@ class CtnCliente(TenantBase):
 
     @schema_required
     @transaction.atomic
-    def add_user(self, user_obj, *, rol=None, grupos=None, is_superuser=False, is_staff=False):
+    def add_user(self, user_obj, *, rol=None, grupos=None, accesos=None, is_superuser=False, is_staff=False):
         """
         Vincula un usuario al contenedor.
 
@@ -65,11 +65,15 @@ class CtnCliente(TenantBase):
         Un usuario sin grupos entra al contenedor pero no pasa
         `TienePermisoModelo` en ningún recurso protegido.
 
+        `accesos` es un dict {campo de `CAMPOS_ACCESO`: bool} con los módulos que
+        el usuario verá en el menú. Omitirlo deja todos en False (el default del
+        modelo): ser miembro no concede acceso a ningún módulo por sí solo.
+
         `@schema_required` conmuta al schema del tenant: `UserTenantPermissions`
         y sus grupos caen ahí, y `seg_usuario_cliente` y `auth_group` se
         resuelven a `public` por el search_path.
         """
-        from seguridad.models import SegUsuarioCliente
+        from seguridad.models import CAMPOS_ACCESO, SegUsuarioCliente
 
         if SegUsuarioCliente.objects.filter(usuario=user_obj, cliente=self).exists():
             raise ExistsError(f'El usuario ya es miembro de {self.nombre}.')
@@ -86,6 +90,7 @@ class CtnCliente(TenantBase):
             usuario=user_obj,
             cliente=self,
             rol=rol,
+            **{campo: bool((accesos or {}).get(campo, False)) for campo in CAMPOS_ACCESO},
         )
 
         tenant_user_added.send(sender=self.__class__, user=user_obj, tenant=self)

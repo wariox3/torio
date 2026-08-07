@@ -2,7 +2,7 @@ from django.contrib.auth.models import Group
 from rest_framework import serializers
 
 from contenedor.models import CtnCliente, CtnInvitacion
-from seguridad.models import SegRol
+from seguridad.models import CAMPOS_ACCESO, SegRol
 
 
 class CtnInvitacionSerializer(serializers.ModelSerializer):
@@ -21,8 +21,9 @@ class CtnInvitacionSerializer(serializers.ModelSerializer):
             'usuario', 'usuario_nombre_corto', 'usuario_correo',
             'usuario_invitado', 'rol', 'rol_nombre',
             'grupos', 'grupos_nombres', 'estado', 'fecha',
+            *CAMPOS_ACCESO,
         ]
-        read_only_fields = ['id', 'cliente', 'cliente_nombre', 'usuario', 'usuario_nombre_corto', 'usuario_correo', 'usuario_invitado', 'grupos', 'estado', 'fecha']
+        read_only_fields = ['id', 'cliente', 'cliente_nombre', 'usuario', 'usuario_nombre_corto', 'usuario_correo', 'usuario_invitado', 'grupos', 'estado', 'fecha', *CAMPOS_ACCESO]
 
 
 class CtnInvitacionClienteSerializer(serializers.ModelSerializer):
@@ -39,6 +40,7 @@ class CtnInvitacionClienteSerializer(serializers.ModelSerializer):
             'id', 'usuario_invitado', 'usuario_invitado_nombre_corto',
             'usuario_invitado_correo', 'rol', 'rol_nombre',
             'grupos', 'grupos_nombres', 'estado', 'fecha',
+            *CAMPOS_ACCESO,
         ]
         read_only_fields = fields
 
@@ -63,3 +65,14 @@ class CtnInvitacionCrearSerializer(serializers.Serializer):
         required=False,
         default=list,
     )
+
+    # Módulos que verá el invitado en el menú. Todos opcionales y en False: si el
+    # front no los manda, el usuario entra sin ninguna aplicación visible.
+    acceso_venta = serializers.BooleanField(required=False, default=False)
+    acceso_compra = serializers.BooleanField(required=False, default=False)
+    acceso_tesoreria = serializers.BooleanField(required=False, default=False)
+    acceso_cartera = serializers.BooleanField(required=False, default=False)
+    acceso_inventario = serializers.BooleanField(required=False, default=False)
+    acceso_humano = serializers.BooleanField(required=False, default=False)
+    acceso_contabilidad = serializers.BooleanField(required=False, default=False)
+    acceso_turno = serializers.BooleanField(required=False, default=False)

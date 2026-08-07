@@ -44,6 +44,17 @@ class CtnInvitacion(models.Model):
         related_name='invitaciones',
         through='contenedor.CtnInvitacionGrupo',
     )
+    # Módulos que verá el invitado. Se eligen al invitar y se copian tal cual a
+    # su `SegUsuarioCliente` al aceptar. Arrancan en False: hay que concederlos
+    # explícitamente. No autorizan nada, eso lo hacen `grupos`.
+    acceso_venta = models.BooleanField(default=False, db_default=False)
+    acceso_compra = models.BooleanField(default=False, db_default=False)
+    acceso_tesoreria = models.BooleanField(default=False, db_default=False)
+    acceso_cartera = models.BooleanField(default=False, db_default=False)
+    acceso_inventario = models.BooleanField(default=False, db_default=False)
+    acceso_humano = models.BooleanField(default=False, db_default=False)
+    acceso_contabilidad = models.BooleanField(default=False, db_default=False)
+    acceso_turno = models.BooleanField(default=False, db_default=False)
     estado = models.CharField(max_length=1, choices=ESTADO_CHOICES, default=ESTADO_PENDIENTE, db_default=ESTADO_PENDIENTE)
     fecha = models.DateTimeField(auto_now_add=True)
 

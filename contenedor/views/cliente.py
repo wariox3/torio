@@ -15,7 +15,7 @@ from django.db.models import Prefetch
 from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion
 from contenedor.serializers import CtnClienteSerializer
 from contenedor.serializers.cliente import CtnClienteActualizarSerializer, CtnClienteListaUsuarioSerializer
-from seguridad.models import SegRol, SegUsuarioCliente
+from seguridad.models import CAMPOS_ACCESO, SegRol, SegUsuarioCliente
 
 
 @extend_schema(tags=['Cliente'])
@@ -73,7 +73,14 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         # permisos del usuario. El owner no necesita grupos: is_superuser le
         # basta para saltarse TienePermisoModelo, y aplica solo a este
         # contenedor porque vive en su UserTenantPermissions, no en el usuario.
-        cliente.add_user(request.user, rol=rol_owner, is_superuser=True)
+        # Los accesos sí hay que pasarlos: por defecto son todos False y el owner
+        # se quedaría sin ningún módulo en el menú de su propio contenedor.
+        cliente.add_user(
+            request.user,
+            rol=rol_owner,
+            accesos=dict.fromkeys(CAMPOS_ACCESO, True),
+            is_superuser=True,
+        )
 
         fecha_inicio = date.today()
         if frecuencia == CtnSuscripcion.FRECUENCIA_PRUEBA:

@@ -11,7 +11,7 @@ from tenant_users.tenants.models import ExistsError
 
 from contenedor.models import CtnInvitacion
 from contenedor.serializers import CtnInvitacionClienteSerializer, CtnInvitacionCrearSerializer, CtnInvitacionSerializer
-from seguridad.models import SegUsuario, SegUsuarioCliente
+from seguridad.models import CAMPOS_ACCESO, SegUsuario, SegUsuarioCliente
 from utilidades.zinc import Zinc
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,10 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         usuario_id = serializador.validated_data['usuario_id']
         rol = serializador.validated_data.get('rol')
         grupos = serializador.validated_data.get('grupos') or []
+        accesos = {
+            campo: serializador.validated_data.get(campo, False)
+            for campo in CAMPOS_ACCESO
+        }
 
         if cliente.owner_id != request.user.id:
             return Response(
@@ -87,7 +91,13 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
             invitacion_existente.estado = CtnInvitacion.ESTADO_PENDIENTE
             invitacion_existente.usuario = request.user
             invitacion_existente.rol = rol
-            invitacion_existente.save(update_fields=['estado', 'usuario', 'rol'])
+            # Los accesos se reemplazan igual que los grupos: la reinvitación
+            # manda, no se acumula sobre lo que decía la invitación anterior.
+            for campo, valor in accesos.items():
+                setattr(invitacion_existente, campo, valor)
+            invitacion_existente.save(
+                update_fields=['estado', 'usuario', 'rol', *accesos],
+            )
             invitacion = invitacion_existente
         else:
             invitacion = CtnInvitacion.objects.create(
@@ -96,6 +106,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
                 usuario=request.user,
                 rol=rol,
                 estado=CtnInvitacion.ESTADO_PENDIENTE,
+                **accesos,
             )
 
         # Los grupos se fijan en los dos caminos: al reinvitar hay que reemplazar
@@ -185,6 +196,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
                 request.user,
                 rol=invitacion.rol,
                 grupos=list(invitacion.grupos.all()),
+                accesos={campo: getattr(invitacion, campo) for campo in CAMPOS_ACCESO},
             )
         except ExistsError:
             return Response({'detail': 'Ya eres miembro de este contenedor.'}, status=status.HTTP_409_CONFLICT)

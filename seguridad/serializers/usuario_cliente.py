@@ -25,5 +25,6 @@ class SegUsuarioClienteSerializer(serializers.ModelSerializer):
             'acceso_inventario',
             'acceso_humano',
             'acceso_contabilidad',
+            'acceso_turno',
         ]
         read_only_fields = ['id']

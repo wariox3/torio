@@ -70,6 +70,7 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
             'rol_id', 'rol_nombre',
             'acceso_venta', 'acceso_compra', 'acceso_tesoreria', 'acceso_cartera',
             'acceso_inventario', 'acceso_humano', 'acceso_contabilidad',
+            'acceso_turno',
         ]
 
     def get_dominio(self, obj):

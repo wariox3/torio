@@ -29,6 +29,56 @@ VER = ('view',)
 # en desarrollo, en pruebas y en producción. Si se crearan solo por nombre, cada
 # entorno les asignaría un id distinto.
 GRUPOS = {
-    1: ('Venta', {'general.gencontacto': TODAS}),
-    2: ('Compra', {'general.gencontacto': TODAS}),
+    1: ('Venta', {
+        'general.gencontacto': TODAS,
+        'general.genitem': TODAS,
+        'general.genprecio': TODAS,
+        'general.genasesor': TODAS,
+        'general.genresolucion': TODAS,
+        'general.gencuentabanco': TODAS,
+        'inventario.invalmacen': TODAS,
+    }),
+    2: ('Compra', {
+        'general.gencontacto': TODAS,
+        'general.genitem': TODAS,
+        'general.genresolucion': TODAS,
+        'general.genformapago': TODAS,
+        'inventario.invalmacen': TODAS,
+    }),
+    3: ('Tesoreria', {
+        'general.gencuentabanco': TODAS,
+        'general.genformapago': TODAS,
+    }),
+    4: ('Cartera', {
+        'general.gencontacto': TODAS,
+        'general.genformapago': VER,
+    }),
+    5: ('Inventario', {
+        'general.genitem': TODAS,
+        'inventario.invalmacen': TODAS,
+    }),
+    6: ('Humano', {
+        'general.gencontacto': TODAS,
+        'humano.humcontrato': TODAS,
+        'humano.humcargo': TODAS,
+        'humano.humgrupo': TODAS,
+        'humano.humsucursal': TODAS,
+        'humano.humadicional': TODAS,
+        'humano.humcredito': TODAS,
+        'humano.humnovedad': TODAS,
+    }),
+    7: ('Contabilidad', {
+        'general.gencontacto': TODAS,
+        'contabilidad.concuenta': TODAS,
+        'contabilidad.concentrocosto': TODAS,
+        'contabilidad.conactivo': TODAS,
+        'contabilidad.conperiodo': TODAS,
+    }),
+    8: ('Turno', {
+        'turno.turpuesto': TODAS,
+        'turno.turturno': TODAS,
+        'turno.tursecuencia': TODAS,
+        'turno.turprogramador': TODAS,
+        'turno.turprototipo': TODAS,
+    }),
 }

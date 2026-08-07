@@ -1,0 +1,1 @@
+from .almacen import InvAlmacen
