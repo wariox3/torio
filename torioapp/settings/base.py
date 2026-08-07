@@ -58,9 +58,14 @@ DATABASE_ROUTERS = ['django_tenants.routers.TenantSyncRouter']
 AUTH_USER_MODEL = 'seguridad.SegUsuario'
 
 # TenantHeaderMiddleware DEBE ir primero para resolver el schema por header X-Tenant.
+#
+# La vigencia de la suscripción NO se valida acá: los middlewares corren antes de
+# que DRF autentique, así que un anónimo podía leer el estado de suscripción de
+# cualquier contenedor con solo mandar su nombre en X-Tenant. La comprobación
+# vive en `seguridad.permissions.SuscripcionVigente`, que va en
+# DEFAULT_PERMISSION_CLASSES y ya corre con el usuario resuelto.
 MIDDLEWARE = [
     'seguridad.middleware.TenantHeaderMiddleware',
-    'seguridad.middleware.SuscripcionActivaMiddleware',
     'seguridad.middleware.UsuarioActualMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',

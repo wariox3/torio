@@ -58,8 +58,6 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
     suscripcion_suscripcion_tipo_nombre = serializers.CharField(
         source='cliente.suscripcion.suscripcion_tipo.nombre', read_only=True,
     )
-    rol_id = serializers.IntegerField(source='rol.id', read_only=True)
-    rol_nombre = serializers.CharField(source='rol.nombre', read_only=True)
 
     class Meta:
         model = SegUsuarioCliente
@@ -67,7 +65,7 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
             'cliente_id', 'schema_name', 'nombre', 'activo', 'dominio',
             'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
             'suscripcion_suscripcion_tipo_nombre',
-            'rol_id', 'rol_nombre',
+            'propietario',
             'acceso_venta', 'acceso_compra', 'acceso_tesoreria', 'acceso_cartera',
             'acceso_inventario', 'acceso_humano', 'acceso_contabilidad',
             'acceso_turno',

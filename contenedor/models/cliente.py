@@ -46,12 +46,12 @@ class CtnCliente(TenantBase):
 
     @schema_required
     @transaction.atomic
-    def add_user(self, user_obj, *, rol=None, grupos=None, accesos=None, is_superuser=False, is_staff=False):
+    def add_user(self, user_obj, *, grupos=None, accesos=None, propietario=False, is_superuser=False, is_staff=False):
         """
         Vincula un usuario al contenedor.
 
         Sobreescribe el `add_user` de `TenantBase` porque la membresía de este
-        proyecto lleva datos que la librería no conoce (`rol` y los flags
+        proyecto lleva datos que la librería no conoce (`propietario` y los flags
         `acceso_*` de `SegUsuarioCliente`). Hace lo mismo que el original y en el
         mismo orden: la fila de permisos en el schema del tenant y la de
         membresía en el público, ambas dentro de la misma transacción.
@@ -61,8 +61,9 @@ class CtnCliente(TenantBase):
         único que `has_perm()` lee dentro de un tenant. Si falta la segunda, el
         usuario entra al contenedor sin ningún permiso.
 
-        `rol` es solo una etiqueta de presentación; quien autoriza es `grupos`.
-        Un usuario sin grupos entra al contenedor pero no pasa
+        `propietario` marca al dueño del contenedor, pero no autoriza nada: quien
+        autoriza es `grupos`, y el salto de `TienePermisoModelo` lo da
+        `is_superuser`. Un usuario sin grupos entra al contenedor pero no pasa
         `TienePermisoModelo` en ningún recurso protegido.
 
         `accesos` es un dict {campo de `CAMPOS_ACCESO`: bool} con los módulos que
@@ -89,7 +90,7 @@ class CtnCliente(TenantBase):
         membresia = SegUsuarioCliente.objects.create(
             usuario=user_obj,
             cliente=self,
-            rol=rol,
+            propietario=propietario,
             **{campo: bool((accesos or {}).get(campo, False)) for campo in CAMPOS_ACCESO},
         )
 

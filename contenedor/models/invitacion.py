@@ -26,14 +26,6 @@ class CtnInvitacion(models.Model):
         on_delete=models.CASCADE,
         related_name='invitaciones_recibidas',
     )
-    # Etiqueta de presentación: se guarda para mostrar "Vendedor" en los
-    # listados. NO autoriza nada; quien autoriza es `grupos`.
-    rol = models.ForeignKey(
-        'seguridad.SegRol',
-        null=True,
-        on_delete=models.SET_NULL,
-        related_name='invitaciones',
-    )
     # Grupos de permisos que se le otorgarán al usuario al aceptar. Es lo que se
     # copia a su UserTenantPermissions dentro del schema del contenedor.
     # El `through` explícito es solo para nombrar las columnas de la tabla

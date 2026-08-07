@@ -47,7 +47,6 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
 
         cliente = serializador.validated_data['cliente']
         usuario_id = serializador.validated_data['usuario_id']
-        rol = serializador.validated_data.get('rol')
         grupos = serializador.validated_data.get('grupos') or []
         accesos = {
             campo: serializador.validated_data.get(campo, False)
@@ -90,13 +89,12 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
                 )
             invitacion_existente.estado = CtnInvitacion.ESTADO_PENDIENTE
             invitacion_existente.usuario = request.user
-            invitacion_existente.rol = rol
             # Los accesos se reemplazan igual que los grupos: la reinvitación
             # manda, no se acumula sobre lo que decía la invitación anterior.
             for campo, valor in accesos.items():
                 setattr(invitacion_existente, campo, valor)
             invitacion_existente.save(
-                update_fields=['estado', 'usuario', 'rol', *accesos],
+                update_fields=['estado', 'usuario', *accesos],
             )
             invitacion = invitacion_existente
         else:
@@ -104,7 +102,6 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
                 cliente=cliente,
                 usuario_invitado=usuario,
                 usuario=request.user,
-                rol=rol,
                 estado=CtnInvitacion.ESTADO_PENDIENTE,
                 **accesos,
             )
@@ -137,7 +134,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
     def pendiente_usuario(self, request):
         qs = self.get_queryset().filter(
             estado=CtnInvitacion.ESTADO_PENDIENTE
-        ).select_related('cliente', 'rol', 'usuario')
+        ).select_related('cliente', 'usuario')
         pagina = self.paginate_queryset(qs)
         return self.get_paginated_response(CtnInvitacionSerializer(pagina, many=True).data)
 
@@ -161,7 +158,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         qs = CtnInvitacion.objects.filter(
             cliente_id=cliente_id,
             estado=CtnInvitacion.ESTADO_PENDIENTE,
-        ).select_related('usuario_invitado', 'rol')
+        ).select_related('usuario_invitado')
         pagina = self.paginate_queryset(qs)
         return self.get_paginated_response(CtnInvitacionClienteSerializer(pagina, many=True).data)
 
@@ -192,9 +189,10 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         # add_user vuelve a comprobar la membresía dentro de su transacción, así
         # que dos aceptaciones simultáneas terminan en 409 y no en un 500.
         try:
+            # Sin `propietario`: el invitado nunca es dueño del contenedor, esa
+            # marca solo la pone `CtnClienteViewSet.create` para quien lo crea.
             invitacion.cliente.add_user(
                 request.user,
-                rol=invitacion.rol,
                 grupos=list(invitacion.grupos.all()),
                 accesos={campo: getattr(invitacion, campo) for campo in CAMPOS_ACCESO},
             )

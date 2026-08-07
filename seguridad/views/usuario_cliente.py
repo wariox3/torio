@@ -21,12 +21,12 @@ class SegUsuarioClienteViewSet(
     serializer_class = SegUsuarioClienteSerializer
     permission_classes = [IsAuthenticated]
 
-    campos_filtrables = {'cliente_id', 'usuario_id', 'rol_id'}
-    select_related_lista = ('usuario', 'rol')
+    campos_filtrables = {'cliente_id', 'usuario_id', 'propietario'}
+    select_related_lista = ('usuario',)
     ordenamiento_default_lista = ('usuario__nombre_corto',)
 
     def get_queryset(self):
-        return SegUsuarioCliente.objects.select_related('usuario', 'rol').order_by(
+        return SegUsuarioCliente.objects.select_related('usuario').order_by(
             'usuario__nombre_corto'
         )
 

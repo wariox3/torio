@@ -15,7 +15,7 @@ from django.db.models import Prefetch
 from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion
 from contenedor.serializers import CtnClienteSerializer
 from contenedor.serializers.cliente import CtnClienteActualizarSerializer, CtnClienteListaUsuarioSerializer
-from seguridad.models import CAMPOS_ACCESO, SegRol, SegUsuarioCliente
+from seguridad.models import CAMPOS_ACCESO, SegUsuarioCliente
 
 
 @extend_schema(tags=['Cliente'])
@@ -68,7 +68,6 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         cliente = serializador.save(owner=request.user)
 
         CtnDominio.objects.create(domain=dominio, is_primary=True, tenant=cliente)
-        rol_owner = SegRol.objects.filter(codigo='owner').first()
         # add_user crea la membresía y, dentro del schema recién creado, los
         # permisos del usuario. El owner no necesita grupos: is_superuser le
         # basta para saltarse TienePermisoModelo, y aplica solo a este
@@ -77,8 +76,8 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         # se quedaría sin ningún módulo en el menú de su propio contenedor.
         cliente.add_user(
             request.user,
-            rol=rol_owner,
             accesos=dict.fromkeys(CAMPOS_ACCESO, True),
+            propietario=True,
             is_superuser=True,
         )
 
@@ -170,7 +169,6 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
             cliente__activo=True,
         ).select_related(
             'cliente__suscripcion__suscripcion_tipo',
-            'rol',
         ).prefetch_related(
             Prefetch(
                 'cliente__domains',

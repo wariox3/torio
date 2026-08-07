@@ -30,12 +30,11 @@ class SegUsuarioCliente(models.Model):
         on_delete=models.CASCADE,
         db_column='cliente_id',
     )
-    rol = models.ForeignKey(
-        'seguridad.SegRol',
-        null=True,
-        on_delete=models.SET_NULL,
-        related_name='membresias',
-    )
+    # Dueño del contenedor. Es la contraparte por membresía de `CtnCliente.owner`,
+    # que es un dato informativo y nulable. NO autoriza: quien autoriza son los
+    # grupos, y el salto de `TienePermisoModelo` lo da `is_superuser` en el
+    # `UserTenantPermissions` del tenant, que `add_user` marca al crear.
+    propietario = models.BooleanField(default=False, db_default=False)
     # Arrancan en False: el acceso a cada módulo se concede explícitamente al
     # invitar, no se hereda por ser miembro del contenedor.
     acceso_venta = models.BooleanField(default=False, db_default=False)

@@ -10,29 +10,57 @@ Limitaciones conscientes:
 - Cambios fuera de un request (shell, migraciones) quedan con usuario_id=None.
 """
 
+from django.db import connection
 from django.db.models.signals import post_delete, post_save
 
 from seguridad.contexto import obtener_usuario_actual
 
-# Cachés en memoria de IDs por código/dotted-path (se llenan perezosamente).
-_acciones_cache: dict[str, int] = {}
-_modelos_cache: dict[str, int] = {}
+# Cachés en memoria de IDs, llenadas perezosamente.
+#
+# La clave lleva el schema porque `gen_accion` y `gen_modelo` son tablas de
+# tenant: hay una copia por contenedor y sus ids no tienen por qué coincidir.
+# Un proceso atiende a muchos tenants, así que cachear solo por código haría que
+# el id sembrado por el primer tenant se reusara en todos los demás, escribiendo
+# en `gen_log` FKs que allí apuntan a otra fila o a ninguna.
+#
+# Hoy `cargar_datos_tenant` siembra los mismos ids fijos en todos los schemas y
+# el desajuste no se manifiesta, pero eso es una coincidencia del fixture, no una
+# garantía del modelo de datos.
+_acciones_cache: dict[tuple[str, str], int] = {}
+_modelos_cache: dict[tuple[str, str], int] = {}
+
+
+def limpiar_caches():
+    """
+    Vacía las cachés de ids. Pensado para pruebas: los schemas van y vienen
+    dentro del mismo proceso y una entrada vieja sobreviviría al schema que la
+    originó.
+    """
+    _acciones_cache.clear()
+    _modelos_cache.clear()
 
 
 def _id_accion(codigo: str) -> int | None:
     """Devuelve el id de GenAccion por código. Cachea para no golpear DB cada vez."""
-    if codigo not in _acciones_cache:
+    clave = (connection.schema_name, codigo)
+    if clave not in _acciones_cache:
         from general.models import GenAccion
         try:
-            _acciones_cache[codigo] = GenAccion.objects.get(codigo=codigo).pk
+            _acciones_cache[clave] = GenAccion.objects.get(codigo=codigo).pk
         except GenAccion.DoesNotExist:
+            # El fallo no se cachea a propósito: un tenant recién creado consulta
+            # antes de que corran sus fixtures, y cachear el None lo dejaría sin
+            # auditoría durante toda la vida del proceso.
             return None
-    return _acciones_cache[codigo]
+    return _acciones_cache[clave]
 
 
 def _id_modelo(modelo_cls) -> int | None:
     """Devuelve el id de GenModelo por dotted-path. None si el modelo no está en el catálogo."""
-    clave = f'{modelo_cls._meta.app_label}.{modelo_cls.__name__}'
+    clave = (
+        connection.schema_name,
+        f'{modelo_cls._meta.app_label}.{modelo_cls.__name__}',
+    )
     if clave not in _modelos_cache:
         from general.models import GenModelo
         try:

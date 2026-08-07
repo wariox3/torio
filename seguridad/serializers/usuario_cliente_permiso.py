@@ -62,7 +62,6 @@ class SegUsuarioClientePermisoSerializer(serializers.ModelSerializer):
 
     usuario_nombre_corto = serializers.CharField(source='usuario.nombre_corto', read_only=True)
     usuario_email = serializers.CharField(source='usuario.email', read_only=True)
-    rol_nombre = serializers.CharField(source='rol.nombre', read_only=True)
     permiso = serializers.SerializerMethodField()
 
     class Meta:
@@ -72,8 +71,7 @@ class SegUsuarioClientePermisoSerializer(serializers.ModelSerializer):
             'usuario_id',
             'usuario_nombre_corto',
             'usuario_email',
-            'rol_id',
-            'rol_nombre',
+            'propietario',
             'permiso',
         ]
         read_only_fields = fields

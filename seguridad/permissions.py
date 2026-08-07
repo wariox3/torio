@@ -38,9 +38,21 @@ class SuscripcionVigente(permissions.BasePermission):
     La fecha se compara contra la fecha actual en la zona horaria del proyecto
     (America/Bogota): una suscripción con fecha_fin = hoy sigue siendo válida
     hasta las 23:59 locales y deja de serlo a las 00:00 del día siguiente.
+
+    Esta comprobación estuvo en un middleware (`SuscripcionActivaMiddleware`),
+    que corría antes de que DRF autenticara: cualquier anónimo podía leer el
+    estado de suscripción de un contenedor mandando su nombre en X-Tenant. Acá
+    corre con el usuario ya resuelto, así que a un no autenticado DRF le
+    responde 401 sin revelar nada del contenedor.
     """
 
-    message = 'La suscripción del contenedor no está vigente.'
+    # dict en vez de str para conservar el cuerpo que devolvía el middleware:
+    # DRF usa un `message` de tipo dict como body completo de la respuesta, así
+    # que el front sigue recibiendo `codigo: 'suscripcion_vencida'`.
+    message = {
+        'detail': 'La suscripción del contenedor no está vigente.',
+        'codigo': 'suscripcion_vencida',
+    }
 
     def has_permission(self, request, view):
         tenant = connection.tenant
@@ -60,29 +72,6 @@ class SuscripcionVigente(permissions.BasePermission):
             return False
 
         return fecha_fin >= timezone.localdate()
-
-
-class TienePermiso(EsMiembroDelTenant):
-    """
-    Membresía en el tenant + suscripción vigente + rol activo asignado.
-    """
-
-    message = 'No tienes un rol asignado en este contenedor.'
-
-    def has_permission(self, request, view):
-        if not super().has_permission(request, view):
-            return False
-
-        suscripcion = SuscripcionVigente()
-        if not suscripcion.has_permission(request, view):
-            self.message = suscripcion.message
-            return False
-
-        if request.user.is_superuser:
-            return True
-
-        rol = request.user.rol_en(connection.tenant)
-        return rol is not None and rol.activo
 
 
 class _DjangoModelPermissionsConVer(DjangoModelPermissions):

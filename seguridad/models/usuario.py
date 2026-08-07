@@ -32,7 +32,3 @@ class SegUsuario(UserProfile):
 
     def __str__(self):
         return self.email
-
-    def rol_en(self, tenant):
-        membresia = self.membresias.filter(cliente=tenant).select_related('rol').first()
-        return membresia.rol if membresia else None
