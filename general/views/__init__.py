@@ -27,7 +27,6 @@ from .modelo import GenModeloViewSet
 from .pais import GenPaisViewSet
 from .plazo_pago import GenPlazoPagoViewSet
 from .precio import GenPrecioViewSet
-from .prueba import PruebaView
 from .resolucion import GenResolucionViewSet
 from .responsabilidad import GenResponsabilidadViewSet
 from .sector import GenSectorViewSet

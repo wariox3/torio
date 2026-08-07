@@ -1,4 +1,3 @@
-from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from general.views import (
@@ -36,7 +35,6 @@ from general.views import (
     GenSectorViewSet,
     GenSedeViewSet,
     GenTipoPersonaViewSet,
-    PruebaView,
 )
 
 router = DefaultRouter()
@@ -79,6 +77,4 @@ router.register(r'sector', GenSectorViewSet, basename='sector')
 router.register(r'sede', GenSedeViewSet, basename='sede')
 router.register(r'tipo-persona', GenTipoPersonaViewSet, basename='tipo-persona')
 
-urlpatterns = [
-    path('prueba/', PruebaView.as_view()),
-] + router.urls
+urlpatterns = router.urls
