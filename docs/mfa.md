@@ -1,7 +1,8 @@
 # MFA — Autenticación en dos pasos
 
-Propuesta de diseño. Estado: **modelos y migración implementados** (un archivo por modelo en `seguridad/models/`,
-migración `0017_mfa`). Lo demás, pendiente.
+Estado: **fase 1 completa** — modelos (`seguridad/models/mfa_*.py`, migración `0017_mfa`),
+motor (`seguridad/mfa.py`), endpoints de gestión (`seguridad/views/mfa.py`) y login en dos
+pasos (`seguridad/views/autenticacion.py`), con 60 tests en `seguridad/tests.py`.
 
 ## 1. Alcance y decisiones de fondo
 
@@ -113,6 +114,33 @@ y AWS. La alternativa —alargar `REFRESH_TOKEN_LIFETIME`— es más barata pero
 ventana de un refresh token robado; se prefiere mantener el token corto y darle al usuario
 un control explícito y revocable.
 
+### Duración de la sesión
+
+Con el segundo factor y el dispositivo recordado en juego, los tiempos **no** se alargan:
+cuando el refresh vence, el usuario reingresa correo y clave —que el navegador
+autocompleta— y en su equipo habitual no se le pide código. Extender el refresh solo
+agrandaría la ventana de un token robado a cambio de nada.
+
+| Parámetro | Valor | Qué controla realmente |
+|---|---|---|
+| `ACCESS_TOKEN_LIFETIME` | 15 min | Radio de daño de un access token robado, y cuánto tarda `invalidar_sesiones` en surtir efecto (la blacklist solo aplica al refresh) |
+| `REFRESH_TOKEN_LIFETIME` | 1 día | No es la duración de la sesión: como la rotación llama a `set_exp()`, es un **timeout por inactividad** |
+| `SESION_MAXIMA` | 30 días | Tope absoluto desde el login, contado con el claim `ses` |
+| Cookie de dispositivo | 30 días | Cada cuánto se vuelve a pedir el segundo factor |
+| Desafío MFA | 5 min | Vida del segundo paso |
+
+**Por qué hizo falta `SESION_MAXIMA`.** Sin tope, `set_exp()` corre el vencimiento en cada
+rotación y una sesión en uso continuo no caduca nunca: un refresh token robado que el
+atacante rote a diario viviría para siempre, porque el MFA solo se verifica en `/login/` y
+él nunca vuelve a pasar por ahí. El claim `ses` guarda el instante del login y se copia en
+cada rotación —a diferencia de `iat`, que `set_iat()` reescribe—, así que `RefreshView`
+puede cerrar la sesión a los 30 días. Alineado con la cookie de dispositivo, ese re-login
+obligatorio tampoco pide código en el equipo de siempre: para el usuario legítimo es
+invisible, para el atacante es el final.
+
+En `dev.py` el access baja de 12 h a 1 h: con 12 h no se alcanza a ver el efecto de
+blacklistear sesiones y parece un bug.
+
 ## 4. Endpoints
 
 ### Gestión — `seguridad/views/mfa.py`
@@ -123,18 +151,31 @@ MFA de un tercero.
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/seguridad/mfa/` | Estado: `activo`, `metodo`, `codigos_respaldo_restantes`, dispositivos recordados |
-| POST | `/seguridad/mfa/configurar/` | `{metodo}`. TOTP → devuelve `otpauth_uri`. Correo → envía código por Zinc |
-| POST | `/seguridad/mfa/activar/` | `{codigo}` → activa y devuelve los 10 códigos de respaldo **una sola vez** |
-| POST | `/seguridad/mfa/desactivar/` | `{password, codigo}` — exige ambos |
+| POST | `/seguridad/mfa/configurar/` | `{metodo}`. TOTP → devuelve `otpauth_uri` y `secreto`. Correo → envía código por Zinc. Siempre devuelve `mfa_token` |
+| POST | `/seguridad/mfa/activar/` | `{mfa_token, codigo}` → activa y devuelve los 10 códigos de respaldo **una sola vez** |
+| POST | `/seguridad/mfa/desafio/` | Abre un desafío contra el MFA activo, para operaciones sensibles. Devuelve `mfa_token` |
+| POST | `/seguridad/mfa/desactivar/` | `{password, mfa_token, codigo}` — exige clave **y** segundo factor |
 | POST | `/seguridad/mfa/codigos-respaldo/` | `{password}` → regenera e invalida los anteriores |
 | DELETE | `/seguridad/mfa/dispositivo/<id>/` | Revoca un dispositivo recordado |
+
+El enrolamiento pasa por el mismo motor que el login: `configurar` abre un desafío y
+`activar` lo resuelve. Así el enrolamiento hereda gratis la expiración, el consumo único y
+el tope de intentos, en vez de tener su propia verificación paralela. La única diferencia es
+que `activar` no acepta códigos de respaldo: ahí se está probando que el factor **nuevo**
+funciona, y un código viejo no prueba eso.
+
+`/seguridad/mfa/desafio/` no estaba en la propuesta original y fue necesario: `desactivar`
+exige un código, y con método correo ese código hay que mandarlo antes de poder pedirlo.
 
 ### Login — `seguridad/views/autenticacion.py`
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| POST | `/login/mfa/` | `{mfa_token, codigo, recordar_dispositivo}` → emite cookies JWT |
-| POST | `/login/mfa/reenviar/` | Reenvía el código (solo método correo) |
+| POST | `/seguridad/login/mfa/` | `{mfa_token, codigo, recordar_dispositivo}` → emite cookies JWT |
+| POST | `/seguridad/login/mfa/reenviar/` | Reenvía el código (solo método correo) |
+
+El reenvío **no** reinicia `intentos` ni `expira`: si lo hiciera, pedir un correo nuevo cada
+cinco intentos daría intentos infinitos. Su propio tope lo pone el throttle.
 
 Todos anotados con `@extend_schema` y tag `Autenticación`, como el resto de la app.
 
@@ -167,8 +208,8 @@ entra.
 ## 6. Lo que no queda expuesto
 
 - **El reset de clave no es un bypass.** `restablecer_clave` no emite tokens: el usuario
-  vuelve a `/login/` y el MFA se le pide igual. Conviene dejarlo comentado en el código para
-  que nadie "optimice" ese flujo más adelante.
+  vuelve a `/login/` y el MFA se le pide igual. Queda comentado en el código para que nadie
+  "optimice" ese flujo más adelante.
 - **Activar o desactivar MFA blacklistea los refresh tokens vigentes** del usuario. Si un
   atacante ya tenía sesión abierta, activar MFA debe expulsarlo.
 - **Recuperación sin dispositivo:** los códigos de respaldo son la **única** vía
@@ -184,22 +225,22 @@ factor, recordar su equipo y recuperarse con los códigos de respaldo.
 
 **Dependencias y configuración**
 
-- `requirements.txt`: `pyotp==2.9.0`, `cryptography`
-- `.env` + `settings/base.py`: `MFA_ENCRYPTION_KEY`
-- `settings/base.py`: los tres scopes de throttling
+- ✅ `requirements.txt`: `pyotp==2.9.0`, `cryptography==50.0.0`
+- ✅ `.env` / `.env.example` + `settings/base.py`: `MFA_ENCRYPTION_KEY`
+- ✅ `settings/base.py`: los tres scopes de throttling
 
 **Código**
 
-- `seguridad/models/mfa_usuario.py`, `mfa_codigo_respaldo.py`, `mfa_desafio.py`, `mfa_dispositivo.py` + migración
-- `seguridad/mfa.py` — módulo de servicio, al estilo de `seguridad/servicios.py`:
+- ✅ `seguridad/models/mfa_usuario.py`, `mfa_codigo_respaldo.py`, `mfa_desafio.py`, `mfa_dispositivo.py` + migración
+- ✅ `seguridad/mfa.py` — módulo de servicio, al estilo de `seguridad/servicios.py`:
   cifrar/descifrar el secreto, generar secreto y `otpauth://` URI, verificar código
   (despacha a TOTP o a correo), generar/consumir códigos de respaldo, crear y consumir
   desafíos borrando los vencidos al crear uno nuevo (así no hace falta un cron), emitir y
   validar el token de dispositivo
-- `seguridad/serializers/mfa.py`, `seguridad/views/mfa.py`, rutas en `seguridad/urls.py`
-- Cambios en `seguridad/views/autenticacion.py` (login en dos pasos)
-- `SegUsuarioMeSerializer`: agregar `mfa_activo` y `mfa_metodo`
-- Plantilla del correo con el código, en el estilo de los que ya manda `Zinc()`
+- ✅ `seguridad/serializers/mfa.py`, `seguridad/views/mfa.py`, rutas en `seguridad/urls.py`
+- ✅ Cambios en `seguridad/views/autenticacion.py` (login en dos pasos y tope de sesión)
+- ✅ `SegUsuarioMeSerializer`: `mfa_activo` y `mfa_metodo`
+- ✅ Plantilla del correo con el código, en `servicio_mfa.enviar_codigo`
 
 **Tests — `seguridad/tests.py`**
 

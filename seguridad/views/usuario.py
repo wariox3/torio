@@ -241,6 +241,9 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
 
         usuario.set_password(nueva_clave)
         usuario.save(update_fields=['password'])
+        # No emite tokens a propósito: el usuario vuelve a /login/, y si tiene MFA activo
+        # se le pide igual. Emitir sesión acá convertiría el "olvidé mi clave" —que se
+        # resuelve por correo— en una forma de saltarse el segundo factor.
         return Response({'detail': 'Clave restablecida correctamente.'})
 
     @extend_schema(

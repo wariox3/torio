@@ -41,15 +41,30 @@ class SegUsuarioSeleccionarSerializer(serializers.ModelSerializer):
 class SegUsuarioMeSerializer(serializers.ModelSerializer):
     imagen = serializers.SerializerMethodField()
     imagen_thumbnail = serializers.SerializerMethodField()
+    mfa_activo = serializers.SerializerMethodField()
+    mfa_metodo = serializers.SerializerMethodField()
 
     class Meta:
         model = SegUsuario
         fields = [
             'id', 'email', 'nombre_corto', 'numero_identificacion',
             'celular', 'idioma', 'imagen', 'imagen_thumbnail',
-            'saldo_pendiente', 'is_verified', 'fecha_creacion',
+            'saldo_pendiente', 'is_verified', 'mfa_activo', 'mfa_metodo',
+            'fecha_creacion',
         ]
         read_only_fields = fields
+
+    def _mfa(self, obj):
+        # La 1-1 puede no existir: la mayoría de cuentas no tiene MFA configurado.
+        mfa = getattr(obj, 'mfa', None)
+        return mfa if mfa and mfa.activo else None
+
+    def get_mfa_activo(self, obj) -> bool:
+        return self._mfa(obj) is not None
+
+    def get_mfa_metodo(self, obj) -> str | None:
+        mfa = self._mfa(obj)
+        return mfa.metodo if mfa else None
 
     def _cdn_url(self, path):
         if not path:

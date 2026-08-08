@@ -1,5 +1,14 @@
 from .autenticacion import SegLoginSerializer
 from .grupo import SegGrupoDetalleSerializer, SegGrupoSerializer
+from .mfa import (
+    SegMfaActivarSerializer,
+    SegMfaClaveSerializer,
+    SegMfaConfigurarSerializer,
+    SegMfaDesactivarSerializer,
+    SegMfaDispositivoSerializer,
+    SegMfaEstadoSerializer,
+    SegMfaLoginSerializer,
+)
 from .permiso import SegPermisoSerializer
 from .rol import SegRolSerializer
 from .usuario import SegUsuarioActualizarSerializer, SegUsuarioMeSerializer, SegUsuarioSeleccionarSerializer, SegUsuarioSerializer

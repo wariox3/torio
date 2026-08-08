@@ -155,6 +155,9 @@ REST_FRAMEWORK = {
         'recuperar_clave': '3/min',
         'restablecer_clave': '5/min',
         'importar': '10/hour',
+        'mfa_verificar': '10/min',
+        'mfa_gestion': '10/hour',
+        'mfa_envio_codigo': '3/min',
     },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
@@ -214,6 +217,14 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
 }
 
+# Tope absoluto de la sesión, contado desde el login y no desde el último uso.
+# REFRESH_TOKEN_LIFETIME no lo cubre: la rotación llama a `set_exp()` y corre el
+# vencimiento, así que una sesión en uso continuo no caducaría nunca. Cada 30 días toda
+# sesión vuelve a pasar por /login/, que es el único punto donde se verifica el MFA.
+# Alineado con la cookie de dispositivo recordado, para que al usuario legítimo ese
+# re-login no le pida código.
+SESION_MAXIMA = timedelta(days=config('SESION_MAXIMA_DIAS', default=30, cast=int))
+
 from corsheaders.defaults import default_headers
 
 CORS_ALLOW_CREDENTIALS = True
@@ -236,6 +247,11 @@ ENABLE_API_DOCS = config('ENABLE_API_DOCS', default=False, cast=bool)
 
 TURNSTILE_SECRET_KEY = config('TURNSTILE_SECRET_KEY', default='')
 TURNSTILE_ENABLED = config('TURNSTILE_ENABLED', default=True, cast=bool)
+
+# MFA. Clave Fernet propia, deliberadamente separada de SECRET_KEY: así se puede rotar
+# la firma de los JWT sin invalidar el segundo factor de todos los usuarios. Generarla
+# con: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+MFA_ENCRYPTION_KEY = config('MFA_ENCRYPTION_KEY', default='')
 
 # Wompi
 WOMPI_EVENTS_SECRET = config('WOMPI_EVENTS_SECRET', default='')
