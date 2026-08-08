@@ -10,6 +10,7 @@ El diseño y el porqué de cada decisión están en `docs/mfa.md`.
 import hashlib
 import hmac
 import logging
+import re
 import secrets
 import time
 from datetime import timedelta
@@ -25,7 +26,9 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, Ou
 
 from seguridad.models import (
     METODO_CORREO,
+    METODO_SMS,
     METODO_TOTP,
+    METODOS_ENVIADOS,
     SegMfaCodigoRespaldo,
     SegMfaDesafio,
     SegMfaDispositivo,
@@ -49,7 +52,7 @@ MAX_INTENTOS = 5
 VENTANA_TOTP = 1
 PERIODO_TOTP = 30
 
-LONGITUD_CODIGO_CORREO = 6
+LONGITUD_CODIGO_ENVIADO = 6
 
 CANTIDAD_CODIGOS_RESPALDO = 10
 LONGITUD_CODIGO_RESPALDO = 10
@@ -102,8 +105,8 @@ def _hash(valor: str) -> str:
     HMAC-SHA256 con la clave del MFA, no SHA-256 pelado.
 
     Para los códigos de respaldo daría igual (50 bits de entropía), pero el código de
-    6 dígitos del correo tiene solo un millón de posibilidades: con un hash sin clave,
-    un dump de la base bastaría para revertirlo al instante.
+    6 dígitos que se manda por correo o SMS tiene solo un millón de posibilidades: con
+    un hash sin clave, un dump de la base bastaría para revertirlo al instante.
     """
     clave = (settings.MFA_ENCRYPTION_KEY or settings.SECRET_KEY).encode()
     return hmac.new(clave, valor.encode(), hashlib.sha256).hexdigest()
@@ -154,11 +157,29 @@ def _verificar_totp(mfa: SegMfaUsuario, codigo: str) -> bool:
 
 
 # --------------------------------------------------------------------------- #
-# Código por correo
+# Código enviado (correo y SMS)
 # --------------------------------------------------------------------------- #
 
-def generar_codigo_correo() -> str:
-    return f'{secrets.randbelow(10 ** LONGITUD_CODIGO_CORREO):0{LONGITUD_CODIGO_CORREO}d}'
+def generar_codigo_enviado() -> str:
+    return f'{secrets.randbelow(10 ** LONGITUD_CODIGO_ENVIADO):0{LONGITUD_CODIGO_ENVIADO}d}'
+
+
+def normalizar_celular(valor: str | None) -> str | None:
+    """
+    Deja el celular como lo exige Zinc: diez dígitos, sin indicativo ni separadores.
+
+    El campo es de texto libre, así que llega con espacios, guiones o `+57`. Devuelve
+    None si no queda un número colombiano válido.
+    """
+    digitos = re.sub(r'\D', '', valor or '')
+    if len(digitos) == 12 and digitos.startswith('57'):
+        digitos = digitos[2:]
+    return digitos if len(digitos) == 10 else None
+
+
+def celular_para_sms(usuario) -> str | None:
+    """None si esa cuenta no tiene un número al que se le pueda mandar un SMS."""
+    return normalizar_celular(usuario.celular)
 
 
 # --------------------------------------------------------------------------- #
@@ -210,13 +231,13 @@ def crear_desafio(usuario, metodo: str, ip: str = None) -> tuple[SegMfaDesafio, 
     """
     Abre el segundo paso de un login cuya clave ya fue validada.
 
-    Devuelve el desafío y, en método correo, el código en claro para que la vista lo
-    envíe con Zinc. En TOTP el segundo valor es None: el código no se guarda ni se
-    transmite, se recalcula del secreto.
+    Devuelve el desafío y, en los métodos enviados (correo y SMS), el código en claro
+    para que la vista lo despache con Zinc. En TOTP el segundo valor es None: el código
+    no se guarda ni se transmite, se recalcula del secreto.
     """
     SegMfaDesafio.objects.filter(expira__lt=timezone.now()).delete()
 
-    codigo = generar_codigo_correo() if metodo == METODO_CORREO else None
+    codigo = generar_codigo_enviado() if metodo in METODOS_ENVIADOS else None
     desafio = SegMfaDesafio.objects.create(
         usuario=usuario,
         metodo=metodo,
@@ -229,7 +250,7 @@ def crear_desafio(usuario, metodo: str, ip: str = None) -> tuple[SegMfaDesafio, 
 
 def reenviar_codigo(mfa_token: str):
     """
-    Genera y manda un código nuevo para un desafío de correo en curso.
+    Genera y manda un código nuevo para un desafío de correo o SMS en curso.
 
     No toca `intentos` ni `expira`: si el reenvío reiniciara el contador, bastaría con
     pedir un correo nuevo cada cinco intentos para tener intentos infinitos. El tope
@@ -240,16 +261,16 @@ def reenviar_codigo(mfa_token: str):
 
         if desafio.consumido or desafio.expira <= timezone.now():
             raise MfaError('La sesión de verificación expiró. Inicia sesión de nuevo.')
-        if desafio.metodo != METODO_CORREO:
-            raise MfaError('Este método no usa códigos por correo.')
+        if desafio.metodo not in METODOS_ENVIADOS:
+            raise MfaError('Este método no usa códigos enviados.')
         if desafio.intentos >= MAX_INTENTOS:
             raise MfaError('Demasiados intentos fallidos. Inicia sesión de nuevo.')
 
-        codigo = generar_codigo_correo()
+        codigo = generar_codigo_enviado()
         desafio.hash_codigo = _hash(codigo)
         desafio.save(update_fields=['hash_codigo'])
 
-    enviar_codigo(desafio.usuario, codigo)
+    enviar_codigo(desafio.usuario, codigo, desafio.metodo)
 
 
 def firmar_desafio(desafio: SegMfaDesafio) -> str:
@@ -302,7 +323,7 @@ def verificar_desafio(mfa_token: str, codigo: str, permitir_respaldo: bool = Tru
 
         codigo = (codigo or '').strip()
 
-        if desafio.metodo == METODO_CORREO:
+        if desafio.metodo in METODOS_ENVIADOS:
             valido = bool(desafio.hash_codigo) and hmac.compare_digest(desafio.hash_codigo, _hash(codigo))
         else:
             # Se bloquea también la configuración: `ultimo_contador` es un recurso
@@ -408,15 +429,31 @@ def invalidar_sesiones(usuario):
         BlacklistedToken.objects.get_or_create(token=token)
 
 
-def enviar_codigo(usuario, codigo: str):
+def enviar_codigo(usuario, codigo: str, metodo: str):
     """
-    Manda el código del método correo. No propaga fallos de Zinc: el desafío ya existe
-    y el usuario puede pedir un reenvío, así que tumbar la petición no ayudaría.
+    Manda el código por donde corresponda al método.
+
+    No propaga fallos de Zinc: el desafío ya existe y el usuario puede pedir un reenvío
+    o usar un código de respaldo, así que tumbar la petición no ayudaría en nada.
     """
+    minutos = int(DURACION_DESAFIO.total_seconds() // 60)
+
+    if metodo == METODO_SMS:
+        numero = celular_para_sms(usuario)
+        if not numero:
+            # Solo debería pasar si el usuario editó su celular después de activar el
+            # SMS. Le quedan los códigos de respaldo.
+            logger.warning('MFA por SMS sin celular válido para el usuario %s', usuario.pk)
+            return
+        try:
+            Zinc().sms(numero, f'Torio: tu codigo de verificacion es {codigo}. Vence en {minutos} minutos.')
+        except Exception as e:
+            logger.warning('No se pudo enviar el SMS MFA al usuario %s: %s', usuario.pk, e)
+        return
+
     contenido = (
         f'<h1>Tu código de verificación</h1>'
-        f'<p>Ingresa este código para continuar. Vence en '
-        f'{int(DURACION_DESAFIO.total_seconds() // 60)} minutos.</p>'
+        f'<p>Ingresa este código para continuar. Vence en {minutos} minutos.</p>'
         f'<p style="font-size:28px;letter-spacing:6px;"><b>{codigo}</b></p>'
         f'<p>Si no intentaste iniciar sesión, cambia tu clave.</p>'
     )

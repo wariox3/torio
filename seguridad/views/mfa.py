@@ -7,7 +7,13 @@ from rest_framework.throttling import ScopedRateThrottle
 from django.utils import timezone
 
 from seguridad import mfa as servicio_mfa
-from seguridad.models import METODO_CORREO, METODO_TOTP, SegMfaCodigoRespaldo, SegMfaUsuario
+from seguridad.models import (
+    METODO_SMS,
+    METODO_TOTP,
+    METODOS_ENVIADOS,
+    SegMfaCodigoRespaldo,
+    SegMfaUsuario,
+)
 from seguridad.serializers import (
     SegMfaActivarSerializer,
     SegMfaClaveSerializer,
@@ -101,6 +107,14 @@ class SegMfaViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Se valida antes de crear nada: si el celular no sirve, el usuario no recibiría
+        # el código y quedaría con una configuración pendiente que no puede confirmar.
+        if metodo == METODO_SMS and not servicio_mfa.celular_para_sms(request.user):
+            return Response(
+                {'detail': 'Registra un número de celular válido de 10 dígitos en tu perfil antes de usar SMS.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         secreto = servicio_mfa.generar_secreto() if metodo == METODO_TOTP else None
         SegMfaUsuario.objects.update_or_create(
             usuario=request.user,
@@ -122,7 +136,7 @@ class SegMfaViewSet(viewsets.ViewSet):
             datos['otpauth_uri'] = servicio_mfa.uri_otpauth(request.user, secreto)
             datos['secreto'] = secreto
         else:
-            servicio_mfa.enviar_codigo(request.user, codigo)
+            servicio_mfa.enviar_codigo(request.user, codigo, metodo)
 
         return Response(datos)
 
@@ -205,8 +219,8 @@ class SegMfaViewSet(viewsets.ViewSet):
             )
 
         desafio, codigo = servicio_mfa.crear_desafio(request.user, mfa.metodo, self._ip(request))
-        if mfa.metodo == METODO_CORREO:
-            servicio_mfa.enviar_codigo(request.user, codigo)
+        if mfa.metodo in METODOS_ENVIADOS:
+            servicio_mfa.enviar_codigo(request.user, codigo, mfa.metodo)
 
         return Response({'mfa_token': servicio_mfa.firmar_desafio(desafio), 'metodo': mfa.metodo})
 

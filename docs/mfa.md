@@ -1,8 +1,9 @@
 # MFA — Autenticación en dos pasos
 
-Estado: **fase 1 completa** — modelos (`seguridad/models/mfa_*.py`, migración `0017_mfa`),
-motor (`seguridad/mfa.py`), endpoints de gestión (`seguridad/views/mfa.py`) y login en dos
-pasos (`seguridad/views/autenticacion.py`), con 60 tests en `seguridad/tests.py`.
+Estado: **fase 1 completa, con SMS, correo y TOTP** — modelos (`seguridad/models/mfa_*.py`,
+migraciones `0017_mfa` y `0018_mfa_sms`), motor (`seguridad/mfa.py`), endpoints de gestión
+(`seguridad/views/mfa.py`) y login en dos pasos (`seguridad/views/autenticacion.py`), con 79
+tests en `seguridad/tests.py`.
 
 ## 1. Alcance y decisiones de fondo
 
@@ -13,28 +14,54 @@ uno solo y ocurre en el schema público antes de resolver cualquier tenant.
 Todo vive en `seguridad/`. Ningún modelo, campo ni endpoint toca `contenedor/` ni los
 schemas de tenant.
 
-Dos métodos, **elegibles por el usuario al momento de activar**:
+Tres métodos, **elegibles por el usuario al momento de activar**. El orden es el que ve al
+elegir: primero los que no le exigen instalar nada.
 
 | Método | Fricción | Seguridad | Costo |
 |---|---|---|---|
-| TOTP (app autenticadora) | Alta la primera vez, nula después | La mejor | $0 |
+| Código por SMS (Zinc) | Ninguna | La más baja — vulnerable a SIM swap | Por mensaje |
 | Código por correo (Zinc) | Ninguna | Media — protege contra clave filtrada, cae si le entran al correo | $0 |
+| TOTP (app autenticadora) | Alta la primera vez, nula después | La mejor | $0 |
 
-El motor del desafío es el mismo para ambos; lo único que cambia es de dónde sale el
-código: la app lo calcula, o el backend lo genera y lo manda por `Zinc().correo()`.
+El motor del desafío es el mismo para los tres; lo único que cambia es de dónde sale el
+código: la app lo calcula, o el backend lo genera y lo despacha por `Zinc().correo()` o
+`Zinc().sms()`. Los dos últimos comparten el camino de "código enviado"
+(`METODOS_ENVIADOS`): se genera acá, se guarda hasheado en el desafío y se manda.
 
-**SMS queda fuera**: es el método más débil (SIM swap) y el único que cuesta por mensaje.
+**Sobre el SMS**: es el eslabón más débil de los tres y el único con costo por mensaje. Se
+incluye porque un MFA que la gente sí prende vale más que uno fuerte que nadie activa, pero
+si se puede empujar a los usuarios hacia el correo o la app, mejor.
 
-### Por qué TOTP y no solo correo
+### Por qué TOTP además de correo y SMS
 
 TOTP (RFC 6238) no depende de la entregabilidad de nada: el celular calcula
 `HMAC(secreto, tiempo / 30s)` truncado a 6 dígitos, y el servidor hace la misma cuenta.
 Funciona en modo avión. Sirve cualquier app estándar — Google Authenticator, Microsoft
 Authenticator, Authy, 1Password, Bitwarden, o el llavero nativo de iOS y Android.
 
-Se ofrece correo como alternativa porque exigir "descargue una app y escanee este QR" a
-una base de usuarios administrativos genera soporte, y la reacción típica a la fricción es
+Se ofrecen correo y SMS como alternativa porque exigir "descargue una app y escanee este QR"
+a una base de usuarios administrativos genera soporte, y la reacción típica a la fricción es
 desactivar el MFA. Un MFA por correo activo es mejor que un TOTP que nadie prendió.
+
+### El celular para el SMS
+
+Sale de `SegUsuario.celular`, que es texto libre, mientras que `Zinc().sms()` exige diez
+dígitos pelados. `celular_para_sms()` normaliza (quita espacios, guiones y el `+57`) y
+devuelve `None` si no queda un número colombiano válido.
+
+`configurar` rechaza el método SMS con 400 cuando no hay número usable: si no, el usuario
+quedaría con una configuración pendiente que nunca podría confirmar. En cambio al enviar un
+código ya en curso, un número inválido solo deja un warning en el log —el desafío existe y
+le quedan los códigos de respaldo—, porque tumbar el login no le serviría de nada.
+
+**Cambiar el celular con SMS activo exige el segundo factor.** `SegUsuarioViewSet.update`
+pide `mfa_token` y `codigo` en el mismo payload —el `mfa_token` sale de
+`/seguridad/mfa/desafio/`— y responde 400 con `codigo: 'mfa_requerido'` si faltan, para que
+el front sepa abrir el diálogo. Dos razones: con la sesión secuestrada, cambiar el número
+apuntaría los códigos al atacante y le entregaría la cuenta; y sin la validación de formato,
+el propio titular podría dejarse sin recibir códigos tecleando mal. Reescribir el mismo
+número con otro formato no pide nada, y con método correo o TOTP el celular no es un factor,
+así que tampoco.
 
 ## 2. Modelos — `seguridad/models/`
 
@@ -44,14 +71,16 @@ Un archivo por modelo, exportados en `models/__init__.py`, como el resto de la a
 |---|---|---|
 | `SegMfaUsuario` | `seg_mfa_usuario` | 1-1 con `SegUsuario`: `metodo`, `secreto` cifrado, `activo`, `ultimo_contador`, fechas |
 | `SegMfaCodigoRespaldo` | `seg_mfa_codigo_respaldo` | Los 10 códigos, hash SHA-256 indexado, `usado_en` |
-| `SegMfaDesafio` | `seg_mfa_desafio` | UUID, usuario, `metodo`, `hash_codigo` (solo correo), `expira`, `consumido`, `intentos`, `ip` |
+| `SegMfaDesafio` | `seg_mfa_desafio` | UUID, usuario, `metodo`, `hash_codigo` (solo correo y SMS), `expira`, `consumido`, `intentos`, `ip` |
 | `SegMfaDispositivo` | `seg_mfa_dispositivo` | `hash_token`, `user_agent`, `ip`, `ultimo_uso`, `expira` |
 
-Las constantes `METODO_TOTP` / `METODO_CORREO` / `METODOS` viven en `mfa_usuario.py`, junto al
-modelo que las define, como `CAMPOS_ACCESO` en `usuario_cliente.py`. `mfa_desafio.py` las importa.
+Las constantes `METODO_SMS` / `METODO_CORREO` / `METODO_TOTP`, más `METODOS` y
+`METODOS_ENVIADOS`, viven en `mfa_usuario.py`, junto al modelo que las define, como
+`CAMPOS_ACCESO` en `usuario_cliente.py`. `mfa_desafio.py` las importa.
 
-Una sola migración, en `seguridad/`. Cero cambios de esquema en tenants: las cuatro tablas
-quedan solo en el schema público.
+Las migraciones van en `seguridad/`: `0017_mfa` crea las tablas y `0018_mfa_sms` agrega el
+método. Cero cambios de esquema en tenants: las cuatro tablas quedan solo en el schema
+público.
 
 El `metodo` se copia del `SegMfaUsuario` al `SegMfaDesafio` al crearlo: si el usuario cambia
 de método con un desafío en vuelo, ese desafío se resuelve como fue emitido.
@@ -151,7 +180,7 @@ MFA de un tercero.
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/seguridad/mfa/` | Estado: `activo`, `metodo`, `codigos_respaldo_restantes`, dispositivos recordados |
-| POST | `/seguridad/mfa/configurar/` | `{metodo}`. TOTP → devuelve `otpauth_uri` y `secreto`. Correo → envía código por Zinc. Siempre devuelve `mfa_token` |
+| POST | `/seguridad/mfa/configurar/` | `{metodo}`. TOTP → devuelve `otpauth_uri` y `secreto`. Correo/SMS → envía el código por Zinc; SMS exige celular válido. Siempre devuelve `mfa_token` |
 | POST | `/seguridad/mfa/activar/` | `{mfa_token, codigo}` → activa y devuelve los 10 códigos de respaldo **una sola vez** |
 | POST | `/seguridad/mfa/desafio/` | Abre un desafío contra el MFA activo, para operaciones sensibles. Devuelve `mfa_token` |
 | POST | `/seguridad/mfa/desactivar/` | `{password, mfa_token, codigo}` — exige clave **y** segundo factor |
@@ -165,14 +194,14 @@ que `activar` no acepta códigos de respaldo: ahí se está probando que el fact
 funciona, y un código viejo no prueba eso.
 
 `/seguridad/mfa/desafio/` no estaba en la propuesta original y fue necesario: `desactivar`
-exige un código, y con método correo ese código hay que mandarlo antes de poder pedirlo.
+exige un código, y con correo o SMS ese código hay que mandarlo antes de poder pedirlo.
 
 ### Login — `seguridad/views/autenticacion.py`
 
 | Método | Ruta | Descripción |
 |---|---|---|
 | POST | `/seguridad/login/mfa/` | `{mfa_token, codigo, recordar_dispositivo}` → emite cookies JWT |
-| POST | `/seguridad/login/mfa/reenviar/` | Reenvía el código (solo método correo) |
+| POST | `/seguridad/login/mfa/reenviar/` | Reenvía el código (solo correo y SMS) |
 
 El reenvío **no** reinicia `intentos` ni `expira`: si lo hiciera, pedir un correo nuevo cada
 cinco intentos daría intentos infinitos. Su propio tope lo pone el throttle.
@@ -197,8 +226,8 @@ El límite que de verdad frena la fuerza bruta sobre 6 dígitos es el contador d
 **Activación (una sola vez):**
 
 1. Perfil → Activar verificación en dos pasos
-2. Elegir método: app autenticadora o correo
-3. TOTP → escanear el QR. Correo → escribir el código que llegó
+2. Elegir método: SMS, correo o app autenticadora
+3. TOTP → escanear el QR. Correo/SMS → escribir el código que llegó
 4. Confirmar con un código, para verificar que quedó bien sincronizado
 5. Se muestran los 10 códigos de respaldo → guardarlos o imprimirlos
 
@@ -256,8 +285,7 @@ pasos → dispositivo recordado → tests de integración.
 
 ## 8. Fuera de la fase 1
 
-MFA por SMS, política obligatoria a nivel de organización, y administración del MFA de
-terceros.
+Política obligatoria a nivel de organización y administración del MFA de terceros.
 
 ## 9. Deuda que esto destapa
 

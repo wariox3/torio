@@ -14,6 +14,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from seguridad import mfa as servicio_mfa
 from seguridad.models import (
     METODO_CORREO,
+    METODO_SMS,
     METODO_TOTP,
     SegMfaCodigoRespaldo,
     SegMfaDesafio,
@@ -96,7 +97,7 @@ class CorreoTests(MfaBaseTests):
 
     def test_codigo_valido(self):
         token, _, codigo = self._desafio(METODO_CORREO)
-        self.assertEqual(len(codigo), servicio_mfa.LONGITUD_CODIGO_CORREO)
+        self.assertEqual(len(codigo), servicio_mfa.LONGITUD_CODIGO_ENVIADO)
         self.assertEqual(servicio_mfa.verificar_desafio(token, codigo), self.usuario)
 
     def test_el_codigo_no_se_guarda_en_claro(self):
@@ -420,7 +421,7 @@ class MfaEndpointsCorreoTests(TestCase):
 
         parche = patch.object(
             servicio_mfa, 'enviar_codigo',
-            side_effect=lambda usuario, codigo: self.enviados.append((usuario, codigo)),
+            side_effect=lambda usuario, codigo, metodo: self.enviados.append((usuario, codigo, metodo)),
         )
         parche.start()
         self.addCleanup(parche.stop)
@@ -579,7 +580,7 @@ class LoginMfaTests(TestCase):
     def test_reenviar_codigo(self):
         self._activar_mfa(METODO_CORREO)
         enviados = []
-        with patch.object(servicio_mfa, 'enviar_codigo', side_effect=lambda u, c: enviados.append(c)):
+        with patch.object(servicio_mfa, 'enviar_codigo', side_effect=lambda u, c, m: enviados.append(c)):
             token = self._login().data['mfa_token']
             self.assertEqual(len(enviados), 1)
 
@@ -652,3 +653,228 @@ class SesionTests(TestCase):
         for _ in range(3):
             self.client.post('/seguridad/refresh/')
         self.assertEqual(RefreshToken(self.client.cookies['refresh_token'].value)['ses'], inicio)
+
+
+class CelularTests(TestCase):
+    """El campo `celular` es texto libre; Zinc exige diez dígitos pelados."""
+
+    def _celular(self, valor):
+        usuario = SegUsuario(email='cel@torio.test', celular=valor)
+        return servicio_mfa.celular_para_sms(usuario)
+
+    def test_formatos_validos(self):
+        for valor in ('3001234567', '300 123 4567', '300-123-4567', '+57 300 123 4567', '573001234567'):
+            with self.subTest(valor=valor):
+                self.assertEqual(self._celular(valor), '3001234567')
+
+    def test_formatos_invalidos(self):
+        for valor in (None, '', '300123', '12345678901', 'no-es-un-numero'):
+            with self.subTest(valor=valor):
+                self.assertIsNone(self._celular(valor))
+
+
+@override_settings(MFA_ENCRYPTION_KEY=_CLAVE_MFA)
+class SmsTests(MfaBaseTests):
+    def setUp(self):
+        super().setUp()
+        SegMfaUsuario.objects.filter(pk=self.mfa.pk).update(metodo=METODO_SMS, secreto=None)
+        SegUsuario.objects.filter(pk=self.usuario.pk).update(celular='+57 300 123 4567')
+        self.usuario.refresh_from_db()
+
+    def test_codigo_valido(self):
+        token, _, codigo = self._desafio(METODO_SMS)
+        self.assertEqual(len(codigo), servicio_mfa.LONGITUD_CODIGO_ENVIADO)
+        self.assertEqual(servicio_mfa.verificar_desafio(token, codigo), self.usuario)
+
+    def test_el_codigo_no_se_guarda_en_claro(self):
+        _, desafio, codigo = self._desafio(METODO_SMS)
+        self.assertNotEqual(desafio.hash_codigo, codigo)
+
+    def test_codigo_invalido(self):
+        token, _, codigo = self._desafio(METODO_SMS)
+        with self.assertRaises(servicio_mfa.MfaError):
+            servicio_mfa.verificar_desafio(token, '000000' if codigo != '000000' else '111111')
+
+    def test_envio_normaliza_el_numero(self):
+        with patch.object(servicio_mfa, 'Zinc') as zinc:
+            servicio_mfa.enviar_codigo(self.usuario, '123456', METODO_SMS)
+
+        numero, mensaje = zinc.return_value.sms.call_args.args
+        self.assertEqual(numero, '3001234567')
+        self.assertIn('123456', mensaje)
+        zinc.return_value.correo.assert_not_called()
+
+    def test_envio_sin_celular_valido_no_explota(self):
+        """Solo pasa si editaron el celular después de activar; le quedan los respaldos."""
+        SegUsuario.objects.filter(pk=self.usuario.pk).update(celular='123')
+        self.usuario.refresh_from_db()
+
+        with patch.object(servicio_mfa, 'Zinc') as zinc:
+            servicio_mfa.enviar_codigo(self.usuario, '123456', METODO_SMS)
+        zinc.return_value.sms.assert_not_called()
+
+    def test_correo_no_manda_sms(self):
+        with patch.object(servicio_mfa, 'Zinc') as zinc:
+            servicio_mfa.enviar_codigo(self.usuario, '123456', METODO_CORREO)
+        zinc.return_value.sms.assert_not_called()
+        zinc.return_value.correo.assert_called_once()
+
+
+@override_settings(MFA_ENCRYPTION_KEY=_CLAVE_MFA, TURNSTILE_ENABLED=False)
+class MfaSmsEndpointsTests(TestCase):
+    CLAVE = 'clave-de-prueba-123'
+
+    def setUp(self):
+        cache.clear()
+        self.usuario = SegUsuario.objects.create(
+            email='sms@torio.test', is_verified=True, celular='3001234567',
+        )
+        self.usuario.set_password(self.CLAVE)
+        self.usuario.save()
+        self.client = APIClient()
+        self.client.force_authenticate(self.usuario)
+        self.enviados = []
+
+        parche = patch.object(
+            servicio_mfa, 'enviar_codigo',
+            side_effect=lambda usuario, codigo, metodo: self.enviados.append((codigo, metodo)),
+        )
+        parche.start()
+        self.addCleanup(parche.stop)
+
+    def test_configurar_sin_celular_valido(self):
+        # Sobre la instancia, no por queryset: `force_authenticate` guarda este mismo
+        # objeto y la vista leería el valor viejo.
+        self.usuario.celular = None
+        self.usuario.save(update_fields=['celular'])
+        respuesta = self.client.post('/seguridad/mfa/configurar/', {'metodo': METODO_SMS})
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertFalse(SegMfaUsuario.objects.filter(usuario=self.usuario).exists())
+        self.assertEqual(self.enviados, [])
+
+    def test_configurar_y_activar(self):
+        respuesta = self.client.post('/seguridad/mfa/configurar/', {'metodo': METODO_SMS})
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertNotIn('secreto', respuesta.data)
+        self.assertEqual(len(self.enviados), 1)
+        self.assertEqual(self.enviados[0][1], METODO_SMS)
+
+        codigo, _ = self.enviados[0]
+        activar = self.client.post('/seguridad/mfa/activar/', {
+            'mfa_token': respuesta.data['mfa_token'], 'codigo': codigo,
+        })
+        self.assertEqual(activar.status_code, 200)
+        self.assertEqual(self.client.get('/seguridad/mfa/').data['metodo'], METODO_SMS)
+
+    def test_login_en_dos_pasos_por_sms(self):
+        configurar = self.client.post('/seguridad/mfa/configurar/', {'metodo': METODO_SMS})
+        self.client.post('/seguridad/mfa/activar/', {
+            'mfa_token': configurar.data['mfa_token'], 'codigo': self.enviados[0][0],
+        })
+
+        anonimo = APIClient()
+        login = anonimo.post('/seguridad/login/', {'email': self.usuario.email, 'password': self.CLAVE})
+        self.assertTrue(login.data['mfa_requerido'])
+        self.assertEqual(login.data['metodo'], METODO_SMS)
+        self.assertEqual(self.enviados[-1][1], METODO_SMS)
+
+        segundo = anonimo.post('/seguridad/login/mfa/', {
+            'mfa_token': login.data['mfa_token'], 'codigo': self.enviados[-1][0],
+        })
+        self.assertEqual(segundo.status_code, 200)
+        self.assertIn('access_token', segundo.cookies)
+
+    def test_reenviar_por_sms(self):
+        configurar = self.client.post('/seguridad/mfa/configurar/', {'metodo': METODO_SMS})
+        token = configurar.data['mfa_token']
+
+        respuesta = self.client.post('/seguridad/login/mfa/reenviar/', {'mfa_token': token})
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(len(self.enviados), 2)
+        self.assertNotEqual(self.enviados[0][0], self.enviados[1][0])
+
+
+@override_settings(MFA_ENCRYPTION_KEY=_CLAVE_MFA)
+class CambioDeCelularTests(TestCase):
+    """
+    Con SMS activo, el celular es parte del segundo factor: moverlo exige probarlo.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.usuario = SegUsuario.objects.create(
+            email='cambio@torio.test', is_verified=True, celular='3001234567',
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.usuario)
+        self.url = f'/seguridad/usuario/{self.usuario.pk}/'
+
+    def _activar_sms(self):
+        SegMfaUsuario.objects.create(
+            usuario=self.usuario, metodo=METODO_SMS, activo=True, fecha_activacion=timezone.now(),
+        )
+
+    def _paso_previo(self):
+        desafio, codigo = servicio_mfa.crear_desafio(self.usuario, METODO_SMS)
+        return servicio_mfa.firmar_desafio(desafio), codigo
+
+    def test_sin_mfa_se_cambia_libremente(self):
+        respuesta = self.client.patch(self.url, {'celular': '3109999999'})
+        self.assertEqual(respuesta.status_code, 200)
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.usuario.celular, '3109999999')
+
+    def test_con_sms_activo_exige_codigo(self):
+        self._activar_sms()
+        respuesta = self.client.patch(self.url, {'celular': '3109999999'})
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data['codigo'], 'mfa_requerido')
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.usuario.celular, '3001234567')
+
+    def test_con_codigo_valido_se_cambia(self):
+        self._activar_sms()
+        token, codigo = self._paso_previo()
+
+        respuesta = self.client.patch(self.url, {
+            'celular': '3109999999', 'mfa_token': token, 'codigo': codigo,
+        })
+        self.assertEqual(respuesta.status_code, 200)
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.usuario.celular, '3109999999')
+
+    def test_con_codigo_invalido_no_se_cambia(self):
+        self._activar_sms()
+        token, codigo = self._paso_previo()
+
+        respuesta = self.client.patch(self.url, {
+            'celular': '3109999999', 'mfa_token': token,
+            'codigo': '000000' if codigo != '000000' else '111111',
+        })
+        self.assertEqual(respuesta.status_code, 400)
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.usuario.celular, '3001234567')
+
+    def test_el_mismo_numero_con_otro_formato_no_exige_codigo(self):
+        self._activar_sms()
+        respuesta = self.client.patch(self.url, {'celular': '+57 300 123 4567'})
+        self.assertEqual(respuesta.status_code, 200)
+
+    def test_no_se_puede_dejar_un_numero_invalido(self):
+        """Teclear mal el número dejaría al titular sin recibir códigos."""
+        self._activar_sms()
+        token, codigo = self._paso_previo()
+
+        respuesta = self.client.patch(self.url, {
+            'celular': '300123', 'mfa_token': token, 'codigo': codigo,
+        })
+        self.assertEqual(respuesta.status_code, 400)
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.usuario.celular, '3001234567')
+
+    def test_otros_campos_no_se_ven_afectados(self):
+        self._activar_sms()
+        respuesta = self.client.patch(self.url, {'nombre_corto': 'Nuevo nombre'})
+        self.assertEqual(respuesta.status_code, 200)

@@ -1,17 +1,24 @@
 from django.db import models
 
 # Métodos de segundo factor. `totp` es el estándar RFC 6238: el celular calcula el
-# código a partir del secreto y la hora, sin hablar con el servidor. `correo` genera
-# el código acá y lo envía con `Zinc().correo()`, para quien no quiera instalar una
-# app autenticadora.
+# código a partir del secreto y la hora, sin hablar con el servidor. `correo` y `sms`
+# generan el código acá y lo envían con Zinc, para quien no quiera instalar una app
+# autenticadora.
 #
-# El motor del desafío es el mismo para ambos: solo cambia de dónde sale el código.
+# El motor del desafío es el mismo para los tres: solo cambia de dónde sale el código,
+# y en los dos últimos, por dónde se manda.
 METODO_TOTP = 'totp'
 METODO_CORREO = 'correo'
+METODO_SMS = 'sms'
+# El orden es el que ve el usuario al elegir: primero los que no le exigen instalar nada.
 METODOS = [
-    (METODO_TOTP, 'App autenticadora'),
+    (METODO_SMS, 'Código por SMS'),
     (METODO_CORREO, 'Código por correo'),
+    (METODO_TOTP, 'App autenticadora'),
 ]
+
+# Los que mandan el código desde el servidor y lo guardan hasheado en el desafío.
+METODOS_ENVIADOS = (METODO_CORREO, METODO_SMS)
 
 
 class SegMfaUsuario(models.Model):
@@ -29,7 +36,7 @@ class SegMfaUsuario(models.Model):
         db_column='usuario_id',
         related_name='mfa',
     )
-    metodo = models.CharField(max_length=10, choices=METODOS, default=METODO_TOTP, db_default=METODO_TOTP)
+    metodo = models.CharField(max_length=10, choices=METODOS, default=METODO_SMS, db_default=METODO_SMS)
     # Secreto base32 cifrado con Fernet (`MFA_ENCRYPTION_KEY`, separada de `SECRET_KEY`
     # para poder rotar la firma de los JWT sin invalidar todos los MFA). Solo aplica a
     # TOTP: el método correo no tiene secreto persistente.

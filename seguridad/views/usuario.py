@@ -12,7 +12,8 @@ from rest_framework.throttling import ScopedRateThrottle
 
 from rest_framework.parsers import MultiPartParser
 
-from seguridad.models import SegUsuario
+from seguridad import mfa as servicio_mfa
+from seguridad.models import METODO_SMS, SegMfaUsuario, SegUsuario
 from seguridad.serializers import SegUsuarioActualizarSerializer, SegUsuarioMeSerializer, SegUsuarioSeleccionarSerializer, SegUsuarioSerializer
 from utilidades.backblaze import subir_foto_usuario
 from utilidades.turnstile import verify_turnstile
@@ -50,6 +51,69 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         if getattr(self, 'action', None) == 'create':
             return []
         return super().get_authenticators()
+
+    def update(self, request, *args, **kwargs):
+        rechazo = self._validar_cambio_de_celular(request)
+        if rechazo is not None:
+            return rechazo
+        return super().update(request, *args, **kwargs)
+
+    def _validar_cambio_de_celular(self, request):
+        """
+        Cambiar el celular con la verificación por SMS activa exige volver a probar el
+        segundo factor.
+
+        Sin esto, quien se apodere de una sesión abierta apunta los códigos a su propio
+        número y se queda con la cuenta; y el titular podría dejarse a sí mismo sin
+        recibir códigos con solo teclear mal el número.
+
+        Devuelve la `Response` de rechazo, o None si el cambio puede seguir.
+        """
+        if 'celular' not in request.data:
+            return None
+
+        usuario = self.get_object()
+        activo = SegMfaUsuario.objects.filter(
+            usuario=usuario, activo=True, metodo=METODO_SMS,
+        ).exists()
+        if not activo:
+            return None
+
+        nuevo = servicio_mfa.normalizar_celular(request.data.get('celular'))
+        if nuevo == servicio_mfa.normalizar_celular(usuario.celular):
+            # Mismo número escrito distinto: no hay nada que proteger.
+            return None
+
+        if not nuevo:
+            return Response(
+                {'detail': 'Con la verificación por SMS activa, el celular debe ser un número válido de 10 dígitos.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        mfa_token = request.data.get('mfa_token')
+        codigo = request.data.get('codigo')
+        if not mfa_token or not codigo:
+            # `codigo` le dice al front que abra el diálogo del segundo factor, igual
+            # que `suscripcion_vencida` en SuscripcionVigente.
+            return Response(
+                {
+                    'detail': 'Para cambiar tu celular confirma el código de verificación.',
+                    'codigo': 'mfa_requerido',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            verificado = servicio_mfa.verificar_desafio(mfa_token, codigo)
+        except servicio_mfa.MfaError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        if verificado != usuario:
+            return Response(
+                {'detail': 'La sesión de verificación expiró. Intenta de nuevo.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return None
 
     def get_throttles(self):
         scopes = {

@@ -82,9 +82,13 @@ httpOnly cookies, with rotation and blacklist. Two things are easy to get wrong:
   the browser is not remembered, it returns `{mfa_requerido, mfa_token, metodo}` and the
   session is only issued by `POST /seguridad/login/mfa/`.
 
-The mechanics (TOTP via `pyotp`, email codes via `Zinc()`, challenges, backup codes,
-remembered devices) are all in `seguridad/mfa.py`; views only translate `MfaError` into an
-HTTP response. Requires `MFA_ENCRYPTION_KEY` in `.env` — a Fernet key, deliberately separate
+Three methods, offered in this order: **SMS**, **email** (both send a code through `Zinc()`
+and share the `METODOS_ENVIADOS` path) and **TOTP** (`pyotp`, no delivery involved). SMS
+reads `SegUsuario.celular`, which is free text, so it goes through `celular_para_sms()` —
+Zinc requires exactly 10 digits.
+
+All the mechanics (challenges, codes, backup codes, remembered devices) live in
+`seguridad/mfa.py`; views only translate `MfaError` into an HTTP response. Requires `MFA_ENCRYPTION_KEY` in `.env` — a Fernet key, deliberately separate
 from `SECRET_KEY`:
 
 ```bash

@@ -12,7 +12,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from seguridad import mfa as servicio_mfa
-from seguridad.models import METODO_CORREO
+from seguridad.models import METODOS_ENVIADOS
 from seguridad.serializers import SegLoginSerializer, SegMfaLoginSerializer, SegUsuarioMeSerializer
 from utilidades.turnstile import verify_turnstile
 
@@ -135,8 +135,8 @@ class LoginView(APIView):
             desafio, codigo = servicio_mfa.crear_desafio(
                 usuario, mfa.metodo, request.META.get('REMOTE_ADDR')
             )
-            if mfa.metodo == METODO_CORREO:
-                servicio_mfa.enviar_codigo(usuario, codigo)
+            if mfa.metodo in METODOS_ENVIADOS:
+                servicio_mfa.enviar_codigo(usuario, codigo, mfa.metodo)
             return Response({
                 'mfa_requerido': True,
                 'mfa_token': servicio_mfa.firmar_desafio(desafio),
