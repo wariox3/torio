@@ -10,6 +10,13 @@ class SegMfaDispositivoSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class SegMfaMetodoSerializer(serializers.Serializer):
+    """Una opción del selector de método, con la etiqueta ya lista para mostrar."""
+
+    codigo = serializers.CharField()
+    nombre = serializers.CharField()
+
+
 class SegMfaEstadoSerializer(serializers.Serializer):
     activo = serializers.BooleanField()
     metodo = serializers.CharField(allow_null=True)

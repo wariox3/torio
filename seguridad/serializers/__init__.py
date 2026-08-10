@@ -8,6 +8,7 @@ from .mfa import (
     SegMfaDispositivoSerializer,
     SegMfaEstadoSerializer,
     SegMfaLoginSerializer,
+    SegMfaMetodoSerializer,
 )
 from .permiso import SegPermisoSerializer
 from .rol import SegRolSerializer

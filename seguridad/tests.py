@@ -16,6 +16,7 @@ from seguridad.models import (
     METODO_CORREO,
     METODO_SMS,
     METODO_TOTP,
+    METODOS,
     SegMfaCodigoRespaldo,
     SegMfaDesafio,
     SegMfaUsuario,
@@ -269,6 +270,30 @@ class MfaEndpointsTests(TestCase):
         anonimo = APIClient()
         self.assertEqual(anonimo.get('/seguridad/mfa/').status_code, 401)
         self.assertEqual(anonimo.post('/seguridad/mfa/configurar/', {'metodo': METODO_TOTP}).status_code, 401)
+        self.assertEqual(anonimo.get('/seguridad/mfa/metodos/').status_code, 401)
+
+    def test_metodos_disponibles(self):
+        """
+        El front pinta el selector con esto. Se afirma el orden porque es intencional
+        —primero los que no exigen instalar una app— y se perdería sin una prueba.
+        """
+        respuesta = self.client.get('/seguridad/mfa/metodos/')
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(
+            [metodo['codigo'] for metodo in respuesta.data],
+            [METODO_CORREO, METODO_SMS, METODO_TOTP],
+        )
+        self.assertEqual(respuesta.data[0]['nombre'], 'Código por correo')
+
+    def test_los_metodos_son_los_que_acepta_configurar(self):
+        """
+        Guarda contra la desincronización: si alguien agrega un método al selector sin
+        agregarlo al enum, `configurar` lo rechazaría y el usuario vería una opción rota.
+        """
+        codigos = [metodo['codigo'] for metodo in self.client.get('/seguridad/mfa/metodos/').data]
+
+        self.assertEqual(set(codigos), {codigo for codigo, _ in METODOS})
 
     def test_estado_sin_mfa(self):
         respuesta = self.client.get('/seguridad/mfa/')

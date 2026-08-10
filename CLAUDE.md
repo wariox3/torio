@@ -87,8 +87,10 @@ httpOnly cookies, with rotation and blacklist. Two things are easy to get wrong:
   the browser is not remembered, it returns `{mfa_requerido, mfa_token, metodo}` and the
   session is only issued by `POST /seguridad/login/mfa/`.
 
-Three methods, offered in this order: **SMS**, **email** (both send a code through `Zinc()`
-and share the `METODOS_ENVIADOS` path) and **TOTP** (`pyotp`, no delivery involved). SMS
+Three methods, offered in this order: **email**, **SMS** (both send a code through `Zinc()`
+and share the `METODOS_ENVIADOS` path) and **TOTP** (`pyotp`, no delivery involved). The
+order lives in `METODOS` (`seguridad/models/mfa_usuario.py`) and is served to the front by
+`GET /seguridad/mfa/metodos/` — don't hardcode it anywhere else. SMS
 reads `SegUsuario.celular`, which is free text, so it goes through `celular_para_sms()` —
 Zinc requires exactly 10 digits.
 

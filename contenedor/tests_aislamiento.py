@@ -28,9 +28,12 @@ Correr solo esto:
 
 from datetime import timedelta
 
+import importlib
+
 from django.contrib.auth.models import Group, Permission
 from django.db import connection
 from django.test import TestCase
+from django.urls import Resolver404, resolve
 from django.utils import timezone
 from django_tenants.utils import get_public_schema_name, schema_context
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -55,6 +58,68 @@ RUTA_ME = '/seguridad/me/'
 # en `/general/item/` porque tampoco tiene permisos de modelo en ese contenedor.
 RUTA_DOCUMENTO = '/general/documento/'
 
+# Dónde monta `torioapp/urls_tenant.py` el router de cada app de tenant. Si se agrega
+# una app al urlconf hay que agregarla acá, o sus endpoints quedan fuera del barrido;
+# `test_el_barrido_cubre_todos_los_viewsets` es lo que hace ruidoso ese olvido.
+MONTAJES = [
+    ('general', 'general.urls'),
+    ('contabilidad', 'contabilidad.urls'),
+    ('turno', 'turno.urls'),
+    ('humano', 'humano.urls'),
+    ('inventario', 'inventario.urls'),
+    ('seguridad', 'seguridad.urls_tenant'),
+]
+
+# Id que no existe en ningún contenedor. Sirve para las rutas de detalle: los permisos
+# corren en `initial()`, antes de que la vista busque el objeto, así que un no-miembro
+# recibe 403 sin que el id llegue a consultarse.
+_PK_INEXISTENTE = 999999
+
+
+def _ruta_del_viewset(montaje, prefijo, viewset):
+    """
+    Una URL real por viewset, verificada contra el resolver.
+
+    No se usa `reverse()` a propósito: `periodo` y `programacion` están registrados con
+    el mismo basename en dos apps distintas, y `reverse` devolvería la misma URL para
+    los dos, dejando dos viewsets sin probar mientras el conteo se ve completo. Acá se
+    arma el path y se confirma con `resolve()` que apunta al viewset esperado.
+
+    Se prefiere la ruta de listado; si el viewset no la tiene (varios son solo
+    `seleccionar`), se cae a sus acciones y por último a la ruta de detalle.
+    """
+    candidatos = [f'/{montaje}/{prefijo}/']
+    acciones = [
+        getattr(viewset, nombre) for nombre in dir(viewset)
+        if getattr(getattr(viewset, nombre, None), 'mapping', None)
+    ]
+    candidatos += [
+        f'/{montaje}/{prefijo}/{a.url_path}/' for a in acciones if not a.detail
+    ]
+    candidatos.append(f'/{montaje}/{prefijo}/{_PK_INEXISTENTE}/')
+    candidatos += [
+        f'/{montaje}/{prefijo}/{_PK_INEXISTENTE}/{a.url_path}/' for a in acciones if a.detail
+    ]
+
+    for url in candidatos:
+        try:
+            encontrado = resolve(url, urlconf='torioapp.urls_tenant')
+        except Resolver404:
+            continue
+        if getattr(encontrado.func, 'cls', None) is viewset:
+            return url
+    return None
+
+
+def rutas_de_tenant():
+    """[(etiqueta, url)] con una ruta por viewset servido dentro de un contenedor."""
+    rutas = []
+    for montaje, modulo in MONTAJES:
+        for prefijo, viewset, _ in importlib.import_module(modulo).router.registry:
+            rutas.append((f'{montaje}/{prefijo}', _ruta_del_viewset(montaje, prefijo, viewset)))
+    return rutas
+
+
 # El de `EsMiembroDelTenant`. Se afirma explícitamente para que el test siga
 # apuntando a la membresía si mañana alguien le pone permisos de modelo a la vista.
 MENSAJE_NO_MIEMBRO = 'No tienes acceso a este contenedor.'
@@ -62,19 +127,28 @@ MENSAJE_NO_MIEMBRO = 'No tienes acceso a este contenedor.'
 
 class Escenario:
     """
-    Dos contenedores y cuatro usuarios, compartidos por todo el módulo.
+    Dos contenedores y cinco usuarios, compartidos por todo el módulo.
 
     Los usuarios cubren las combinaciones que importan:
 
-    | Usuario   | Miembro de | Grupo con permisos de item |
-    |-----------|------------|----------------------------|
-    | `sol_a`   | A          | en A                       |
-    | `sol_b`   | B          | en B                       |
-    | `ambos`   | A y B      | solo en A                  |
-    | `ajeno`   | ninguno    | —                          |
+    | Usuario    | Miembro de | Permisos de modelo             |
+    |------------|------------|--------------------------------|
+    | `sol_a`    | A          | item, en A                     |
+    | `sol_b`    | B          | item, en B                     |
+    | `ambos`    | A y B      | item, solo en A                |
+    | `ajeno`    | ninguno    | —                              |
+    | `fantasma` | ninguno    | **todos**, en B                |
 
-    `ambos` es el caso interesante: como es miembro legítimo de los dos, cualquier
-    fuga entre contenedores se le manifiesta a él sin necesidad de forjar nada.
+    `ambos` es el caso interesante para las fugas: como es miembro legítimo de los dos,
+    cualquier mezcla se le manifiesta sin necesidad de forjar nada.
+
+    `fantasma` es el que hace medible el barrido de endpoints. Tiene fila de
+    `UserTenantPermissions` en B con todos los permisos de modelo, pero **no** tiene
+    `SegUsuarioCliente`: es el estado que quedaría si una baja de membresía fallara a
+    medias. Sin él, un 403 en los 94 endpoints no probaría nada, porque los que exigen
+    permiso de modelo rechazarían igual a cualquier extraño y el barrido pasaría aunque
+    la membresía estuviera desactivada — el mismo falso positivo que ya nos mordió en
+    `MembresiaTests`. Con él, el único motivo posible de 403 es `EsMiembroDelTenant`.
     """
 
     cliente_a = None
@@ -83,6 +157,7 @@ class Escenario:
     sol_b = None
     ambos = None
     ajeno = None
+    fantasma = None
 
 
 def _crear_contenedor(schema, nombre, dominio):
@@ -152,6 +227,9 @@ def setUpModule():
         Escenario.ajeno = SegUsuario.objects.create(
             email='ajeno@ejemplo.com', is_active=True, is_verified=True,
         )
+        Escenario.fantasma = SegUsuario.objects.create(
+            email='fantasma@ejemplo.com', is_active=True, is_verified=True,
+        )
 
         tipo = CtnSuscripcionTipo.objects.create(
             id=98, nombre='Aislamiento', precio=0, suscripcion_categoria_id=98,
@@ -172,6 +250,14 @@ def setUpModule():
         # filtraran de un schema al otro, este usuario podría escribir en B.
         Escenario.cliente_a.add_user(Escenario.ambos, grupos=[grupo_a])
         Escenario.cliente_b.add_user(Escenario.ambos)
+
+        # `fantasma`: permisos de modelo en B sin membresía en B. No se usa `add_user`
+        # justamente porque ese método escribe las dos filas; acá hace falta solo una.
+        grupo_todo = Group.objects.create(name='todos_los_permisos')
+        grupo_todo.permissions.set(Permission.objects.all())
+        with schema_context(ESQUEMA_B):
+            permisos = UserTenantPermissions.objects.create(profile=Escenario.fantasma)
+            permisos.groups.set([grupo_todo])
 
 
 def tearDownModule():
@@ -580,3 +666,62 @@ class ContaminacionEntrePeticionesTests(AislamientoBase):
         self._get(RUTA_ITEM, usuario=Escenario.sol_a, tenant=ESQUEMA_A)
 
         self.assertIsNone(obtener_usuario_actual())
+
+
+# --------------------------------------------------------------------------- #
+# 7. Barrido de todos los endpoints de tenant
+# --------------------------------------------------------------------------- #
+
+class BarridoDeEndpointsTests(AislamientoBase):
+    """
+    Las clases anteriores prueban el mecanismo a fondo sobre dos endpoints. Esta prueba
+    lo contrario: poco, pero sobre **todos** — que ninguno de los 94 viewsets servidos
+    dentro de un contenedor se salte la puerta de entrada.
+
+    Su valor real es el futuro: un viewset registrado mañana con
+    `permission_classes = [IsAuthenticated]` o con `AllowAny` rompe esta clase el mismo
+    día, sin que nadie tenga que acordarse de escribirle una prueba.
+
+    Lo que **no** prueba: que el contenido de la respuesta no traiga datos ajenos. Eso
+    exige construir datos válidos modelo por modelo y está cubierto solo para `item` y
+    `documento`. Un endpoint puede pasar este barrido y aun así filtrar por dentro —
+    con un `get_queryset` que consulte el público, un `raw()` o un FK cruzado.
+    """
+
+    def test_el_barrido_cubre_todos_los_viewsets(self):
+        """
+        Guarda del propio barrido: si un viewset no resuelve a ninguna URL, se queda sin
+        probar. Sin esta prueba eso pasaría en silencio y el barrido se vería verde.
+        """
+        rutas = rutas_de_tenant()
+        sin_ruta = [etiqueta for etiqueta, url in rutas if url is None]
+
+        self.assertEqual(sin_ruta, [], 'viewsets sin URL resoluble: quedarían sin barrer')
+        # Una URL distinta por viewset: si dos comparten URL, uno no se está probando.
+        urls = [url for _, url in rutas]
+        self.assertEqual(len(set(urls)), len(urls), 'dos viewsets resolvieron a la misma URL')
+        self.assertGreaterEqual(len(rutas), 94)
+
+    def test_ningun_endpoint_le_responde_a_un_no_miembro(self):
+        """
+        `fantasma` tiene todos los permisos de modelo en B pero no es miembro de B, así
+        que un 403 acá solo lo puede producir `EsMiembroDelTenant`. Si en vez de 403
+        aparece cualquier otra cosa —200, 404, 405, 500—, la petición pasó la puerta.
+        """
+        for etiqueta, url in rutas_de_tenant():
+            with self.subTest(endpoint=etiqueta):
+                respuesta = self._get(url, usuario=Escenario.fantasma, tenant=ESQUEMA_B)
+                self.assertEqual(respuesta.status_code, 403, f'{url} -> {respuesta.content[:200]}')
+
+    def test_ningun_endpoint_le_responde_a_un_anonimo(self):
+        for etiqueta, url in rutas_de_tenant():
+            with self.subTest(endpoint=etiqueta):
+                respuesta = self._get(url, tenant=ESQUEMA_B)
+                self.assertEqual(respuesta.status_code, 401, f'{url} -> {respuesta.content[:200]}')
+
+    def test_ningun_endpoint_de_tenant_existe_en_el_schema_publico(self):
+        """Sin `X-Tenant` se sirve `urls_public`, donde estas rutas no están montadas."""
+        for etiqueta, url in rutas_de_tenant():
+            with self.subTest(endpoint=etiqueta):
+                respuesta = self._get(url, usuario=Escenario.sol_a)
+                self.assertEqual(respuesta.status_code, 404, f'{url} -> {respuesta.status_code}')

@@ -15,12 +15,13 @@ Todo vive en `seguridad/`. Ningún modelo, campo ni endpoint toca `contenedor/` 
 schemas de tenant.
 
 Tres métodos, **elegibles por el usuario al momento de activar**. El orden es el que ve al
-elegir: primero los que no le exigen instalar nada.
+elegir —lo define `METODOS` y lo sirve `/seguridad/mfa/metodos/`—: primero los que no le
+exigen instalar nada, y entre esos el correo antes que el SMS, que cuesta por mensaje.
 
 | Método | Fricción | Seguridad | Costo |
 |---|---|---|---|
-| Código por SMS (Zinc) | Ninguna | La más baja — vulnerable a SIM swap | Por mensaje |
 | Código por correo (Zinc) | Ninguna | Media — protege contra clave filtrada, cae si le entran al correo | $0 |
+| Código por SMS (Zinc) | Ninguna | La más baja — vulnerable a SIM swap | Por mensaje |
 | TOTP (app autenticadora) | Alta la primera vez, nula después | La mejor | $0 |
 
 El motor del desafío es el mismo para los tres; lo único que cambia es de dónde sale el
@@ -180,12 +181,17 @@ MFA de un tercero.
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/seguridad/mfa/` | Estado: `activo`, `metodo`, `codigos_respaldo_restantes`, dispositivos recordados |
+| GET | `/seguridad/mfa/metodos/` | Los métodos que ofrece la aplicación (`codigo` + `nombre`), en el orden en que se muestran |
 | POST | `/seguridad/mfa/configurar/` | `{metodo}`. TOTP → devuelve `otpauth_uri` y `secreto`. Correo/SMS → envía el código por Zinc; SMS exige celular válido. Siempre devuelve `mfa_token` |
 | POST | `/seguridad/mfa/activar/` | `{mfa_token, codigo}` → activa y devuelve los 10 códigos de respaldo **una sola vez** |
 | POST | `/seguridad/mfa/desafio/` | Abre un desafío contra el MFA activo, para operaciones sensibles. Devuelve `mfa_token` |
 | POST | `/seguridad/mfa/desactivar/` | `{password, mfa_token, codigo}` — exige clave **y** segundo factor |
 | POST | `/seguridad/mfa/codigos-respaldo/` | `{password}` → regenera e invalida los anteriores |
 | DELETE | `/seguridad/mfa/dispositivo/<id>/` | Revoca un dispositivo recordado |
+
+`/seguridad/mfa/metodos/` existe para que el selector del front no duplique el catálogo:
+las etiquetas y el orden salen de `METODOS`, la misma constante contra la que valida
+`configurar`. Un test afirma que las dos listas coinciden.
 
 El enrolamiento pasa por el mismo motor que el login: `configurar` abre un desafío y
 `activar` lo resuelve. Así el enrolamiento hereda gratis la expiración, el consumo único y

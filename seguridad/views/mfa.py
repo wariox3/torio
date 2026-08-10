@@ -10,6 +10,7 @@ from seguridad import mfa as servicio_mfa
 from seguridad.models import (
     METODO_SMS,
     METODO_TOTP,
+    METODOS,
     METODOS_ENVIADOS,
     SegMfaCodigoRespaldo,
     SegMfaUsuario,
@@ -21,6 +22,7 @@ from seguridad.serializers import (
     SegMfaDesactivarSerializer,
     SegMfaDispositivoSerializer,
     SegMfaEstadoSerializer,
+    SegMfaMetodoSerializer,
 )
 
 _RespuestaDetalle = inline_serializer(
@@ -70,6 +72,22 @@ class SegMfaViewSet(viewsets.ViewSet):
             ).data,
         }
         return Response(datos)
+
+    @extend_schema(
+        summary='Métodos disponibles',
+        description=(
+            'Los métodos de segundo factor que ofrece la aplicación, con la etiqueta a mostrar. '
+            'Vienen en el orden en que conviene presentarlos: primero los que no exigen instalar nada.'
+        ),
+        responses={200: SegMfaMetodoSerializer(many=True)},
+    )
+    @action(detail=False, methods=['get'])
+    def metodos(self, request):
+        # Se sirve desde `METODOS` y no desde una lista propia: el orden y las etiquetas
+        # quedan definidos en un solo lugar (`seguridad/models/mfa_usuario.py`), que es
+        # el mismo que valida `configurar`. Duplicarlos en Angular los desincroniza.
+        datos = [{'codigo': codigo, 'nombre': nombre} for codigo, nombre in METODOS]
+        return Response(SegMfaMetodoSerializer(datos, many=True).data)
 
     @extend_schema(
         summary='Iniciar configuración',

@@ -10,10 +10,12 @@ from django.db import models
 METODO_TOTP = 'totp'
 METODO_CORREO = 'correo'
 METODO_SMS = 'sms'
-# El orden es el que ve el usuario al elegir: primero los que no le exigen instalar nada.
+# El orden es el que ve el usuario al elegir: primero los que no le exigen instalar nada,
+# y entre esos el correo antes que el SMS, que es el único con costo por mensaje y el más
+# débil de los tres (SIM swap).
 METODOS = [
-    (METODO_SMS, 'Código por SMS'),
     (METODO_CORREO, 'Código por correo'),
+    (METODO_SMS, 'Código por SMS'),
     (METODO_TOTP, 'App autenticadora'),
 ]
 
