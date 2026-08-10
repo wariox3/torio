@@ -26,16 +26,20 @@ Correr solo esto:
     python manage.py test contenedor.tests_aislamiento
 """
 
-from datetime import timedelta
-
 import importlib
+import itertools
+import json
+import uuid as uuid_lib
+from datetime import date, time, timedelta
 
 from django.contrib.auth.models import Group, Permission
-from django.db import connection
+from django.db import connection, models as campos_db, transaction
+from django.db.models.fields import NOT_PROVIDED
 from django.test import TestCase
 from django.urls import Resolver404, resolve
 from django.utils import timezone
 from django_tenants.utils import get_public_schema_name, schema_context
+from rest_framework import mixins
 from rest_framework_simplejwt.tokens import RefreshToken
 from tenant_users.permissions.models import UserTenantPermissions
 
@@ -145,6 +149,7 @@ class Escenario:
     | `ambos`    | A y B      | item, solo en A                |
     | `ajeno`    | ninguno    | —                              |
     | `fantasma` | ninguno    | **todos**, en B                |
+    | `pleno`    | A y B      | **todos**, en A y en B         |
 
     `ambos` es el caso interesante para las fugas: como es miembro legítimo de los dos,
     cualquier mezcla se le manifiesta sin necesidad de forjar nada.
@@ -156,6 +161,10 @@ class Escenario:
     permiso de modelo rechazarían igual a cualquier extraño y el barrido pasaría aunque
     la membresía estuviera desactivada — el mismo falso positivo que ya nos mordió en
     `MembresiaTests`. Con él, el único motivo posible de 403 es `EsMiembroDelTenant`.
+
+    `pleno` es el que usa la cobertura de contenido: miembro de los dos y con todos los
+    permisos en los dos, para que un rechazo nunca venga de la autorización y lo único
+    que se esté midiendo sea qué datos devuelve cada contenedor.
     """
 
     cliente_a = None
@@ -165,6 +174,7 @@ class Escenario:
     ambos = None
     ajeno = None
     fantasma = None
+    pleno = None
 
 
 def _crear_contenedor(schema, nombre, dominio):
@@ -237,6 +247,9 @@ def setUpModule():
         Escenario.fantasma = SegUsuario.objects.create(
             email='fantasma@ejemplo.com', is_active=True, is_verified=True,
         )
+        Escenario.pleno = SegUsuario.objects.create(
+            email='pleno@ejemplo.com', is_active=True, is_verified=True,
+        )
 
         tipo = CtnSuscripcionTipo.objects.create(
             id=98, nombre='Aislamiento', precio=0, suscripcion_categoria_id=98,
@@ -265,6 +278,9 @@ def setUpModule():
         with schema_context(ESQUEMA_B):
             permisos = UserTenantPermissions.objects.create(profile=Escenario.fantasma)
             permisos.groups.set([grupo_todo])
+
+        Escenario.cliente_a.add_user(Escenario.pleno, grupos=[grupo_todo])
+        Escenario.cliente_b.add_user(Escenario.pleno, grupos=[grupo_todo])
 
 
 def tearDownModule():
@@ -367,6 +383,10 @@ class DatosPorSchemaTests(AislamientoBase):
         with schema_context(ESQUEMA_B):
             nombres_b = set(GenItem.objects.values_list('nombre', flat=True))
 
+        # Control positivo: sin esto, la intersección vacía se cumpliría igual con los
+        # dos conjuntos vacíos y la prueba no diría nada.
+        self.assertEqual(nombres_a, {'A1', 'A2'})
+        self.assertEqual(nombres_b, {'B1'})
         self.assertEqual(nombres_a & nombres_b, set())
 
     def test_las_tablas_de_tenant_no_existen_en_el_publico(self):
@@ -432,6 +452,10 @@ class ResolucionDeTenantTests(AislamientoBase):
         respuesta = self._get(RUTA_ITEM, usuario=Escenario.sol_a, tenant='no_existe')
 
         cuerpo = respuesta.content.decode()
+        # Control: que la respuesta sea la esperada, y no un cuerpo vacío que haría pasar
+        # las dos aserciones de abajo sin haber ejercitado nada.
+        self.assertEqual(respuesta.status_code, 404)
+        self.assertIn('no_existe', cuerpo)
         self.assertNotIn(ESQUEMA_A, cuerpo)
         self.assertNotIn('Contenedor A', cuerpo)
 
@@ -493,6 +517,14 @@ class MembresiaTests(AislamientoBase):
 
         respuesta = self._get(RUTA_ITEM, usuario=Escenario.sol_a, tenant=ESQUEMA_B)
 
+        # Control positivo: el mismo dato, pedido por alguien que sí es de B, aparece.
+        # Sin esto, un `Secreto de B` que nunca se hubiera creado —o un endpoint roto
+        # devolviendo vacío— haría pasar la prueba sin probar el aislamiento.
+        legitimo = self._get(RUTA_ITEM, usuario=Escenario.sol_b, tenant=ESQUEMA_B)
+        self.assertEqual(legitimo.status_code, 200)
+        self.assertIn('Secreto de B', legitimo.content.decode())
+
+        self.assertEqual(respuesta.status_code, 403)
         self.assertNotIn('Secreto de B', respuesta.content.decode())
         self.assertNotIn('Contenedor B', respuesta.content.decode())
 
@@ -662,11 +694,20 @@ class ContaminacionEntrePeticionesTests(AislamientoBase):
         self._crear_item(ESQUEMA_A, 'Item de A')
         self._crear_item(ESQUEMA_B, 'Item de B')
 
-        primera = self._get(RUTA_ITEM, usuario=Escenario.ambos, tenant=ESQUEMA_A).json()
-        segunda = self._get(RUTA_ITEM, usuario=Escenario.sol_b, tenant=ESQUEMA_B).json()
+        respuesta_a = self._get(RUTA_ITEM, usuario=Escenario.ambos, tenant=ESQUEMA_A)
+        respuesta_b = self._get(RUTA_ITEM, usuario=Escenario.sol_b, tenant=ESQUEMA_B)
 
-        self.assertNotIn('Item de B', [fila['nombre'] for fila in primera['results']])
-        self.assertNotIn('Item de A', [fila['nombre'] for fila in segunda['results']])
+        self.assertEqual(respuesta_a.status_code, 200)
+        self.assertEqual(respuesta_b.status_code, 200)
+        nombres_a = [fila['nombre'] for fila in respuesta_a.json()['results']]
+        nombres_b = [fila['nombre'] for fila in respuesta_b.json()['results']]
+
+        # Control positivo: cada contenedor devuelve lo suyo. Con dos listas vacías las
+        # dos aserciones de ausencia se cumplirían igual.
+        self.assertIn('Item de A', nombres_a)
+        self.assertIn('Item de B', nombres_b)
+        self.assertNotIn('Item de B', nombres_a)
+        self.assertNotIn('Item de A', nombres_b)
 
     def test_un_tenant_inexistente_no_deja_pegado_el_anterior(self):
         self._get(RUTA_ITEM, usuario=Escenario.sol_a, tenant=ESQUEMA_A)
@@ -747,3 +788,391 @@ class BarridoDeEndpointsTests(AislamientoBase):
             with self.subTest(endpoint=etiqueta):
                 respuesta = self._get(url, usuario=Escenario.sol_a)
                 self.assertEqual(respuesta.status_code, 404, f'{url} -> {respuesta.status_code}')
+
+
+# --------------------------------------------------------------------------- #
+# 8. Aislamiento de contenido, endpoint por endpoint
+# --------------------------------------------------------------------------- #
+#
+# El barrido de la sección 7 prueba que la puerta está cerrada para quien no es
+# miembro. Esto prueba lo otro, que es lo que un cliente pregunta de verdad: que un
+# miembro **legítimo** de B no vea, ni pueda tocar, datos de A.
+#
+# La diferencia no es teórica. Una fuga dentro de un `get_queryset` —un
+# `schema_context` mal puesto, un `raw()`, un FK cruzado— pasa entera por el barrido,
+# porque el 403 del no-miembro ocurre antes de que la vista llegue a consultar nada.
+
+# Marcadores. Dos señales independientes, porque ninguna sola alcanza:
+#
+#   1. El rango de id. Cada contenedor crea sus filas con PK explícita en su rango, así
+#      que un id >= ID_FRONTERA en una respuesta de B es dato de A sin ambigüedad. Es la
+#      única señal que funciona en los modelos sin campo de texto en su serializer, y es
+#      lo que permite pedir por id un registro ajeno.
+#   2. El marcador de texto, en los modelos que tienen un Char/Text expuesto. Atrapa
+#      también las fugas que aparecen dentro de un campo anidado del serializer.
+MARCADOR = {ESQUEMA_A: 'MARCA-TENANT-A', ESQUEMA_B: 'MARCA-TENANT-B'}
+BASE_ID = {ESQUEMA_A: 900001, ESQUEMA_B: 800001}
+ID_FRONTERA = 900000
+
+_FECHA = date(2026, 6, 1)
+
+
+def _es_obligatorio(campo):
+    """
+    Campo que hay que llenar sí o sí para que el INSERT no reviente.
+
+    Las FKs NOT NULL entran aunque tengan `default`: varias apuntan por defecto al id 1
+    de un catálogo (`GenArchivo.archivo_tipo`, por ejemplo) y en los contenedores de
+    prueba los fixtures no están cargados, así que ese id no existe y el default deja
+    una FK colgando.
+    """
+    if campo.primary_key or campo.auto_created:
+        return False
+    if campo.is_relation:
+        return not campo.null
+    return not (campo.null or campo.has_default() or campo.db_default is not NOT_PROVIDED)
+
+
+def endpoints_de_contenido():
+    """
+    [(etiqueta, viewset, modelo, url)] de los endpoints con ruta de lista que devuelven
+    datos del cliente.
+
+    Se excluyen los catálogos (`GenModelo.tipo == 'F'`): su contenido es el mismo en
+    todos los contenedores porque sale del mismo JSON, así que un marcador ahí no
+    distingue nada. Siguen cubiertos por el barrido de puerta.
+    """
+    with open('general/fixtures/15_modelo.json') as archivo:
+        tipos = {r['clase']: r['tipo'] for r in json.load(archivo)['data']}
+
+    salida = []
+    for montaje, modulo in MONTAJES:
+        for prefijo, viewset, _ in importlib.import_module(modulo).router.registry:
+            qs = getattr(viewset, 'queryset', None)
+            modelo = qs.model if qs is not None else getattr(
+                getattr(getattr(viewset, 'serializer_class', None), 'Meta', None), 'model', None
+            )
+            if modelo is None or tipos.get(modelo.__name__) == 'F':
+                continue
+            if not issubclass(viewset, mixins.ListModelMixin):
+                continue
+            salida.append((f'{montaje}/{prefijo}', viewset, modelo, f'/{montaje}/{prefijo}/'))
+    return salida
+
+
+class _Constructor:
+    """
+    Crea la fila mínima de cualquier modelo, resolviendo sus FKs en cascada.
+
+    Se descartó escribir 39 factories a mano: envejecen mal y el día que alguien agregue
+    un campo obligatorio hay que tocarlas una por una. Acá se introspecciona qué exige
+    de verdad la base —`null=False`, sin `default` ni `db_default`— y se llena por tipo.
+
+    La PK se fija a mano siempre, desde el contador del contenedor, por dos razones: los
+    rangos quedan disjuntos entre A y B (que es la señal de fuga), y de paso se resuelven
+    los modelos con PK manual, que en este proyecto son varios.
+    """
+
+    # Lo que la introspección no puede adivinar.
+    EXCEPCIONES = {
+        # Tabla del schema público: su aislamiento es por filtro de queryset, no por
+        # schema, y el FK a CtnCliente tiene que ser el contenedor real — crear uno
+        # nuevo levantaría otro schema de PostgreSQL.
+        'SegUsuarioCliente': lambda constructor: {
+            'usuario': SegUsuario.objects.create(
+                email=f'contenido-{constructor.siguiente_id()}@ejemplo.com', is_active=True,
+            ),
+            'cliente': constructor.cliente,
+        },
+    }
+
+    def __init__(self, schema, cliente):
+        self.schema = schema
+        self.cliente = cliente
+        self.marcador = MARCADOR[schema]
+        self._contador = itertools.count(BASE_ID[schema])
+        self._cache = {}
+
+    def siguiente_id(self):
+        return next(self._contador)
+
+    def crear(self, modelo, marcar=True):
+        """
+        Cada creación va en su propio savepoint: sin eso, el primer INSERT que falle deja
+        la transacción rota y los 22 modelos siguientes fallan en cascada con un error
+        que no dice nada de ellos.
+        """
+        cacheados = set(self._cache)
+        try:
+            with transaction.atomic():
+                return self._crear(modelo, marcar)
+        except Exception:
+            # Lo que se creó dentro del savepoint ya no existe: sacarlo de la caché.
+            for clave in set(self._cache) - cacheados:
+                del self._cache[clave]
+            raise
+
+    def _crear(self, modelo, marcar=True):
+        # Primero las excepciones: si la introspección corriera antes, intentaría
+        # construir por su cuenta los FKs que la excepción viene a resolver.
+        datos = dict(self.EXCEPCIONES.get(modelo.__name__, lambda _: {})(self))
+
+        for campo in modelo._meta.concrete_fields:
+            if campo.name in datos or not _es_obligatorio(campo):
+                continue
+            datos[campo.name] = self._valor(campo)
+
+        if marcar:
+            datos.update(self._campo_marcable(modelo, datos))
+
+        datos[modelo._meta.pk.name] = self._pk(modelo)
+        return modelo.objects.create(**datos)
+
+    def _pk(self, modelo):
+        """Id explícito del rango del contenedor. Si la PK es texto, el número va como cadena."""
+        valor = self.siguiente_id()
+        pk = modelo._meta.pk
+        return str(valor)[:pk.max_length] if isinstance(pk, campos_db.CharField) else valor
+
+    def _campo_marcable(self, modelo, ya_puestos):
+        """
+        Escribe el marcador en un campo de texto que el serializer devuelva.
+
+        Se prefiere uno opcional que uno obligatorio: los obligatorios muchas veces son
+        códigos con `max_length` corto donde el marcador quedaría recortado e
+        irreconocible.
+        """
+        for campo in modelo._meta.concrete_fields:
+            if campo.name in ya_puestos or campo.primary_key or campo.choices:
+                continue
+            if not isinstance(campo, (campos_db.CharField, campos_db.TextField)):
+                continue
+            if isinstance(campo, campos_db.EmailField):
+                continue
+            if campo.max_length is not None and campo.max_length < len(self.marcador) + 8:
+                continue
+            return {campo.name: f'{self.marcador}-{self.siguiente_id()}'}
+        return {}
+
+    def _relacionado(self, modelo):
+        """Una instancia por modelo y por contenedor: las FKs comparten destino."""
+        if modelo.__name__ not in self._cache:
+            self._cache[modelo.__name__] = self.crear(modelo, marcar=False)
+        return self._cache[modelo.__name__]
+
+    def _valor(self, campo):
+        if campo.is_relation:
+            return self._relacionado(campo.related_model)
+
+        if isinstance(campo, campos_db.EmailField):
+            return f'marca{self.siguiente_id()}@ejemplo.com'
+        if isinstance(campo, (campos_db.CharField, campos_db.TextField)):
+            if campo.choices:
+                return campo.choices[0][0]
+            # El sufijo evita chocar con constraints únicos —`ConCuenta.codigo` es uno—
+            # sin perder el prefijo, que es lo que buscan las aserciones.
+            texto = f'{self.marcador}-{self.siguiente_id()}'
+            if campo.max_length and campo.max_length < len(texto):
+                # No cabe entero. Si además es único, el marcador truncado colisionaría
+                # (`TurTurno.codigo` son 10 caracteres): ahí manda la unicidad.
+                if campo.unique:
+                    return str(self.siguiente_id())[-campo.max_length:]
+                return texto[:campo.max_length]
+            return texto
+        if isinstance(campo, campos_db.DateTimeField):
+            return timezone.now()
+        if isinstance(campo, campos_db.DateField):
+            return _FECHA
+        if isinstance(campo, campos_db.TimeField):
+            return time(8, 0)
+        if isinstance(campo, campos_db.BooleanField):
+            return False
+        if isinstance(campo, campos_db.UUIDField):
+            return uuid_lib.uuid4()
+        if isinstance(campo, campos_db.JSONField):
+            return {}
+        if isinstance(campo, (campos_db.DecimalField, campos_db.FloatField)):
+            return 0
+        if isinstance(campo, campos_db.IntegerField):
+            # Valor distinto por fila: `ConPeriodo` tiene único sobre (anio, mes) y con un
+            # 1 fijo la segunda fila choca contra la primera.
+            return self.siguiente_id()
+        return self.marcador
+
+
+class ContenidoPorEndpointTests(AislamientoBase):
+    """
+    Un miembro legítimo de B no ve, ni puede tocar, datos de A. Endpoint por endpoint.
+
+    Todo se hace como `pleno`, que es miembro de los dos contenedores y tiene todos los
+    permisos en los dos: así ningún resultado se explica por autorización, y lo único que
+    se mide es qué datos devuelve cada schema.
+
+    Los datos se construyen una vez por clase en los dos contenedores. Si un modelo no se
+    puede construir, **no se salta**: `test_el_escenario_cubre_todos_los_endpoints` falla
+    y lo nombra, porque un endpoint silenciosamente sin datos es una prueba que pasa sin
+    probar nada.
+    """
+
+    datos = {}
+    fallos = {}
+
+    # Endpoints cuya lista exige parámetros. `usuario-cliente-permiso` filtra por usuario
+    # y sin `usuario_id` responde 400.
+    PARAMS = {
+        'seguridad/usuario-cliente-permiso': lambda datos, schema, etiqueta: {
+            'usuario_id': datos[schema][etiqueta].usuario_id,
+        },
+    }
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.datos = {ESQUEMA_A: {}, ESQUEMA_B: {}}
+        cls.fallos = {}
+        for schema, cliente in ((ESQUEMA_A, Escenario.cliente_a), (ESQUEMA_B, Escenario.cliente_b)):
+            constructor = _Constructor(schema, cliente)
+            with schema_context(schema):
+                for etiqueta, _, modelo, _ in endpoints_de_contenido():
+                    try:
+                        cls.datos[schema][etiqueta] = constructor.crear(modelo)
+                    except Exception as e:  # noqa: BLE001 — se reporta, no se traga
+                        cls.fallos.setdefault(etiqueta, f'{type(e).__name__}: {str(e)[:160]}')
+
+    def _cubiertos(self):
+        """Endpoints con dato construido en los dos contenedores."""
+        for etiqueta, viewset, modelo, url in endpoints_de_contenido():
+            if etiqueta in self.fallos:
+                continue
+            yield etiqueta, viewset, modelo, url
+
+    def _params(self, etiqueta, schema):
+        constructor = self.PARAMS.get(etiqueta)
+        return constructor(self.datos, schema, etiqueta) if constructor else {}
+
+    @staticmethod
+    def _filas(respuesta):
+        cuerpo = respuesta.json()
+        return cuerpo['results'] if isinstance(cuerpo, dict) and 'results' in cuerpo else cuerpo
+
+    # ── Guarda del escenario ────────────────────────────────────────────────
+
+    def test_el_escenario_cubre_todos_los_endpoints(self):
+        """
+        Sin esta guarda, un modelo que el constructor no sepa armar desaparecería del
+        recorrido y la clase seguiría en verde con menos cobertura de la que dice tener.
+        """
+        self.assertEqual(
+            self.fallos, {},
+            'endpoints sin dato construido: quedarían sin cobertura de contenido',
+        )
+        self.assertEqual(len(list(self._cubiertos())), len(endpoints_de_contenido()))
+
+    # ── Lectura ─────────────────────────────────────────────────────────────
+
+    def test_la_lista_no_trae_datos_del_otro_contenedor(self):
+        for etiqueta, _, _, url in self._cubiertos():
+            with self.subTest(endpoint=etiqueta):
+                respuesta = self._get(url, usuario=Escenario.pleno, tenant=ESQUEMA_B,
+                                      data=self._params(etiqueta, ESQUEMA_B))
+                self.assertEqual(respuesta.status_code, 200, respuesta.content[:200])
+
+                cuerpo = respuesta.content.decode()
+                self.assertNotIn(MARCADOR[ESQUEMA_A], cuerpo, f'{url} filtró el marcador de A')
+                ajenos = [f['id'] for f in self._filas(respuesta)
+                          if isinstance(f.get('id'), int) and f['id'] >= ID_FRONTERA]
+                self.assertEqual(ajenos, [], f'{url} devolvió ids del contenedor A')
+
+    def test_la_lista_si_trae_los_datos_propios(self):
+        """
+        Control positivo. Sin esto, todas las pruebas de arriba pasarían con una lista
+        vacía —o con el endpoint roto devolviendo `[]`— y no probarían absolutamente nada.
+        """
+        for etiqueta, _, _, url in self._cubiertos():
+            with self.subTest(endpoint=etiqueta):
+                respuesta = self._get(url, usuario=Escenario.pleno, tenant=ESQUEMA_B,
+                                      data=self._params(etiqueta, ESQUEMA_B))
+                propio = self.datos[ESQUEMA_B][etiqueta]
+                ids = [f.get('id') for f in self._filas(respuesta)]
+                self.assertIn(propio.pk, ids, f'{url} no devolvió el registro propio de B')
+
+    def test_el_detalle_de_un_registro_ajeno_no_resuelve(self):
+        for etiqueta, viewset, _, url in self._cubiertos():
+            if not issubclass(viewset, mixins.RetrieveModelMixin):
+                continue
+            with self.subTest(endpoint=etiqueta):
+                ajeno = self.datos[ESQUEMA_A][etiqueta]
+                respuesta = self._get(f'{url}{ajeno.pk}/', usuario=Escenario.pleno, tenant=ESQUEMA_B)
+                self.assertEqual(respuesta.status_code, 404, f'{url}{ajeno.pk}/ resolvió')
+
+    # ── Escritura ───────────────────────────────────────────────────────────
+
+    def test_patch_sobre_un_registro_ajeno_no_lo_modifica(self):
+        """
+        La verificación va contra el schema de A, no contra el código de respuesta: lo
+        que hay que probar es que el registro **no cambió**, no que la API dijo que no.
+        """
+        for etiqueta, viewset, modelo, url in self._cubiertos():
+            if not issubclass(viewset, mixins.UpdateModelMixin):
+                continue
+            with self.subTest(endpoint=etiqueta):
+                ajeno = self.datos[ESQUEMA_A][etiqueta]
+                campo, antes = self._campo_testigo(ajeno)
+
+                respuesta = self.client.patch(
+                    f'{url}{ajeno.pk}/', {campo: 'PISADO-DESDE-B'} if campo else {},
+                    content_type='application/json',
+                    **self._headers(Escenario.pleno, ESQUEMA_B),
+                )
+
+                self.assertNotIn(respuesta.status_code, (200, 201, 202, 204),
+                                 f'{url}{ajeno.pk}/ aceptó un PATCH desde otro contenedor')
+                with schema_context(ESQUEMA_A):
+                    vigente = modelo.objects.get(pk=ajeno.pk)
+                    self.assertEqual(getattr(vigente, campo) if campo else None, antes)
+
+    def test_delete_sobre_un_registro_ajeno_no_lo_borra(self):
+        for etiqueta, viewset, modelo, url in self._cubiertos():
+            if not issubclass(viewset, mixins.DestroyModelMixin):
+                continue
+            with self.subTest(endpoint=etiqueta):
+                ajeno = self.datos[ESQUEMA_A][etiqueta]
+
+                respuesta = self.client.delete(
+                    f'{url}{ajeno.pk}/', **self._headers(Escenario.pleno, ESQUEMA_B),
+                )
+
+                self.assertNotIn(respuesta.status_code, (200, 202, 204),
+                                 f'{url}{ajeno.pk}/ aceptó un DELETE desde otro contenedor')
+                with schema_context(ESQUEMA_A):
+                    self.assertTrue(
+                        modelo.objects.filter(pk=ajeno.pk).exists(),
+                        f'{url}{ajeno.pk}/ borró un registro del contenedor A',
+                    )
+
+    @staticmethod
+    def _campo_testigo(instancia):
+        """El campo de texto donde quedó el marcador, para comprobar que no lo pisaron."""
+        for campo in instancia._meta.concrete_fields:
+            if isinstance(campo, (campos_db.CharField, campos_db.TextField)):
+                if getattr(instancia, campo.name, None) == MARCADOR[ESQUEMA_A]:
+                    return campo.name, MARCADOR[ESQUEMA_A]
+        return None, None
+
+    def test_los_permisos_de_un_usuario_de_otro_contenedor_no_se_ven(self):
+        """
+        `seguridad/usuario-cliente-permiso` merece su propia prueba: `SegUsuarioCliente`
+        vive en el schema **público**, así que las filas de los dos contenedores están en
+        la misma tabla. Acá el aislamiento no lo da PostgreSQL, lo da el filtro del
+        queryset — que es exactamente el tipo de defensa que se rompe en un refactor.
+        """
+        etiqueta = 'seguridad/usuario-cliente-permiso'
+        ajeno = self.datos[ESQUEMA_A][etiqueta]
+
+        respuesta = self._get(
+            f'/{etiqueta}/', usuario=Escenario.pleno, tenant=ESQUEMA_B,
+            data={'usuario_id': ajeno.usuario_id},
+        )
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.content[:200])
+        self.assertEqual(self._filas(respuesta), [],
+                         'se vieron los permisos de un usuario que no es miembro de B')
