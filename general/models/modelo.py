@@ -7,6 +7,7 @@ class GenModelo(models.Model):
         MOVIMIENTO = 'M', 'Movimiento'
         DETALLE = 'D', 'Detalle'
         FIXTURE = 'F', 'Fixture'
+        SOPORTE = 'S', 'Soporte'
 
     id = models.BigIntegerField(primary_key=True)
     app = models.CharField(max_length=50)
