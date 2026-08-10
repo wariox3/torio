@@ -8,8 +8,12 @@ from rest_framework.permissions import DjangoModelPermissions
 class EsMiembroDelTenant(permissions.IsAuthenticated):
     """
     Requiere que el usuario autenticado pertenezca al tenant resuelto por
-    django-tenants vía Host header. En el schema público se omite la
-    validación porque no aplica (allí no hay membresías de tenant).
+    `TenantHeaderMiddleware` a partir del header `X-Tenant`. En el schema público
+    se omite la validación porque no aplica (allí no hay membresías de tenant).
+
+    Es la única barrera entre contenedores para las vistas que se quedan con las
+    permission_classes por defecto: el header lo pone el cliente, así que resolver
+    el schema no autoriza nada por sí solo.
     """
 
     message = 'No tienes acceso a este contenedor.'

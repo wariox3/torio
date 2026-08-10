@@ -15,7 +15,7 @@ SaaS multi-tenant construido sobre **Django 5.2** y **PostgreSQL**, con aislamie
 ## Arquitectura
 
 - **`torioapp/`** — configuración del proyecto (settings, URLs, WSGI/ASGI).
-- **`contenedor/`** — registro público de inquilinos. Define `CtnCliente` (subclase de `TenantBase`, un schema PostgreSQL por instancia) y `CtnDominio` (mapping host → tenant).
+- **`contenedor/`** — registro público de inquilinos. Define `CtnCliente` (subclase de `TenantBase`, un schema PostgreSQL por instancia) y `CtnDominio` (dominio principal del cliente; lo exige django-tenants y lo expone la API, pero el ruteo no pasa por él).
 - **`seguridad/`** — usuarios globales (`SegUsuario`, subclase de `UserProfile`). Vive en el schema público; los usuarios pueden pertenecer a varios tenants.
 - **`general/`** — lógica de negocio por tenant.
 - **`utilidades/`** — servicios transversales: `Zinc` (envío de correos) y `Turnstile` (verificación Cloudflare).
@@ -24,7 +24,7 @@ SaaS multi-tenant construido sobre **Django 5.2** y **PostgreSQL**, con aislamie
 
 - `torioapp/urls_public.py` — schema público (gestión de tenants, autenticación, admin).
 - `torioapp/urls_tenant.py` — schema de cada cliente.
-- El `host` de la petición decide cuál se sirve, vía `TenantMainMiddleware`.
+- El header `X-Tenant` de la petición decide cuál se sirve, vía `TenantHeaderMiddleware`: sin header (o con el nombre del schema público) se sirve el público; con el nombre de un schema existente, el de ese cliente.
 
 ### Settings por entorno
 

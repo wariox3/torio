@@ -36,10 +36,15 @@ This is a **Django 5.2.13** multi-tenant SaaS project using **PostgreSQL schema-
 
 ### Multi-tenancy model
 
-Each `CtnCliente` owns a separate PostgreSQL schema. The `TenantMainMiddleware` resolves the tenant from the request `Host` header by looking up the domain in `CtnDominio`.
+Each `CtnCliente` owns a separate PostgreSQL schema. `seguridad.middleware.TenantHeaderMiddleware` resolves the tenant from the **`X-Tenant` request header** (the schema name) — not from the `Host`, and not via `CtnDominio`.
 
-- **Public schema** (`localhost`) → `torioapp/urls_public.py` → `contenedor/`, `seguridad/`
-- **Tenant schema** (`<schema>.localhost`) → `torioapp/urls_tenant.py` → `general/`, `contabilidad/`
+- **No `X-Tenant` header** (or the public schema name) → public schema → `torioapp/urls_public.py` → `contenedor/`, `seguridad/`
+- **`X-Tenant: <schema>`** → that tenant's schema → `torioapp/urls_tenant.py` → `general/`, `contabilidad/`, `turno/`, `humano/`, `inventario/`
+- An unknown schema name gets a 404 from the middleware.
+
+The middleware only resolves the schema; it does **not** authorize. Membership is checked by `seguridad.permissions.EsMiembroDelTenant` (in `DEFAULT_PERMISSION_CLASSES`), which runs after DRF authenticates — otherwise an anonymous request could probe any container by guessing its name. `CtnDominio` still exists because django-tenants requires `TENANT_DOMAIN_MODEL` and the API exposes each client's primary domain, but nothing routes by it.
+
+Tenant isolation is covered by `contenedor/tests_aislamiento.py` (`python manage.py test contenedor.tests_aislamiento`), one test class per layer: schema, header, membership, per-tenant permissions, subscription, and connection reuse between requests.
 
 `SHARED_APPS` run in the public schema. `TENANT_APPS` run in each tenant's isolated schema.
 
