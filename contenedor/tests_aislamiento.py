@@ -48,15 +48,22 @@ ESQUEMA_B = 'aislamiento_b'
 
 RUTA_ITEM = '/general/item/'
 RUTA_ME = '/seguridad/me/'
-# `GenDocumentoViewSet` se queda con las permission_classes por defecto
-# (`EsMiembroDelTenant` + `SuscripcionVigente`), sin permiso de modelo encima. Es la
-# ruta con la que se prueba la membresía: acá un 403 solo puede venir de ella.
+# Ruta con la que se prueba la **membresía**, y por eso tiene un requisito que hay que
+# respetar al cambiarla: su viewset debe quedarse con las permission_classes por defecto
+# (`EsMiembroDelTenant` + `SuscripcionVigente`), sin permiso de modelo encima. Solo así un
+# 403 acá prueba que falló la membresía.
 #
-# `GenItemViewSet`, en cambio, declara `TienePermisoModelo`, así que un 403 suyo
-# puede venir de la membresía o de los permisos. Confundir las dos cosas deja pasar
-# mutaciones: con `EsMiembroDelTenant` desactivado, un extraño sigue recibiendo 403
-# en `/general/item/` porque tampoco tiene permisos de modelo en ese contenedor.
-RUTA_DOCUMENTO = '/general/documento/'
+# `GenItemViewSet`, en cambio, declara `TienePermisoModelo`, así que un 403 suyo puede
+# venir de la membresía o de los permisos. Confundir las dos cosas deja pasar mutaciones:
+# con `EsMiembroDelTenant` desactivado, un extraño sigue recibiendo 403 en `/general/item/`
+# porque tampoco tiene permisos de modelo en ese contenedor.
+#
+# Antes era `/general/documento/`, hasta que a `GenDocumento` (tipo Movimiento) se le
+# agregó `TienePermisoModelo`. `GenDocumentoDetalle` es tipo Detalle, que por diseño no se
+# restringe por permisos, así que es estable para este uso. Si algún día también se
+# protege, hay que mover esta constante a otro endpoint sin permiso de modelo —
+# `test_la_ruta_de_membresia_no_exige_permiso_de_modelo` falla si eso pasa.
+RUTA_DOCUMENTO = '/general/documento-detalle/'
 
 # Dónde monta `torioapp/urls_tenant.py` el router de cada app de tenant. Si se agrega
 # una app al urlconf hay que agregarla acá, o sus endpoints quedan fuera del barrido;
@@ -456,6 +463,21 @@ class MembresiaTests(AislamientoBase):
     def _sin_membresia(self, respuesta):
         self.assertEqual(respuesta.status_code, 403, respuesta.content)
         self.assertEqual(respuesta.json()['detail'], MENSAJE_NO_MIEMBRO)
+
+    def test_la_ruta_de_membresia_no_exige_permiso_de_modelo(self):
+        """
+        Guarda de la constante, no del código de producción: si al viewset de
+        `RUTA_DOCUMENTO` le agregan `TienePermisoModelo`, sus 403 pasarían a poder venir
+        de los permisos y esta clase dejaría de probar la membresía sin avisar. Ya pasó
+        una vez con `/general/documento/`.
+        """
+        vista = resolve(RUTA_DOCUMENTO, urlconf='torioapp.urls_tenant').func.cls
+
+        self.assertNotIn(
+            'TienePermisoModelo',
+            [clase.__name__ for clase in vista.permission_classes],
+            f'{RUTA_DOCUMENTO} ya no sirve para probar la membresía: mové la constante',
+        )
 
     def test_el_miembro_si_entra(self):
         """Control: sin esto, un 403 por cualquier otra causa haría pasar toda la clase."""

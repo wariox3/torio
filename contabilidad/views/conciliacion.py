@@ -11,6 +11,7 @@ from contabilidad.serializers import (
 )
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
+from seguridad.permissions import TienePermisoModelo
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por cuenta banco'),
@@ -32,6 +33,7 @@ class ConConciliacionViewSet(
     serializer_class = ConConciliacionSerializer
     serializer_class_exportar = ConConciliacionExportarSerializer
     serializer_class_importar = ConConciliacionImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         return ConConciliacion.objects.select_related(

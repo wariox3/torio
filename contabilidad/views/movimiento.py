@@ -11,6 +11,7 @@ from contabilidad.serializers import (
 )
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
+from seguridad.permissions import TienePermisoModelo
 
 _LIST_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por detalle o cuenta'),
@@ -36,6 +37,7 @@ class ConMovimientoViewSet(
     serializer_class = ConMovimientoSerializer
     serializer_class_exportar = ConMovimientoExportarSerializer
     serializer_class_importar = ConMovimientoImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = ConMovimiento.objects.select_related(

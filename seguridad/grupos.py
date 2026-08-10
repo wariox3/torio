@@ -30,15 +30,18 @@ VER = ('view',)
 # entorno les asignaría un id distinto.
 GRUPOS = {
     1: ('Venta', {
+        'general.gendocumento': TODAS,
         'general.gencontacto': TODAS,
         'general.genitem': TODAS,
         'general.genprecio': TODAS,
         'general.genasesor': TODAS,
         'general.genresolucion': TODAS,
         'general.gencuentabanco': TODAS,
+        'general.gensede': TODAS,
         'inventario.invalmacen': TODAS,
     }),
     2: ('Compra', {
+        'general.gendocumento': TODAS,
         'general.gencontacto': TODAS,
         'general.genitem': TODAS,
         'general.genresolucion': TODAS,
@@ -46,18 +49,22 @@ GRUPOS = {
         'inventario.invalmacen': TODAS,
     }),
     3: ('Tesoreria', {
+        'general.gendocumento': TODAS,
         'general.gencuentabanco': TODAS,
         'general.genformapago': TODAS,
     }),
     4: ('Cartera', {
+        'general.gendocumento': TODAS,
         'general.gencontacto': TODAS,
         'general.genformapago': VER,
     }),
     5: ('Inventario', {
+        'general.gendocumento': TODAS,
         'general.genitem': TODAS,
         'inventario.invalmacen': TODAS,
     }),
     6: ('Humano', {
+        'general.gendocumento': TODAS,
         'general.gencontacto': TODAS,
         'humano.humcontrato': TODAS,
         'humano.humcargo': TODAS,
@@ -66,19 +73,29 @@ GRUPOS = {
         'humano.humadicional': TODAS,
         'humano.humcredito': TODAS,
         'humano.humnovedad': TODAS,
+        'humano.humliquidacion': TODAS,
+        'humano.humaporte': TODAS,
+        'humano.humprogramacion': TODAS,
     }),
     7: ('Contabilidad', {
+        'general.gendocumento': TODAS,
         'general.gencontacto': TODAS,
         'contabilidad.concuenta': TODAS,
         'contabilidad.concentrocosto': TODAS,
         'contabilidad.conactivo': TODAS,
         'contabilidad.conperiodo': TODAS,
+        'contabilidad.conmovimiento': TODAS,
+        'contabilidad.conconciliacion': TODAS,
     }),
     8: ('Turno', {
+        'general.gendocumento': TODAS,
         'turno.turpuesto': TODAS,
         'turno.turturno': TODAS,
         'turno.tursecuencia': TODAS,
         'turno.turprogramador': TODAS,
         'turno.turprototipo': TODAS,
+        'turno.turprogramacion': TODAS,
+        'turno.turprogramacionsimulacion': TODAS,
+        'turno.tursoporte': TODAS,
     }),
 }

@@ -17,6 +17,7 @@ from turno.serializers import (
 )
 from turno.servicios import simular as simular_servicio
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
+from seguridad.permissions import TienePermisoModelo
 
 
 class SimularRequestSerializer(serializers.Serializer):
@@ -47,6 +48,7 @@ class TurProgramacionSimulacionViewSet(
     serializer_class = TurProgramacionSimulacionSerializer
     serializer_class_exportar = TurProgramacionSimulacionExportarSerializer
     serializer_class_importar = TurProgramacionSimulacionImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = TurProgramacionSimulacion.objects.select_related(

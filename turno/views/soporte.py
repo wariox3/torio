@@ -8,6 +8,7 @@ from turno.serializers import (
     TurSoporteSerializer,
 )
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
+from seguridad.permissions import TienePermisoModelo
 
 _LIST_PARAMS = [
     OpenApiParameter('grupo', int, description='Filtrar por grupo'),
@@ -31,6 +32,7 @@ class TurSoporteViewSet(
     serializer_class = TurSoporteSerializer
     serializer_class_exportar = TurSoporteExportarSerializer
     serializer_class_importar = TurSoporteImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = TurSoporte.objects.select_related(

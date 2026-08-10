@@ -25,6 +25,7 @@ from general.servicios import documento_imprimir
 from utilidades.filtros import aplicar_filtros
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.mixins.filtros import BusquedaRequest
+from seguridad.permissions import TienePermisoModelo
 
 
 @extend_schema(tags=['Documento'])
@@ -42,6 +43,7 @@ class GenDocumentoViewSet(
     serializer_class = GenDocumentoSerializer
     serializer_class_exportar = GenDocumentoExportarSerializer
     serializer_class_importar = GenDocumentoImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_serializer_class(self):
         if self.action == 'create':

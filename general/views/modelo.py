@@ -167,8 +167,8 @@ class GenModeloViewSet(
         summary='Permisos del usuario sobre este modelo',
         description=(
             'Ver/crear/editar/eliminar del usuario autenticado sobre este modelo en el '
-            'tenant actual. Si el modelo no es tipo Administrador, no está restringido '
-            'por TienePermisoModelo y siempre devuelve todo en true.'
+            'tenant actual. Solo los tipos Administrador y Movimiento se deciden por '
+            'permisos; los demás (Fixture, Detalle y Soporte) devuelven todo en true.'
         ),
         responses=_PermisoSerializer,
     )
@@ -176,7 +176,7 @@ class GenModeloViewSet(
     def permiso(self, request, pk=None):
         modelo = self.get_object()
 
-        if modelo.tipo != GenModelo.Tipo.ADMINISTRADOR:
+        if modelo.tipo not in GenModelo.TIPOS_CON_PERMISO:
             return Response({'ver': True, 'crear': True, 'editar': True, 'eliminar': True})
 
         app_label = modelo.app

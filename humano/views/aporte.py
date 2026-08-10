@@ -11,6 +11,7 @@ from humano.serializers import (
 )
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
+from seguridad.permissions import TienePermisoModelo
 
 _LIST_PARAMS = [
     OpenApiParameter('estado_aprobado', bool, description='Filtrar por aprobado'),
@@ -36,6 +37,7 @@ class HumAporteViewSet(
     serializer_class = HumAporteSerializer
     serializer_class_exportar = HumAporteExportarSerializer
     serializer_class_importar = HumAporteImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = HumAporte.objects.select_related(

@@ -52,6 +52,10 @@
     {"id": 30003, "app": "turno",        "clase": "TurTurno",                  "nombre": "Turno",                   "tabla": "tur_turno",                   "tipo": "A"},
     {"id": 30004, "app": "turno",        "clase": "TurSecuencia",              "nombre": "Secuencia",               "tabla": "tur_secuencia",               "tipo": "A"},
     {"id": 30005, "app": "turno",        "clase": "TurProgramacion",           "nombre": "Programación",            "tabla": "tur_programacion",            "tipo": "M"},
+    {"id": 30006, "app": "turno",        "clase": "TurProgramacionSimulacion", "nombre": "Programación simulación", "tabla": "tur_programacion_simulacion", "tipo": "A"},
+    {"id": 30007, "app": "turno",        "clase": "TurPrototipo",              "nombre": "Prototipo",               "tabla": "tur_prototipo",               "tipo": "A"},
+    {"id": 30008, "app": "turno",        "clase": "TurSoporte",                "nombre": "Soporte",                 "tabla": "tur_soporte",                 "tipo": "M"},
+    {"id": 30009, "app": "turno",        "clase": "TurSoporteDetalle",         "nombre": "Soporte detalle",         "tabla": "tur_soporte_detalle",         "tipo": "D"},
 
     {"id": 40001, "app": "humano",       "clase": "HumConceptoTipo",           "nombre": "Concepto tipo",           "tabla": "hum_concepto_tipo",           "tipo": "F"},
     {"id": 40002, "app": "humano",       "clase": "HumContratoTipo",           "nombre": "Contrato tipo",           "tabla": "hum_contrato_tipo",           "tipo": "F"},

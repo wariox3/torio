@@ -1,15 +1,28 @@
 from datetime import date, time
 
+from django.test import SimpleTestCase
 from django_tenants.test.cases import TenantTestCase
+from rest_framework import permissions
 from rest_framework.exceptions import ValidationError
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from general.models import (
     GenDocumento,
     GenDocumentoDetalle,
     GenDocumentoTipo,
     GenFestivo,
+    GenModelo,
 )
 from general.servicios import documento as documento_servicio
+from general.views.modelo import GenModeloViewSet
+from seguridad.models import SegUsuario
+
+
+class _ModeloViewSinPermisos(GenModeloViewSet):
+    """Variante sin auth ni throttle: el usuario se inyecta con force_authenticate."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
 
 
 class GenerarDocumentoTests(TenantTestCase):
@@ -204,3 +217,114 @@ class GenerarDocumentoTests(TenantTestCase):
         detalle = generados[0].documentos_detalles_documento_rel.get()
         # 4 lunes ordinarios + el 15 festivo (festivo=True) = 5.
         self.assertEqual(detalle.dias, 5)
+
+
+class ModeloPermisoTests(TenantTestCase):
+    """
+    `GET /general/modelo/<id>/permiso/` decide qué tipos consultan permisos.
+
+    El front pinta los botones de crear/editar/eliminar con esta respuesta, así que la
+    lista de tipos que sí se restringen es la que hay que fijar: si alguien agrega un
+    tipo nuevo, tiene que decidir a conciencia de qué lado cae.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test permiso'
+        tenant.telefono = '0'
+        tenant.correo = 'permiso@test.com'
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        # Sin `UserTenantPermissions` en este schema, `has_perm` devuelve False para
+        # todo: es el usuario recién invitado y sin grupos.
+        self.usuario = SegUsuario.objects.create(
+            email='sinpermisos@ejemplo.com', is_active=True, is_verified=True,
+        )
+
+    def _permiso(self, tipo):
+        modelo = GenModelo.objects.create(
+            id=90000 + ord(tipo), app='general', clase='GenItem',
+            nombre=f'Prueba {tipo}', tabla='gen_item', tipo=tipo,
+        )
+        peticion = self.factory.get(f'/general/modelo/{modelo.pk}/permiso/')
+        force_authenticate(peticion, user=self.usuario)
+        vista = _ModeloViewSinPermisos.as_view({'get': 'permiso'})
+        return vista(peticion, pk=modelo.pk).data
+
+    def test_los_tipos_restringidos_consultan_permisos(self):
+        for tipo in GenModelo.TIPOS_CON_PERMISO:
+            with self.subTest(tipo=tipo):
+                self.assertEqual(
+                    self._permiso(tipo),
+                    {'ver': False, 'crear': False, 'editar': False, 'eliminar': False},
+                )
+
+    def test_los_demas_tipos_no_se_restringen(self):
+        for tipo in (GenModelo.Tipo.FIXTURE, GenModelo.Tipo.DETALLE, GenModelo.Tipo.SOPORTE):
+            with self.subTest(tipo=tipo):
+                self.assertEqual(
+                    self._permiso(tipo),
+                    {'ver': True, 'crear': True, 'editar': True, 'eliminar': True},
+                )
+
+    def test_movimiento_se_restringe_y_soporte_no(self):
+        """
+        Explícito porque son las dos decisiones tomadas a mano: Movimiento entró al
+        control por permisos, y Soporte se dejó afuera por ser funcionalidad vertical
+        (adjuntos, soportes de turno). Cualquiera de las dos se revertiría en silencio.
+        """
+        self.assertIn(GenModelo.Tipo.MOVIMIENTO, GenModelo.TIPOS_CON_PERMISO)
+        self.assertNotIn(GenModelo.Tipo.SOPORTE, GenModelo.TIPOS_CON_PERMISO)
+
+
+class PermisoDeModeloCoherenteTests(SimpleTestCase):
+    """
+    La regla, en una sola prueba: un tipo está en `TIPOS_CON_PERMISO` **si y solo si** el
+    viewset de sus modelos declara `TienePermisoModelo`.
+
+    Las dos mitades viven en archivos distintos —la taxonomía en `GenModelo`, la
+    permission class en cada viewset— y nada obliga a que coincidan. Cuando se separan,
+    el front esconde botones que la API acepta, o los muestra y la API responde 403.
+    Ambos casos son silenciosos en producción.
+    """
+
+    MONTAJES = ['general.urls', 'contabilidad.urls', 'turno.urls',
+                'humano.urls', 'inventario.urls', 'seguridad.urls_tenant']
+
+    @staticmethod
+    def _modelo_de(viewset):
+        qs = getattr(viewset, 'queryset', None)
+        if qs is not None:
+            return qs.model
+        return getattr(getattr(getattr(viewset, 'serializer_class', None), 'Meta', None), 'model', None)
+
+    def _viewsets_con_tipo(self):
+        """(etiqueta, tipo declarado en el fixture, ¿declara TienePermisoModelo?)"""
+        import importlib
+        import json
+
+        with open('general/fixtures/15_modelo.json') as archivo:
+            tipos = {r['clase']: r['tipo'] for r in json.load(archivo)['data']}
+
+        for modulo in self.MONTAJES:
+            for prefijo, viewset, _ in importlib.import_module(modulo).router.registry:
+                modelo = self._modelo_de(viewset)
+                if modelo is None or modelo.__name__ not in tipos:
+                    continue
+                exige = 'TienePermisoModelo' in [c.__name__ for c in viewset.permission_classes]
+                yield f'{modulo.split(".")[0]}/{prefijo}', tipos[modelo.__name__], exige
+
+    def test_los_tipos_restringidos_declaran_la_permission_class(self):
+        for etiqueta, tipo, exige in self._viewsets_con_tipo():
+            if tipo not in GenModelo.TIPOS_CON_PERMISO:
+                continue
+            with self.subTest(endpoint=etiqueta, tipo=tipo):
+                self.assertTrue(exige, f'{etiqueta} es tipo {tipo}: le falta TienePermisoModelo')
+
+    def test_los_tipos_no_restringidos_no_la_declaran(self):
+        for etiqueta, tipo, exige in self._viewsets_con_tipo():
+            if tipo in GenModelo.TIPOS_CON_PERMISO:
+                continue
+            with self.subTest(endpoint=etiqueta, tipo=tipo):
+                self.assertFalse(exige, f'{etiqueta} es tipo {tipo}: le sobra TienePermisoModelo')

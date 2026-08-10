@@ -11,6 +11,7 @@ from humano.serializers import (
 )
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
+from seguridad.permissions import TienePermisoModelo
 
 _LIST_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por nombre'),
@@ -37,6 +38,7 @@ class HumProgramacionViewSet(
     serializer_class = HumProgramacionSerializer
     serializer_class_exportar = HumProgramacionExportarSerializer
     serializer_class_importar = HumProgramacionImportarSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         qs = HumProgramacion.objects.select_related(
