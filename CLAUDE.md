@@ -108,6 +108,23 @@ every session eventually goes back through `/login/`, the only place MFA is veri
 
 Full design and rationale: **`docs/mfa.md`**.
 
+### Login audit trail
+
+Every login attempt writes a `SegAcceso` row (public schema) through
+`seguridad/acceso.py` — successes **and** failures, including attempts against emails that
+don't exist. Successes are recorded in `_emitir_sesion`, the single place that issues
+cookies, so both the MFA and non-MFA paths are covered; a login with MFA leaves two rows
+(`mfa_pendiente`, then `ok` or `mfa_fallido`). The user reads their own history at
+`GET /seguridad/acceso/` — filtered by `request.user`, never by a parameter — and staff
+read it from the admin, which is deliberately read-only.
+
+`ip_del_request()` in the same module is the only source of the client IP, shared by
+`SegAcceso`, `SegMfaDesafio` and `SegMfaDispositivo`. It honours `X-Forwarded-For` only
+when `CONFIAR_EN_PROXY` is on, because without a proxy rewriting that header any client
+can forge its own IP.
+
+Full design and rationale: **`docs/accesos.md`**.
+
 ### Development notes
 
 - Cookie domain is set to `.localhost` so JWT cookies work across all tenant subdomains.

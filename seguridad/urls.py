@@ -8,6 +8,7 @@ from seguridad.views import (
     LogoutView,
     MeView,
     RefreshView,
+    SegAccesoViewSet,
     SegGrupoViewSet,
     SegMfaViewSet,
     SegPermisoViewSet,
@@ -23,6 +24,7 @@ router.register(r'rol', SegRolViewSet)
 router.register(r'grupo', SegGrupoViewSet)
 router.register(r'permiso', SegPermisoViewSet, basename='permiso')
 router.register(r'mfa', SegMfaViewSet, basename='mfa')
+router.register(r'acceso', SegAccesoViewSet, basename='acceso')
 
 urlpatterns = [
     path('login/', LoginView.as_view()),

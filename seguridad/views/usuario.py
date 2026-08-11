@@ -104,7 +104,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            verificado = servicio_mfa.verificar_desafio(mfa_token, codigo)
+            verificado = servicio_mfa.verificar_desafio(mfa_token, codigo).usuario
         except servicio_mfa.MfaError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 

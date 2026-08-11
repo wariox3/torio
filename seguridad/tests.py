@@ -6,17 +6,24 @@ import pyotp
 from cryptography.fernet import Fernet
 from django.conf import settings
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from seguridad import acceso as servicio_acceso
 from seguridad import mfa as servicio_mfa
 from seguridad.models import (
     METODO_CORREO,
     METODO_SMS,
     METODO_TOTP,
     METODOS,
+    RESULTADO_CLAVE,
+    RESULTADO_MFA_FALLIDO,
+    RESULTADO_MFA_PENDIENTE,
+    RESULTADO_NO_VERIFICADO,
+    RESULTADO_OK,
+    SegAcceso,
     SegMfaCodigoRespaldo,
     SegMfaDesafio,
     SegMfaUsuario,
@@ -64,7 +71,9 @@ class CifradoTests(MfaBaseTests):
 class TotpTests(MfaBaseTests):
     def test_codigo_valido(self):
         token, _, _ = self._desafio()
-        self.assertEqual(servicio_mfa.verificar_desafio(token, self._codigo_totp()), self.usuario)
+        verificacion = servicio_mfa.verificar_desafio(token, self._codigo_totp())
+        self.assertEqual(verificacion.usuario, self.usuario)
+        self.assertFalse(verificacion.uso_respaldo)
 
     def test_codigo_invalido(self):
         token, desafio, _ = self._desafio()
@@ -99,7 +108,9 @@ class CorreoTests(MfaBaseTests):
     def test_codigo_valido(self):
         token, _, codigo = self._desafio(METODO_CORREO)
         self.assertEqual(len(codigo), servicio_mfa.LONGITUD_CODIGO_ENVIADO)
-        self.assertEqual(servicio_mfa.verificar_desafio(token, codigo), self.usuario)
+        verificacion = servicio_mfa.verificar_desafio(token, codigo)
+        self.assertEqual(verificacion.usuario, self.usuario)
+        self.assertFalse(verificacion.uso_respaldo)
 
     def test_el_codigo_no_se_guarda_en_claro(self):
         _, desafio, codigo = self._desafio(METODO_CORREO)
@@ -175,7 +186,11 @@ class CodigosRespaldoTests(MfaBaseTests):
         codigos = servicio_mfa.generar_codigos_respaldo(self.usuario)
 
         token, _, _ = self._desafio()
-        self.assertEqual(servicio_mfa.verificar_desafio(token, codigos[0]), self.usuario)
+        verificacion = servicio_mfa.verificar_desafio(token, codigos[0])
+        self.assertEqual(verificacion.usuario, self.usuario)
+        # El motor avisa que entró con un código de respaldo: la bitácora de accesos lo
+        # registra, porque significa que perdió su método habitual.
+        self.assertTrue(verificacion.uso_respaldo)
         self.assertEqual(servicio_mfa.codigos_respaldo_restantes(self.usuario),
                          servicio_mfa.CANTIDAD_CODIGOS_RESPALDO - 1)
 
@@ -187,7 +202,7 @@ class CodigosRespaldoTests(MfaBaseTests):
         codigos = servicio_mfa.generar_codigos_respaldo(self.usuario)
         maquillado = f'{codigos[0][:5].lower()}-{codigos[0][5:].lower()}'
         token, _, _ = self._desafio()
-        self.assertEqual(servicio_mfa.verificar_desafio(token, maquillado), self.usuario)
+        self.assertEqual(servicio_mfa.verificar_desafio(token, maquillado).usuario, self.usuario)
 
     def test_de_otro_usuario_no_sirve(self):
         otro = SegUsuario.objects.create(email='otro@torio.test', is_verified=True)
@@ -709,7 +724,9 @@ class SmsTests(MfaBaseTests):
     def test_codigo_valido(self):
         token, _, codigo = self._desafio(METODO_SMS)
         self.assertEqual(len(codigo), servicio_mfa.LONGITUD_CODIGO_ENVIADO)
-        self.assertEqual(servicio_mfa.verificar_desafio(token, codigo), self.usuario)
+        verificacion = servicio_mfa.verificar_desafio(token, codigo)
+        self.assertEqual(verificacion.usuario, self.usuario)
+        self.assertFalse(verificacion.uso_respaldo)
 
     def test_el_codigo_no_se_guarda_en_claro(self):
         _, desafio, codigo = self._desafio(METODO_SMS)
@@ -903,3 +920,191 @@ class CambioDeCelularTests(TestCase):
         self._activar_sms()
         respuesta = self.client.patch(self.url, {'nombre_corto': 'Nuevo nombre'})
         self.assertEqual(respuesta.status_code, 200)
+
+
+@override_settings(MFA_ENCRYPTION_KEY=_CLAVE_MFA)
+class RegistroDeAccesoTests(TestCase):
+    """La bitácora de ingresos: qué queda escrito en cada camino del login."""
+
+    CLAVE = 'clave-de-prueba-123'
+    AGENTE = 'Mozilla/5.0 (Pruebas)'
+    IP = '10.0.0.7'
+
+    def setUp(self):
+        cache.clear()
+        self.usuario = SegUsuario.objects.create(email='acceso@torio.test', is_verified=True)
+        self.usuario.set_password(self.CLAVE)
+        self.usuario.save()
+        self.client = APIClient(HTTP_USER_AGENT=self.AGENTE, REMOTE_ADDR=self.IP)
+        self.secreto = None
+
+    def _activar_mfa(self, metodo=METODO_TOTP):
+        self.secreto = servicio_mfa.generar_secreto()
+        SegMfaUsuario.objects.create(
+            usuario=self.usuario,
+            metodo=metodo,
+            secreto=servicio_mfa.cifrar_secreto(self.secreto) if metodo == METODO_TOTP else None,
+            activo=True,
+            fecha_activacion=timezone.now(),
+        )
+
+    def _login(self, email=None, clave=None):
+        return self.client.post('/seguridad/login/', {
+            'email': email or self.usuario.email,
+            'password': clave or self.CLAVE,
+        })
+
+    def _accesos(self):
+        return list(SegAcceso.objects.order_by('id'))
+
+    def test_ingreso_exitoso_queda_registrado(self):
+        self._login()
+
+        acceso, = self._accesos()
+        self.assertEqual(acceso.resultado, RESULTADO_OK)
+        self.assertEqual(acceso.usuario, self.usuario)
+        self.assertEqual(acceso.email, self.usuario.email)
+        self.assertEqual(acceso.ip, self.IP)
+        self.assertEqual(acceso.user_agent, self.AGENTE)
+        self.assertIsNone(acceso.metodo_mfa)
+        self.assertFalse(acceso.dispositivo_recordado)
+        self.assertFalse(acceso.codigo_respaldo)
+
+    def test_clave_incorrecta_queda_ligada_a_la_cuenta(self):
+        """El titular tiene que poder ver en su historial que alguien probó su clave."""
+        self.assertEqual(self._login(clave='otra-cosa').status_code, 401)
+
+        acceso, = self._accesos()
+        self.assertEqual(acceso.resultado, RESULTADO_CLAVE)
+        self.assertEqual(acceso.usuario, self.usuario)
+
+    def test_correo_inexistente_queda_sin_usuario(self):
+        self.assertEqual(self._login(email='nadie@torio.test').status_code, 401)
+
+        acceso, = self._accesos()
+        self.assertEqual(acceso.resultado, RESULTADO_CLAVE)
+        self.assertIsNone(acceso.usuario)
+        # Sin el correo tecleado no quedaría rastro de una enumeración de usuarios.
+        self.assertEqual(acceso.email, 'nadie@torio.test')
+
+    def test_cuenta_no_verificada(self):
+        SegUsuario.objects.filter(pk=self.usuario.pk).update(is_verified=False)
+        self.assertEqual(self._login().status_code, 403)
+
+        acceso, = self._accesos()
+        self.assertEqual(acceso.resultado, RESULTADO_NO_VERIFICADO)
+        self.assertEqual(acceso.usuario, self.usuario)
+
+    def test_login_con_mfa_deja_pendiente_y_despues_ok(self):
+        self._activar_mfa()
+        token = self._login().data['mfa_token']
+
+        pendiente, = self._accesos()
+        self.assertEqual(pendiente.resultado, RESULTADO_MFA_PENDIENTE)
+        self.assertEqual(pendiente.metodo_mfa, METODO_TOTP)
+
+        self.client.post('/seguridad/login/mfa/', {
+            'mfa_token': token, 'codigo': pyotp.TOTP(self.secreto).now(),
+        })
+        _, ok = self._accesos()
+        self.assertEqual(ok.resultado, RESULTADO_OK)
+        self.assertEqual(ok.metodo_mfa, METODO_TOTP)
+        self.assertFalse(ok.codigo_respaldo)
+
+    def test_segundo_paso_fallido_se_registra_con_la_cuenta(self):
+        self._activar_mfa()
+        token = self._login().data['mfa_token']
+
+        self.assertEqual(self.client.post('/seguridad/login/mfa/', {
+            'mfa_token': token, 'codigo': '000000',
+        }).status_code, 401)
+
+        _, fallido = self._accesos()
+        self.assertEqual(fallido.resultado, RESULTADO_MFA_FALLIDO)
+        self.assertEqual(fallido.usuario, self.usuario)
+        self.assertEqual(fallido.metodo_mfa, METODO_TOTP)
+
+    def test_token_basura_se_registra_sin_usuario(self):
+        self.assertEqual(self.client.post('/seguridad/login/mfa/', {
+            'mfa_token': 'no-es-un-token', 'codigo': '000000',
+        }).status_code, 401)
+
+        fallido, = self._accesos()
+        self.assertEqual(fallido.resultado, RESULTADO_MFA_FALLIDO)
+        self.assertIsNone(fallido.usuario)
+
+    def test_codigo_de_respaldo_queda_marcado(self):
+        """Entrar con un respaldo significa que perdió su método: hay que poder verlo."""
+        self._activar_mfa()
+        codigos = servicio_mfa.generar_codigos_respaldo(self.usuario)
+        token = self._login().data['mfa_token']
+
+        self.client.post('/seguridad/login/mfa/', {'mfa_token': token, 'codigo': codigos[0]})
+
+        _, ok = self._accesos()
+        self.assertEqual(ok.resultado, RESULTADO_OK)
+        self.assertTrue(ok.codigo_respaldo)
+
+    def test_dispositivo_recordado_queda_marcado(self):
+        self._activar_mfa()
+        token = self._login().data['mfa_token']
+        self.client.post('/seguridad/login/mfa/', {
+            'mfa_token': token,
+            'codigo': pyotp.TOTP(self.secreto).now(),
+            'recordar_dispositivo': True,
+        })
+        SegAcceso.objects.all().delete()
+
+        self._login()
+
+        # Un solo registro: se saltó el segundo paso, así que no hay `mfa_pendiente`.
+        acceso, = self._accesos()
+        self.assertEqual(acceso.resultado, RESULTADO_OK)
+        self.assertTrue(acceso.dispositivo_recordado)
+        self.assertEqual(acceso.metodo_mfa, METODO_TOTP)
+
+    def test_historial_solo_muestra_lo_propio(self):
+        otro = SegUsuario.objects.create(email='otro@torio.test', is_verified=True)
+        SegAcceso.objects.create(usuario=otro, email=otro.email, resultado=RESULTADO_OK)
+        self._login()
+
+        self.client.force_authenticate(self.usuario)
+        respuesta = self.client.get('/seguridad/acceso/')
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data['count'], 1)
+        fila = respuesta.data['results'][0]
+        self.assertEqual(fila['resultado'], RESULTADO_OK)
+        self.assertEqual(fila['ip'], self.IP)
+        # La lista ya es de la cuenta autenticada: repetir el correo no aporta.
+        self.assertNotIn('email', fila)
+
+    def test_historial_exige_autenticacion(self):
+        self.assertEqual(APIClient().get('/seguridad/acceso/').status_code, 401)
+
+
+class IpDelRequestTests(TestCase):
+    """
+    De dónde sale la IP que queda registrada.
+
+    Creerle a `X-Forwarded-For` sin un proxy que lo reescriba deja que cualquiera
+    falsee su IP en la bitácora, así que el default es no creerle.
+    """
+
+    def _request(self):
+        return RequestFactory().post(
+            '/seguridad/login/', REMOTE_ADDR='10.0.0.1', HTTP_X_FORWARDED_FOR='1.2.3.4, 10.0.0.9',
+        )
+
+    @override_settings(CONFIAR_EN_PROXY=False)
+    def test_sin_proxy_se_ignora_el_header(self):
+        self.assertEqual(servicio_acceso.ip_del_request(self._request()), '10.0.0.1')
+
+    @override_settings(CONFIAR_EN_PROXY=True)
+    def test_con_proxy_se_toma_el_primero_de_la_cadena(self):
+        self.assertEqual(servicio_acceso.ip_del_request(self._request()), '1.2.3.4')
+
+    @override_settings(CONFIAR_EN_PROXY=True)
+    def test_con_proxy_pero_sin_header_cae_en_remote_addr(self):
+        peticion = RequestFactory().post('/seguridad/login/', REMOTE_ADDR='10.0.0.1')
+        self.assertEqual(servicio_acceso.ip_del_request(peticion), '10.0.0.1')

@@ -14,6 +14,7 @@ import re
 import secrets
 import time
 from datetime import timedelta
+from typing import NamedTuple
 
 import pyotp
 from cryptography.fernet import Fernet, InvalidToken
@@ -283,6 +284,23 @@ def firmar_desafio(desafio: SegMfaDesafio) -> str:
     return signing.dumps(str(desafio.id), salt=_SALT_DESAFIO)
 
 
+def consultar_desafio(mfa_token: str) -> SegMfaDesafio | None:
+    """
+    Lee el desafío de un token sin consumirlo ni contar intentos.
+
+    Es solo para la bitácora de accesos, que necesita a quién ligar un segundo paso
+    fallido. **No sirve para decidir nada de autenticación**: no valida vencimiento ni
+    consumo. Devuelve None si el token es basura o el desafío ya no está.
+    """
+    try:
+        desafio_id = signing.loads(
+            mfa_token, salt=_SALT_DESAFIO, max_age=int(DURACION_DESAFIO.total_seconds())
+        )
+        return SegMfaDesafio.objects.filter(pk=desafio_id).first()
+    except (signing.BadSignature, ValidationError, ValueError):
+        return None
+
+
 def _cargar_desafio(mfa_token: str) -> SegMfaDesafio:
     max_age = int(DURACION_DESAFIO.total_seconds())
     try:
@@ -296,7 +314,20 @@ def _cargar_desafio(mfa_token: str) -> SegMfaDesafio:
         raise MfaError('La sesión de verificación expiró. Inicia sesión de nuevo.')
 
 
-def verificar_desafio(mfa_token: str, codigo: str, permitir_respaldo: bool = True):
+class ResultadoVerificacion(NamedTuple):
+    """
+    Quién quedó autenticado y con qué.
+
+    `uso_respaldo` sale hasta la vista porque queda en la bitácora de accesos: entrar
+    con un código de respaldo significa que el usuario perdió su método habitual, y eso
+    es a la vez soporte que se viene y una señal si no fue él.
+    """
+
+    usuario: object
+    uso_respaldo: bool
+
+
+def verificar_desafio(mfa_token: str, codigo: str, permitir_respaldo: bool = True) -> ResultadoVerificacion:
     """
     Resuelve el segundo paso y devuelve el usuario autenticado.
 
@@ -334,13 +365,15 @@ def verificar_desafio(mfa_token: str, codigo: str, permitir_respaldo: bool = Tru
         # El código de respaldo sirve con cualquier método: es justamente la salida para
         # cuando el habitual no está disponible. No al enrolar (`permitir_respaldo=False`):
         # ahí se está probando que el nuevo factor funciona, y un código viejo no lo prueba.
+        uso_respaldo = False
         if not valido and permitir_respaldo:
-            valido = _consumir_codigo_respaldo(desafio.usuario, codigo)
+            uso_respaldo = _consumir_codigo_respaldo(desafio.usuario, codigo)
+            valido = uso_respaldo
 
         if valido:
             desafio.consumido = True
             desafio.save(update_fields=['consumido'])
-            return desafio.usuario
+            return ResultadoVerificacion(desafio.usuario, uso_respaldo)
 
         desafio.intentos += 1
         desafio.save(update_fields=['intentos'])

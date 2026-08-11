@@ -11,8 +11,17 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from seguridad import acceso as servicio_acceso
 from seguridad import mfa as servicio_mfa
-from seguridad.models import METODOS_ENVIADOS
+from seguridad.models import (
+    METODOS_ENVIADOS,
+    RESULTADO_CLAVE,
+    RESULTADO_MFA_FALLIDO,
+    RESULTADO_MFA_PENDIENTE,
+    RESULTADO_NO_VERIFICADO,
+    RESULTADO_OK,
+    SegUsuario,
+)
 from seguridad.serializers import SegLoginSerializer, SegMfaLoginSerializer, SegUsuarioMeSerializer
 from utilidades.turnstile import verify_turnstile
 
@@ -53,14 +62,26 @@ def _asignar_cookies_auth(respuesta, access_token, refresh_token=None):
                              httponly=True, secure=seguro, samesite='Lax', domain=dominio)
 
 
-def _emitir_sesion(usuario, request=None, recordar_dispositivo=False):
+def _emitir_sesion(usuario, request=None, recordar_dispositivo=False,
+                   metodo_mfa=None, dispositivo_recordado=False, codigo_respaldo=False):
     """
     Cierra el login: marca el ingreso, emite los JWT y arma la respuesta.
 
     Único punto donde se emiten cookies de sesión. Si el usuario tiene MFA activo, solo
-    se llega acá después de resolver el segundo paso.
+    se llega acá después de resolver el segundo paso. Por eso es también el único lugar
+    donde hay que registrar el ingreso exitoso: cubre las dos rutas.
+
+    `recordar_dispositivo` es lo que el usuario acaba de pedir; `dispositivo_recordado`
+    es si este ingreso se saltó el segundo paso por una cookie que ya existía.
     """
     update_last_login(None, usuario)
+    servicio_acceso.registrar_acceso(
+        request, RESULTADO_OK,
+        usuario=usuario,
+        metodo_mfa=metodo_mfa,
+        dispositivo_recordado=dispositivo_recordado,
+        codigo_respaldo=codigo_respaldo,
+    )
 
     refresh = RefreshToken.for_user(usuario)
     refresh[_CLAIM_INICIO_SESION] = int(timezone.now().timestamp())
@@ -76,8 +97,8 @@ def _emitir_sesion(usuario, request=None, recordar_dispositivo=False):
     if recordar_dispositivo:
         token = servicio_mfa.recordar_dispositivo(
             usuario,
-            request.META.get('HTTP_USER_AGENT') if request else None,
-            request.META.get('REMOTE_ADDR') if request else None,
+            servicio_acceso.agente_del_request(request),
+            servicio_acceso.ip_del_request(request),
         )
         respuesta.set_cookie(
             _COOKIE_DISPOSITIVO, token, max_age=_TIEMPO_MAXIMO_DISPOSITIVO,
@@ -114,15 +135,25 @@ class LoginView(APIView):
         serializador = SegLoginSerializer(data=request.data)
         serializador.is_valid(raise_exception=True)
 
+        email = serializador.validated_data['email']
         usuario = authenticate(
             request,
-            username=serializador.validated_data['email'],
+            username=email,
             password=serializador.validated_data['password'],
         )
         if usuario is None:
+            # Se liga la cuenta cuando el correo sí existe, para que el titular vea el
+            # intento en su historial. La respuesta no cambia: sigue siendo el mismo 401
+            # para una clave mala y para un correo inventado.
+            servicio_acceso.registrar_acceso(
+                request, RESULTADO_CLAVE,
+                usuario=SegUsuario.objects.filter(email__iexact=email).first(),
+                email=email,
+            )
             return Response({'detail': 'Credenciales inválidas.'}, status=status.HTTP_401_UNAUTHORIZED)
 
         if not usuario.is_verified:
+            servicio_acceso.registrar_acceso(request, RESULTADO_NO_VERIFICADO, usuario=usuario, email=email)
             return Response(
                 {'detail': 'Cuenta no verificada. Revisa tu correo para activarla.', 'verificado': False},
                 status=status.HTTP_403_FORBIDDEN,
@@ -131,19 +162,33 @@ class LoginView(APIView):
         # El MFA se evalúa recién acá, con la clave ya validada: así el endpoint no
         # sirve como oráculo de "esta cuenta existe y tiene segundo factor".
         mfa = servicio_mfa.mfa_activo(usuario)
-        if mfa and not servicio_mfa.dispositivo_recordado(usuario, request.COOKIES.get(_COOKIE_DISPOSITIVO)):
+        recordado = bool(mfa) and servicio_mfa.dispositivo_recordado(
+            usuario, request.COOKIES.get(_COOKIE_DISPOSITIVO)
+        )
+        if mfa and not recordado:
             desafio, codigo = servicio_mfa.crear_desafio(
-                usuario, mfa.metodo, request.META.get('REMOTE_ADDR')
+                usuario, mfa.metodo, servicio_acceso.ip_del_request(request)
             )
             if mfa.metodo in METODOS_ENVIADOS:
                 servicio_mfa.enviar_codigo(usuario, codigo, mfa.metodo)
+            # Vale la pena registrarlo aunque todavía no haya sesión: es la única huella
+            # que deja quien tiene la clave correcta y se frena ante el segundo factor.
+            servicio_acceso.registrar_acceso(
+                request, RESULTADO_MFA_PENDIENTE,
+                usuario=usuario, email=email, metodo_mfa=mfa.metodo,
+            )
             return Response({
                 'mfa_requerido': True,
                 'mfa_token': servicio_mfa.firmar_desafio(desafio),
                 'metodo': mfa.metodo,
             })
 
-        return _emitir_sesion(usuario)
+        return _emitir_sesion(
+            usuario,
+            request=request,
+            metodo_mfa=mfa.metodo if mfa else None,
+            dispositivo_recordado=recordado,
+        )
 
 
 @extend_schema(
@@ -170,18 +215,30 @@ class LoginMfaView(APIView):
         serializador = SegMfaLoginSerializer(data=request.data)
         serializador.is_valid(raise_exception=True)
 
+        mfa_token = serializador.validated_data['mfa_token']
+        # Solo para la bitácora: si el token es basura no hay a quién ligar el intento,
+        # pero si es legítimo se sabe qué cuenta está fallando el segundo paso.
+        desafio = servicio_mfa.consultar_desafio(mfa_token)
+
         try:
-            usuario = servicio_mfa.verificar_desafio(
-                serializador.validated_data['mfa_token'],
+            verificacion = servicio_mfa.verificar_desafio(
+                mfa_token,
                 serializador.validated_data['codigo'],
             )
         except servicio_mfa.MfaError as e:
+            servicio_acceso.registrar_acceso(
+                request, RESULTADO_MFA_FALLIDO,
+                usuario=desafio.usuario if desafio else None,
+                metodo_mfa=desafio.metodo if desafio else None,
+            )
             return Response({'detail': str(e)}, status=status.HTTP_401_UNAUTHORIZED)
 
         return _emitir_sesion(
-            usuario,
+            verificacion.usuario,
             request=request,
             recordar_dispositivo=serializador.validated_data['recordar_dispositivo'],
+            metodo_mfa=desafio.metodo if desafio else None,
+            codigo_respaldo=verificacion.uso_respaldo,
         )
 
 

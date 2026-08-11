@@ -1,3 +1,4 @@
+from .acceso import SegAccesoSerializer
 from .autenticacion import SegLoginSerializer
 from .grupo import SegGrupoDetalleSerializer, SegGrupoSerializer
 from .mfa import (

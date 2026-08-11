@@ -245,6 +245,11 @@ AUTH_COOKIE_DOMAIN = config('AUTH_COOKIE_DOMAIN', default=None)
 AUTH_COOKIE_SECURE = config('AUTH_COOKIE_SECURE', default=not DEBUG, cast=bool)
 ENABLE_API_DOCS = config('ENABLE_API_DOCS', default=False, cast=bool)
 
+# Solo en True si hay un proxy inverso adelante (nginx, Cloudflare) que reescriba
+# X-Forwarded-For. Expuesto directo, ese header lo pone el cliente y permitiría
+# falsear la IP que queda en la bitácora de accesos y en los desafíos MFA.
+CONFIAR_EN_PROXY = config('CONFIAR_EN_PROXY', default=False, cast=bool)
+
 TURNSTILE_SECRET_KEY = config('TURNSTILE_SECRET_KEY', default='')
 TURNSTILE_ENABLED = config('TURNSTILE_ENABLED', default=True, cast=bool)
 

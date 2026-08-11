@@ -1,3 +1,12 @@
+from .acceso import (
+    RESULTADO_CLAVE,
+    RESULTADO_MFA_FALLIDO,
+    RESULTADO_MFA_PENDIENTE,
+    RESULTADO_NO_VERIFICADO,
+    RESULTADO_OK,
+    RESULTADOS,
+    SegAcceso,
+)
 from .mfa_codigo_respaldo import SegMfaCodigoRespaldo
 from .mfa_desafio import SegMfaDesafio
 from .mfa_dispositivo import SegMfaDispositivo

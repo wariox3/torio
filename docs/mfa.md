@@ -300,4 +300,7 @@ es `LocMemCache`: un contador independiente por worker de gunicorn, que además 
 cada deploy. Con 4 workers el límite real es ~20/min.
 
 No es parte del MFA —por eso los intentos se cuentan en `SegMfaDesafio`— pero conviene
-configurar Redis como backend de cache en el mismo ciclo.
+configurar Redis como backend de cache en el mismo ciclo. Además, los 429 que devuelve el
+throttle se cortan antes de llegar a la vista, así que no quedan en la bitácora de
+ingresos (`docs/accesos.md`), que registra todo lo demás: éxitos, clave incorrecta, cuenta
+sin verificar, segundo factor pendiente y segundo factor fallido.

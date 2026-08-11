@@ -7,6 +7,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from django.utils import timezone
 
 from seguridad import mfa as servicio_mfa
+from seguridad.acceso import ip_del_request
 from seguridad.models import (
     METODO_SMS,
     METODO_TOTP,
@@ -329,7 +330,7 @@ class SegMfaViewSet(viewsets.ViewSet):
         try:
             usuario = servicio_mfa.verificar_desafio(
                 datos['mfa_token'], datos['codigo'], permitir_respaldo=permitir_respaldo
-            )
+            ).usuario
         except servicio_mfa.MfaError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -344,4 +345,6 @@ class SegMfaViewSet(viewsets.ViewSet):
 
     @staticmethod
     def _ip(request):
-        return request.META.get('REMOTE_ADDR')
+        # Compartido con la bitácora de accesos: las tres tablas que guardan IP deben
+        # guardar la misma, y detrás de un proxy REMOTE_ADDR no es la del usuario.
+        return ip_del_request(request)

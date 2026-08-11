@@ -1,3 +1,4 @@
+from .acceso import SegAccesoViewSet
 from .autenticacion import (
     LoginMfaReenviarView,
     LoginMfaView,
