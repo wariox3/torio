@@ -16,7 +16,20 @@ if settings.ENABLE_API_DOCS:
         SpectacularSwaggerView,
     )
     urlpatterns += [
-        path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+        path(
+            'api/schema/',
+            SpectacularAPIView.as_view(
+                urlconf='torioapp.urls_public',
+                custom_settings={
+                    'TITLE': 'Torio API — Público',
+                    'DESCRIPTION': (
+                        'Rutas del schema público: autenticación, MFA y gestión de '
+                        'contenedores. Se consumen **sin** el header `X-Tenant`.'
+                    ),
+                },
+            ),
+            name='schema',
+        ),
         path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
         path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
     ]

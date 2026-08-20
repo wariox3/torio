@@ -163,6 +163,11 @@ REST_FRAMEWORK = {
 }
 
 
+# Hay dos schemas, uno por urlconf: el público (login, MFA, contenedor) y el de
+# tenant. Se montan en `urls_public.py` y `urls_tenant.py` pasando `urlconf`
+# explícito, porque el generador lee `ROOT_URLCONF` e ignora el `request.urlconf`
+# que pone TenantHeaderMiddleware: sin eso ambas URLs servían el mismo schema de
+# tenant y el login quedaba sin documentar.
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Torio API',
     'DESCRIPTION': 'API multi-tenant del ERP Torio',
@@ -172,6 +177,10 @@ SPECTACULAR_SETTINGS = {
     'SWAGGER_UI_SETTINGS': {
         'persistAuthorization': True,
     },
+    'POSTPROCESSING_HOOKS': [
+        'drf_spectacular.hooks.postprocess_schema_enums',
+        'utilidades.openapi.agregar_header_tenant',
+    ],
 }
 
 
