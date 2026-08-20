@@ -180,6 +180,7 @@ SPECTACULAR_SETTINGS = {
     'POSTPROCESSING_HOOKS': [
         'drf_spectacular.hooks.postprocess_schema_enums',
         'utilidades.openapi.agregar_header_tenant',
+        'utilidades.openapi.agrupar_tags_por_app',
     ],
 }
 

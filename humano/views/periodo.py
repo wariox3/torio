@@ -11,7 +11,7 @@ _SELECCIONAR_PARAMS = [
 ]
 
 
-@extend_schema(tags=['Periodo'])
+@extend_schema(tags=['Periodo nómina'])
 class HumPeriodoViewSet(viewsets.GenericViewSet):
     serializer_class = HumPeriodoSeleccionarSerializer
 

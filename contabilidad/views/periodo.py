@@ -37,7 +37,7 @@ _SELECCIONAR_PARAMS = [
 ]
 
 
-@extend_schema(tags=['Periodo'])
+@extend_schema(tags=['Periodo contable'])
 class ConPeriodoViewSet(
     FiltrosDinamicosMixin,
     ExportarExcelMixin,
