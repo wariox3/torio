@@ -10,26 +10,9 @@ urlpatterns = [
 ]
 
 if settings.ENABLE_API_DOCS:
-    from drf_spectacular.views import (
-        SpectacularAPIView,
-        SpectacularRedocView,
-        SpectacularSwaggerView,
-    )
-    urlpatterns += [
-        path(
-            'api/schema/',
-            SpectacularAPIView.as_view(
-                urlconf='torioapp.urls_public',
-                custom_settings={
-                    'TITLE': 'Torio API — Público',
-                    'DESCRIPTION': (
-                        'Rutas del schema público: autenticación, MFA y gestión de '
-                        'contenedores. Se consumen **sin** el header `X-Tenant`.'
-                    ),
-                },
-            ),
-            name='schema',
-        ),
-        path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
-        path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
-    ]
+    from torioapp.urls_docs import CONTENEDOR, PUBLICO, rutas
+
+    # Los dos schemas se sirven acá, sin `X-Tenant`, porque es lo único que el
+    # navegador puede abrir: /api/docs/ el público y /api/contenedor/docs/ el de tenant.
+    urlpatterns += rutas(PUBLICO)
+    urlpatterns += rutas(CONTENEDOR, prefijo='api/contenedor/', sufijo='-contenedor')
