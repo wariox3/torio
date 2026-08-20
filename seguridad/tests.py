@@ -1,9 +1,13 @@
+import io
 import time
 from datetime import timedelta
 from unittest.mock import patch
 
 import pyotp
+from botocore.exceptions import ConnectionClosedError
 from cryptography.fernet import Fernet
+from django.core.files.uploadedfile import SimpleUploadedFile
+from PIL import Image
 from django.conf import settings
 from django.core.cache import cache
 from django.test import RequestFactory, TestCase, override_settings
@@ -12,7 +16,10 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from seguridad import acceso as servicio_acceso
+from seguridad import foto
 from seguridad import mfa as servicio_mfa
+from seguridad.serializers import SegUsuarioMeSerializer
+from utilidades import backblaze, imagenes
 from seguridad.models import (
     METODO_CORREO,
     METODO_SMS,
@@ -1108,3 +1115,154 @@ class IpDelRequestTests(TestCase):
     def test_con_proxy_pero_sin_header_cae_en_remote_addr(self):
         peticion = RequestFactory().post('/seguridad/login/', REMOTE_ADDR='10.0.0.1')
         self.assertEqual(servicio_acceso.ip_del_request(peticion), '10.0.0.1')
+
+
+class FotoDePerfilTests(TestCase):
+    """
+    Procesamiento y almacenamiento de la foto de perfil.
+
+    B2 se mockea: acá se mide qué se genera, con qué ruta y qué pasa cuando algo
+    falla a mitad de camino. Lo que no se puede probar sin red es que el bucket
+    público sirva la URL — eso queda para verificación manual.
+    """
+
+    def setUp(self):
+        self.usuario = SegUsuario.objects.create(email='foto@torio.test', is_verified=True)
+
+    @staticmethod
+    def _imagen(tamano=(600, 400), modo='RGB', formato='JPEG', color='red', exif=None):
+        buffer = io.BytesIO()
+        imagen = Image.new(modo, tamano, color)
+        parametros = {'format': formato}
+        if exif is not None:
+            parametros['exif'] = exif
+        imagen.save(buffer, **parametros)
+        tipos = {'JPEG': 'image/jpeg', 'PNG': 'image/png', 'WEBP': 'image/webp'}
+        return SimpleUploadedFile('perfil.jpg', buffer.getvalue(), content_type=tipos[formato])
+
+    def test_sube_los_dos_derivados_en_webp(self):
+        with patch.object(backblaze, 'subir') as subir:
+            nuevo = foto.subir_foto(self._imagen(), self.usuario)
+
+        self.assertEqual(subir.call_count, 2)
+        keys = [llamada.args[1] for llamada in subir.call_args_list]
+        self.assertEqual(keys, [
+            f'usuarios/{self.usuario.id}/{nuevo}/original.webp',
+            f'usuarios/{self.usuario.id}/{nuevo}/thumb.webp',
+        ])
+        for llamada in subir.call_args_list:
+            self.assertEqual(llamada.args[3], 'image/webp')
+            self.assertEqual(Image.open(io.BytesIO(llamada.args[2])).format, 'WEBP')
+
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.usuario.imagen_uuid, nuevo)
+
+    def test_el_thumbnail_es_cuadrado_y_el_original_respeta_proporcion(self):
+        with patch.object(backblaze, 'subir') as subir:
+            foto.subir_foto(self._imagen(tamano=(2000, 1000)), self.usuario)
+
+        original, thumbnail = [Image.open(io.BytesIO(c.args[2])) for c in subir.call_args_list]
+        self.assertEqual(original.size, (1024, 512))
+        self.assertEqual(thumbnail.size, (320, 320))
+
+    def test_cambiar_la_foto_estrena_url_y_borra_la_anterior(self):
+        """
+        El motivo del uuid: con ruta fija, el navegador seguiría mostrando la
+        imagen vieja porque la URL no cambió.
+        """
+        with patch.object(backblaze, 'subir'):
+            primero = foto.subir_foto(self._imagen(), self.usuario)
+        with patch.object(backblaze, 'subir'), patch.object(backblaze, 'eliminar') as eliminar:
+            segundo = foto.subir_foto(self._imagen(), self.usuario)
+
+        self.assertNotEqual(primero, segundo)
+        self.assertNotEqual(
+            foto.key_original(self.usuario.id, primero),
+            foto.key_original(self.usuario.id, segundo),
+        )
+        borradas = sorted(llamada.args[1] for llamada in eliminar.call_args_list)
+        self.assertEqual(borradas, sorted([
+            f'usuarios/{self.usuario.id}/{primero}/original.webp',
+            f'usuarios/{self.usuario.id}/{primero}/thumb.webp',
+        ]))
+
+    def test_si_falla_el_thumbnail_no_queda_media_foto(self):
+        """Foto nueva con miniatura vieja es la inconsistencia más visible."""
+        with patch.object(backblaze, 'subir'):
+            original = foto.subir_foto(self._imagen(), self.usuario)
+
+        corte = ConnectionClosedError(endpoint_url='https://s3.us-east-005.backblazeb2.com/x')
+        with patch.object(backblaze, 'subir', side_effect=[None, corte]), \
+             patch.object(backblaze, 'eliminar') as eliminar:
+            with self.assertRaises(ConnectionClosedError):
+                foto.subir_foto(self._imagen(), self.usuario)
+
+        self.usuario.refresh_from_db()
+        self.assertEqual(self.usuario.imagen_uuid, original, 'la foto vieja tiene que seguir vigente')
+        self.assertEqual(eliminar.call_count, 2, 'hay que limpiar el original que sí subió')
+
+    def test_no_toca_b2_si_la_imagen_no_sirve(self):
+        casos = {
+            'tipo no permitido': SimpleUploadedFile('a.gif', b'GIF89a', content_type='image/gif'),
+            'contenido que no es imagen': SimpleUploadedFile(
+                'a.jpg', b'no soy una imagen', content_type='image/jpeg',
+            ),
+            'png disfrazado de jpeg': SimpleUploadedFile(
+                'a.jpg', self._imagen(formato='PNG').read(), content_type='image/jpeg',
+            ),
+        }
+        for nombre, archivo in casos.items():
+            with self.subTest(caso=nombre):
+                with patch.object(backblaze, 'subir') as subir:
+                    with self.assertRaises(ValueError):
+                        foto.subir_foto(archivo, self.usuario)
+                subir.assert_not_called()
+
+    def test_rechaza_la_bomba_de_descompresion(self):
+        """
+        Un PNG de menos de 1 MB puede pedir cientos de MB de RAM al decodificarse:
+        el límite de bytes no protege de eso.
+        """
+        grande = self._imagen(tamano=(8000, 8000), formato='PNG', color='white')
+        self.assertLess(grande.size, imagenes.TAMANO_MAXIMO, 'el caso pierde sentido si no pasa el límite de peso')
+
+        with patch.object(backblaze, 'subir') as subir:
+            with self.assertRaises(ValueError) as c:
+                foto.subir_foto(grande, self.usuario)
+        self.assertIn('megapíxeles', str(c.exception))
+        subir.assert_not_called()
+
+    def test_corrige_la_orientacion_de_las_fotos_de_celular(self):
+        exif = Image.Exif()
+        exif[274] = 6  # rotar 90°
+        apaisada = self._imagen(tamano=(600, 200), exif=exif)
+
+        with patch.object(backblaze, 'subir') as subir:
+            foto.subir_foto(apaisada, self.usuario)
+
+        original = Image.open(io.BytesIO(subir.call_args_list[0].args[2]))
+        self.assertGreater(original.height, original.width, 'la foto se sirvió rotada')
+
+    def test_la_transparencia_se_compone_sobre_blanco(self):
+        """Descartar el alfa sin componer deja a la vista los bytes de abajo, casi siempre negros."""
+        transparente = self._imagen(modo='RGBA', formato='PNG', color=(0, 0, 0, 0))
+
+        with patch.object(backblaze, 'subir') as subir:
+            foto.subir_foto(transparente, self.usuario)
+
+        original = Image.open(io.BytesIO(subir.call_args_list[0].args[2])).convert('RGB')
+        self.assertEqual(original.getpixel((5, 5)), (255, 255, 255))
+
+    def test_sin_foto_el_serializer_no_inventa_una_url(self):
+        datos = SegUsuarioMeSerializer(self.usuario).data
+        self.assertIsNone(datos['imagen'])
+        self.assertIsNone(datos['imagen_thumbnail'])
+
+    def test_con_foto_el_serializer_arma_las_dos_urls(self):
+        with patch.object(backblaze, 'subir'):
+            nuevo = foto.subir_foto(self._imagen(), self.usuario)
+
+        datos = SegUsuarioMeSerializer(self.usuario).data
+        base = settings.B2_CDN_URL_PUBLICO.rstrip('/')
+        self.assertEqual(datos['imagen'], f'{base}/usuarios/{self.usuario.id}/{nuevo}/original.webp')
+        self.assertEqual(datos['imagen_thumbnail'], f'{base}/usuarios/{self.usuario.id}/{nuevo}/thumb.webp')

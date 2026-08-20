@@ -275,6 +275,10 @@ WOMPI_INTEGRITY_SECRET = config('WOMPI_INTEGRITY_SECRET', default='')
 # Backblaze B2
 B2_KEY_ID = config('B2_KEY_ID', default='')
 B2_APP_KEY = config('B2_APP_KEY', default='')
+# El bucket público tiene su propia application key: cada una está restringida
+# a su bucket, así que no son intercambiables.
+B2_KEY_ID_PUBLICO = config('B2_KEY_ID_PUBLICO', default='')
+B2_APP_KEY_PUBLICO = config('B2_APP_KEY_PUBLICO', default='')
 B2_ENDPOINT_URL = config('B2_ENDPOINT_URL', default='')
 B2_BUCKET_PUBLICO = config('B2_BUCKET_PUBLICO', default='')
 B2_BUCKET_PRIVADO = config('B2_BUCKET_PRIVADO', default='')

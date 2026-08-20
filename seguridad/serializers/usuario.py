@@ -1,6 +1,7 @@
 from django.conf import settings
 from rest_framework import serializers
 
+from seguridad.foto import key_original, key_thumbnail, url_publica
 from seguridad.models import SegUsuario
 
 
@@ -66,14 +67,15 @@ class SegUsuarioMeSerializer(serializers.ModelSerializer):
         mfa = self._mfa(obj)
         return mfa.metodo if mfa else None
 
-    def _cdn_url(self, path):
-        if not path:
+    def get_imagen(self, obj) -> str | None:
+        if not obj.imagen_uuid:
             return None
-        base = settings.B2_CDN_URL_PUBLICO.rstrip('/')
-        return f'{base}/{path}'
+        return url_publica(key_original(obj.id, obj.imagen_uuid))
 
-    def get_imagen(self, obj):
-        return self._cdn_url(obj.imagen)
-
-    def get_imagen_thumbnail(self, obj):
-        return self._cdn_url(obj.imagen_thumbnail)
+    def get_imagen_thumbnail(self, obj) -> str | None:
+        # Null cuando no hay foto, en vez de la URL de una imagen por defecto:
+        # el front sabe mejor qué poner (iniciales, avatar genérico) y así no se
+        # pide a B2 un objeto que puede no existir.
+        if not obj.imagen_uuid:
+            return None
+        return url_publica(key_thumbnail(obj.id, obj.imagen_uuid))

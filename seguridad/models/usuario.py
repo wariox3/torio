@@ -15,8 +15,11 @@ class SegUsuario(UserProfile):
     numero_identificacion = models.CharField(max_length=20, null=True)
     celular = models.CharField(max_length=50, null=True)
     idioma = models.CharField(max_length=2, default='es', db_default='es')
-    imagen = models.TextField(default='usuarios/imagen_defecto.jpg', db_default='usuarios/imagen_defecto.jpg')
-    imagen_thumbnail = models.TextField(default='usuarios/imagen_defecto.jpg', db_default='usuarios/imagen_defecto.jpg')
+    # Un solo uuid por juego de derivados: las dos keys se arman con
+    # `seguridad.foto.key_original`/`key_thumbnail`. Guardar las dos rutas por
+    # separado permitía que quedaran desincronizadas entre sí. Null = sin foto,
+    # y el front decide qué mostrar en su lugar.
+    imagen_uuid = models.UUIDField(null=True)
     saldo_pendiente = models.DecimalField(max_digits=14, decimal_places=2, default=0, db_default=0)
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
     tenants = models.ManyToManyField(

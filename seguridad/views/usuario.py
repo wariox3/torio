@@ -13,9 +13,9 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.parsers import MultiPartParser
 
 from seguridad import mfa as servicio_mfa
+from seguridad.foto import subir_foto
 from seguridad.models import METODO_SMS, SegMfaUsuario, SegUsuario
 from seguridad.serializers import SegUsuarioActualizarSerializer, SegUsuarioMeSerializer, SegUsuarioSeleccionarSerializer, SegUsuarioSerializer
-from utilidades.backblaze import subir_foto_usuario
 from utilidades.turnstile import verify_turnstile
 from utilidades.zinc import Zinc
 
@@ -313,7 +313,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
     @extend_schema(
         tags=['Usuarios'],
         summary='Subir foto de perfil',
-        description='Acepta JPEG, PNG o WEBP (máx 5 MB). Genera original (800px) y thumbnail (150×150).',
+        description='Acepta JPEG, PNG o WEBP (máx 5 MB). Genera original (1024px) y thumbnail (320×320) en WEBP.',
         request=inline_serializer(
             name='FotoRequest',
             fields={'foto': serializers.ImageField()},
@@ -327,18 +327,12 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Campo foto requerido.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            url_original, url_thumbnail = subir_foto_usuario(archivo, request.user.id)
+            # Un fallo de B2 sale como ErrorDeAlmacenamiento (502) desde la capa
+            # de backblaze; acá solo se traduce lo que es culpa del archivo.
+            subir_foto(archivo, request.user)
         except ValueError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception:
-            return Response(
-                {'detail': 'No se pudo subir la imagen. Intenta de nuevo.'},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
 
-        request.user.imagen = url_original
-        request.user.imagen_thumbnail = url_thumbnail
-        request.user.save(update_fields=['imagen', 'imagen_thumbnail'])
         return Response(SegUsuarioMeSerializer(request.user).data)
 
     @extend_schema(
