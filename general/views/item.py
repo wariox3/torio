@@ -1,8 +1,9 @@
-from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import mixins, viewsets
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
+from rest_framework.response import Response
 
-from general.models import GenItem
+from general.models import GenDocumentoDetalle, GenItem
 from general.serializers import (
     GenItemExportarSerializer,
     GenItemImportarSerializer,
@@ -21,6 +22,11 @@ _LIST_PARAMS = [
     OpenApiParameter('favorito', bool, description='Filtrar por favorito'),
     OpenApiParameter('inactivo', bool, description='Filtrar por inactivo'),
 ]
+
+_UsoResponse = inline_serializer(
+    name='ItemUsoResponse',
+    fields={'uso': serializers.BooleanField()},
+)
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por nombre, código o referencia'),
@@ -82,3 +88,14 @@ class GenItemViewSet(
         pagina = self.paginate_queryset(qs)
         serializer = GenItemSeleccionarSerializer(pagina, many=True)
         return self.get_paginated_response(serializer.data)
+
+    @extend_schema(
+        summary='Saber si el item ya está en uso',
+        description='Indica si algún movimiento (detalle de documento) referencia al item.',
+        responses=_UsoResponse,
+    )
+    @action(detail=True, methods=['get'], url_path='validar-uso')
+    def validar_uso(self, request, pk=None):
+        # Sin get_object(): no hace falta traer el item, solo preguntar por la FK.
+        uso = GenDocumentoDetalle.objects.filter(item_id=pk).exists()
+        return Response({'uso': uso})

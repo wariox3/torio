@@ -1,8 +1,9 @@
-from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import mixins, viewsets
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
+from rest_framework.response import Response
 
-from contabilidad.models import ConCuenta
+from contabilidad.models import ConCuenta, ConMovimiento
 from contabilidad.serializers import (
     ConCuentaExportarSerializer,
     ConCuentaImportarSerializer,
@@ -20,6 +21,11 @@ _LIST_PARAMS = [
     OpenApiParameter('exige_grupo', bool, description='Filtrar por exige grupo'),
     OpenApiParameter('permite_movimiento', bool, description='Filtrar por permite movimiento'),
 ]
+
+_UsoResponse = inline_serializer(
+    name='CuentaUsoResponse',
+    fields={'uso': serializers.BooleanField()},
+)
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por código o nombre'),
@@ -73,3 +79,14 @@ class ConCuentaViewSet(
         pagina = self.paginate_queryset(qs)
         serializer = ConCuentaSeleccionarSerializer(pagina, many=True)
         return self.get_paginated_response(serializer.data)
+
+    @extend_schema(
+        summary='Saber si la cuenta ya está en uso',
+        description='Indica si algún movimiento contable referencia a la cuenta.',
+        responses=_UsoResponse,
+    )
+    @action(detail=True, methods=['get'], url_path='validar-uso')
+    def validar_uso(self, request, pk=None):
+        # Sin get_object(): no hace falta traer la cuenta, solo preguntar por la FK.
+        uso = ConMovimiento.objects.filter(cuenta_id=pk).exists()
+        return Response({'uso': uso})
