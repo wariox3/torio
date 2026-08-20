@@ -29,6 +29,7 @@ from general.views import (
     GenModeloViewSet,
     GenPaisViewSet,
     GenPlazoPagoViewSet,
+    GenPrecioDetalleViewSet,
     GenPrecioViewSet,
     GenResolucionViewSet,
     GenResponsabilidadViewSet,
@@ -71,6 +72,7 @@ router.register(r'modelo', GenModeloViewSet, basename='modelo')
 router.register(r'pais', GenPaisViewSet, basename='pais')
 router.register(r'plazo-pago', GenPlazoPagoViewSet, basename='plazo-pago')
 router.register(r'precio', GenPrecioViewSet, basename='precio')
+router.register(r'precio-detalle', GenPrecioDetalleViewSet, basename='precio-detalle')
 router.register(r'resolucion', GenResolucionViewSet, basename='resolucion')
 router.register(r'responsabilidad', GenResponsabilidadViewSet, basename='responsabilidad')
 router.register(r'sector', GenSectorViewSet, basename='sector')

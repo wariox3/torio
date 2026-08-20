@@ -54,6 +54,7 @@ from .modelo import GenModeloSerializer
 from .pais import GenPaisSeleccionarSerializer
 from .plazo_pago import GenPlazoPagoSeleccionarSerializer
 from .precio import GenPrecioSeleccionarSerializer, GenPrecioSerializer
+from .precio_detalle import GenPrecioDetalleSerializer
 from .precio_exportar import GenPrecioExportarSerializer
 from .precio_importar import GenPrecioImportarSerializer
 from .resolucion import GenResolucionSeleccionarSerializer, GenResolucionSerializer
