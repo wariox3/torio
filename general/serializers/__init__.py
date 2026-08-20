@@ -1,4 +1,4 @@
-from .archivo import GenArchivoSerializer
+from .archivo import GenArchivoCrearSerializer, GenArchivoSerializer
 from .asesor import GenAsesorSeleccionarSerializer, GenAsesorSerializer
 from .asesor_exportar import GenAsesorExportarSerializer
 from .asesor_importar import GenAsesorImportarSerializer

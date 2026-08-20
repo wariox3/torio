@@ -1,12 +1,23 @@
+import io
+import uuid as uuid_lib
+import zipfile
 from datetime import date, time
+from unittest import mock
 
+from botocore.exceptions import ClientError, ConnectionClosedError
+from django.conf import settings
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import SimpleTestCase
+from django.utils import timezone
 from django_tenants.test.cases import TenantTestCase
 from rest_framework import permissions
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from general.models import (
+    GenArchivo,
+    GenArchivoTipo,
     GenDocumento,
     GenDocumentoDetalle,
     GenDocumentoTipo,
@@ -14,12 +25,22 @@ from general.models import (
     GenModelo,
 )
 from general.servicios import documento as documento_servicio
+from general.views.archivo import GenArchivoViewSet
 from general.views.modelo import GenModeloViewSet
 from seguridad.models import SegUsuario
+from general.servicios import archivo as archivo_servicio
+from utilidades import backblaze, mime
 
 
 class _ModeloViewSinPermisos(GenModeloViewSet):
     """Variante sin auth ni throttle: el usuario se inyecta con force_authenticate."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class _ArchivoViewSinPermisos(GenArchivoViewSet):
+    """Misma idea que arriba: acá se prueba la validación, no la membresía."""
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
     throttle_classes = []
@@ -328,3 +349,389 @@ class PermisoDeModeloCoherenteTests(SimpleTestCase):
                 continue
             with self.subTest(endpoint=etiqueta, tipo=tipo):
                 self.assertFalse(exige, f'{etiqueta} es tipo {tipo}: le sobra TienePermisoModelo')
+
+
+class SubirArchivoTests(TenantTestCase):
+    """
+    Validación de `POST /general/archivo/`.
+
+    Lo que se prueba no es la subida a B2 (que se mockea) sino que ninguna
+    entrada inválida llegue a tocarla: cada request rechazado que hubiera
+    llegado a `backblaze.subir` deja un objeto huérfano en el bucket, porque
+    la fila que lo referencia nunca se crea.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.telefono = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.modelo = GenModelo.objects.create(
+            id=99001, app='general', clase='GenDocumentoTipo',
+            nombre='Documento tipo', tabla='gen_documento_tipo', tipo='F',
+        )
+        # El schema de prueba nace vacío: el id 1 que usa el default del modelo
+        # lo trae `cargar_datos_tenant`, que acá no corre.
+        GenArchivoTipo.objects.get_or_create(id=1, defaults={'codigo': 'general', 'nombre': 'General'})
+        self.archivo_tipo = GenArchivoTipo.objects.create(
+            id=99001, codigo='prueba', nombre='Prueba',
+        )
+        self.objeto = GenDocumentoTipo.objects.create(nombre='Prueba')
+        self.vista = _ArchivoViewSinPermisos.as_view({'post': 'create'})
+        self.vista_descargar = _ArchivoViewSinPermisos.as_view({'get': 'descargar'})
+
+    def _pdf(self, nombre='a.pdf'):
+        return SimpleUploadedFile(nombre, b'%PDF-1.4 contenido', content_type='application/pdf')
+
+    def _zip(self, interno):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w') as z:
+            z.writestr('[Content_Types].xml', '<x/>')
+            z.writestr(interno, 'x')
+        return buffer.getvalue()
+
+    def _subir(self, **datos):
+        peticion = APIRequestFactory().post('/general/archivo/', datos, format='multipart')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return self.vista(peticion)
+
+    def test_sube_y_crea_la_fila(self):
+        with mock.patch.object(backblaze, 'subir') as subir:
+            respuesta = self._subir(
+                archivo=self._pdf(), modelo=self.modelo.pk, objeto_id=self.objeto.pk,
+                archivo_tipo=self.archivo_tipo.pk,
+            )
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertEqual(subir.call_count, 1)
+        fila = GenArchivo.objects.get(pk=respuesta.data['id'])
+        self.assertEqual(fila.objeto_id, str(self.objeto.pk))
+        self.assertEqual(fila.archivo_tipo_id, self.archivo_tipo.pk)
+        self.assertEqual(fila.almacenamiento_id, subir.call_args.kwargs['key'])
+
+    def test_archivo_tipo_omitido_toma_el_default(self):
+        with mock.patch.object(backblaze, 'subir'):
+            respuesta = self._subir(archivo=self._pdf(), modelo=self.modelo.pk, objeto_id=self.objeto.pk)
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertEqual(GenArchivo.objects.get(pk=respuesta.data['id']).archivo_tipo_id, 1)
+
+    def test_archivo_tipo_vacio_toma_el_default(self):
+        """En multipart un campo presente pero vacío llega como '', no ausente."""
+        with mock.patch.object(backblaze, 'subir'):
+            respuesta = self._subir(
+                archivo=self._pdf(), modelo=self.modelo.pk, objeto_id=self.objeto.pk, archivo_tipo='',
+            )
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertEqual(GenArchivo.objects.get(pk=respuesta.data['id']).archivo_tipo_id, 1)
+
+    def test_entradas_invalidas_no_tocan_b2(self):
+        casos = {
+            'sin archivo': {'modelo': self.modelo.pk, 'objeto_id': self.objeto.pk},
+            'sin modelo': {'archivo': self._pdf(), 'objeto_id': self.objeto.pk},
+            'sin objeto_id': {'archivo': self._pdf(), 'modelo': self.modelo.pk},
+            'modelo inexistente': {'archivo': self._pdf(), 'modelo': 999999, 'objeto_id': self.objeto.pk},
+            'modelo no numerico': {'archivo': self._pdf(), 'modelo': 'abc', 'objeto_id': self.objeto.pk},
+            'archivo_tipo inexistente': {
+                'archivo': self._pdf(), 'modelo': self.modelo.pk,
+                'objeto_id': self.objeto.pk, 'archivo_tipo': 999999,
+            },
+            'objeto_id no entero': {
+                'archivo': self._pdf(), 'modelo': self.modelo.pk, 'objeto_id': 'x' * 51,
+            },
+            'objeto_id fuera del rango de bigint': {
+                'archivo': self._pdf(), 'modelo': self.modelo.pk, 'objeto_id': 10 ** 25,
+            },
+            'objeto_id cero': {
+                'archivo': self._pdf(), 'modelo': self.modelo.pk, 'objeto_id': 0,
+            },
+            'objeto_id negativo': {
+                'archivo': self._pdf(), 'modelo': self.modelo.pk, 'objeto_id': -1,
+            },
+            'objeto_id decimal': {
+                'archivo': self._pdf(), 'modelo': self.modelo.pk, 'objeto_id': '1.5',
+            },
+            'archivo_tipo no entero': {
+                'archivo': self._pdf(), 'modelo': self.modelo.pk,
+                'objeto_id': self.objeto.pk, 'archivo_tipo': 'abc',
+            },
+            'tipo no permitido': {
+                'archivo': SimpleUploadedFile('a.exe', b'MZ', content_type='application/x-msdownload'),
+                'modelo': self.modelo.pk, 'objeto_id': self.objeto.pk,
+            },
+            'objeto_id inexistente': {
+                'archivo': self._pdf(), 'modelo': self.modelo.pk, 'objeto_id': 999999,
+            },
+            'objeto_id no numerico': {
+                'archivo': self._pdf(), 'modelo': self.modelo.pk, 'objeto_id': 'abc',
+            },
+            'ejecutable disfrazado de pdf': {
+                'archivo': SimpleUploadedFile('a.pdf', b'MZ\x90\x00\x03\x00', content_type='application/pdf'),
+                'modelo': self.modelo.pk, 'objeto_id': self.objeto.pk,
+            },
+            'zip disfrazado de docx': {
+                'archivo': SimpleUploadedFile('a.docx', self._zip('foto.jpg'), content_type=mime.DOCX),
+                'modelo': self.modelo.pk, 'objeto_id': self.objeto.pk,
+            },
+            'png declarado como pdf': {
+                'archivo': SimpleUploadedFile('a.pdf', b'\x89PNG\r\n\x1a\n', content_type='application/pdf'),
+                'modelo': self.modelo.pk, 'objeto_id': self.objeto.pk,
+            },
+        }
+        for nombre, datos in casos.items():
+            with self.subTest(caso=nombre):
+                # Se cuenta antes y después en vez de exigir la tabla vacía: si un
+                # caso deja una fila, el siguiente no tiene por qué acusar el error.
+                antes = GenArchivo.objects.count()
+                with mock.patch.object(backblaze, 'subir') as subir:
+                    respuesta = self._subir(**datos)
+                self.assertEqual(respuesta.status_code, 400)
+                subir.assert_not_called()
+                self.assertEqual(GenArchivo.objects.count(), antes)
+
+    def test_archivo_demasiado_grande_no_toca_b2(self):
+        # Se baja el techo en vez de fabricar 20 MB: el `size` de un archivo
+        # trucado se pierde al re-parsear el multipart.
+        with mock.patch.object(archivo_servicio, 'TAMANO_MAXIMO_ARCHIVO', 4), \
+             mock.patch.object(backblaze, 'subir') as subir:
+            respuesta = self._subir(archivo=self._pdf(), modelo=self.modelo.pk, objeto_id=self.objeto.pk)
+        self.assertEqual(respuesta.status_code, 400)
+        subir.assert_not_called()
+
+    def test_si_falla_la_fila_se_borra_el_objeto_de_b2(self):
+        """Sin esto el objeto queda en el bucket sin nada que lo referencie."""
+        with mock.patch.object(backblaze, 'subir'), \
+             mock.patch.object(backblaze, 'eliminar') as eliminar, \
+             mock.patch.object(GenArchivo.objects, 'create', side_effect=RuntimeError('boom')):
+            with self.assertRaises(RuntimeError):
+                archivo_servicio.subir_archivo(self._pdf(), modelo=self.modelo, objeto_id=self.objeto.pk)
+        self.assertEqual(eliminar.call_count, 1)
+        self.assertEqual(eliminar.call_args.args[1].split('/')[-1][-4:], '.pdf')
+
+    def test_el_mensaje_distingue_contenido_desconocido_de_incoherente(self):
+        """
+        Las dos ramas de `validar_archivo` rechazan lo mismo pero explican
+        distinto, y el front muestra el mensaje tal cual.
+        """
+        desconocido = SimpleUploadedFile('a.pdf', b'MZ\x90\x00\x03\x00', content_type='application/pdf')
+        incoherente = SimpleUploadedFile('a.pdf', b'\x89PNG\r\n\x1a\n', content_type='application/pdf')
+
+        with self.assertRaises(ValueError) as c:
+            archivo_servicio.validar_archivo(desconocido)
+        self.assertIn('ningún tipo permitido', str(c.exception))
+
+        with self.assertRaises(ValueError) as c:
+            archivo_servicio.validar_archivo(incoherente)
+        self.assertIn('application/pdf', str(c.exception))
+
+    def test_acepta_los_tipos_ambiguos_dentro_de_su_grupo(self):
+        """
+        doc/xls comparten contenedor OLE2 y txt/csv no tienen firma: en esos dos
+        grupos se acepta lo declarado, pero solo dentro del grupo.
+        """
+        ole2 = b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1' + b'\x00' * 40
+        casos = [
+            (ole2, mime.DOC, True),
+            (ole2, mime.XLS, True),
+            (ole2, mime.PDF, False),
+            (b'nombre,valor\nx,1\n', mime.CSV, True),
+            (b'nombre,valor\nx,1\n', mime.TXT, True),
+            (b'nombre,valor\nx,1\n', mime.DOCX, False),
+        ]
+        for contenido, declarado, acepta in casos:
+            with self.subTest(declarado=declarado, acepta=acepta):
+                archivo = SimpleUploadedFile('a.bin', contenido, content_type=declarado)
+                if acepta:
+                    self.assertEqual(archivo_servicio.validar_archivo(archivo), declarado)
+                else:
+                    with self.assertRaises(ValueError):
+                        archivo_servicio.validar_archivo(archivo)
+
+    def test_objeto_id_se_rechaza_por_rango_y_no_por_inexistencia(self):
+        """
+        Cero, negativo y desbordado también fallarían al buscar el registro, así
+        que se comprueba el *código* del error: lo tiene que parar el campo.
+        """
+        for nombre, valor, codigo in (
+            ('cero', 0, 'min_value'),
+            ('negativo', -1, 'min_value'),
+            ('mayor que un bigint', 10 ** 25, 'max_value'),
+            ('decimal', '1.5', 'invalid'),
+        ):
+            with self.subTest(caso=nombre):
+                with mock.patch.object(backblaze, 'subir'):
+                    respuesta = self._subir(
+                        archivo=self._pdf(), modelo=self.modelo.pk, objeto_id=valor,
+                    )
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertEqual(respuesta.data['objeto_id'][0].code, codigo)
+
+    def test_los_identificadores_no_enteros_explican_por_que(self):
+        """El mensaje lo muestra el front tal cual, así que no puede hablar de pks."""
+        for campo, datos in (
+            ('modelo', {'archivo': self._pdf(), 'modelo': 'abc', 'objeto_id': self.objeto.pk}),
+            ('objeto_id', {'archivo': self._pdf(), 'modelo': self.modelo.pk, 'objeto_id': 'abc'}),
+            ('archivo_tipo', {
+                'archivo': self._pdf(), 'modelo': self.modelo.pk,
+                'objeto_id': self.objeto.pk, 'archivo_tipo': 'abc',
+            }),
+        ):
+            with self.subTest(campo=campo):
+                with mock.patch.object(backblaze, 'subir'):
+                    respuesta = self._subir(**datos)
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertEqual([str(m) for m in respuesta.data[campo]], ['Debe ser un número entero.'])
+
+    def test_si_b2_no_responde_devuelve_502_y_no_deja_fila(self):
+        """
+        Un corte contra B2 salía como 500 con traceback. No es un error del
+        cliente ni un bug: es un tercero que no respondió.
+        """
+        corte = ConnectionClosedError(endpoint_url='https://s3.us-east-005.backblazeb2.com/x')
+        # Se mockea el cliente y no `subir`: la traducción a 502 vive dentro de
+        # `subir`, así que mockearla saltaría justo lo que se quiere probar.
+        with mock.patch.object(backblaze, '_cliente_s3') as cliente:
+            cliente.return_value.put_object.side_effect = corte
+            respuesta = self._subir(
+                archivo=self._pdf(), modelo=self.modelo.pk, objeto_id=self.objeto.pk,
+            )
+        self.assertEqual(respuesta.status_code, 502)
+        self.assertEqual(respuesta.data['detail'].code, 'error_almacenamiento')
+        self.assertFalse(GenArchivo.objects.exists())
+
+    def test_el_corte_de_b2_se_traduce_en_la_capa_de_backblaze(self):
+        """
+        La traducción vive en `backblaze.subir` y no en la vista, así que
+        cualquier llamador la hereda — incluida la subida de foto de perfil.
+        """
+        corte = ConnectionClosedError(endpoint_url='https://s3.us-east-005.backblazeb2.com/x')
+        with mock.patch.object(backblaze, '_cliente_s3') as cliente:
+            cliente.return_value.put_object.side_effect = corte
+            with self.assertRaises(backblaze.ErrorDeAlmacenamiento) as c:
+                backblaze.subir('bucket', 'key', b'x', 'text/plain')
+        self.assertEqual(c.exception.status_code, 502)
+
+    def test_si_falla_el_borrado_en_b2_la_fila_no_se_pierde(self):
+        """Borrar la fila y dejar el objeto arriba sería perderle el rastro."""
+        with mock.patch.object(backblaze, 'subir'):
+            respuesta = self._subir(
+                archivo=self._pdf(), modelo=self.modelo.pk, objeto_id=self.objeto.pk,
+            )
+        instancia = GenArchivo.objects.get(pk=respuesta.data['id'])
+
+        corte = ConnectionClosedError(endpoint_url='https://s3.us-east-005.backblazeb2.com/x')
+        with mock.patch.object(backblaze, '_cliente_s3') as cliente:
+            cliente.return_value.delete_object.side_effect = corte
+            with self.assertRaises(backblaze.ErrorDeAlmacenamiento):
+                archivo_servicio.eliminar_archivo(instancia)
+        self.assertTrue(GenArchivo.objects.filter(pk=instancia.pk).exists())
+
+    def test_la_ruta_en_b2_sigue_el_layout_acordado(self):
+        """
+        `<cliente>/archivos/<modelo>/<anio>/<mes>/<uuid>.<ext>`.
+
+        La ruta se guarda en la fila, así que cambiarla no rompe lo ya subido —
+        pero sí cambia dónde aterriza lo nuevo, y el primer segmento es el que
+        separa un contenedor de otro dentro del bucket.
+        """
+        with mock.patch.object(backblaze, 'subir') as subir:
+            respuesta = self._subir(
+                archivo=self._pdf(), modelo=self.modelo.pk, objeto_id=self.objeto.pk,
+            )
+        self.assertEqual(respuesta.status_code, 201)
+
+        key = subir.call_args.kwargs['key']
+        cliente_pk, carpeta, modelo_id, anio, mes, nombre = key.split('/')
+        ahora = timezone.now()
+
+        self.assertEqual(cliente_pk, str(connection.tenant.pk))
+        self.assertEqual(carpeta, 'archivos')
+        self.assertEqual(modelo_id, str(self.modelo.pk))
+        self.assertEqual(anio, f'{ahora:%Y}')
+        self.assertEqual(mes, f'{ahora:%m}')
+        self.assertEqual(len(mes), 2)  # con cero adelante, para que ordene
+        self.assertTrue(nombre.endswith('.pdf'))
+        uuid_lib.UUID(nombre.removesuffix('.pdf'))  # revienta si no es un uuid
+
+        # La fila guarda exactamente la key que se mandó a B2.
+        self.assertEqual(GenArchivo.objects.get(pk=respuesta.data['id']).almacenamiento_id, key)
+
+    def test_el_objeto_id_ya_no_aparece_en_la_ruta(self):
+        """Se sigue guardando en la fila; en la ruta manda la fecha."""
+        with mock.patch.object(backblaze, 'subir') as subir:
+            self._subir(archivo=self._pdf(), modelo=self.modelo.pk, objeto_id=self.objeto.pk)
+        self.assertNotIn(f'/{self.objeto.pk}/', subir.call_args.kwargs['key'])
+
+    def _fila(self, nombre='a.pdf'):
+        """Deja la fila creada sin tocar B2; la subida ya está probada aparte."""
+        with mock.patch.object(backblaze, 'subir'):
+            respuesta = self._subir(
+                archivo=self._pdf(nombre), modelo=self.modelo.pk, objeto_id=self.objeto.pk,
+            )
+        return GenArchivo.objects.get(pk=respuesta.data['id'])
+
+    def _descargar(self, pk):
+        peticion = APIRequestFactory().get(f'/general/archivo/{pk}/descargar/')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return self.vista_descargar(peticion, pk=pk)
+
+    def test_descargar_devuelve_el_contenido_de_b2(self):
+        fila = self._fila()
+        contenido = b'%PDF-1.4 contenido real'
+
+        with mock.patch.object(backblaze, 'descargar', return_value=contenido) as descargar:
+            respuesta = self._descargar(fila.pk)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.content, contenido)
+        self.assertEqual(respuesta['Content-Type'], 'application/pdf')
+        # Se pide la key que guarda la fila, no una reconstruida.
+        self.assertEqual(descargar.call_args.args[1], fila.almacenamiento_id)
+
+    def test_descargar_usa_el_bucket_privado(self):
+        """Si esto apunta al bucket público, la descarga rompe: la key no está ahí."""
+        fila = self._fila()
+        with mock.patch.object(backblaze, 'descargar', return_value=b'x') as descargar:
+            self._descargar(fila.pk)
+        self.assertEqual(descargar.call_args.args[0], settings.B2_BUCKET_PRIVADO)
+
+    def test_el_nombre_del_archivo_va_escapado(self):
+        """
+        El nombre lo eligió quien subió: con comillas o acentos, un header armado
+        a mano se rompe o se corta.
+        """
+        fila = self._fila(nombre='año "raro".pdf')
+        with mock.patch.object(backblaze, 'descargar', return_value=b'x'):
+            respuesta = self._descargar(fila.pk)
+
+        disposicion = respuesta['Content-Disposition']
+        self.assertIn('attachment', disposicion)
+        self.assertIn("utf-8''a%C3%B1o%20%22raro%22.pdf", disposicion)
+        self.assertNotIn('\n', disposicion)
+
+    def test_si_el_objeto_ya_no_esta_en_b2_devuelve_404(self):
+        """404 y no 502: el almacenamiento respondió bien, lo que falta es el archivo."""
+        fila = self._fila()
+        falta = ClientError({'Error': {'Code': 'NoSuchKey'}}, 'GetObject')
+        with mock.patch.object(backblaze, '_cliente_s3') as cliente:
+            cliente.return_value.get_object.side_effect = falta
+            respuesta = self._descargar(fila.pk)
+
+        self.assertEqual(respuesta.status_code, 404)
+        self.assertEqual(respuesta.data['detail'].code, 'archivo_no_encontrado')
+
+    def test_si_b2_no_responde_la_descarga_devuelve_502(self):
+        fila = self._fila()
+        corte = ConnectionClosedError(endpoint_url='https://s3.us-east-005.backblazeb2.com/x')
+        with mock.patch.object(backblaze, '_cliente_s3') as cliente:
+            cliente.return_value.get_object.side_effect = corte
+            respuesta = self._descargar(fila.pk)
+
+        self.assertEqual(respuesta.status_code, 502)
+        self.assertEqual(respuesta.data['detail'].code, 'error_almacenamiento')
+
+    def test_descargar_una_fila_inexistente_devuelve_404_sin_llamar_a_b2(self):
+        with mock.patch.object(backblaze, 'descargar') as descargar:
+            respuesta = self._descargar(999999)
+        self.assertEqual(respuesta.status_code, 404)
+        descargar.assert_not_called()

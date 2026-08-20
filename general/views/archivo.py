@@ -1,11 +1,15 @@
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from django.http import HttpResponse
+from django.utils.http import content_disposition_header
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from general.models import GenArchivo
-from general.serializers.archivo import GenArchivoSerializer
-from utilidades.archivos import eliminar_archivo, subir_archivo
+from general.serializers.archivo import GenArchivoCrearSerializer, GenArchivoSerializer
+from general.servicios.archivo import descargar_archivo, eliminar_archivo, subir_archivo
 
 _LISTAR_PARAMS = [
     OpenApiParameter('modelo', int, description='ID de gen_modelo'),
@@ -40,31 +44,45 @@ class GenArchivoViewSet(
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
+    @extend_schema(request=GenArchivoCrearSerializer, responses=GenArchivoSerializer)
     def create(self, request, *args, **kwargs):
-        archivo = request.FILES.get('archivo')
-        modelo = request.data.get('modelo')
-        objeto_id = request.data.get('objeto_id')
-        archivo_tipo = request.data.get('archivo_tipo', 1)
+        entrada = GenArchivoCrearSerializer(data=request.data)
+        entrada.is_valid(raise_exception=True)
+        datos = entrada.validated_data
+        archivo_tipo = datos['archivo_tipo']
 
-        if archivo is None:
-            return Response({'detail': 'Falta el campo "archivo".'}, status=status.HTTP_400_BAD_REQUEST)
-        if not modelo or not objeto_id:
-            return Response(
-                {'detail': 'Los campos "modelo" y "objeto_id" son requeridos.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        instancia = subir_archivo(
+            datos['archivo'],
+            modelo=datos['modelo'],
+            objeto_id=datos['objeto_id'],
+            archivo_tipo_id=archivo_tipo.pk if archivo_tipo else 1,
+        )
+        return Response(GenArchivoSerializer(instancia).data, status=status.HTTP_201_CREATED)
 
-        try:
-            instancia = subir_archivo(
-                archivo,
-                modelo_id=int(modelo),
-                objeto_id=str(objeto_id),
-                archivo_tipo_id=int(archivo_tipo),
-            )
-        except ValueError as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    @extend_schema(
+        responses={
+            (200, 'application/octet-stream'): OpenApiResponse(
+                OpenApiTypes.BINARY, description='El contenido del archivo.',
+            ),
+        },
+    )
+    @action(detail=True, methods=['get'])
+    def descargar(self, request, pk=None):
+        """
+        Sirve el archivo desde el back.
 
-        return Response(self.get_serializer(instancia).data, status=status.HTTP_201_CREATED)
+        El bucket es privado, así que esta es la única forma de leerlo: la URL
+        directa de B2 responde 401. `get_object` usa el queryset del contenedor,
+        de modo que una fila de otro tenant ni siquiera se encuentra.
+        """
+        instancia = self.get_object()
+        contenido = descargar_archivo(instancia)
+
+        respuesta = HttpResponse(contenido, content_type=instancia.tipo)
+        # El nombre lo puso quien subió el archivo: con un f-string, unas comillas
+        # o un acento romperían el header. Este helper es el que usa FileResponse.
+        respuesta['Content-Disposition'] = content_disposition_header(True, instancia.nombre)
+        return respuesta
 
     def perform_destroy(self, instance):
         eliminar_archivo(instance)

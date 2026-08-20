@@ -27,6 +27,7 @@ Correr solo esto:
 """
 
 import importlib
+from unittest import mock
 import itertools
 import json
 import uuid as uuid_lib
@@ -44,8 +45,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from tenant_users.permissions.models import UserTenantPermissions
 
 from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion, CtnSuscripcionTipo
-from general.models import GenItem
+from general.models import GenArchivo, GenArchivoTipo, GenItem, GenModelo
 from seguridad.models import SegUsuario, SegUsuarioCliente
+from utilidades import backblaze
 
 ESQUEMA_A = 'aislamiento_a'
 ESQUEMA_B = 'aislamiento_b'
@@ -1176,3 +1178,107 @@ class ContenidoPorEndpointTests(AislamientoBase):
         self.assertEqual(respuesta.status_code, 200, respuesta.content[:200])
         self.assertEqual(self._filas(respuesta), [],
                          'se vieron los permisos de un usuario que no es miembro de B')
+
+
+# --------------------------------------------------------------------------- #
+# 7. La descarga de archivos
+# --------------------------------------------------------------------------- #
+
+class DescargaDeArchivosTests(AislamientoBase):
+    """
+    `GET /general/archivo/<pk>/descargar/` sirve el contenido desde el back,
+    porque el bucket es privado y su URL directa responde 401.
+
+    Eso mueve la frontera: al archivo ya no lo protege B2 sino este endpoint.
+    Quien lo aísla sigue siendo el schema —el manager de Django solo ve la tabla
+    del contenedor resuelto—, y encima va `EsMiembroDelTenant`. `get_object` no
+    aporta aislamiento: aporta el 404 cuando la fila no está en este schema.
+
+    El mismo número de pk identifica archivos distintos en A y en B, que es justo
+    la confusión que hay que descartar; los pk van explícitos porque las
+    secuencias de PostgreSQL no se revierten con el rollback del TestCase.
+
+    B2 se mockea a propósito: acá se mide quién puede pedir qué, no la red.
+
+    Poder de detección medido por mutación:
+
+    | Mutante                                  | Lo acusa                        |
+    |------------------------------------------|---------------------------------|
+    | `get_object` → `objects.get(pk=...)`     | los dos tests de 404            |
+    | el viewset deja de exigir membresía      | `test_quien_no_es_miembro...`   |
+    """
+
+    @staticmethod
+    def _crear_archivo(schema, contenido_marcado, pk=None):
+        with schema_context(schema):
+            GenArchivoTipo.objects.get_or_create(
+                id=1, defaults={'codigo': 'general', 'nombre': 'General'},
+            )
+            # `GenModelo.id` es manual (BigIntegerField), no autoincremental:
+            # el 10004 es el que trae el fixture para GenItem.
+            modelo, _ = GenModelo.objects.get_or_create(
+                id=10004,
+                defaults={
+                    'app': 'general', 'clase': 'GenItem', 'nombre': 'Item',
+                    'tabla': 'gen_item', 'tipo': 'A',
+                },
+            )
+            item = GenItem.objects.create(nombre=f'Dueño de {schema}')
+            # El pk va explícito cuando el test necesita el mismo número en los
+            # dos schemas: las secuencias de PostgreSQL no se revierten con el
+            # rollback del TestCase, así que coincidir por casualidad no dura.
+            return GenArchivo.objects.create(
+                pk=pk, archivo_tipo_id=1, modelo=modelo, objeto_id=str(item.pk),
+                nombre=f'{contenido_marcado}.pdf', tipo='application/pdf', tamano=10,
+                almacenamiento_id=f'{schema}/archivos/{modelo.pk}/2026/08/{contenido_marcado}.pdf',
+            )
+
+    def _descargar(self, pk, usuario, tenant, contenido=b'contenido'):
+        with mock.patch.object(backblaze, 'descargar', return_value=contenido) as descargar:
+            respuesta = self._get(f'/general/archivo/{pk}/descargar/', usuario=usuario, tenant=tenant)
+        return respuesta, descargar
+
+    def test_el_miembro_descarga_el_archivo_de_su_contenedor(self):
+        """Control: sin esto, un 404 por cualquier causa haría pasar toda la clase."""
+        archivo_b = self._crear_archivo(ESQUEMA_B, 'secreto_de_b')
+
+        respuesta, descargar = self._descargar(archivo_b.pk, Escenario.ambos, ESQUEMA_B)
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.content)
+        self.assertEqual(descargar.call_args.args[1], archivo_b.almacenamiento_id)
+
+    def test_el_mismo_pk_en_el_otro_contenedor_no_trae_el_archivo_ajeno(self):
+        """
+        `ambos` es miembro legítimo de A y de B, así que acá no hay nada forjado:
+        pide un pk que existe en los dos y tiene que recibir el de A.
+        """
+        archivo_a = self._crear_archivo(ESQUEMA_A, 'secreto_de_a', pk=777)
+        archivo_b = self._crear_archivo(ESQUEMA_B, 'secreto_de_b', pk=777)
+        self.assertEqual(archivo_a.pk, archivo_b.pk, 'el escenario perdió sentido si difieren')
+
+        respuesta, descargar = self._descargar(archivo_b.pk, Escenario.ambos, ESQUEMA_A)
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.content)
+        key_pedida = descargar.call_args.args[1]
+        self.assertEqual(key_pedida, archivo_a.almacenamiento_id)
+        self.assertNotIn('secreto_de_b', key_pedida)
+
+    def test_un_pk_que_solo_existe_en_el_otro_contenedor_da_404(self):
+        archivo_b = self._crear_archivo(ESQUEMA_B, 'solo_en_b')
+        with schema_context(ESQUEMA_A):
+            self.assertFalse(GenArchivo.objects.filter(pk=archivo_b.pk).exists())
+
+        respuesta, descargar = self._descargar(archivo_b.pk, Escenario.ambos, ESQUEMA_A)
+
+        self.assertEqual(respuesta.status_code, 404, respuesta.content)
+        descargar.assert_not_called()
+
+    def test_quien_no_es_miembro_no_descarga_ni_toca_b2(self):
+        archivo_b = self._crear_archivo(ESQUEMA_B, 'secreto_de_b')
+
+        respuesta, descargar = self._descargar(archivo_b.pk, Escenario.sol_a, ESQUEMA_B)
+
+        self.assertEqual(respuesta.status_code, 403, respuesta.content)
+        self.assertEqual(respuesta.json()['detail'], MENSAJE_NO_MIEMBRO)
+        descargar.assert_not_called()
+        self.assertNotIn('secreto_de_b', respuesta.content.decode())
