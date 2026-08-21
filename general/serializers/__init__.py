@@ -52,6 +52,7 @@ from .metodo_pago_seleccionar import GenMetodoPagoSeleccionarSerializer
 from .modalidad import GenModalidadSeleccionarSerializer
 from .modelo import GenModeloSerializer
 from .pais import GenPaisSeleccionarSerializer
+from .parametro import GenParametroSerializer
 from .plazo_pago import GenPlazoPagoSeleccionarSerializer
 from .precio import GenPrecioSeleccionarSerializer, GenPrecioSerializer
 from .precio_detalle import GenPrecioDetalleSerializer

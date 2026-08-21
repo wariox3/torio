@@ -27,6 +27,7 @@ from .metodo_pago import GenMetodoPago
 from .modalidad import GenModalidad
 from .modelo import GenModelo
 from .pais import GenPais
+from .parametro import GenParametro
 from .plazo_pago import GenPlazoPago
 from .resolucion import GenResolucion
 from .responsabilidad import GenResponsabilidad

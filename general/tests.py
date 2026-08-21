@@ -2,6 +2,7 @@ import io
 import uuid as uuid_lib
 import zipfile
 from datetime import date, time
+from decimal import Decimal
 from unittest import mock
 
 import httpx
@@ -19,15 +20,20 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from general.models import (
     GenArchivo,
     GenArchivoTipo,
+    GenConfiguracion,
     GenDocumento,
     GenDocumentoDetalle,
     GenDocumentoTipo,
     GenFestivo,
     GenModelo,
+    GenParametro,
 )
 from general.servicios import documento as documento_servicio
 from general.servicios import rededoc as rededoc_servicio
+from general.serializers import GenParametroSerializer
 from general.views.archivo import GenArchivoViewSet
+from general.views.configuracion import GenConfiguracionViewSet
+from general.views.parametro import GenParametroViewSet
 from general.views.modelo import GenModeloViewSet
 from seguridad.models import SegUsuario
 from general.servicios import archivo as archivo_servicio
@@ -824,3 +830,130 @@ class RededocTests(SimpleTestCase):
             cliente = rededoc_servicio.Rededoc()
         self.assertEqual(cliente.url, 'https://api.ejemplo.test')
         self.assertEqual(cliente.key, 'llave-de-settings')
+
+
+class _ParametroViewSinPermisos(GenParametroViewSet):
+    """Variante sin auth ni throttle: acá se prueba la vista, no la membresía."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class _ConfiguracionViewSinPermisos(GenConfiguracionViewSet):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class GenParametroViewTests(TenantTestCase):
+    """
+    La vista de `GenParametro`: se lee entera o por campos, y no se escribe.
+    """
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        GenParametro.objects.all().delete()
+
+    def _llamar(self, accion, metodo='get', datos=None, **query):
+        vista = _ParametroViewSinPermisos.as_view({metodo: accion})
+        peticion = getattr(self.factory, metodo)(f'/general/parametro/{accion}/', datos or query)
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return vista(peticion)
+
+    def test_obtener_crea_la_fila_si_el_tenant_todavia_no_la_tiene(self):
+        respuesta = self._llamar('obtener')
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data['id'], 1)
+        self.assertIs(respuesta.data['gen_factura_electronica_activa'], False)
+        self.assertEqual(GenParametro.objects.count(), 1)
+
+    def test_obtener_dos_veces_no_duplica_la_fila(self):
+        self._llamar('obtener')
+        self._llamar('obtener')
+        self.assertEqual(GenParametro.objects.count(), 1)
+
+    def test_obtener_devuelve_el_valor_guardado(self):
+        GenParametro.objects.create(id=1, gen_factura_electronica_activa=True)
+        respuesta = self._llamar('obtener')
+        self.assertIs(respuesta.data['gen_factura_electronica_activa'], True)
+
+    def test_campos_devuelve_solo_lo_pedido(self):
+        GenParametro.objects.create(id=1, gen_factura_electronica_activa=True)
+        respuesta = self._llamar('campos', campos='gen_factura_electronica_activa')
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, {'gen_factura_electronica_activa': True})
+
+    def test_campos_sin_parametro_devuelve_400(self):
+        respuesta = self._llamar('campos')
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_campos_rechaza_una_columna_inexistente(self):
+        """Sin esta validación, `campos` sería un .values() con entrada del cliente."""
+        respuesta = self._llamar('campos', campos='gen_factura_electronica_activa,inventado')
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('inventado', respuesta.data['detail'])
+
+    def test_campos_repetidos_no_rompen_la_consulta(self):
+        respuesta = self._llamar(
+            'campos', campos='gen_factura_electronica_activa,gen_factura_electronica_activa',
+        )
+        self.assertEqual(respuesta.status_code, 200)
+
+    def test_la_vista_no_expone_ninguna_accion_de_escritura(self):
+        """
+        El punto entero del modelo: si el front pudiera marcar la activación de
+        facturación electrónica, dejaría de ser un hecho verificado.
+        """
+        acciones = {
+            nombre for nombre in dir(GenParametroViewSet)
+            if getattr(getattr(GenParametroViewSet, nombre, None), 'mapping', None)
+        }
+        self.assertEqual(acciones, {'obtener', 'campos'})
+
+        metodos = set()
+        for nombre in acciones:
+            metodos.update(getattr(GenParametroViewSet, nombre).mapping)
+        self.assertEqual(metodos, {'get'})
+
+    def test_el_serializer_no_acepta_escritura(self):
+        serializer = GenParametroSerializer(
+            GenParametro.objects.create(id=1),
+            data={'gen_factura_electronica_activa': True},
+            partial=True,
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data, {})
+
+
+class GenConfiguracionViewTests(TenantTestCase):
+    """
+    `GenConfiguracion` comparte el mixin con `GenParametro`, pero sí se escribe.
+    """
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+    def test_obtener_y_campos_siguen_funcionando(self):
+        vista = _ConfiguracionViewSinPermisos.as_view({'get': 'obtener'})
+        peticion = self.factory.get('/general/configuracion/obtener/')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        self.assertEqual(vista(peticion).status_code, 200)
+
+        vista = _ConfiguracionViewSinPermisos.as_view({'get': 'campos'})
+        peticion = self.factory.get('/general/configuracion/campos/', {'campos': 'gen_uvt'})
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        respuesta = vista(peticion)
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIn('gen_uvt', respuesta.data)
+
+    def test_actualizar_sigue_escribiendo(self):
+        vista = _ConfiguracionViewSinPermisos.as_view({'patch': 'actualizar'})
+        peticion = self.factory.patch('/general/configuracion/actualizar/', {'gen_uvt': '47065'})
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        respuesta = vista(peticion)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(GenConfiguracion.objects.get(id=1).gen_uvt, Decimal('47065'))
