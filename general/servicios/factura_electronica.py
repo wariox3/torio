@@ -58,11 +58,6 @@ def activar(cliente: Rededoc = None) -> GenParametro:
     ciudad = configuracion.gen_empresa_ciudad
     estado = ciudad.estado
 
-    # PENDIENTE: los cinco ids de catálogo van con el valor de torio, y los
-    # catálogos NO coinciden con los de rededoc (Colombia es 250 acá y 46 allá).
-    # El puente correcto es el `codigo` DIAN/DANE, que ambos lados tienen, pero
-    # `/api/catalogos/…` devuelve listas vacías con nuestra llave. Hasta que eso
-    # se resuelva, el emisor queda creado con país y departamento equivocados.
     payload = {
         'razon_social': configuracion.gen_empresa_razon_social,
         'nombre_comercial': configuracion.gen_empresa_nombre_corto,

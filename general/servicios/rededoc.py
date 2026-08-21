@@ -55,13 +55,6 @@ class Rededoc:
         return self._peticion('POST', '/api/emisores/emisor/', datos=datos)
 
     def buscar_emisor(self, numero_identificacion: str):
-        """
-        Busca un emisor por NIT entre los que alcanza nuestra integración.
-        Se usa antes de crear, para que darle dos veces al botón no falle.
-
-        Devuelve la misma forma de siempre; en `datos` va el emisor encontrado
-        o `None` si no hay ninguno.
-        """
         respuesta = self._peticion(
             'GET', '/api/emisores/emisor/',
             parametros={'numero_identificacion': numero_identificacion},
@@ -70,9 +63,6 @@ class Rededoc:
             return respuesta
 
         resultados = (respuesta['datos'] or {}).get('results') or []
-        # El filtro por NIT no está confirmado del lado de rededoc, así que se
-        # vuelve a comparar acá: si el parámetro se ignorara, `results` traería
-        # emisores ajenos y no queremos darlos por nuestros.
         emisor = next(
             (e for e in resultados if str(e.get('numero_identificacion')) == str(numero_identificacion)),
             None,
