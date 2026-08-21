@@ -134,4 +134,8 @@ def cargar_certificado(archivo, clave, cliente: Rededoc = None) -> dict:
     if respuesta['error']:
         status = 400 if 400 <= respuesta['status'] < 500 else 502
         raise ErrorFacturaElectronica(respuesta['datos'], status=status)
-    return respuesta['datos'] or {}
+
+    datos = respuesta['datos'] or {}
+    parametro.gen_certificado_vence = datos.get('vigente_hasta')
+    parametro.save(update_fields=['gen_certificado_vence'])
+    return datos

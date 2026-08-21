@@ -1151,7 +1151,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
     def _cliente(self, respuesta=None):
         cliente = mock.Mock(spec=rededoc_servicio.Rededoc)
         cliente.cargar_certificado.return_value = respuesta or {
-            'error': False, 'status': 200, 'datos': {'vence': '2027-01-01'},
+            'error': False, 'status': 200, 'datos': {'vigente_hasta': '2027-01-31'},
         }
         return cliente
 
@@ -1163,7 +1163,31 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
         self.assertEqual(args[0], 77)                      # el emisor guardado, no uno del front
         self.assertEqual(args[2], 'secreta')
         self.assertEqual(kwargs['nombre'], 'certificado.p12')
-        self.assertEqual(datos, {'vence': '2027-01-01'})
+        self.assertEqual(datos, {'vigente_hasta': '2027-01-31'})
+
+    def test_guarda_el_vencimiento_que_devuelve_rededoc(self):
+        factura_electronica.cargar_certificado(self._archivo(), 'secreta', cliente=self._cliente())
+
+        self.assertEqual(
+            GenParametro.objects.get(id=1).gen_certificado_vence, date(2027, 1, 31),
+        )
+
+    def test_si_rededoc_no_manda_vencimiento_el_campo_queda_vacio(self):
+        cliente = self._cliente({'error': False, 'status': 200, 'datos': {}})
+        factura_electronica.cargar_certificado(self._archivo(), 'secreta', cliente=cliente)
+
+        self.assertIsNone(GenParametro.objects.get(id=1).gen_certificado_vence)
+
+    def test_un_rechazo_no_toca_el_vencimiento_guardado(self):
+        """Si rededoc no aceptó el certificado nuevo, sigue vigente el anterior."""
+        GenParametro.objects.filter(id=1).update(gen_certificado_vence=date(2026, 12, 31))
+        cliente = self._cliente({'error': True, 'status': 400, 'datos': {'detail': 'Clave mala.'}})
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica):
+            factura_electronica.cargar_certificado(self._archivo(), 'mala', cliente=cliente)
+
+        self.assertEqual(
+            GenParametro.objects.get(id=1).gen_certificado_vence, date(2026, 12, 31),
+        )
 
     def test_sin_archivo_o_sin_clave_no_llama_a_rededoc(self):
         cliente = self._cliente()
