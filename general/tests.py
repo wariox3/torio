@@ -1133,6 +1133,118 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
         self.assertFalse(GenParametro.objects.filter(gen_factura_electronica_emisor__isnull=False).exists())
 
 
+class FacturaElectronicaCertificadoTests(TenantTestCase):
+    """
+    La carga del certificado. No sale a la red: se reemplaza el cliente.
+    """
+
+    def setUp(self):
+        GenParametro.objects.all().delete()
+        GenParametro.objects.create(id=1, gen_factura_electronica_emisor=77)
+
+    def _archivo(self, nombre='certificado.p12', contenido=b'\x30\x82binario', tamano=None):
+        archivo = SimpleUploadedFile(nombre, contenido, content_type='application/x-pkcs12')
+        if tamano is not None:
+            archivo.size = tamano
+        return archivo
+
+    def _cliente(self, respuesta=None):
+        cliente = mock.Mock(spec=rededoc_servicio.Rededoc)
+        cliente.cargar_certificado.return_value = respuesta or {
+            'error': False, 'status': 200, 'datos': {'vence': '2027-01-01'},
+        }
+        return cliente
+
+    def test_manda_emisor_archivo_y_clave_a_rededoc(self):
+        cliente = self._cliente()
+        datos = factura_electronica.cargar_certificado(self._archivo(), 'secreta', cliente=cliente)
+
+        args, kwargs = cliente.cargar_certificado.call_args
+        self.assertEqual(args[0], 77)                      # el emisor guardado, no uno del front
+        self.assertEqual(args[2], 'secreta')
+        self.assertEqual(kwargs['nombre'], 'certificado.p12')
+        self.assertEqual(datos, {'vence': '2027-01-01'})
+
+    def test_sin_archivo_o_sin_clave_no_llama_a_rededoc(self):
+        cliente = self._cliente()
+        faltantes = (
+            ((None, 'secreta'), 'archivo'),
+            ((self._archivo(), ''), 'clave'),
+        )
+        for (archivo, clave), esperado in faltantes:
+            with self.subTest(falta=esperado):
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    factura_electronica.cargar_certificado(archivo, clave, cliente=cliente)
+                self.assertIn(esperado, caso.exception.cuerpo['detail'])
+                self.assertEqual(caso.exception.status, 400)
+
+        cliente.cargar_certificado.assert_not_called()
+
+    def test_sin_emisor_no_llama_a_rededoc(self):
+        """El certificado se cuelga del emisor: sin emisor no hay dónde ponerlo."""
+        GenParametro.objects.filter(id=1).update(gen_factura_electronica_emisor=None)
+        cliente = self._cliente()
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.cargar_certificado(self._archivo(), 'secreta', cliente=cliente)
+
+        self.assertIn('crear el emisor', caso.exception.cuerpo['detail'])
+        self.assertEqual(caso.exception.status, 400)
+        cliente.cargar_certificado.assert_not_called()
+
+    def test_rechaza_una_extension_que_no_es_de_certificado(self):
+        cliente = self._cliente()
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.cargar_certificado(
+                self._archivo(nombre='contrato.pdf'), 'secreta', cliente=cliente,
+            )
+
+        self.assertIn('.p12', caso.exception.cuerpo['detail'])
+        cliente.cargar_certificado.assert_not_called()
+
+    def test_acepta_pfx_y_no_distingue_mayusculas(self):
+        cliente = self._cliente()
+        factura_electronica.cargar_certificado(
+            self._archivo(nombre='FIRMA.PFX'), 'secreta', cliente=cliente,
+        )
+        cliente.cargar_certificado.assert_called_once()
+
+    def test_rechaza_un_archivo_demasiado_grande(self):
+        cliente = self._cliente()
+        grande = self._archivo(tamano=factura_electronica.TAMANO_MAXIMO_CERTIFICADO + 1)
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.cargar_certificado(grande, 'secreta', cliente=cliente)
+
+        self.assertIn('límite', caso.exception.cuerpo['detail'])
+        cliente.cargar_certificado.assert_not_called()
+
+    def test_un_rechazo_de_rededoc_sube_tal_cual(self):
+        """Típico: la clave no abre el certificado."""
+        cuerpo = {'detail': 'La clave no corresponde al certificado.', 'errores': {}}
+        cliente = self._cliente({'error': True, 'status': 400, 'datos': cuerpo})
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.cargar_certificado(self._archivo(), 'mala', cliente=cliente)
+
+        self.assertEqual(caso.exception.cuerpo, cuerpo)
+        self.assertEqual(caso.exception.status, 400)
+
+    def test_si_rededoc_no_responde_es_502(self):
+        cliente = self._cliente({'error': True, 'status': 0, 'datos': {'mensaje': 'timeout'}})
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.cargar_certificado(self._archivo(), 'secreta', cliente=cliente)
+
+        self.assertEqual(caso.exception.status, 502)
+
+    def test_el_cliente_manda_multipart_con_los_tres_campos(self):
+        """Contrato con rededoc: `emisor` y `clave` como campos, `archivo` como file."""
+        respuesta = {'error': False, 'status': 200, 'datos': {}}
+        with mock.patch.object(rededoc_servicio.Rededoc, '_peticion', return_value=respuesta) as peticion:
+            rededoc_servicio.Rededoc(key='k').cargar_certificado(77, b'x', 'secreta')
+
+        _, kwargs = peticion.call_args
+        self.assertEqual(kwargs['datos'], {'emisor': 77, 'clave': 'secreta'})
+        self.assertIn('archivo', kwargs['archivos'])
+
+
 class FacturaElectronicaVistaTests(TenantTestCase):
     """La vista: solo traduce el servicio a HTTP."""
 

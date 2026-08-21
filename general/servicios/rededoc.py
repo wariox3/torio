@@ -54,6 +54,20 @@ class Rededoc:
         """
         return self._peticion('POST', '/api/emisores/emisor/', datos=datos)
 
+    def cargar_certificado(self, emisor_id, archivo, clave: str, nombre: str = 'certificado.p12'):
+        """
+        Sube el certificado de firma de un emisor.
+        `POST /api/emisores/certificado/cargar/`, en multipart con `emisor`, `archivo` y `clave`.
+
+        El archivo viaja como stream: no se lee entero en memoria ni se guarda de
+        este lado, porque es la llave privada con la que se firman las facturas.
+        """
+        return self._peticion(
+            'POST', '/api/emisores/certificado/cargar/',
+            datos={'emisor': emisor_id, 'clave': clave},
+            archivos={'archivo': (nombre, archivo, 'application/x-pkcs12')},
+        )
+
     # --- Interno -----------------------------------------------------------
 
     def _headers(self):
@@ -64,13 +78,21 @@ class Rededoc:
             logger.warning('RedEDoc sin llave configurada (KEY_REDEDOC vacía)')
         return headers
 
-    def _peticion(self, metodo: str, ruta: str, datos: dict = None, parametros: dict = None):
+    def _peticion(self, metodo: str, ruta: str, datos: dict = None, parametros: dict = None,
+                  archivos: dict = None):
+        """
+        Con `archivos` la petición sale como multipart y `datos` son los campos del
+        formulario; sin ellos, `datos` va como cuerpo JSON. httpx pone el
+        `Content-Type` con su boundary, por eso no se fija en `_headers()`.
+        """
         url_completa = self.url + ruta
         try:
             respuesta = httpx.request(
                 metodo,
                 url_completa,
-                json=datos,
+                json=datos if archivos is None else None,
+                data=datos if archivos is not None else None,
+                files=archivos,
                 params=parametros,
                 headers=self._headers(),
                 timeout=self.timeout,

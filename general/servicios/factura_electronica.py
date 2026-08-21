@@ -15,6 +15,9 @@ aparte.
 from general.models import GenConfiguracion, GenParametro
 from general.servicios.rededoc import Rededoc
 
+EXTENSIONES_CERTIFICADO = ('.p12', '.pfx')
+TAMANO_MAXIMO_CERTIFICADO = 1024 * 1024  # 1 MB; un certificado real pesa unos pocos KB
+
 
 class ErrorFacturaElectronica(Exception):
     """
@@ -90,3 +93,45 @@ def crear_emisor(cliente: Rededoc = None) -> GenParametro:
     parametro.gen_factura_electronica_emisor = emisor_id
     parametro.save(update_fields=['gen_factura_electronica_emisor'])
     return parametro
+
+
+def cargar_certificado(archivo, clave, cliente: Rededoc = None) -> dict:
+    """
+    Manda a rededoc el certificado de firma del emisor y devuelve su respuesta.
+
+    El archivo no se guarda de este lado ni pasa por B2: es la llave privada con
+    la que se firman las facturas de la empresa, y quien la necesita para firmar
+    es rededoc. Acá pasa por memoria, se reenvía y se olvida. La clave tampoco se
+    persiste.
+    """
+    if archivo is None:
+        raise ErrorFacturaElectronica('Falta el archivo del certificado.')
+    if not clave:
+        raise ErrorFacturaElectronica('Falta la clave del certificado.')
+
+    nombre = archivo.name or ''
+    if not nombre.lower().endswith(EXTENSIONES_CERTIFICADO):
+        raise ErrorFacturaElectronica(
+            'El certificado debe ser un archivo {}.'.format(' o '.join(EXTENSIONES_CERTIFICADO)),
+        )
+    if archivo.size > TAMANO_MAXIMO_CERTIFICADO:
+        raise ErrorFacturaElectronica(
+            'El certificado supera el límite de {} MB.'.format(TAMANO_MAXIMO_CERTIFICADO // (1024 * 1024)),
+        )
+
+    # El certificado se cuelga del emisor, así que sin emisor no hay dónde ponerlo.
+    parametro, _ = GenParametro.objects.get_or_create(id=1)
+    if not parametro.gen_factura_electronica_emisor:
+        raise ErrorFacturaElectronica(
+            'Primero hay que crear el emisor en el servicio de facturación electrónica.',
+        )
+
+    cliente = cliente or Rededoc()
+    archivo.seek(0)
+    respuesta = cliente.cargar_certificado(
+        parametro.gen_factura_electronica_emisor, archivo, clave, nombre=nombre,
+    )
+    if respuesta['error']:
+        status = 400 if 400 <= respuesta['status'] < 500 else 502
+        raise ErrorFacturaElectronica(respuesta['datos'], status=status)
+    return respuesta['datos'] or {}
