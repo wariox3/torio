@@ -10,14 +10,11 @@ from general.servicios import factura_electronica as servicio
 class GenFacturaElectronicaViewSet(viewsets.GenericViewSet):
 
     @extend_schema(request=None, responses=None)
-    @action(detail=False, methods=['post'])
-    def activar(self, request):
+    @action(detail=False, methods=['post'], url_path='crear-emisor')
+    def crear_emisor(self, request):
         try:
-            servicio.activar()
+            servicio.crear_emisor()
         except servicio.ErrorFacturaElectronica as e:
-            cuerpo = {'detail': e.mensaje}
-            if e.detalle:
-                cuerpo['errores'] = e.detalle
-            return Response(cuerpo, status=e.status)
+            return Response(e.cuerpo, status=e.status)
 
         return Response(status=status.HTTP_200_OK)

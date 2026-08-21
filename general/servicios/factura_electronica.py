@@ -1,14 +1,15 @@
 """
-Activación del cliente en el servicio de facturación electrónica (rededoc).
+Creación del emisor del cliente en el servicio de facturación electrónica (rededoc).
 
 El flujo es front → back → rededoc. El front solo dispara la acción: el payload
 lo arma el back leyendo `GenConfiguracion`, nunca lo que mande el navegador. Si
 el NIT y la razón social vinieran del front, un cliente podría registrar un
 emisor a nombre de otra empresa.
 
-Al terminar, el resultado queda en `GenParametro`, que es de solo lectura para
-el tenant: la activación es un hecho verificado contra rededoc, no algo que el
-cliente afirme.
+El emisor queda en `GenParametro`, que es de solo lectura para el tenant: es un
+hecho verificado contra rededoc, no algo que el cliente afirme. Crear el emisor
+no activa la facturación electrónica; `gen_factura_electronica_activa` se maneja
+aparte.
 """
 
 from general.models import GenConfiguracion, GenParametro
@@ -16,35 +17,24 @@ from general.servicios.rededoc import Rededoc
 
 
 class ErrorFacturaElectronica(Exception):
-    """Falla esperable de la activación. La vista la traduce a una respuesta HTTP."""
+    """
+    Falla esperable de la activación. La vista la traduce a una respuesta HTTP.
 
-    def __init__(self, mensaje, detalle=None, status=400):
-        super().__init__(mensaje)
-        self.mensaje = mensaje
-        self.detalle = detalle
+    `cuerpo` es lo que sale tal cual en la respuesta: un texto nuestro se envuelve
+    en `detail`, y el cuerpo de error de rededoc pasa sin tocar, porque ya viene
+    con esa misma forma. Envolverlo otra vez dejaba al front con el error anidado
+    dentro del error, y con un `detail` externo que además podía mentir.
+    """
+
+    def __init__(self, cuerpo, status=400):
+        super().__init__(cuerpo)
+        self.cuerpo = {'detail': cuerpo} if isinstance(cuerpo, str) else (cuerpo or {})
         self.status = status
 
 
-def _mensaje_y_detalle(datos, generico):
+def crear_emisor(cliente: Rededoc = None) -> GenParametro:
     """
-    Saca el mensaje de la respuesta de error de rededoc.
-
-    Rededoc ya responde con la misma forma que nosotros (`{'detail': ...,
-    'errores': {...}}`), así que envolverla tal cual deja al front con el error
-    anidado dentro del error, y con un `detail` externo que además puede mentir:
-    "no se pudo contactar" cuando el servicio sí contestó y explicó por qué. Si
-    trae `detail`, ese texto es el mensaje y solo `errores` baja como detalle.
-    """
-    datos = datos if isinstance(datos, dict) else {}
-    detail = datos.get('detail')
-    if isinstance(detail, str) and detail.strip():
-        return detail, (datos.get('errores') or None)
-    return generico, (datos or None)
-
-
-def activar(cliente: Rededoc = None) -> GenParametro:
-    """
-    Crea el emisor del tenant en rededoc y deja el resultado en `GenParametro`.
+    Crea el emisor del tenant en rededoc y guarda su id en `GenParametro`.
 
     No se consulta antes si el NIT ya tiene emisor: la unicidad la valida rededoc,
     que es quien la conoce. Si ya está registrado, rededoc rechaza la creación y
@@ -79,10 +69,6 @@ def activar(cliente: Rededoc = None) -> GenParametro:
         'numero_identificacion': configuracion.gen_empresa_numero_identificacion,
         'digito_verificacion': configuracion.gen_empresa_digito_verificacion or '',
         'tipo_organizacion': configuracion.gen_empresa_tipo_persona_id,
-        # La ubicación va por código oficial (ISO alfa-2 y DANE), no por PK: las
-        # de acá son de nuestro catálogo y no significan nada en el de rededoc.
-        # Una PK ajena que por casualidad exista allá no da error: emite la
-        # factura con otro municipio.
         'pais': pais.codigo,
         'departamento': estado.codigo,
         'municipio': ciudad.codigo,
@@ -97,20 +83,10 @@ def activar(cliente: Rededoc = None) -> GenParametro:
         # los datos, que es algo que el usuario puede corregir en configuración
         # (o el emisor ya existe, y rededoc lo dice en su propio mensaje).
         status = 400 if 400 <= respuesta['status'] < 500 else 502
-        mensaje, detalle = _mensaje_y_detalle(
-            respuesta['datos'],
-            'El servicio de facturación electrónica rechazó los datos de la empresa.'
-            if status == 400 else
-            'No se pudo contactar el servicio de facturación electrónica.',
-        )
-        raise ErrorFacturaElectronica(mensaje, detalle=detalle, status=status)
+        raise ErrorFacturaElectronica(respuesta['datos'], status=status)
     emisor_id = (respuesta['datos'] or {}).get('id')
 
     parametro, _ = GenParametro.objects.get_or_create(id=1)
-    parametro.gen_factura_electronica_activa = True
     parametro.gen_factura_electronica_emisor = emisor_id
-    parametro.save(update_fields=[
-        'gen_factura_electronica_activa',
-        'gen_factura_electronica_emisor',
-    ])
+    parametro.save(update_fields=['gen_factura_electronica_emisor'])
     return parametro
