@@ -11,12 +11,8 @@ el tenant: la activación es un hecho verificado contra rededoc, no algo que el
 cliente afirme.
 """
 
-import logging
-
 from general.models import GenConfiguracion, GenParametro
 from general.servicios.rededoc import Rededoc
-
-logger = logging.getLogger(__name__)
 
 
 class ErrorFacturaElectronica(Exception):
@@ -29,12 +25,30 @@ class ErrorFacturaElectronica(Exception):
         self.status = status
 
 
+def _mensaje_y_detalle(datos, generico):
+    """
+    Saca el mensaje de la respuesta de error de rededoc.
+
+    Rededoc ya responde con la misma forma que nosotros (`{'detail': ...,
+    'errores': {...}}`), así que envolverla tal cual deja al front con el error
+    anidado dentro del error, y con un `detail` externo que además puede mentir:
+    "no se pudo contactar" cuando el servicio sí contestó y explicó por qué. Si
+    trae `detail`, ese texto es el mensaje y solo `errores` baja como detalle.
+    """
+    datos = datos if isinstance(datos, dict) else {}
+    detail = datos.get('detail')
+    if isinstance(detail, str) and detail.strip():
+        return detail, (datos.get('errores') or None)
+    return generico, (datos or None)
+
+
 def activar(cliente: Rededoc = None) -> GenParametro:
     """
     Crea el emisor del tenant en rededoc y deja el resultado en `GenParametro`.
 
-    Es idempotente: si el NIT ya está registrado se reusa ese emisor en vez de
-    crear otro, porque el usuario le va a dar dos veces al botón.
+    No se consulta antes si el NIT ya tiene emisor: la unicidad la valida rededoc,
+    que es quien la conoce. Si ya está registrado, rededoc rechaza la creación y
+    ese mensaje es el que sube al front.
     """
     cliente = cliente or Rededoc()
     configuracion, _ = GenConfiguracion.objects.get_or_create(id=1)
@@ -53,8 +67,7 @@ def activar(cliente: Rededoc = None) -> GenParametro:
         raise ErrorFacturaElectronica('Falta la ciudad de la empresa.')
     if not configuracion.gen_empresa_direccion:
         raise ErrorFacturaElectronica('Falta la dirección de la empresa.')
-
-    nit = configuracion.gen_empresa_numero_identificacion
+ 
     ciudad = configuracion.gen_empresa_ciudad
     estado = ciudad.estado
 
@@ -62,7 +75,7 @@ def activar(cliente: Rededoc = None) -> GenParametro:
         'razon_social': configuracion.gen_empresa_razon_social,
         'nombre_comercial': configuracion.gen_empresa_nombre_corto,
         'tipo_identificacion': configuracion.gen_empresa_identificacion_id,
-        'numero_identificacion': nit,
+        'numero_identificacion': configuracion.gen_empresa_numero_identificacion,
         'digito_verificacion': configuracion.gen_empresa_digito_verificacion or '',
         'tipo_organizacion': configuracion.gen_empresa_tipo_persona_id,
         'pais': estado.pais_id,
@@ -73,30 +86,20 @@ def activar(cliente: Rededoc = None) -> GenParametro:
         'correo': configuracion.gen_empresa_correo or '',
     }
 
-    existente = cliente.buscar_emisor(nit)
-    if existente['error']:
-        raise ErrorFacturaElectronica(
-            'No se pudo consultar el servicio de facturación electrónica.',
-            detalle=existente['datos'],
-            status=502,
+    respuesta = cliente.crear_emisor(payload)
+    if respuesta['error']:
+        # 502 cuando rededoc no respondió o falló por dentro; 400 cuando rechazó
+        # los datos, que es algo que el usuario puede corregir en configuración
+        # (o el emisor ya existe, y rededoc lo dice en su propio mensaje).
+        status = 400 if 400 <= respuesta['status'] < 500 else 502
+        mensaje, detalle = _mensaje_y_detalle(
+            respuesta['datos'],
+            'El servicio de facturación electrónica rechazó los datos de la empresa.'
+            if status == 400 else
+            'No se pudo contactar el servicio de facturación electrónica.',
         )
-    if existente['datos']:
-        logger.info('Emisor %s ya existía en rededoc, se reusa', nit)
-        emisor_id = existente['datos'].get('id')
-    else:
-        respuesta = cliente.crear_emisor(payload)
-        if respuesta['error']:
-            # 502 cuando rededoc no respondió o falló por dentro; 400 cuando rechazó
-            # los datos, que es algo que el usuario puede corregir en configuración.
-            status = 400 if 400 <= respuesta['status'] < 500 else 502
-            raise ErrorFacturaElectronica(
-                'El servicio de facturación electrónica rechazó los datos de la empresa.'
-                if status == 400 else
-                'No se pudo contactar el servicio de facturación electrónica.',
-                detalle=respuesta['datos'],
-                status=status,
-            )
-        emisor_id = (respuesta['datos'] or {}).get('id')
+        raise ErrorFacturaElectronica(mensaje, detalle=detalle, status=status)
+    emisor_id = (respuesta['datos'] or {}).get('id')
 
     parametro, _ = GenParametro.objects.get_or_create(id=1)
     parametro.gen_factura_electronica_activa = True

@@ -46,7 +46,7 @@
     { "id":  43, "nombre": "Chile",                                     "codigo": "CL", "estado_inactivo": false },
     { "id":  44, "nombre": "China",                                     "codigo": "CN", "estado_inactivo": false },
     { "id":  45, "nombre": "Chipre",                                    "codigo": "CY", "estado_inactivo": false },
-    { "id": 250, "nombre": "Colombia",                                  "codigo": "CO", "estado_inactivo": false },
+    { "id":  46, "nombre": "Colombia",                                  "codigo": "CO", "estado_inactivo": false },
     { "id":  47, "nombre": "Comoras",                                   "codigo": "KM", "estado_inactivo": false },
     { "id":  48, "nombre": "Corea del Norte",                           "codigo": "KP", "estado_inactivo": false },
     { "id":  49, "nombre": "Corea del Sur",                             "codigo": "KR", "estado_inactivo": false },
@@ -249,6 +249,7 @@
     { "id": 246, "nombre": "Yemen",                                     "codigo": "YE", "estado_inactivo": false },
     { "id": 247, "nombre": "Yibuti",                                    "codigo": "DJ", "estado_inactivo": false },
     { "id": 248, "nombre": "Zambia",                                    "codigo": "ZM", "estado_inactivo": false },
-    { "id": 249, "nombre": "Zimbabue",                                  "codigo": "ZW", "estado_inactivo": false }
+    { "id": 249, "nombre": "Zimbabue",                                  "codigo": "ZW", "estado_inactivo": false },
+    { "id": 250, "nombre": "Colombia",                                  "codigo": "CO", "estado_inactivo": false }
   ]
 }

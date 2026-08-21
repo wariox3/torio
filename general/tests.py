@@ -1002,9 +1002,8 @@ class FacturaElectronicaActivarTests(TenantTestCase):
         self.configuracion.save()
         self.ciudad = ciudad
 
-    def _cliente(self, crear=None, buscar=None):
+    def _cliente(self, crear=None):
         cliente = mock.Mock(spec=rededoc_servicio.Rededoc)
-        cliente.buscar_emisor.return_value = buscar or {'error': False, 'status': 200, 'datos': None}
         cliente.crear_emisor.return_value = crear or {
             'error': False, 'status': 201, 'datos': {'id': 77},
         }
@@ -1071,16 +1070,23 @@ class FacturaElectronicaActivarTests(TenantTestCase):
 
         cliente.crear_emisor.assert_not_called()
 
-    def test_si_el_emisor_ya_existe_lo_reusa_en_vez_de_crear_otro(self):
-        """El usuario le va a dar dos veces al botón."""
-        cliente = self._cliente(buscar={
-            'error': False, 'status': 200, 'datos': {'id': 12, 'numero_identificacion': '901192048'},
+    def test_si_el_emisor_ya_existe_es_un_error_que_lo_dice(self):
+        """
+        La unicidad del NIT la valida rededoc, no nosotros: acá no se consulta
+        antes de crear, y su rechazo es el que ve el usuario.
+        """
+        cliente = self._cliente(crear={
+            'error': True, 'status': 400,
+            'datos': {'detail': 'Ya existe un emisor con ese número de identificación.'},
         })
-        parametro = factura_electronica.activar(cliente=cliente)
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.activar(cliente=cliente)
 
-        cliente.crear_emisor.assert_not_called()
-        self.assertEqual(parametro.gen_factura_electronica_emisor, 12)
-        self.assertIs(parametro.gen_factura_electronica_activa, True)
+        self.assertEqual(
+            caso.exception.mensaje, 'Ya existe un emisor con ese número de identificación.',
+        )
+        self.assertEqual(caso.exception.status, 400)
+        self.assertFalse(GenParametro.objects.filter(gen_factura_electronica_activa=True).exists())
 
     def test_un_rechazo_de_rededoc_es_400_y_no_marca_la_activacion(self):
         cliente = self._cliente(crear={
@@ -1092,6 +1098,33 @@ class FacturaElectronicaActivarTests(TenantTestCase):
         self.assertEqual(caso.exception.status, 400)
         self.assertFalse(GenParametro.objects.filter(gen_factura_electronica_activa=True).exists())
 
+    def test_el_mensaje_de_rededoc_no_queda_anidado_dentro_del_generico(self):
+        """
+        Rededoc responde con la misma forma que nosotros. Si se envuelve tal cual,
+        el front recibe `{'detail': generico, 'errores': {'detail': el de verdad}}`
+        y muestra el mensaje equivocado.
+        """
+        cliente = self._cliente(crear={
+            'error': True, 'status': 503,
+            'datos': {'detail': 'No se pudo validar el NIT contra el RUES.', 'errores': {}},
+        })
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.activar(cliente=cliente)
+
+        self.assertEqual(caso.exception.mensaje, 'No se pudo validar el NIT contra el RUES.')
+        self.assertIsNone(caso.exception.detalle)
+        self.assertEqual(caso.exception.status, 502)
+
+    def test_un_error_sin_detail_conserva_el_mensaje_generico(self):
+        cliente = self._cliente(crear={
+            'error': True, 'status': 400, 'datos': {'razon_social': ['Requerido']},
+        })
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.activar(cliente=cliente)
+
+        self.assertIn('rechazó los datos', caso.exception.mensaje)
+        self.assertEqual(caso.exception.detalle, {'razon_social': ['Requerido']})
+
     def test_si_rededoc_no_responde_es_502_y_no_marca_la_activacion(self):
         cliente = self._cliente(crear={'error': True, 'status': 0, 'datos': {'mensaje': 'timeout'}})
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
@@ -1099,29 +1132,6 @@ class FacturaElectronicaActivarTests(TenantTestCase):
 
         self.assertEqual(caso.exception.status, 502)
         self.assertFalse(GenParametro.objects.filter(gen_factura_electronica_activa=True).exists())
-
-    def test_si_la_consulta_previa_falla_no_crea_nada(self):
-        """Sin saber si ya existe, crear a ciegas duplicaría el emisor."""
-        cliente = self._cliente(buscar={'error': True, 'status': 0, 'datos': {}})
-        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-            factura_electronica.activar(cliente=cliente)
-
-        self.assertEqual(caso.exception.status, 502)
-        cliente.crear_emisor.assert_not_called()
-
-    def test_buscar_emisor_descarta_un_nit_que_no_coincide(self):
-        """
-        Si rededoc ignorara el filtro `?numero_identificacion=`, `results`
-        traería emisores ajenos y no podemos darlos por nuestros.
-        """
-        respuesta = {
-            'error': False, 'status': 200,
-            'datos': {'results': [{'id': 9, 'numero_identificacion': '800000000'}]},
-        }
-        with mock.patch.object(rededoc_servicio.Rededoc, '_peticion', return_value=respuesta):
-            resultado = rededoc_servicio.Rededoc(key='k').buscar_emisor('901192048')
-
-        self.assertIsNone(resultado['datos'])
 
 
 class FacturaElectronicaVistaTests(TenantTestCase):

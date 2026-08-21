@@ -54,21 +54,6 @@ class Rededoc:
         """
         return self._peticion('POST', '/api/emisores/emisor/', datos=datos)
 
-    def buscar_emisor(self, numero_identificacion: str):
-        respuesta = self._peticion(
-            'GET', '/api/emisores/emisor/',
-            parametros={'numero_identificacion': numero_identificacion},
-        )
-        if respuesta['error']:
-            return respuesta
-
-        resultados = (respuesta['datos'] or {}).get('results') or []
-        emisor = next(
-            (e for e in resultados if str(e.get('numero_identificacion')) == str(numero_identificacion)),
-            None,
-        )
-        return {'error': False, 'status': respuesta['status'], 'datos': emisor}
-
     # --- Interno -----------------------------------------------------------
 
     def _headers(self):
