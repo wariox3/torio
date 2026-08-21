@@ -70,6 +70,7 @@ def activar(cliente: Rededoc = None) -> GenParametro:
  
     ciudad = configuracion.gen_empresa_ciudad
     estado = ciudad.estado
+    pais = estado.pais
 
     payload = {
         'razon_social': configuracion.gen_empresa_razon_social,
@@ -78,9 +79,13 @@ def activar(cliente: Rededoc = None) -> GenParametro:
         'numero_identificacion': configuracion.gen_empresa_numero_identificacion,
         'digito_verificacion': configuracion.gen_empresa_digito_verificacion or '',
         'tipo_organizacion': configuracion.gen_empresa_tipo_persona_id,
-        'pais': estado.pais_id,
-        'departamento': ciudad.estado_id,
-        'municipio': ciudad.id,
+        # La ubicación va por código oficial (ISO alfa-2 y DANE), no por PK: las
+        # de acá son de nuestro catálogo y no significan nada en el de rededoc.
+        # Una PK ajena que por casualidad exista allá no da error: emite la
+        # factura con otro municipio.
+        'pais': pais.codigo,
+        'departamento': estado.codigo,
+        'municipio': ciudad.codigo,
         'direccion': configuracion.gen_empresa_direccion,
         'telefono': configuracion.gen_empresa_telefono or '',
         'correo': configuracion.gen_empresa_correo or '',

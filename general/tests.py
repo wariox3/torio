@@ -1031,9 +1031,10 @@ class FacturaElectronicaActivarTests(TenantTestCase):
         self.assertEqual(payload['numero_identificacion'], '901192048')
         self.assertEqual(payload['digito_verificacion'], '8')
         self.assertEqual(payload['direccion'], 'Calle 10 # 20-30')
-        self.assertEqual(payload['municipio'], self.ciudad.id)
-        self.assertEqual(payload['departamento'], self.ciudad.estado_id)
-        self.assertEqual(payload['pais'], self.ciudad.estado.pais_id)
+        # Códigos, no PK: las de nuestro catálogo no significan nada en rededoc.
+        self.assertEqual(payload['municipio'], '05001')
+        self.assertEqual(payload['departamento'], '05')
+        self.assertEqual(payload['pais'], 'CO')
 
     def test_el_nombre_comercial_sale_del_nombre_corto(self):
         self.configuracion.gen_empresa_nombre_corto = 'Semantica'
