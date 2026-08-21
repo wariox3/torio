@@ -272,6 +272,11 @@ MFA_ENCRYPTION_KEY = config('MFA_ENCRYPTION_KEY', default='')
 WOMPI_EVENTS_SECRET = config('WOMPI_EVENTS_SECRET', default='')
 WOMPI_INTEGRITY_SECRET = config('WOMPI_INTEGRITY_SECRET', default='')
 
+# RedEDoc (servicio Nobelio, api.rededoc.uk). La llave se lee de KEY_REDEDOC,
+# que es como quedó nombrada la variable en los .env ya desplegados.
+REDEDOC_URL = config('REDEDOC_URL', default='https://api.rededoc.uk')
+REDEDOC_KEY = config('KEY_REDEDOC', default='')
+
 # Backblaze B2
 B2_KEY_ID = config('B2_KEY_ID', default='')
 B2_APP_KEY = config('B2_APP_KEY', default='')

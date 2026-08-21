@@ -4,6 +4,7 @@ import zipfile
 from datetime import date, time
 from unittest import mock
 
+import httpx
 from botocore.exceptions import ClientError, ConnectionClosedError
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -25,6 +26,7 @@ from general.models import (
     GenModelo,
 )
 from general.servicios import documento as documento_servicio
+from general.servicios import rededoc as rededoc_servicio
 from general.views.archivo import GenArchivoViewSet
 from general.views.modelo import GenModeloViewSet
 from seguridad.models import SegUsuario
@@ -735,3 +737,90 @@ class SubirArchivoTests(TenantTestCase):
             respuesta = self._descargar(999999)
         self.assertEqual(respuesta.status_code, 404)
         descargar.assert_not_called()
+
+
+class RededocTests(SimpleTestCase):
+    """
+    El cliente de api.rededoc.uk. No sale a la red: se reemplaza httpx.request,
+    que es el único punto por donde el cliente habla con el mundo.
+    """
+
+    def _respuesta(self, status=200, json_datos=None, texto=''):
+        respuesta = mock.Mock(status_code=status, text=texto)
+        if json_datos is None:
+            respuesta.json.side_effect = ValueError('no es json')
+        else:
+            respuesta.json.return_value = json_datos
+        return respuesta
+
+    def test_estado_devuelve_los_datos_del_servicio(self):
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request',
+            return_value=self._respuesta(200, {'servicio': 'nobelio', 'estado': 'ok'}),
+        ) as peticion:
+            resultado = rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k').estado()
+
+        self.assertEqual(resultado, {'error': False, 'status': 200, 'datos': {'servicio': 'nobelio', 'estado': 'ok'}})
+        metodo, url = peticion.call_args.args
+        self.assertEqual((metodo, url), ('GET', 'https://api.rededoc.uk/estado/'))
+
+    def test_la_llave_viaja_en_el_header_authorization(self):
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {}),
+        ) as peticion:
+            rededoc_servicio.Rededoc(key='PGwRslxy.secreto').estado()
+
+        headers = peticion.call_args.kwargs['headers']
+        self.assertEqual(headers['Authorization'], 'Api-Key PGwRslxy.secreto')
+
+    def test_sin_llave_no_manda_authorization(self):
+        """Vale para endpoints públicos como /estado/, pero queda en el log."""
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {}),
+        ) as peticion:
+            rededoc_servicio.Rededoc(key='').estado()
+
+        self.assertNotIn('Authorization', peticion.call_args.kwargs['headers'])
+
+    def test_la_url_base_no_duplica_la_barra(self):
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {}),
+        ) as peticion:
+            rededoc_servicio.Rededoc(url='https://api.rededoc.uk/', key='k').estado()
+
+        self.assertEqual(peticion.call_args.args[1], 'https://api.rededoc.uk/estado/')
+
+    def test_un_error_http_marca_error_y_conserva_el_status(self):
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(401, {'detail': 'sin permiso'}),
+        ):
+            resultado = rededoc_servicio.Rededoc(key='mala').estado()
+
+        self.assertEqual(resultado, {'error': True, 'status': 401, 'datos': {'detail': 'sin permiso'}})
+
+    def test_una_respuesta_que_no_es_json_no_revienta(self):
+        """Un 502 del proxy llega en HTML; el cliente lo entrega como mensaje."""
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(502, None, '<html>Bad Gateway</html>'),
+        ):
+            resultado = rededoc_servicio.Rededoc(key='k').estado()
+
+        self.assertTrue(resultado['error'])
+        self.assertEqual(resultado['status'], 502)
+        self.assertIn('Bad Gateway', resultado['datos']['mensaje'])
+
+    def test_si_no_hay_red_devuelve_status_0_sin_propagar_la_excepcion(self):
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', side_effect=httpx.ConnectError('sin ruta al host'),
+        ):
+            resultado = rededoc_servicio.Rededoc(key='k').estado()
+
+        self.assertTrue(resultado['error'])
+        self.assertEqual(resultado['status'], 0)
+        self.assertIn('sin ruta al host', resultado['datos']['mensaje'])
+
+    def test_por_defecto_toma_url_y_llave_de_settings(self):
+        with self.settings(REDEDOC_URL='https://api.ejemplo.test', REDEDOC_KEY='llave-de-settings'):
+            cliente = rededoc_servicio.Rededoc()
+        self.assertEqual(cliente.url, 'https://api.ejemplo.test')
+        self.assertEqual(cliente.key, 'llave-de-settings')
