@@ -25,14 +25,21 @@ from general.models import (
     GenDocumentoDetalle,
     GenDocumentoTipo,
     GenFestivo,
+    GenCiudad,
+    GenEstado,
+    GenIdentificacion,
     GenModelo,
+    GenPais,
     GenParametro,
+    GenTipoPersona,
 )
 from general.servicios import documento as documento_servicio
+from general.servicios import factura_electronica
 from general.servicios import rededoc as rededoc_servicio
 from general.serializers import GenParametroSerializer
 from general.views.archivo import GenArchivoViewSet
 from general.views.configuracion import GenConfiguracionViewSet
+from general.views.factura_electronica import GenFacturaElectronicaViewSet
 from general.views.parametro import GenParametroViewSet
 from general.views.modelo import GenModeloViewSet
 from seguridad.models import SegUsuario
@@ -839,6 +846,13 @@ class _ParametroViewSinPermisos(GenParametroViewSet):
     throttle_classes = []
 
 
+class _FacturaElectronicaViewSinPermisos(GenFacturaElectronicaViewSet):
+    """Sin auth ni permisos: acá se prueba la traducción a HTTP, no la membresía."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
 class _ConfiguracionViewSinPermisos(GenConfiguracionViewSet):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
@@ -957,3 +971,193 @@ class GenConfiguracionViewTests(TenantTestCase):
 
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(GenConfiguracion.objects.get(id=1).gen_uvt, Decimal('47065'))
+
+
+class FacturaElectronicaActivarTests(TenantTestCase):
+    """
+    La activación en rededoc. No sale a la red: se reemplaza el cliente.
+    """
+
+    def setUp(self):
+        GenParametro.objects.all().delete()
+        self.configuracion = GenConfiguracion.objects.get_or_create(id=1)[0]
+        # El tenant de pruebas no carga los fixtures, así que el catálogo mínimo
+        # se arma acá: ciudad -> estado -> país es la cadena que usa el payload.
+        pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
+        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        identificacion = GenIdentificacion.objects.create(
+            id=6, nombre='Número de identificación tributaria', codigo='31',
+        )
+        tipo_persona = GenTipoPersona.objects.create(id=1, nombre='Jurídica')
+        self.configuracion.gen_empresa_razon_social = 'Semantica Digital S.A.S'
+        self.configuracion.gen_empresa_numero_identificacion = '901192048'
+        self.configuracion.gen_empresa_digito_verificacion = '8'
+        self.configuracion.gen_empresa_identificacion = identificacion
+        self.configuracion.gen_empresa_tipo_persona = tipo_persona
+        self.configuracion.gen_empresa_ciudad = ciudad
+        self.configuracion.gen_empresa_direccion = 'Calle 10 # 20-30'
+        self.configuracion.gen_empresa_telefono = '3205015059'
+        self.configuracion.gen_empresa_correo = 'contacto@ejemplo.com'
+        self.configuracion.save()
+        self.ciudad = ciudad
+
+    def _cliente(self, crear=None, buscar=None):
+        cliente = mock.Mock(spec=rededoc_servicio.Rededoc)
+        cliente.buscar_emisor.return_value = buscar or {'error': False, 'status': 200, 'datos': None}
+        cliente.crear_emisor.return_value = crear or {
+            'error': False, 'status': 201, 'datos': {'id': 77},
+        }
+        return cliente
+
+    def test_activar_crea_el_emisor_y_guarda_el_resultado(self):
+        cliente = self._cliente()
+        parametro = factura_electronica.activar(cliente=cliente)
+
+        self.assertIs(parametro.gen_factura_electronica_activa, True)
+        self.assertEqual(parametro.gen_factura_electronica_emisor, 77)
+        self.assertEqual(GenParametro.objects.get(id=1).gen_factura_electronica_emisor, 77)
+
+    def test_el_payload_sale_de_la_configuracion_y_no_lleva_cuenta(self):
+        """
+        `cuenta` la resuelve rededoc a partir de la API key de la integración;
+        mandarla sería la única forma de colgar el emisor de otra cuenta.
+        """
+        cliente = self._cliente()
+        factura_electronica.activar(cliente=cliente)
+
+        payload = cliente.crear_emisor.call_args.args[0]
+        self.assertNotIn('cuenta', payload)
+        self.assertEqual(payload['razon_social'], 'Semantica Digital S.A.S')
+        self.assertEqual(payload['numero_identificacion'], '901192048')
+        self.assertEqual(payload['digito_verificacion'], '8')
+        self.assertEqual(payload['direccion'], 'Calle 10 # 20-30')
+        self.assertEqual(payload['municipio'], self.ciudad.id)
+        self.assertEqual(payload['departamento'], self.ciudad.estado_id)
+        self.assertEqual(payload['pais'], self.ciudad.estado.pais_id)
+
+    def test_el_nombre_comercial_sale_del_nombre_corto(self):
+        self.configuracion.gen_empresa_nombre_corto = 'Semantica'
+        self.configuracion.save()
+        cliente = self._cliente()
+        factura_electronica.activar(cliente=cliente)
+
+        self.assertEqual(cliente.crear_emisor.call_args.args[0]['nombre_comercial'], 'Semantica')
+
+    def test_si_falta_un_dato_dice_cual_y_no_llama_a_rededoc(self):
+        cliente = self._cliente()
+        faltantes = {
+            'gen_empresa_razon_social': ('', 'razón social'),
+            'gen_empresa_numero_identificacion': ('', 'número de identificación'),
+            'gen_empresa_identificacion': (None, 'tipo de identificación'),
+            'gen_empresa_tipo_persona': (None, 'tipo de organización'),
+            'gen_empresa_ciudad': (None, 'ciudad'),
+            'gen_empresa_direccion': (None, 'dirección'),
+        }
+        for campo, (vacio, esperado) in faltantes.items():
+            with self.subTest(campo=campo):
+                original = getattr(self.configuracion, campo)
+                setattr(self.configuracion, campo, vacio)
+                self.configuracion.save()
+
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    factura_electronica.activar(cliente=cliente)
+
+                self.assertEqual(caso.exception.status, 400)
+                self.assertIn(esperado, caso.exception.mensaje)
+
+                setattr(self.configuracion, campo, original)
+                self.configuracion.save()
+
+        cliente.crear_emisor.assert_not_called()
+
+    def test_si_el_emisor_ya_existe_lo_reusa_en_vez_de_crear_otro(self):
+        """El usuario le va a dar dos veces al botón."""
+        cliente = self._cliente(buscar={
+            'error': False, 'status': 200, 'datos': {'id': 12, 'numero_identificacion': '901192048'},
+        })
+        parametro = factura_electronica.activar(cliente=cliente)
+
+        cliente.crear_emisor.assert_not_called()
+        self.assertEqual(parametro.gen_factura_electronica_emisor, 12)
+        self.assertIs(parametro.gen_factura_electronica_activa, True)
+
+    def test_un_rechazo_de_rededoc_es_400_y_no_marca_la_activacion(self):
+        cliente = self._cliente(crear={
+            'error': True, 'status': 400, 'datos': {'razon_social': ['Requerido']},
+        })
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.activar(cliente=cliente)
+
+        self.assertEqual(caso.exception.status, 400)
+        self.assertFalse(GenParametro.objects.filter(gen_factura_electronica_activa=True).exists())
+
+    def test_si_rededoc_no_responde_es_502_y_no_marca_la_activacion(self):
+        cliente = self._cliente(crear={'error': True, 'status': 0, 'datos': {'mensaje': 'timeout'}})
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.activar(cliente=cliente)
+
+        self.assertEqual(caso.exception.status, 502)
+        self.assertFalse(GenParametro.objects.filter(gen_factura_electronica_activa=True).exists())
+
+    def test_si_la_consulta_previa_falla_no_crea_nada(self):
+        """Sin saber si ya existe, crear a ciegas duplicaría el emisor."""
+        cliente = self._cliente(buscar={'error': True, 'status': 0, 'datos': {}})
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.activar(cliente=cliente)
+
+        self.assertEqual(caso.exception.status, 502)
+        cliente.crear_emisor.assert_not_called()
+
+    def test_buscar_emisor_descarta_un_nit_que_no_coincide(self):
+        """
+        Si rededoc ignorara el filtro `?numero_identificacion=`, `results`
+        traería emisores ajenos y no podemos darlos por nuestros.
+        """
+        respuesta = {
+            'error': False, 'status': 200,
+            'datos': {'results': [{'id': 9, 'numero_identificacion': '800000000'}]},
+        }
+        with mock.patch.object(rededoc_servicio.Rededoc, '_peticion', return_value=respuesta):
+            resultado = rededoc_servicio.Rededoc(key='k').buscar_emisor('901192048')
+
+        self.assertIsNone(resultado['datos'])
+
+
+class FacturaElectronicaVistaTests(TenantTestCase):
+    """La vista: solo traduce el servicio a HTTP."""
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+    def _llamar(self, vista_clase=None):
+        vista = (vista_clase or _FacturaElectronicaViewSinPermisos).as_view({'post': 'activar'})
+        peticion = self.factory.post('/general/factura-electronica/activar/')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return vista(peticion)
+
+    def test_una_activacion_correcta_responde_200(self):
+        parametro = GenParametro(
+            id=1, gen_factura_electronica_activa=True, gen_factura_electronica_emisor=77,
+        )
+        with mock.patch.object(factura_electronica, 'activar', return_value=parametro):
+            respuesta = self._llamar()
+
+        self.assertEqual(respuesta.status_code, 200)
+
+    def test_traduce_el_error_del_servicio_con_su_status(self):
+        error = factura_electronica.ErrorFacturaElectronica(
+            'Faltan datos', detalle={'campos': ['Razón social']}, status=400,
+        )
+        with mock.patch.object(factura_electronica, 'activar', side_effect=error):
+            respuesta = self._llamar()
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data['detail'], 'Faltan datos')
+        self.assertEqual(respuesta.data['errores'], {'campos': ['Razón social']})
+
+    def test_un_502_del_servicio_llega_como_502(self):
+        error = factura_electronica.ErrorFacturaElectronica('Sin respuesta', status=502)
+        with mock.patch.object(factura_electronica, 'activar', side_effect=error):
+            respuesta = self._llamar()
+        self.assertEqual(respuesta.status_code, 502)

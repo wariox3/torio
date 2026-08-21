@@ -22,6 +22,7 @@ class GenConfiguracion(models.Model):
     gen_empresa_numero_identificacion = models.CharField(max_length=20, null=True)
     gen_empresa_digito_verificacion = models.CharField(max_length=1, null=True)
     gen_empresa_nombre_corto = models.CharField(max_length=200, default='', db_default='')
+    gen_empresa_razon_social = models.CharField(max_length=450, default='', db_default='')
     gen_empresa_direccion = models.CharField(max_length=50, null=True)
     gen_empresa_telefono = models.CharField(max_length=50, null=True)
     gen_empresa_correo = models.EmailField(max_length=255, default='', db_default='')

@@ -44,6 +44,41 @@ class Rededoc:
         """
         return self._peticion('GET', '/estado/')
 
+    def crear_emisor(self, datos: dict):
+        """
+        Da de alta un emisor. `POST /api/emisores/emisor/`.
+
+        No se manda `cuenta`: rededoc cuelga el emisor de la cuenta de la
+        integración que autentica, o sea de nuestra API key. Mandarla sería la
+        única forma de colgarlo de la cuenta equivocada.
+        """
+        return self._peticion('POST', '/api/emisores/emisor/', datos=datos)
+
+    def buscar_emisor(self, numero_identificacion: str):
+        """
+        Busca un emisor por NIT entre los que alcanza nuestra integración.
+        Se usa antes de crear, para que darle dos veces al botón no falle.
+
+        Devuelve la misma forma de siempre; en `datos` va el emisor encontrado
+        o `None` si no hay ninguno.
+        """
+        respuesta = self._peticion(
+            'GET', '/api/emisores/emisor/',
+            parametros={'numero_identificacion': numero_identificacion},
+        )
+        if respuesta['error']:
+            return respuesta
+
+        resultados = (respuesta['datos'] or {}).get('results') or []
+        # El filtro por NIT no está confirmado del lado de rededoc, así que se
+        # vuelve a comparar acá: si el parámetro se ignorara, `results` traería
+        # emisores ajenos y no queremos darlos por nuestros.
+        emisor = next(
+            (e for e in resultados if str(e.get('numero_identificacion')) == str(numero_identificacion)),
+            None,
+        )
+        return {'error': False, 'status': respuesta['status'], 'datos': emisor}
+
     # --- Interno -----------------------------------------------------------
 
     def _headers(self):

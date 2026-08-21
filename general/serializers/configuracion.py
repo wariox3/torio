@@ -21,6 +21,7 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
             'gen_empresa_numero_identificacion',
             'gen_empresa_digito_verificacion',
             'gen_empresa_nombre_corto',
+            'gen_empresa_razon_social',
             'gen_empresa_direccion',
             'gen_empresa_telefono',
             'gen_empresa_correo',

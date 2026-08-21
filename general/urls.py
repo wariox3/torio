@@ -17,6 +17,7 @@ from general.views import (
     GenDocumentoTipoViewSet,
     GenDocumentoViewSet,
     GenEstadoViewSet,
+    GenFacturaElectronicaViewSet,
     GenFestivoViewSet,
     GenFormaPagoViewSet,
     GenIdentificacionViewSet,
@@ -60,6 +61,9 @@ router.register(
 router.register(r'documento-informe', GenDocumentoInformeViewSet, basename='documento-informe')
 router.register(r'documento-tipo', GenDocumentoTipoViewSet, basename='documento-tipo')
 router.register(r'estado', GenEstadoViewSet, basename='estado')
+router.register(
+    r'factura-electronica', GenFacturaElectronicaViewSet, basename='factura-electronica',
+)
 router.register(r'festivo', GenFestivoViewSet, basename='festivo')
 router.register(r'forma-pago', GenFormaPagoViewSet, basename='forma-pago')
 router.register(r'identificacion', GenIdentificacionViewSet, basename='identificacion')
