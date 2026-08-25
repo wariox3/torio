@@ -16,6 +16,7 @@ from seguridad import mfa as servicio_mfa
 from seguridad.foto import subir_foto
 from seguridad.models import METODO_SMS, SegMfaUsuario, SegUsuario
 from seguridad.serializers import SegUsuarioActualizarSerializer, SegUsuarioMeSerializer, SegUsuarioSeleccionarSerializer, SegUsuarioSerializer
+from utilidades.paginacion import SeleccionarPaginacion
 from utilidades.turnstile import verify_turnstile
 from utilidades.zinc import Zinc
 
@@ -338,22 +339,25 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
     @extend_schema(
         tags=['Usuarios'],
         summary='Seleccionar usuario',
-        description='Retorna id, nombre_corto y email. Busca por nombre o email (máx 10 resultados).',
+        description='Retorna id, nombre_corto y email. Busca por nombre o email (paginado de a 50).',
         parameters=[
             OpenApiParameter('search', str, description='Buscar por nombre o email'),
         ],
         responses=SegUsuarioSeleccionarSerializer(many=True),
     )
-    @action(detail=False, methods=['get'], url_path='seleccionar')
+    @action(detail=False, methods=['get'], url_path='seleccionar', pagination_class=SeleccionarPaginacion)
     def seleccionar(self, request):
         search = request.query_params.get('search', '').strip()
-        qs = SegUsuario.objects.all()
+        # SegUsuario.Meta no define `ordering`, y paginar sin orden reparte los
+        # mismos usuarios entre páginas distintas; `email` es único y desempata.
+        qs = SegUsuario.objects.all().order_by('nombre_corto', 'email')
         if search:
             qs = qs.filter(
                 models.Q(nombre_corto__icontains=search) | models.Q(email__icontains=search)
             )
-        qs = qs[:10]
-        return Response(SegUsuarioSeleccionarSerializer(qs, many=True).data)
+        pagina = self.paginate_queryset(qs)
+        serializer = SegUsuarioSeleccionarSerializer(pagina, many=True)
+        return self.get_paginated_response(serializer.data)
 
     @extend_schema(exclude=True)
     @action(detail=False, methods=['post'], url_path='cambiar-clave')

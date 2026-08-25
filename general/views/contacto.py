@@ -75,7 +75,9 @@ class GenContactoViewSet(
     @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=GenContactoSeleccionarSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)
     def seleccionar(self, request):
-        qs = GenContacto.objects.order_by('nombre_corto')
+        qs = GenContacto.objects.select_related(
+            'ciudad', 'plazo_pago', 'plazo_pago_proveedor',
+        ).order_by('nombre_corto')
         search = request.query_params.get('search', '').strip()
         if search:
             qs = qs.filter(nombre_corto__icontains=search) | qs.filter(

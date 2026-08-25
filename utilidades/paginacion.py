@@ -5,6 +5,6 @@ from rest_framework.pagination import PageNumberPagination
 
 
 class SeleccionarPaginacion(PageNumberPagination):
-    """Paginación estándar para las acciones `seleccionar/` (10 por página)."""
+    """Paginación estándar para las acciones `seleccionar/` (50 por página)."""
 
-    page_size = 10
+    page_size = 50
