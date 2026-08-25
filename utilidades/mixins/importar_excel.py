@@ -4,7 +4,6 @@ Mixin para importar datos a un ViewSet desde un archivo .xlsx.
 from io import BytesIO
 from zipfile import BadZipFile
 
-from django.apps import apps
 from django.db import models as dj_models, transaction
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, inline_serializer
@@ -44,8 +43,6 @@ class ImportarExcelMixin:
     Agrega dos acciones al ViewSet:
         GET  /<recurso>/importar-ejemplo/  — descarga plantilla .xlsx
         POST /<recurso>/importar/          — sube archivo (multipart, campo `archivo`)
-
-    Ambas exigen que el modelo asociado esté registrado en GenModelo con tipo='A'.
 
     El ViewSet que lo herede debe declarar:
         serializer_class_importar: Serializer
@@ -109,20 +106,6 @@ class ImportarExcelMixin:
             cuerpo['errores'] = errores
         return Response(cuerpo, status=status_code)
 
-    def _validar_administrador(self, modelo_cls):
-        GenModelo = apps.get_model('general', 'GenModelo')
-        gen_modelo = GenModelo.objects.filter(clase=modelo_cls.__name__).first()
-        if gen_modelo is None:
-            return self._error_importar(
-                f'El modelo {modelo_cls.__name__} no está registrado en GenModelo'
-            )
-        if gen_modelo.tipo != GenModelo.Tipo.ADMINISTRADOR:
-            return self._error_importar(
-                'Solo los modelos tipo administrador pueden importarse',
-                status_code=status.HTTP_403_FORBIDDEN,
-            )
-        return None
-
     @extend_schema(
         summary='Descargar plantilla de importación',
         description=(
@@ -135,9 +118,6 @@ class ImportarExcelMixin:
     def importar_ejemplo(self, request):
         serializer = self.get_serializer_importar()
         modelo = serializer.model
-        error = self._validar_administrador(modelo)
-        if error:
-            return error
 
         wb = _crear_workbook()
         ws = wb.active
@@ -264,9 +244,6 @@ class ImportarExcelMixin:
     def importar(self, request):
         serializer = self.get_serializer_importar()
         modelo = serializer.model
-        error = self._validar_administrador(modelo)
-        if error:
-            return error
 
         archivo = request.FILES.get('archivo')
         if not archivo:
