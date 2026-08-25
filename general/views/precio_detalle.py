@@ -2,8 +2,8 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
 
 from general.models import GenPrecioDetalle
-from general.serializers import GenPrecioDetalleSerializer
-from utilidades.mixins import FiltrosDinamicosMixin
+from general.serializers import GenPrecioDetalleImportarSerializer, GenPrecioDetalleSerializer
+from utilidades.mixins import FiltrosDinamicosMixin, ImportarExcelMixin
 
 _LIST_PARAMS = [
     OpenApiParameter('precio_id', int, description='Filtrar por precio'),
@@ -14,6 +14,7 @@ _LIST_PARAMS = [
 @extend_schema(tags=['PrecioDetalle'])
 class GenPrecioDetalleViewSet(
     FiltrosDinamicosMixin,
+    ImportarExcelMixin,
     mixins.ListModelMixin,
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
@@ -22,6 +23,7 @@ class GenPrecioDetalleViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = GenPrecioDetalleSerializer
+    serializer_class_importar = GenPrecioDetalleImportarSerializer
 
     def get_queryset(self):
         qs = GenPrecioDetalle.objects.select_related(

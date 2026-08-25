@@ -56,6 +56,7 @@ from .parametro import GenParametroSerializer
 from .plazo_pago import GenPlazoPagoSeleccionarSerializer
 from .precio import GenPrecioSeleccionarSerializer, GenPrecioSerializer
 from .precio_detalle import GenPrecioDetalleSerializer
+from .precio_detalle_importar import GenPrecioDetalleImportarSerializer
 from .precio_exportar import GenPrecioExportarSerializer
 from .precio_importar import GenPrecioImportarSerializer
 from .resolucion import GenResolucionSeleccionarSerializer, GenResolucionSerializer
