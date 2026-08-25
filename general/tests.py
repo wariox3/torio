@@ -9,7 +9,7 @@ import httpx
 from botocore.exceptions import ClientError, ConnectionClosedError
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import connection
+from django.db import IntegrityError, connection, transaction
 from django.test import SimpleTestCase
 from django.utils import timezone
 from django_tenants.test.cases import TenantTestCase
@@ -28,20 +28,24 @@ from general.models import (
     GenCiudad,
     GenEstado,
     GenIdentificacion,
+    GenItem,
     GenModelo,
     GenPais,
     GenParametro,
+    GenPrecio,
+    GenPrecioDetalle,
     GenTipoPersona,
 )
 from general.servicios import documento as documento_servicio
 from general.servicios import factura_electronica
 from general.servicios import rededoc as rededoc_servicio
-from general.serializers import GenParametroSerializer
+from general.serializers import GenParametroSerializer, GenPrecioDetalleImportarSerializer
 from general.views.archivo import GenArchivoViewSet
 from general.views.configuracion import GenConfiguracionViewSet
 from general.views.factura_electronica import GenFacturaElectronicaViewSet
 from general.views.parametro import GenParametroViewSet
 from general.views.modelo import GenModeloViewSet
+from general.views.precio_detalle import GenPrecioDetalleViewSet
 from seguridad.models import SegUsuario
 from general.servicios import archivo as archivo_servicio
 from utilidades import backblaze, mime
@@ -1313,3 +1317,191 @@ class FacturaElectronicaVistaTests(TenantTestCase):
         with mock.patch.object(factura_electronica, 'crear_emisor', side_effect=error):
             respuesta = self._llamar()
         self.assertEqual(respuesta.status_code, 502)
+
+
+class _PrecioDetalleViewSinPermisos(GenPrecioDetalleViewSet):
+    """Variante sin auth ni throttle: acá se prueba la validación, no la membresía."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class _PrecioDetalleBaseTests(TenantTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.precio = GenPrecio.objects.create(
+            nombre='Lista 1', fecha_vence=date(2026, 12, 31),
+        )
+        self.item = GenItem.objects.create(nombre='Item 1')
+
+
+class CrudPrecioDetalleTests(_PrecioDetalleBaseTests):
+    def _crear_detalle(self, **overrides):
+        return GenPrecioDetalle.objects.create(**{
+            'precio': self.precio,
+            'item': self.item,
+            'vr_precio': Decimal('100.00'),
+            **overrides,
+        })
+
+    def test_crea_detalle(self):
+        view = _PrecioDetalleViewSinPermisos.as_view({'post': 'create'})
+        payload = {'precio': self.precio.id, 'item': self.item.id, 'vr_precio': '150.00'}
+        request = self.factory.post('/precio-detalle/', payload, format='json')
+        response = view(request)
+
+        self.assertEqual(response.status_code, 201)
+        detalle = GenPrecioDetalle.objects.get()
+        self.assertEqual(detalle.precio_id, self.precio.id)
+        self.assertEqual(detalle.item_id, self.item.id)
+        self.assertEqual(detalle.vr_precio, Decimal('150.00'))
+
+    def test_crear_requiere_item(self):
+        view = _PrecioDetalleViewSinPermisos.as_view({'post': 'create'})
+        payload = {'precio': self.precio.id, 'vr_precio': '150.00'}
+        request = self.factory.post('/precio-detalle/', payload, format='json')
+        response = view(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('item', response.data)
+        self.assertEqual(GenPrecioDetalle.objects.count(), 0)
+
+    def test_crear_rechaza_precio_item_duplicado(self):
+        self._crear_detalle()
+
+        view = _PrecioDetalleViewSinPermisos.as_view({'post': 'create'})
+        payload = {'precio': self.precio.id, 'item': self.item.id, 'vr_precio': '999.00'}
+        request = self.factory.post('/precio-detalle/', payload, format='json')
+        response = view(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.data)
+        self.assertEqual(GenPrecioDetalle.objects.count(), 1)
+
+    def test_mismo_item_en_otro_precio_si_se_permite(self):
+        self._crear_detalle()
+        precio2 = GenPrecio.objects.create(nombre='Lista 2', fecha_vence=date(2026, 12, 31))
+
+        view = _PrecioDetalleViewSinPermisos.as_view({'post': 'create'})
+        payload = {'precio': precio2.id, 'item': self.item.id, 'vr_precio': '200.00'}
+        request = self.factory.post('/precio-detalle/', payload, format='json')
+        response = view(request)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(GenPrecioDetalle.objects.count(), 2)
+
+    def test_actualizar_no_choca_consigo_mismo(self):
+        detalle = self._crear_detalle()
+
+        view = _PrecioDetalleViewSinPermisos.as_view({'patch': 'partial_update'})
+        request = self.factory.patch('/precio-detalle/', {'vr_precio': '300.00'}, format='json')
+        response = view(request, pk=detalle.pk)
+
+        self.assertEqual(response.status_code, 200)
+        detalle.refresh_from_db()
+        self.assertEqual(detalle.vr_precio, Decimal('300.00'))
+
+    def test_actualizar_rechaza_duplicado(self):
+        item2 = GenItem.objects.create(nombre='Item 2')
+        self._crear_detalle()
+        detalle2 = self._crear_detalle(item=item2)
+
+        # Mover detalle2 al item ya ocupado por el primero dentro del mismo precio.
+        view = _PrecioDetalleViewSinPermisos.as_view({'patch': 'partial_update'})
+        request = self.factory.patch('/precio-detalle/', {'item': self.item.id}, format='json')
+        response = view(request, pk=detalle2.pk)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.data)
+        detalle2.refresh_from_db()
+        self.assertEqual(detalle2.item_id, item2.id)
+
+    def test_la_bd_tambien_rechaza_el_duplicado(self):
+        self._crear_detalle()
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                GenPrecioDetalle.objects.create(
+                    precio=self.precio, item=self.item, vr_precio=Decimal('50.00'),
+                )
+
+
+class ImportarPrecioDetalleTests(_PrecioDetalleBaseTests):
+    def _procesar(self, fila):
+        serializer = GenPrecioDetalleImportarSerializer()
+        # (indice, dict de datos por campo del campos_excel)
+        return serializer.procesar_lote([(2, fila)])
+
+    def _fila_valida(self, **overrides):
+        return {
+            'precio.id': self.precio.id,
+            'item.id': self.item.id,
+            'vr_precio': '120.50',
+            **overrides,
+        }
+
+    def test_importa_fila_valida(self):
+        creados, errores = self._procesar(self._fila_valida())
+
+        self.assertEqual(errores, [])
+        self.assertEqual(creados, 1)
+        detalle = GenPrecioDetalle.objects.get()
+        self.assertEqual(detalle.precio_id, self.precio.id)
+        self.assertEqual(detalle.item_id, self.item.id)
+        self.assertEqual(detalle.vr_precio, Decimal('120.50'))
+
+    def test_item_vacio_da_error(self):
+        creados, errores = self._procesar(self._fila_valida(**{'item.id': ''}))
+
+        self.assertEqual(creados, 0)
+        self.assertEqual(len(errores), 1)
+        self.assertIn('Item', errores[0]['mensaje'])
+        self.assertEqual(GenPrecioDetalle.objects.count(), 0)
+
+    def test_item_inexistente_da_error(self):
+        creados, errores = self._procesar(self._fila_valida(**{'item.id': 9999}))
+
+        self.assertEqual(creados, 0)
+        self.assertEqual(len(errores), 1)
+        self.assertIn('Item', errores[0]['mensaje'])
+
+    def test_item_es_obligatorio_en_la_plantilla(self):
+        self.assertIn('item.id', GenPrecioDetalleImportarSerializer.campos_requeridos)
+
+    def test_duplicado_contra_bd_da_error(self):
+        GenPrecioDetalle.objects.create(
+            precio=self.precio, item=self.item, vr_precio=Decimal('100.00'),
+        )
+
+        creados, errores = self._procesar(self._fila_valida())
+
+        self.assertEqual(creados, 0)
+        self.assertEqual(len(errores), 1)
+        self.assertIn('Ya existe un detalle', errores[0]['mensaje'])
+        self.assertEqual(GenPrecioDetalle.objects.count(), 1)
+
+    def test_duplicado_dentro_del_archivo_da_error(self):
+        serializer = GenPrecioDetalleImportarSerializer()
+        filas = [(2, self._fila_valida()), (3, self._fila_valida(vr_precio='999.00'))]
+
+        creados, errores = serializer.procesar_lote(filas)
+
+        self.assertEqual(creados, 0)
+        self.assertEqual(len(errores), 1)
+        self.assertEqual(errores[0]['fila'], 3)
+        self.assertIn('Ya existe un detalle', errores[0]['mensaje'])
+        self.assertEqual(GenPrecioDetalle.objects.count(), 0)
+
+    def test_mismo_item_en_otro_precio_si_se_importa(self):
+        precio2 = GenPrecio.objects.create(nombre='Lista 2', fecha_vence=date(2026, 12, 31))
+        serializer = GenPrecioDetalleImportarSerializer()
+        filas = [
+            (2, self._fila_valida()),
+            (3, self._fila_valida(**{'precio.id': precio2.id})),
+        ]
+
+        creados, errores = serializer.procesar_lote(filas)
+
+        self.assertEqual(errores, [])
+        self.assertEqual(creados, 2)
+        self.assertEqual(GenPrecioDetalle.objects.count(), 2)

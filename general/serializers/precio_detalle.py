@@ -25,3 +25,19 @@ class GenPrecioDetalleSerializer(serializers.ModelSerializer):
             'vr_precio',
         ]
         read_only_fields = ['id']
+        # El unique_together lo reporta validate() con `detail`, no con non_field_errors.
+        validators = []
+
+    def validate(self, attrs):
+        precio = attrs.get('precio', getattr(self.instance, 'precio', None))
+        item = attrs.get('item', getattr(self.instance, 'item', None))
+
+        qs = GenPrecioDetalle.objects.filter(precio=precio, item=item)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                {'detail': 'Ya existe un detalle para ese precio e item.'}
+            )
+
+        return attrs

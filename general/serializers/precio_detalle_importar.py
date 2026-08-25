@@ -28,7 +28,7 @@ class GenPrecioDetalleImportarSerializer(serializers.Serializer):
         ('item.id', 'Item'),
         ('vr_precio', 'Valor precio'),
     )
-    campos_requeridos = {'precio.id', 'vr_precio'}
+    campos_requeridos = {'precio.id', 'item.id', 'vr_precio'}
 
     LIMITE_ERRORES = 100
     BATCH_BULK_CREATE = 500
@@ -37,8 +37,9 @@ class GenPrecioDetalleImportarSerializer(serializers.Serializer):
         """
         Procesa todas las filas válidas en bulk:
           1. Pre-carga FKs en una query por modelo.
-          2. Valida cada fila contra mapas en memoria (sin BD).
-          3. `bulk_create` al final si no hay errores.
+          2. Pre-carga los pares (precio, item) ya usados en BD en una query.
+          3. Valida cada fila contra mapas en memoria (sin BD).
+          4. `bulk_create` al final si no hay errores.
 
         filas_validas: list[(idx, datos)]
         Retorna: (creados, errores)
@@ -53,7 +54,14 @@ class GenPrecioDetalleImportarSerializer(serializers.Serializer):
         mapa_precio = {o.id: o for o in GenPrecio.objects.filter(id__in=ids_precio)}
         mapa_item = {o.id: o for o in GenItem.objects.filter(id__in=ids_item)}
 
-        # 2) Construir instancias en memoria, recolectar errores
+        # 2) Pares (precio, item) ya usados: en la BD y en el propio archivo.
+        existentes = set(
+            GenPrecioDetalle.objects
+            .filter(precio_id__in=mapa_precio, item_id__in=mapa_item)
+            .values_list('precio_id', 'item_id')
+        )
+
+        # 3) Construir instancias en memoria, recolectar errores
         errores = []
         nuevos = []
 
@@ -64,7 +72,12 @@ class GenPrecioDetalleImportarSerializer(serializers.Serializer):
                 if precio is None:
                     raise ValueError(f'Precio con id={precio_id} no existe')
 
-                item = self._fk_opcional(datos.get('item.id'), mapa_item, 'Item')
+                item = self._fk_obligatorio(datos.get('item.id'), mapa_item, 'Item')
+
+                par = (precio.id, item.id)
+                if par in existentes:
+                    raise ValueError('Ya existe un detalle para ese precio e item')
+                existentes.add(par)
 
                 nuevos.append(GenPrecioDetalle(
                     precio=precio,
@@ -76,7 +89,7 @@ class GenPrecioDetalleImportarSerializer(serializers.Serializer):
                 if len(errores) >= self.LIMITE_ERRORES:
                     break
 
-        # 3) Bulk create (solo si no hubo errores)
+        # 4) Bulk create (solo si no hubo errores)
         if errores:
             return 0, errores
 
@@ -111,6 +124,12 @@ class GenPrecioDetalleImportarSerializer(serializers.Serializer):
         obj = mapa.get(pk)
         if obj is None:
             raise ValueError(f'{etiqueta} con id={pk} no existe')
+        return obj
+
+    def _fk_obligatorio(self, valor, mapa, etiqueta):
+        obj = self._fk_opcional(valor, mapa, etiqueta)
+        if obj is None:
+            raise ValueError(f'{etiqueta} es obligatorio')
         return obj
 
     @staticmethod

@@ -10,7 +10,6 @@ class GenPrecioDetalle(models.Model):
     )
     item = models.ForeignKey(
         'general.GenItem',
-        null=True,
         on_delete=models.PROTECT,
         related_name='precios_detalles_item_rel',
     )
@@ -20,6 +19,12 @@ class GenPrecioDetalle(models.Model):
         ordering = ['-id']
         verbose_name = 'Precio detalle'
         verbose_name_plural = 'Precios detalles'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['precio', 'item'],
+                name='gen_precio_detalle_precio_item_unico',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.precio_id} - {self.id}'
