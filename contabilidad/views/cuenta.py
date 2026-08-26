@@ -1,3 +1,4 @@
+from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
@@ -10,9 +11,24 @@ from contabilidad.serializers import (
     ConCuentaSeleccionarSerializer,
     ConCuentaSerializer,
 )
+from general.models import GenDocumentoDetalle
 from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.paginacion import SeleccionarPaginacion
+
+
+class ConCuentaTrasladarRequestSerializer(serializers.Serializer):
+    cuenta_origen = serializers.PrimaryKeyRelatedField(queryset=ConCuenta.objects.all())
+    cuenta_destino = serializers.PrimaryKeyRelatedField(queryset=ConCuenta.objects.all())
+
+    def validate(self, attrs):
+        if attrs['cuenta_origen'] == attrs['cuenta_destino']:
+            raise serializers.ValidationError({'detail': 'Las cuentas no pueden ser iguales'})
+        if not attrs['cuenta_destino'].permite_movimiento:
+            raise serializers.ValidationError(
+                {'detail': 'La cuenta destino no permite movimiento'}
+            )
+        return attrs
 
 _LIST_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por código o nombre'),
@@ -25,6 +41,14 @@ _LIST_PARAMS = [
 _UsoResponse = inline_serializer(
     name='CuentaUsoResponse',
     fields={'uso': serializers.BooleanField()},
+)
+
+_TrasladarResponse = inline_serializer(
+    name='CuentaTrasladarResponse',
+    fields={
+        'movimientos': serializers.IntegerField(),
+        'documentos_detalles': serializers.IntegerField(),
+    },
 )
 
 _SELECCIONAR_PARAMS = [
@@ -90,3 +114,35 @@ class ConCuentaViewSet(
         # Sin get_object(): no hace falta traer la cuenta, solo preguntar por la FK.
         uso = ConMovimiento.objects.filter(cuenta_id=pk).exists()
         return Response({'uso': uso})
+
+    @extend_schema(
+        summary='Trasladar los movimientos de una cuenta a otra',
+        description=(
+            'Reasigna a la cuenta destino los movimientos contables y los detalles de '
+            'documento que hoy apuntan a la cuenta origen, y devuelve cuántos registros '
+            'se movieron en cada uno. La cuenta destino debe permitir movimiento. '
+            'La cuenta origen no se elimina.'
+        ),
+        request=ConCuentaTrasladarRequestSerializer,
+        responses=_TrasladarResponse,
+    )
+    @action(detail=False, methods=['post'])
+    def trasladar(self, request):
+        serializer = ConCuentaTrasladarRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cuenta_origen = serializer.validated_data['cuenta_origen']
+        cuenta_destino = serializer.validated_data['cuenta_destino']
+
+        # Las dos actualizaciones son un solo traslado: o se mueve todo o no se mueve nada.
+        with transaction.atomic():
+            movimientos = ConMovimiento.objects.filter(
+                cuenta=cuenta_origen,
+            ).update(cuenta=cuenta_destino)
+            documentos_detalles = GenDocumentoDetalle.objects.filter(
+                cuenta=cuenta_origen,
+            ).update(cuenta=cuenta_destino)
+
+        return Response({
+            'movimientos': movimientos,
+            'documentos_detalles': documentos_detalles,
+        })
