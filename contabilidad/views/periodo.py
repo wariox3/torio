@@ -1,7 +1,7 @@
 from itertools import groupby
 
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -25,6 +25,25 @@ class CrearPeriodosAnioRequestSerializer(serializers.Serializer):
 
 class ConPeriodoAccionRequestSerializer(serializers.Serializer):
     id = serializers.PrimaryKeyRelatedField(queryset=ConPeriodo.objects.all())
+
+
+_InconsistenciasResponse = inline_serializer(
+    name='PeriodoInconsistenciasResponse',
+    fields={
+        'inconsistencias': inline_serializer(
+            name='PeriodoInconsistencia',
+            many=True,
+            fields={
+                'comprobante_id': serializers.IntegerField(allow_null=True),
+                'numero': serializers.IntegerField(allow_null=True),
+                'cuenta_id': serializers.IntegerField(allow_null=True),
+                'documento_id': serializers.IntegerField(allow_null=True),
+                'documento_tipo_nombre': serializers.CharField(allow_null=True),
+                'inconsistencia': serializers.CharField(),
+            },
+        ),
+    },
+)
 
 
 _LIST_PARAMS = [
@@ -124,6 +143,20 @@ class ConPeriodoViewSet(
 
         datos = ConPeriodoSerializer(periodos, many=True).data
         return Response(datos, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        summary='Consultar las inconsistencias de un periodo',
+        description=(
+            'Devuelve las inconsistencias que impedirían bloquear el periodo, sin '
+            'bloquearlo ni modificar su estado. Una lista vacía significa que el '
+            'periodo se puede bloquear.'
+        ),
+        responses=_InconsistenciasResponse,
+    )
+    @action(detail=True, methods=['get'])
+    def inconsistencias(self, request, pk=None):
+        periodo = self.get_object()
+        return Response({'inconsistencias': analizar_inconsistencias(periodo)})
 
     @extend_schema(
         summary='Bloquear un periodo',
