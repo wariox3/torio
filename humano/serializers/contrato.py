@@ -24,6 +24,9 @@ class HumContratoSerializer(serializers.ModelSerializer):
 
     contrato_tipo_nombre = serializers.CharField(source='contrato_tipo.nombre', read_only=True, default=None)
     contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
+    contacto_numero_identificacion = serializers.CharField(
+        source='contacto.numero_identificacion', read_only=True, default=None,
+    )
     ciudad_contrato_nombre = serializers.CharField(source='ciudad_contrato.nombre', read_only=True, default=None)
     ciudad_labora_nombre = serializers.CharField(source='ciudad_labora.nombre', read_only=True, default=None)
     grupo_nombre = serializers.CharField(source='grupo.nombre', read_only=True, default=None)
@@ -63,6 +66,7 @@ class HumContratoSerializer(serializers.ModelSerializer):
             'contrato_tipo_nombre',
             'contacto',
             'contacto_nombre',
+            'contacto_numero_identificacion',
             'ciudad_contrato',
             'ciudad_contrato_nombre',
             'ciudad_labora',
