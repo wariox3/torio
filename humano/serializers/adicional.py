@@ -10,6 +10,10 @@ class HumAdicionalSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('-id',)
 
     contrato_nombre = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, default=None)
+    contrato_contacto_id = serializers.IntegerField(source='contrato.contacto_id', read_only=True, default=None)
+    contrato_contacto_numero_identificacion = serializers.CharField(
+        source='contrato.contacto.numero_identificacion', read_only=True, default=None,
+    )
     concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, default=None)
     programacion_nombre = serializers.CharField(source='programacion.nombre', read_only=True, default=None)
 
@@ -29,5 +33,7 @@ class HumAdicionalSerializer(serializers.ModelSerializer):
             'concepto_nombre',
             'contrato',
             'contrato_nombre',
+            'contrato_contacto_id',
+            'contrato_contacto_numero_identificacion',
         ]
         read_only_fields = ['id']
