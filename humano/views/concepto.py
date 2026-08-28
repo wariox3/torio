@@ -7,6 +7,7 @@ from humano.serializers import HumConceptoSeleccionarSerializer
 from utilidades.paginacion import SeleccionarPaginacion
 
 _SELECCIONAR_PARAMS = [
+    OpenApiParameter('concepto_tipo_id', int, description='Filtrar por ID de tipo de concepto'),
     OpenApiParameter('search', str, description='Buscar por nombre'),
 ]
 
@@ -19,7 +20,10 @@ class HumConceptoViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)
     def seleccionar(self, request):
         qs = HumConcepto.objects.all()
+        concepto_tipo = request.query_params.get('concepto_tipo_id')
         search = request.query_params.get('search', '').strip()
+        if concepto_tipo:
+            qs = qs.filter(concepto_tipo_id=concepto_tipo)
         if search:
             qs = qs.filter(nombre__icontains=search)
         pagina = self.paginate_queryset(qs)
