@@ -8,6 +8,7 @@ from utilidades.paginacion import SeleccionarPaginacion
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('concepto_tipo_id', int, description='Filtrar por ID de tipo de concepto'),
+    OpenApiParameter('adicional', bool, description='Filtrar por adicional'),
     OpenApiParameter('search', str, description='Buscar por nombre'),
 ]
 
@@ -24,6 +25,11 @@ class HumConceptoViewSet(viewsets.GenericViewSet):
         search = request.query_params.get('search', '').strip()
         if concepto_tipo:
             qs = qs.filter(concepto_tipo_id=concepto_tipo)
+
+        valor = request.query_params.get('adicional')
+        if valor is not None:
+            qs = qs.filter(adicional=valor.lower() == 'true')
+
         if search:
             qs = qs.filter(nombre__icontains=search)
         pagina = self.paginate_queryset(qs)

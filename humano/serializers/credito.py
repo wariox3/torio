@@ -10,6 +10,9 @@ class HumCreditoSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('-id',)
 
     contrato_nombre = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, default=None)
+    contrato_contacto_numero_identificacion = serializers.CharField(
+        source='contrato.contacto.numero_identificacion', read_only=True, default=None,
+    )
     concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, default=None)
 
     class Meta:
@@ -33,5 +36,6 @@ class HumCreditoSerializer(serializers.ModelSerializer):
             'concepto_nombre',
             'contrato',
             'contrato_nombre',
+            'contrato_contacto_numero_identificacion',
         ]
         read_only_fields = ['id', 'abono', 'saldo', 'cuota_actual', 'pagado']
