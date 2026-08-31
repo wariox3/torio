@@ -10,6 +10,10 @@ class HumNovedadSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('-id',)
 
     contrato_nombre = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, default=None)
+    contrato_contacto_id = serializers.IntegerField(source='contrato.contacto_id', read_only=True, default=None)
+    contrato_contacto_numero_identificacion = serializers.CharField(
+        source='contrato.contacto.numero_identificacion', read_only=True, default=None,
+    )
     novedad_tipo_nombre = serializers.CharField(source='novedad_tipo.nombre', read_only=True, default=None)
 
     class Meta:
@@ -46,6 +50,8 @@ class HumNovedadSerializer(serializers.ModelSerializer):
             'detalle',
             'contrato',
             'contrato_nombre',
+            'contrato_contacto_id',
+            'contrato_contacto_numero_identificacion',
             'novedad_tipo',
             'novedad_tipo_nombre',
             'novedad_referencia',
