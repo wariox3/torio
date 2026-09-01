@@ -9,6 +9,7 @@ from general.models import (
     GenPlazoPago,
     GenTipoPersona,
 )
+from utilidades.telefono import normalizar_para_importar
 
 
 class GenContactoImportarSerializer(serializers.Serializer):
@@ -169,7 +170,7 @@ class GenContactoImportarSerializer(serializers.Serializer):
                     apellido2=self._texto_o_none(datos.get('apellido2')),
                     direccion=self._texto(datos.get('direccion')),
                     telefono=self._texto(datos.get('telefono')),
-                    celular=self._texto(datos.get('celular')),
+                    celular=normalizar_para_importar(datos.get('celular')) or '',
                     correo=self._texto(datos.get('correo')),
                     correo_facturacion_electronica=self._texto_o_none(datos.get('correo_facturacion_electronica')),
                     plazo_pago=plazo_pago,

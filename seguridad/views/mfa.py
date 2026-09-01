@@ -130,7 +130,7 @@ class SegMfaViewSet(viewsets.ViewSet):
         # el código y quedaría con una configuración pendiente que no puede confirmar.
         if metodo == METODO_SMS and not servicio_mfa.celular_para_sms(request.user):
             return Response(
-                {'detail': 'Registra un número de celular válido de 10 dígitos en tu perfil antes de usar SMS.'},
+                {'detail': 'Registra en tu perfil un número de celular colombiano válido antes de usar SMS.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

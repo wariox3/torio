@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from general.models import GenContacto
+from utilidades.telefono import CampoTelefono
 
 
 class GenContactoSerializer(serializers.ModelSerializer):
@@ -15,6 +16,7 @@ class GenContactoSerializer(serializers.ModelSerializer):
     )
     ordenamiento_default_lista = ('nombre_corto',)
 
+    celular = CampoTelefono(required=False, max_length=50)
     identificacion_nombre = serializers.CharField(source='identificacion.nombre', read_only=True)
     identificacion_abreviatura = serializers.CharField(source='identificacion.abreviatura', read_only=True)
     ciudad_nombre = serializers.CharField(source='ciudad.nombre', read_only=True)

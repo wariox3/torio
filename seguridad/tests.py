@@ -20,6 +20,7 @@ from seguridad import foto
 from seguridad import mfa as servicio_mfa
 from seguridad.serializers import SegUsuarioMeSerializer
 from utilidades import backblaze, imagenes
+from utilidades.telefono import a_nacional, normalizar_e164
 from seguridad.models import (
     METODO_CORREO,
     METODO_SMS,
@@ -703,14 +704,17 @@ class SesionTests(TestCase):
 
 
 class CelularTests(TestCase):
-    """El campo `celular` es texto libre; Zinc exige diez dígitos pelados."""
+    """Se guarda E.164; Zinc exige diez dígitos pelados y solo entrega en Colombia."""
 
     def _celular(self, valor):
         usuario = SegUsuario(email='cel@torio.test', celular=valor)
         return servicio_mfa.celular_para_sms(usuario)
 
     def test_formatos_validos(self):
-        for valor in ('3001234567', '300 123 4567', '300-123-4567', '+57 300 123 4567', '573001234567'):
+        for valor in (
+            '+573001234567', '+57 300 123 4567', '00573001234567',
+            '3001234567', '300 123 4567', '300-123-4567',
+        ):
             with self.subTest(valor=valor):
                 self.assertEqual(self._celular(valor), '3001234567')
 
@@ -718,6 +722,56 @@ class CelularTests(TestCase):
         for valor in (None, '', '300123', '12345678901', 'no-es-un-numero'):
             with self.subTest(valor=valor):
                 self.assertIsNone(self._celular(valor))
+
+    def test_sin_mas_se_lee_como_nacional(self):
+        """
+        Sin `+` no hay forma de distinguir un indicativo del arranque del número, así
+        que se asume Colombia: '57…' pelado deja catorce dígitos y no es un número.
+        """
+        self.assertIsNone(self._celular('573001234567'))
+
+    def test_un_numero_extranjero_no_recibe_sms(self):
+        """Válido como número, pero Zinc no entrega ahí: mejor None que un envío al vacío."""
+        self.assertIsNone(self._celular('+525512345678'))
+
+
+class NormalizarE164Tests(TestCase):
+    """
+    La validación es de *forma*, no de existencia: sin `phonenumbers` no se sabe si un
+    número está asignado. Colombia es el único país con largo nacional verificado.
+    """
+
+    def test_deja_el_numero_en_e164(self):
+        casos = {
+            '+57 300 123 4567': '+573001234567',
+            '3001234567': '+573001234567',
+            '(300) 123-4567': '+573001234567',
+            '00 44 7911 123456': '+447911123456',
+            '+44 7911 123456': '+447911123456',
+            '+1 202 555 0173': '+12025550173',
+        }
+        for valor, esperado in casos.items():
+            with self.subTest(valor=valor):
+                self.assertEqual(normalizar_e164(valor), esperado)
+
+    def test_rechaza_lo_que_no_es_un_numero_posible(self):
+        for valor in (
+            None, '', '   ', 'no-es-un-numero', '+', '+0123456789',
+            '+12345',                 # más corto que cualquier número del mundo
+            '+1234567890123456',      # E.164 no admite más de quince dígitos
+            '+57300123456',           # Colombia son diez dígitos nacionales
+            '+5730012345678',
+        ):
+            with self.subTest(valor=valor):
+                self.assertIsNone(normalizar_e164(valor))
+
+    def test_un_pais_sin_regla_propia_pasa_con_la_validacion_generica(self):
+        """Se acepta la forma; que el número exista solo lo prueba mandarle un código."""
+        self.assertEqual(normalizar_e164('+4479119'), '+4479119')
+
+    def test_a_nacional_solo_devuelve_los_del_pais(self):
+        self.assertEqual(a_nacional('+573001234567'), '3001234567')
+        self.assertIsNone(a_nacional('+447911123456'))
 
 
 @override_settings(MFA_ENCRYPTION_KEY=_CLAVE_MFA)
@@ -872,7 +926,7 @@ class CambioDeCelularTests(TestCase):
         respuesta = self.client.patch(self.url, {'celular': '3109999999'})
         self.assertEqual(respuesta.status_code, 200)
         self.usuario.refresh_from_db()
-        self.assertEqual(self.usuario.celular, '3109999999')
+        self.assertEqual(self.usuario.celular, '+573109999999')
 
     def test_con_sms_activo_exige_codigo(self):
         self._activar_sms()
@@ -892,7 +946,7 @@ class CambioDeCelularTests(TestCase):
         })
         self.assertEqual(respuesta.status_code, 200)
         self.usuario.refresh_from_db()
-        self.assertEqual(self.usuario.celular, '3109999999')
+        self.assertEqual(self.usuario.celular, '+573109999999')
 
     def test_con_codigo_invalido_no_se_cambia(self):
         self._activar_sms()

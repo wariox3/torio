@@ -16,7 +16,7 @@ from rest_framework import permissions
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from contenedor.models import CtnCliente, CtnInvitacion, CtnSuscripcion, CtnSuscripcionTipo
-from contenedor.views.cliente import CtnClienteViewSet
+from contenedor.views.cliente import DIAS_PRUEBA, SUSCRIPCION_TIPO_PRUEBA_ID, CtnClienteViewSet
 from contenedor.views.invitacion import CtnInvitacionViewSet
 from seguridad.models import CAMPOS_ACCESO, SegUsuario, SegUsuarioCliente
 
@@ -45,7 +45,7 @@ class PropietarioTests(TenantTestCase):
     @classmethod
     def setup_tenant(cls, tenant):
         tenant.nombre = 'Contenedor de prueba'
-        tenant.telefono = '3000000000'
+        tenant.celular = '3000000000'
         tenant.correo = 'contenedor@ejemplo.com'
         return tenant
 
@@ -64,8 +64,11 @@ class PropietarioTests(TenantTestCase):
             email='invitado@ejemplo.com', is_active=True, is_verified=True,
         )
 
+        # `create` fija este id: es el plan de prueba con el que arranca todo
+        # contenedor nuevo, y en producción lo carga `cargar_geodata`.
         self.tipo = CtnSuscripcionTipo.objects.create(
-            id=99, nombre='Prueba', precio=0, suscripcion_categoria_id=99,
+            id=SUSCRIPCION_TIPO_PRUEBA_ID,
+            nombre='Prueba ERP', precio=0, suscripcion_categoria_id=99,
         )
 
     @staticmethod
@@ -87,10 +90,8 @@ class PropietarioTests(TenantTestCase):
         peticion = self.factory.post('/contenedor/cliente/', {
             'schema_name': 'nuevo',
             'nombre': 'Contenedor nuevo',
-            'telefono': '3001112233',
+            'celular': '3001112233',
             'correo': 'nuevo@ejemplo.com',
-            'suscripcion_tipo_id': self.tipo.id,
-            'frecuencia': CtnSuscripcion.FRECUENCIA_PRUEBA,
         }, format='json')
         force_authenticate(peticion, user=self.duenio)
 
@@ -112,6 +113,35 @@ class PropietarioTests(TenantTestCase):
         # (False) entraría a su propio contenedor con el menú vacío.
         for campo in CAMPOS_ACCESO:
             self.assertTrue(getattr(membresia, campo), campo)
+
+    def test_el_contenedor_nuevo_arranca_en_la_suscripcion_de_prueba(self):
+        """
+        El plan salió del payload de `create`: quien crea el contenedor ya no elige
+        tipo ni frecuencia, así que ambos tienen que quedar fijados por el servidor.
+        """
+        peticion = self.factory.post('/contenedor/cliente/', {
+            'schema_name': 'prueba',
+            'nombre': 'Contenedor de prueba',
+            'celular': '3001112233',
+            'correo': 'prueba@ejemplo.com',
+            # Mandar un plan distinto no cambia nada: ya no es parte del contrato.
+            'suscripcion_tipo_id': 1,
+            'frecuencia': CtnSuscripcion.FRECUENCIA_ANUAL,
+        }, format='json')
+        force_authenticate(peticion, user=self.duenio)
+
+        with schema_context(get_public_schema_name()), redirect_stdout(io.StringIO()):
+            respuesta = _ClienteViewSinPermisos.as_view({'post': 'create'})(peticion)
+        self.assertEqual(respuesta.status_code, 201, respuesta.data)
+
+        cliente = CtnCliente.objects.get(schema_name='prueba')
+        suscripcion = cliente.suscripcion
+
+        self.assertEqual(suscripcion.suscripcion_tipo_id, SUSCRIPCION_TIPO_PRUEBA_ID)
+        self.assertEqual(suscripcion.frecuencia, CtnSuscripcion.FRECUENCIA_PRUEBA)
+        self.assertEqual(
+            (suscripcion.fecha_fin - suscripcion.fecha_inicio).days, DIAS_PRUEBA,
+        )
 
     # ── Aceptar invitación ──────────────────────────────────────────────────
 

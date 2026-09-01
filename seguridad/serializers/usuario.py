@@ -3,10 +3,12 @@ from rest_framework import serializers
 
 from seguridad.foto import key_original, key_thumbnail, url_publica
 from seguridad.models import SegUsuario
+from utilidades.telefono import CampoTelefono
 
 
 class SegUsuarioSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
+    celular = CampoTelefono(required=False, allow_null=True, max_length=50)
 
     class Meta:
         model = SegUsuario
@@ -28,6 +30,8 @@ class SegUsuarioSerializer(serializers.ModelSerializer):
 
 
 class SegUsuarioActualizarSerializer(serializers.ModelSerializer):
+    celular = CampoTelefono(required=False, allow_null=True, max_length=50)
+
     class Meta:
         model = SegUsuario
         fields = ['nombre_corto', 'numero_identificacion', 'celular', 'idioma']

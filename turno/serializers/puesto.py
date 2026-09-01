@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from turno.models import TurPuesto
+from utilidades.telefono import CampoTelefono
 
 
 class TurPuestoSerializer(serializers.ModelSerializer):
@@ -13,6 +14,7 @@ class TurPuestoSerializer(serializers.ModelSerializer):
     select_related_lista = ('contacto', 'programador', 'ciudad', 'centro_costo')
     ordenamiento_default_lista = ('nombre',)
 
+    celular = CampoTelefono(required=False, allow_null=True, max_length=50)
     contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
     programador_nombre = serializers.CharField(source='programador.nombre', read_only=True, default=None)
     ciudad_nombre = serializers.CharField(source='ciudad.nombre', read_only=True, default=None)

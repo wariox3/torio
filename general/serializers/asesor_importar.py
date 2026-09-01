@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from general.models import GenAsesor
+from utilidades.telefono import normalizar_para_importar
 
 
 class GenAsesorImportarSerializer(serializers.Serializer):
@@ -46,7 +47,7 @@ class GenAsesorImportarSerializer(serializers.Serializer):
             try:
                 nuevos.append(GenAsesor(
                     nombre_corto=self._texto(datos.get('nombre_corto')),
-                    celular=self._texto(datos.get('celular')),
+                    celular=normalizar_para_importar(datos.get('celular')) or '',
                     correo=self._texto(datos.get('correo')),
                 ))
             except Exception as e:

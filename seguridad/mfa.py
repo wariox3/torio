@@ -10,7 +10,6 @@ El diseño y el porqué de cada decisión están en `docs/mfa.md`.
 import hashlib
 import hmac
 import logging
-import re
 import secrets
 import time
 from datetime import timedelta
@@ -35,6 +34,7 @@ from seguridad.models import (
     SegMfaDispositivo,
     SegMfaUsuario,
 )
+from utilidades.telefono import a_nacional
 from utilidades.zinc import Zinc
 
 logger = logging.getLogger(__name__)
@@ -165,22 +165,15 @@ def generar_codigo_enviado() -> str:
     return f'{secrets.randbelow(10 ** LONGITUD_CODIGO_ENVIADO):0{LONGITUD_CODIGO_ENVIADO}d}'
 
 
-def normalizar_celular(valor: str | None) -> str | None:
+def celular_para_sms(usuario) -> str | None:
     """
     Deja el celular como lo exige Zinc: diez dígitos, sin indicativo ni separadores.
 
-    El campo es de texto libre, así que llega con espacios, guiones o `+57`. Devuelve
-    None si no queda un número colombiano válido.
+    Devuelve None cuando a esa cuenta no se le puede mandar un SMS: o el número no es
+    válido, o es de otro país. Zinc solo entrega en Colombia, así que un `+52` es
+    tan inservible para esto como un número mal escrito.
     """
-    digitos = re.sub(r'\D', '', valor or '')
-    if len(digitos) == 12 and digitos.startswith('57'):
-        digitos = digitos[2:]
-    return digitos if len(digitos) == 10 else None
-
-
-def celular_para_sms(usuario) -> str | None:
-    """None si esa cuenta no tiene un número al que se le pueda mandar un SMS."""
-    return normalizar_celular(usuario.celular)
+    return a_nacional(usuario.celular)
 
 
 # --------------------------------------------------------------------------- #

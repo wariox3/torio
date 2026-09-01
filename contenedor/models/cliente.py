@@ -13,7 +13,7 @@ from tenant_users.tenants.models import (
 class CtnCliente(TenantBase):
     schema_name = models.CharField(max_length=100, unique=True)
     nombre = models.CharField('Nombre', max_length=100)
-    telefono = models.CharField('Teléfono', max_length=20)
+    celular = models.CharField('Celular', max_length=20)
     correo = models.EmailField('Correo', max_length=255)
     activo = models.BooleanField('Activo', default=True, db_default=True)
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)

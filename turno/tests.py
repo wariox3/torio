@@ -59,7 +59,7 @@ class _ProgramacionBaseTests(TenantTestCase):
     @classmethod
     def setup_tenant(cls, tenant):
         tenant.nombre = 'Test'
-        tenant.telefono = '0'
+        tenant.celular = '0'
         tenant.correo = 'test@test.com'
 
     def setUp(self):
@@ -1439,7 +1439,7 @@ class CalcularMesTests(TenantTestCase):
     @classmethod
     def setup_tenant(cls, tenant):
         tenant.nombre = 'Test'
-        tenant.telefono = '0'
+        tenant.celular = '0'
         tenant.correo = 'test@test.com'
 
     def setUp(self):

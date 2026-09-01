@@ -5,6 +5,7 @@ from rest_framework import serializers
 from contabilidad.models import ConCentroCosto
 from general.models import GenCiudad, GenContacto
 from turno.models import TurProgramador, TurPuesto
+from utilidades.telefono import normalizar_para_importar
 
 
 class TurPuestoImportarSerializer(serializers.Serializer):
@@ -71,7 +72,7 @@ class TurPuestoImportarSerializer(serializers.Serializer):
                 nuevos.append(TurPuesto(
                     nombre=self._texto(datos.get('nombre')),
                     direccion=self._texto_o_none(datos.get('direccion')),
-                    celular=self._texto_o_none(datos.get('celular')),
+                    celular=normalizar_para_importar(datos.get('celular')),
                     latitud=self._decimal_o_none(datos.get('latitud'), 'Latitud'),
                     longitud=self._decimal_o_none(datos.get('longitud'), 'Longitud'),
                     comentario=self._texto_o_none(datos.get('comentario')),

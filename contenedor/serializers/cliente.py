@@ -1,49 +1,33 @@
 from rest_framework import serializers
 
-from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion, CtnSuscripcionTipo
+from contenedor.models import CtnCliente, CtnDominio
 from seguridad.models import SegUsuarioCliente
+from utilidades.telefono import CampoTelefono
 
 
 class CtnClienteSerializer(serializers.ModelSerializer):
-    suscripcion_tipo_id = serializers.PrimaryKeyRelatedField(
-        queryset=CtnSuscripcionTipo.objects.all(),
-        write_only=True,
-        source='suscripcion_tipo',
-    )
-    frecuencia = serializers.ChoiceField(
-        choices=CtnSuscripcion.FRECUENCIA_CHOICES,
-        write_only=True,
-    )
+    """
+    El plan no se elige al crear el contenedor: todo tenant nuevo arranca en la
+    suscripción de prueba que fija `CtnClienteViewSet.create`. Cambiarlo es cosa de
+    `/contenedor/suscripcion/`, que sí valida tipo y frecuencia entre sí.
+    """
+
+    celular = CampoTelefono(label='Celular', max_length=20)
 
     class Meta:
         model = CtnCliente
         fields = [
-            'id', 'schema_name', 'nombre', 'telefono', 'correo', 'activo', 'fecha_creacion',
-            'suscripcion_tipo_id', 'frecuencia',
+            'id', 'schema_name', 'nombre', 'celular', 'correo', 'activo', 'fecha_creacion',
         ]
         read_only_fields = ['id', 'activo', 'fecha_creacion']
 
-    def validate(self, attrs):
-        suscripcion_tipo = attrs.get('suscripcion_tipo')
-        frecuencia = attrs.get('frecuencia')
-        if suscripcion_tipo and frecuencia:
-            if suscripcion_tipo.suscripcion_categoria_id == 99:
-                if frecuencia != CtnSuscripcion.FRECUENCIA_PRUEBA:
-                    raise serializers.ValidationError(
-                        {'frecuencia': 'Para categoría 99 la frecuencia debe ser P (Prueba).'}
-                    )
-            else:
-                if frecuencia not in (CtnSuscripcion.FRECUENCIA_MENSUAL, CtnSuscripcion.FRECUENCIA_ANUAL):
-                    raise serializers.ValidationError(
-                        {'frecuencia': 'La frecuencia debe ser M (Mensual) o A (Anual).'}
-                    )
-        return attrs
-
 
 class CtnClienteActualizarSerializer(serializers.ModelSerializer):
+    celular = CampoTelefono(label='Celular', max_length=20)
+
     class Meta:
         model = CtnCliente
-        fields = ['nombre', 'correo', 'telefono']
+        fields = ['nombre', 'correo', 'celular']
 
 
 class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):

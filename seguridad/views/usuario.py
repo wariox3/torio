@@ -17,6 +17,7 @@ from seguridad.foto import subir_foto
 from seguridad.models import METODO_SMS, SegMfaUsuario, SegUsuario
 from seguridad.serializers import SegUsuarioActualizarSerializer, SegUsuarioMeSerializer, SegUsuarioSeleccionarSerializer, SegUsuarioSerializer
 from utilidades.paginacion import SeleccionarPaginacion
+from utilidades.telefono import a_nacional, normalizar_e164
 from utilidades.turnstile import verify_turnstile
 from utilidades.zinc import Zinc
 
@@ -80,14 +81,20 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         if not activo:
             return None
 
-        nuevo = servicio_mfa.normalizar_celular(request.data.get('celular'))
-        if nuevo == servicio_mfa.normalizar_celular(usuario.celular):
+        nuevo = normalizar_e164(request.data.get('celular'))
+        if nuevo == normalizar_e164(usuario.celular):
             # Mismo número escrito distinto: no hay nada que proteger.
             return None
 
-        if not nuevo:
+        if not nuevo or not a_nacional(nuevo):
+            # Con SMS activo el número es parte del segundo factor, así que además de
+            # ser válido tiene que poder recibirlo: Zinc solo entrega en Colombia y
+            # mudarse a un número extranjero dejaría la cuenta sin cómo verificarse.
             return Response(
-                {'detail': 'Con la verificación por SMS activa, el celular debe ser un número válido de 10 dígitos.'},
+                {
+                    'detail': 'Con la verificación por SMS activa, el celular debe ser un '
+                              'número colombiano válido que pueda recibir los códigos.',
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

@@ -46,9 +46,12 @@ desactivar el MFA. Un MFA por correo activo es mejor que un TOTP que nadie prend
 
 ### El celular para el SMS
 
-Sale de `SegUsuario.celular`, que es texto libre, mientras que `Zinc().sms()` exige diez
-dígitos pelados. `celular_para_sms()` normaliza (quita espacios, guiones y el `+57`) y
-devuelve `None` si no queda un número colombiano válido.
+Sale de `SegUsuario.celular`, que se guarda en E.164 (`+573001234567`, ver
+`utilidades/telefono.py`), mientras que `Zinc().sms()` exige diez dígitos pelados.
+`celular_para_sms()` hace de adaptador con `a_nacional()` y devuelve `None` cuando a esa
+cuenta no se le puede mandar un SMS: o el número no es válido, o es de otro país. Zinc solo
+entrega en Colombia, así que un `+52` es tan inservible aquí como un número mal escrito —de
+ahí que el cambio de celular con SMS activo exija además que el nuevo número sea colombiano.
 
 `configurar` rechaza el método SMS con 400 cuando no hay número usable: si no, el usuario
 quedaría con una configuración pendiente que nunca podría confirmar. En cambio al enviar un

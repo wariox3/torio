@@ -1,6 +1,5 @@
 from datetime import date, timedelta
 
-from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.core.management import call_command
 from django.db import transaction
@@ -12,10 +11,16 @@ from rest_framework.response import Response
 
 from django.db.models import Prefetch
 
-from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion
+from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion, CtnSuscripcionTipo
 from contenedor.serializers import CtnClienteSerializer
 from contenedor.serializers.cliente import CtnClienteActualizarSerializer, CtnClienteListaUsuarioSerializer
 from seguridad.models import CAMPOS_ACCESO, SegUsuarioCliente
+
+# Todo contenedor nuevo arranca en el mismo plan de prueba —'Prueba ERP', categoría
+# 99, precio 0— por quince días. No es algo que elija quien crea el tenant: para
+# cambiar de plan está `/contenedor/suscripcion/`.
+SUSCRIPCION_TIPO_PRUEBA_ID = 13
+DIAS_PRUEBA = 15
 
 
 @extend_schema(tags=['Cliente'])
@@ -63,8 +68,18 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        suscripcion_tipo = serializador.validated_data.pop('suscripcion_tipo')
-        frecuencia = serializador.validated_data.pop('frecuencia')
+        # Se busca antes de crear nada: el FK admite null, así que sin esta guarda
+        # el contenedor quedaría con una suscripción sin tipo y precio 0 en vez de
+        # fallar. El catálogo lo carga `cargar_geodata` en el schema público.
+        suscripcion_tipo = CtnSuscripcionTipo.objects.filter(
+            pk=SUSCRIPCION_TIPO_PRUEBA_ID,
+        ).first()
+        if suscripcion_tipo is None:
+            return Response(
+                {'detail': f'Falta el tipo de suscripción de prueba (id={SUSCRIPCION_TIPO_PRUEBA_ID}).'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
         cliente = serializador.save(owner=request.user)
 
         CtnDominio.objects.create(domain=dominio, is_primary=True, tenant=cliente)
@@ -82,19 +97,13 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         )
 
         fecha_inicio = date.today()
-        if frecuencia == CtnSuscripcion.FRECUENCIA_PRUEBA:
-            fecha_fin = fecha_inicio + timedelta(days=15)
-        elif frecuencia == CtnSuscripcion.FRECUENCIA_ANUAL:
-            fecha_fin = fecha_inicio + relativedelta(years=1)
-        else:
-            fecha_fin = fecha_inicio + relativedelta(months=1)
         suscripcion = CtnSuscripcion.objects.create(
             cliente=cliente,
             usuario=request.user,
             suscripcion_tipo=suscripcion_tipo,
             fecha_inicio=fecha_inicio,
-            fecha_fin=fecha_fin,
-            frecuencia=frecuencia,
+            fecha_fin=fecha_inicio + timedelta(days=DIAS_PRUEBA),
+            frecuencia=CtnSuscripcion.FRECUENCIA_PRUEBA,
         )
         cliente.suscripcion = suscripcion
         cliente.save(update_fields=['suscripcion'])

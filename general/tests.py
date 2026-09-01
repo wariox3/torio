@@ -20,6 +20,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from general.models import (
     GenArchivo,
     GenArchivoTipo,
+    GenAsesor,
     GenConfiguracion,
     GenDocumento,
     GenDocumentoDetalle,
@@ -39,7 +40,11 @@ from general.models import (
 from general.servicios import documento as documento_servicio
 from general.servicios import factura_electronica
 from general.servicios import rededoc as rededoc_servicio
-from general.serializers import GenParametroSerializer, GenPrecioDetalleImportarSerializer
+from general.serializers import (
+    GenAsesorImportarSerializer,
+    GenParametroSerializer,
+    GenPrecioDetalleImportarSerializer,
+)
 from general.views.archivo import GenArchivoViewSet
 from general.views.configuracion import GenConfiguracionViewSet
 from general.views.factura_electronica import GenFacturaElectronicaViewSet
@@ -74,7 +79,7 @@ class GenerarDocumentoTests(TenantTestCase):
     @classmethod
     def setup_tenant(cls, tenant):
         tenant.nombre = 'Test'
-        tenant.telefono = '0'
+        tenant.celular = '0'
         tenant.correo = 'test@test.com'
 
     def setUp(self):
@@ -271,7 +276,7 @@ class ModeloPermisoTests(TenantTestCase):
     @classmethod
     def setup_tenant(cls, tenant):
         tenant.nombre = 'Test permiso'
-        tenant.telefono = '0'
+        tenant.celular = '0'
         tenant.correo = 'permiso@test.com'
 
     def setUp(self):
@@ -383,7 +388,7 @@ class SubirArchivoTests(TenantTestCase):
     @classmethod
     def setup_tenant(cls, tenant):
         tenant.nombre = 'Test'
-        tenant.telefono = '0'
+        tenant.celular = '0'
         tenant.correo = 'test@test.com'
 
     def setUp(self):
@@ -1505,3 +1510,55 @@ class ImportarPrecioDetalleTests(_PrecioDetalleBaseTests):
         self.assertEqual(errores, [])
         self.assertEqual(creados, 2)
         self.assertEqual(GenPrecioDetalle.objects.count(), 2)
+
+
+class ImportarCelularTests(TenantTestCase):
+    """
+    El importador es la otra puerta de escritura: sin esto entraría por Excel la
+    basura que el serializer rechaza en la API. Un celular inválido invalida la fila,
+    y el mixin no guarda nada si alguna falla.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def _procesar(self, celular):
+        serializer = GenAsesorImportarSerializer()
+        return serializer.procesar_lote([
+            (2, {'nombre_corto': 'Asesor', 'celular': celular, 'correo': 'a@b.com'}),
+        ])
+
+    def test_guarda_el_celular_en_e164(self):
+        creados, errores = self._procesar('300 123 4567')
+
+        self.assertEqual(errores, [])
+        self.assertEqual(creados, 1)
+        self.assertEqual(GenAsesor.objects.get().celular, '+573001234567')
+
+    def test_acepta_un_numero_internacional(self):
+        self._procesar('+44 7911 123456')
+        self.assertEqual(GenAsesor.objects.get().celular, '+447911123456')
+
+    def test_una_celda_numerica_de_excel_no_es_un_error(self):
+        """openpyxl entrega un int cuando el celular se escribió como número."""
+        self._procesar(3001234567)
+        self.assertEqual(GenAsesor.objects.get().celular, '+573001234567')
+
+    def test_un_celular_invalido_invalida_la_fila(self):
+        creados, errores = self._procesar('123')
+
+        self.assertEqual(creados, 0)
+        self.assertEqual(errores[0]['fila'], 2)
+        self.assertIn('Celular no es válido', errores[0]['mensaje'])
+        self.assertFalse(GenAsesor.objects.exists())
+
+    def test_la_columna_vacia_se_guarda_vacia(self):
+        """`celular` no es requerido en la plantilla y el campo no admite null."""
+        creados, errores = self._procesar(None)
+
+        self.assertEqual(errores, [])
+        self.assertEqual(creados, 1)
+        self.assertEqual(GenAsesor.objects.get().celular, '')

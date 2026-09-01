@@ -184,7 +184,7 @@ def _crear_contenedor(schema, nombre, dominio):
     cliente = CtnCliente(
         schema_name=schema,
         nombre=nombre,
-        telefono='3000000000',
+        celular='3000000000',
         correo=f'{schema}@ejemplo.com',
     )
     # `auto_create_schema` crea el schema y le corre las migraciones de TENANT_APPS.
