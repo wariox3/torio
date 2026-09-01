@@ -71,9 +71,7 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         # Se busca antes de crear nada: el FK admite null, así que sin esta guarda
         # el contenedor quedaría con una suscripción sin tipo y precio 0 en vez de
         # fallar. El catálogo lo carga `cargar_geodata` en el schema público.
-        suscripcion_tipo = CtnSuscripcionTipo.objects.filter(
-            pk=SUSCRIPCION_TIPO_PRUEBA_ID,
-        ).first()
+        suscripcion_tipo = CtnSuscripcionTipo.objects.filter(pk=SUSCRIPCION_TIPO_PRUEBA_ID).first()
         if suscripcion_tipo is None:
             return Response(
                 {'detail': f'Falta el tipo de suscripción de prueba (id={SUSCRIPCION_TIPO_PRUEBA_ID}).'},
