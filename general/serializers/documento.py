@@ -11,12 +11,14 @@ from general.servicios import crear_detalle
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
     campos_filtrables = {'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado'}
-    select_related_lista = ('documento_tipo', 'contacto', 'sector', 'sede', 'plazo_pago', 'metodo_pago', 'forma_pago')
+    select_related_lista = ('documento_tipo', 'contacto', 'contacto__precio', 'sector', 'sede', 'plazo_pago', 'metodo_pago', 'forma_pago')
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
     contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
     tercero_numero_identificacion = serializers.CharField(source='contacto.numero_identificacion', read_only=True, default=None)
+    contacto_precio_id = serializers.IntegerField(source='contacto.precio_id', read_only=True, default=None)
+    contacto_precio_nombre = serializers.CharField(source='contacto.precio.nombre', read_only=True, default=None)
     sector_nombre = serializers.CharField(source='sector.nombre', read_only=True, default=None)
     plazo_pago_nombre = serializers.CharField(source='plazo_pago.nombre', read_only=True, default=None)
     metodo_pago_nombre = serializers.CharField(source='metodo_pago.nombre', read_only=True, default=None)
@@ -42,6 +44,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'contacto',
             'contacto_nombre',
             'tercero_numero_identificacion',
+            'contacto_precio_id',
+            'contacto_precio_nombre',
             'resolucion',
             'plazo_pago',
             'plazo_pago_nombre',
