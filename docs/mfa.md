@@ -47,7 +47,9 @@ desactivar el MFA. Un MFA por correo activo es mejor que un TOTP que nadie prend
 ### El celular para el SMS
 
 Sale de `SegUsuario.celular`, que se guarda en E.164 (`+573001234567`, ver
-`utilidades/telefono.py`), mientras que `Zinc().sms()` exige diez dígitos pelados.
+`utilidades/telefono.py`) —con el indicativo obligatorio: no se asume ningún país, así que
+un número sin `+` se rechaza al escribirlo—, mientras que `Zinc().sms()` exige diez dígitos
+pelados.
 `celular_para_sms()` hace de adaptador con `a_nacional()` y devuelve `None` cuando a esa
 cuenta no se le puede mandar un SMS: o el número no es válido, o es de otro país. Zinc solo
 entrega en Colombia, así que un `+52` es tan inservible aquí como un número mal escrito —de

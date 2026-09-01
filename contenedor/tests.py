@@ -90,7 +90,7 @@ class PropietarioTests(TenantTestCase):
         peticion = self.factory.post('/contenedor/cliente/', {
             'schema_name': 'nuevo',
             'nombre': 'Contenedor nuevo',
-            'celular': '3001112233',
+            'celular': '+573001112233',
             'correo': 'nuevo@ejemplo.com',
         }, format='json')
         force_authenticate(peticion, user=self.duenio)
@@ -122,7 +122,7 @@ class PropietarioTests(TenantTestCase):
         peticion = self.factory.post('/contenedor/cliente/', {
             'schema_name': 'prueba',
             'nombre': 'Contenedor de prueba',
-            'celular': '3001112233',
+            'celular': '+573001112233',
             'correo': 'prueba@ejemplo.com',
             # Mandar un plan distinto no cambia nada: ya no es parte del contrato.
             'suscripcion_tipo_id': 1,

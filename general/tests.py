@@ -1532,7 +1532,7 @@ class ImportarCelularTests(TenantTestCase):
         ])
 
     def test_guarda_el_celular_en_e164(self):
-        creados, errores = self._procesar('300 123 4567')
+        creados, errores = self._procesar('+57 300 123 4567')
 
         self.assertEqual(errores, [])
         self.assertEqual(creados, 1)
@@ -1542,9 +1542,19 @@ class ImportarCelularTests(TenantTestCase):
         self._procesar('+44 7911 123456')
         self.assertEqual(GenAsesor.objects.get().celular, '+447911123456')
 
-    def test_una_celda_numerica_de_excel_no_es_un_error(self):
-        """openpyxl entrega un int cuando el celular se escribió como número."""
-        self._procesar(3001234567)
+    def test_una_celda_numerica_de_excel_se_rechaza(self):
+        """
+        Excel devuelve un int cuando el celular se escribió como número, y un número
+        pelado no trae indicativo. Para importar, la columna tiene que ser texto y
+        traer el `+`; el `00` también sirve y sobrevive mejor a Excel.
+        """
+        creados, errores = self._procesar(3001234567)
+
+        self.assertEqual(creados, 0)
+        self.assertIn('Celular no es válido', errores[0]['mensaje'])
+
+    def test_acepta_el_prefijo_de_salida(self):
+        self._procesar('00573001234567')
         self.assertEqual(GenAsesor.objects.get().celular, '+573001234567')
 
     def test_un_celular_invalido_invalida_la_fila(self):

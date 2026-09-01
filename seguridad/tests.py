@@ -712,23 +712,24 @@ class CelularTests(TestCase):
 
     def test_formatos_validos(self):
         for valor in (
-            '+573001234567', '+57 300 123 4567', '00573001234567',
-            '3001234567', '300 123 4567', '300-123-4567',
+            '+573001234567', '+57 300 123 4567', '+57 300-123-4567', '00573001234567',
         ):
             with self.subTest(valor=valor):
                 self.assertEqual(self._celular(valor), '3001234567')
 
     def test_formatos_invalidos(self):
-        for valor in (None, '', '300123', '12345678901', 'no-es-un-numero'):
+        for valor in (None, '', '+57300123', '+12345678901', 'no-es-un-numero'):
             with self.subTest(valor=valor):
                 self.assertIsNone(self._celular(valor))
 
-    def test_sin_mas_se_lee_como_nacional(self):
+    def test_sin_indicativo_no_hay_numero(self):
         """
-        Sin `+` no hay forma de distinguir un indicativo del arranque del número, así
-        que se asume Colombia: '57…' pelado deja catorce dígitos y no es un número.
+        No se asume Colombia: un móvil mexicano también tiene diez dígitos, así que
+        adivinar el país convertiría el número de otro en un colombiano inexistente.
         """
-        self.assertIsNone(self._celular('573001234567'))
+        for valor in ('3001234567', '300 123 4567', '573001234567'):
+            with self.subTest(valor=valor):
+                self.assertIsNone(self._celular(valor))
 
     def test_un_numero_extranjero_no_recibe_sms(self):
         """Válido como número, pero Zinc no entrega ahí: mejor None que un envío al vacío."""
@@ -744,8 +745,7 @@ class NormalizarE164Tests(TestCase):
     def test_deja_el_numero_en_e164(self):
         casos = {
             '+57 300 123 4567': '+573001234567',
-            '3001234567': '+573001234567',
-            '(300) 123-4567': '+573001234567',
+            '+57 (300) 123-4567': '+573001234567',
             '00 44 7911 123456': '+447911123456',
             '+44 7911 123456': '+447911123456',
             '+1 202 555 0173': '+12025550173',
@@ -754,11 +754,18 @@ class NormalizarE164Tests(TestCase):
             with self.subTest(valor=valor):
                 self.assertEqual(normalizar_e164(valor), esperado)
 
+    def test_el_indicativo_es_obligatorio(self):
+        """Sin prefijo no se adivina el país: se rechaza y el front lo completa."""
+        for valor in ('3001234567', '573001234567', '5512345678'):
+            with self.subTest(valor=valor):
+                self.assertIsNone(normalizar_e164(valor))
+
     def test_rechaza_lo_que_no_es_un_numero_posible(self):
         for valor in (
             None, '', '   ', 'no-es-un-numero', '+', '+0123456789',
             '+12345',                 # más corto que cualquier número del mundo
             '+1234567890123456',      # E.164 no admite más de quince dígitos
+            '+99912345678',           # 999 no es un indicativo asignado
             '+57300123456',           # Colombia son diez dígitos nacionales
             '+5730012345678',
         ):
@@ -830,7 +837,7 @@ class MfaSmsEndpointsTests(TestCase):
     def setUp(self):
         cache.clear()
         self.usuario = SegUsuario.objects.create(
-            email='sms@torio.test', is_verified=True, celular='3001234567',
+            email='sms@torio.test', is_verified=True, celular='+573001234567',
         )
         self.usuario.set_password(self.CLAVE)
         self.usuario.save()
@@ -907,7 +914,7 @@ class CambioDeCelularTests(TestCase):
     def setUp(self):
         cache.clear()
         self.usuario = SegUsuario.objects.create(
-            email='cambio@torio.test', is_verified=True, celular='3001234567',
+            email='cambio@torio.test', is_verified=True, celular='+573001234567',
         )
         self.client = APIClient()
         self.client.force_authenticate(self.usuario)
@@ -923,26 +930,26 @@ class CambioDeCelularTests(TestCase):
         return servicio_mfa.firmar_desafio(desafio), codigo
 
     def test_sin_mfa_se_cambia_libremente(self):
-        respuesta = self.client.patch(self.url, {'celular': '3109999999'})
+        respuesta = self.client.patch(self.url, {'celular': '+573109999999'})
         self.assertEqual(respuesta.status_code, 200)
         self.usuario.refresh_from_db()
         self.assertEqual(self.usuario.celular, '+573109999999')
 
     def test_con_sms_activo_exige_codigo(self):
         self._activar_sms()
-        respuesta = self.client.patch(self.url, {'celular': '3109999999'})
+        respuesta = self.client.patch(self.url, {'celular': '+573109999999'})
 
         self.assertEqual(respuesta.status_code, 400)
         self.assertEqual(respuesta.data['codigo'], 'mfa_requerido')
         self.usuario.refresh_from_db()
-        self.assertEqual(self.usuario.celular, '3001234567')
+        self.assertEqual(self.usuario.celular, '+573001234567')
 
     def test_con_codigo_valido_se_cambia(self):
         self._activar_sms()
         token, codigo = self._paso_previo()
 
         respuesta = self.client.patch(self.url, {
-            'celular': '3109999999', 'mfa_token': token, 'codigo': codigo,
+            'celular': '+573109999999', 'mfa_token': token, 'codigo': codigo,
         })
         self.assertEqual(respuesta.status_code, 200)
         self.usuario.refresh_from_db()
@@ -953,12 +960,12 @@ class CambioDeCelularTests(TestCase):
         token, codigo = self._paso_previo()
 
         respuesta = self.client.patch(self.url, {
-            'celular': '3109999999', 'mfa_token': token,
+            'celular': '+573109999999', 'mfa_token': token,
             'codigo': '000000' if codigo != '000000' else '111111',
         })
         self.assertEqual(respuesta.status_code, 400)
         self.usuario.refresh_from_db()
-        self.assertEqual(self.usuario.celular, '3001234567')
+        self.assertEqual(self.usuario.celular, '+573001234567')
 
     def test_el_mismo_numero_con_otro_formato_no_exige_codigo(self):
         self._activar_sms()
@@ -971,11 +978,11 @@ class CambioDeCelularTests(TestCase):
         token, codigo = self._paso_previo()
 
         respuesta = self.client.patch(self.url, {
-            'celular': '300123', 'mfa_token': token, 'codigo': codigo,
+            'celular': '+57300123', 'mfa_token': token, 'codigo': codigo,
         })
         self.assertEqual(respuesta.status_code, 400)
         self.usuario.refresh_from_db()
-        self.assertEqual(self.usuario.celular, '3001234567')
+        self.assertEqual(self.usuario.celular, '+573001234567')
 
     def test_otros_campos_no_se_ven_afectados(self):
         self._activar_sms()
