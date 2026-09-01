@@ -5,6 +5,7 @@ from general.models import GenDocumento, GenDocumentoDetalle, GenDocumentoImpues
 
 class GenDocumentoImpuestoSerializer(serializers.ModelSerializer):
     impuesto_nombre = serializers.CharField(source='impuesto.nombre', read_only=True, default=None)
+    impuesto_operacion = serializers.IntegerField(source='impuesto.operacion', read_only=True, default=None)
 
     class Meta:
         model = GenDocumentoImpuesto
@@ -12,6 +13,7 @@ class GenDocumentoImpuestoSerializer(serializers.ModelSerializer):
             'id',
             'impuesto',
             'impuesto_nombre',
+            'impuesto_operacion',
             'base',
             'porcentaje',
             'porcentaje_base',
