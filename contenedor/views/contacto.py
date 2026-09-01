@@ -29,6 +29,6 @@ class CtnContactoViewSet(viewsets.ModelViewSet):
     def lista_usuario(self, request):
         qs = CtnContacto.objects.filter(
             usuario=request.user,
-        ).select_related('identificacion', 'ciudad', 'usuario')
+        ).select_related('identificacion', 'ciudad', 'ciudad__estado', 'usuario')
         pagina = self.paginate_queryset(qs)
         return self.get_paginated_response(CtnContactoListaUsuarioSerializer(pagina, many=True).data)

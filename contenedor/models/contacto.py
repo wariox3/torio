@@ -6,7 +6,7 @@ class CtnContacto(models.Model):
     digito_verificacion = models.CharField(max_length=1, null=True)
     nombre_corto = models.CharField(max_length=200)
     direccion = models.CharField(max_length=50)
-    telefono = models.CharField(max_length=50)
+    celular = models.CharField(max_length=50)
     correo = models.EmailField(max_length=255)
     identificacion = models.ForeignKey(
         'contenedor.CtnIdentificacion',
