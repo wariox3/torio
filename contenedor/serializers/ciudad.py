@@ -10,6 +10,8 @@ class CtnCiudadSerializer(serializers.ModelSerializer):
 
 
 class CtnCiudadSeleccionarSerializer(serializers.ModelSerializer):
+    departamento_nombre = serializers.CharField(source='estado.nombre', read_only=True)
+
     class Meta:
         model = CtnCiudad
-        fields = ['id', 'nombre']
+        fields = ['id', 'nombre', 'departamento_nombre']

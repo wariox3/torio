@@ -1,4 +1,5 @@
 import io
+import json
 import uuid as uuid_lib
 import zipfile
 from datetime import date, time
@@ -7,10 +8,13 @@ from unittest import mock
 
 import httpx
 from botocore.exceptions import ClientError, ConnectionClosedError
+from django.apps import apps
 from django.conf import settings
+from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, connection, transaction
 from django.test import SimpleTestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django_tenants.test.cases import TenantTestCase
 from rest_framework import permissions
@@ -1572,3 +1576,99 @@ class ImportarCelularTests(TenantTestCase):
         self.assertEqual(errores, [])
         self.assertEqual(creados, 1)
         self.assertEqual(GenAsesor.objects.get().celular, '')
+
+
+class CargarDatosTenantTests(TenantTestCase):
+    """
+    El cargador corre dentro del request que crea el contenedor, así que su costo es
+    latencia de creación: por eso los catálogos van en bloque (`bulk_create`) y no
+    fila por fila. Estas pruebas fijan las tres propiedades que ese cambio no puede
+    romper: que cargue todo, que las filas con claves distintas no se pisen entre sí,
+    y que siga siendo idempotente.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        # `general.signals` cachea en memoria los ids de GenAccion/GenModelo por
+        # schema. Acá se siembran esas dos tablas y el rollback del test las vacía,
+        # pero la caché no se revierte: sin esto, el primer modelo auditado que
+        # guarde cualquier test posterior escribe en `gen_log` una FK que ya no
+        # existe. Es la misma limpieza que hace `contenedor/tests.py`.
+        from general.signals import limpiar_caches
+
+        self.addCleanup(limpiar_caches)
+
+    def _cargar(self):
+        call_command(
+            'cargar_datos_tenant',
+            schema=self.tenant.schema_name,
+            inicial=True,
+            stdout=io.StringIO(),
+        )
+
+    @staticmethod
+    def _fixtures():
+        """[(modelo, filas del json)] de todos los archivos que carga el comando."""
+        from general.management.commands.cargar_datos_tenant import (
+            FIXTURES_DIRS,
+            FIXTURES_INICIAL_DIRS,
+        )
+
+        archivos = []
+        for carpeta in FIXTURES_DIRS + FIXTURES_INICIAL_DIRS:
+            archivos += sorted(carpeta.glob('*.json'), key=lambda f: f.name)
+        return [json.loads(a.read_text(encoding='utf-8')) for a in archivos]
+
+    def _huella(self):
+        """Contenido de todas las tablas sembradas, para comparar entre corridas."""
+        huella = {}
+        for contenido in self._fixtures():
+            modelo = apps.get_model(contenido['model'])
+            campos = [f.attname for f in modelo._meta.concrete_fields]
+            huella[contenido['model']] = list(
+                modelo.objects.order_by('pk').values_list(*campos)
+            )
+        return huella
+
+    def test_carga_todas_las_filas_de_todos_los_fixtures(self):
+        self._cargar()
+
+        for contenido in self._fixtures():
+            modelo = apps.get_model(contenido['model'])
+            with self.subTest(modelo=contenido['model']):
+                self.assertEqual(modelo.objects.count(), len(contenido['data']))
+
+    def test_las_claves_ausentes_no_pisan_a_las_presentes(self):
+        """
+        `11_documento_tipo.json` tiene diecinueve formas de fila distintas. Al volcar
+        en bloque hay que agrupar por conjunto de claves: si se usara la unión, una
+        fila que omite una columna la escribiría con el default del modelo y le
+        borraría el valor a las que sí la traen.
+        """
+        self._cargar()
+
+        contenido = next(
+            c for c in self._fixtures() if c['model'] == 'general.GenDocumentoTipo'
+        )
+        for fila in contenido['data']:
+            tipo = GenDocumentoTipo.objects.get(pk=fila['id'])
+            for clave, esperado in fila.items():
+                with self.subTest(id=fila['id'], clave=clave):
+                    self.assertEqual(getattr(tipo, clave), esperado)
+
+    def test_es_idempotente_y_no_consulta_por_fila(self):
+        self._cargar()
+        antes = self._huella()
+
+        with CaptureQueriesContext(connection) as consultas:
+            self._cargar()
+
+        self.assertEqual(self._huella(), antes)
+        # Medido: 9.000 consultas fila por fila contra 283 en bloque. El tope es
+        # holgado a propósito: fija el orden de magnitud, no un número exacto.
+        self.assertLess(len(consultas), 500, f'{len(consultas)} consultas')

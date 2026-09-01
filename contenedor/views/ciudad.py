@@ -40,7 +40,7 @@ class CtnCiudadViewSet(viewsets.ModelViewSet):
     @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=CtnCiudadSeleccionarSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)
     def seleccionar(self, request):
-        qs = CtnCiudad.objects.all()
+        qs = CtnCiudad.objects.select_related('estado')
         estado = request.query_params.get('estado')
         search = request.query_params.get('search', '').strip()
         if estado:

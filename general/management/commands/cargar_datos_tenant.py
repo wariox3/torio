@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 from pathlib import Path
 
 from django.apps import apps
@@ -31,6 +32,11 @@ FIXTURES_INICIAL_DIRS = [
 
 class Command(BaseCommand):
     help = 'Carga datos de referencia en los schemas de tenants (idempotente)'
+
+    # Filas por sentencia. Postgres admite 65.535 parámetros por consulta, así que el
+    # tope real depende del ancho de la tabla; 500 deja margen de sobra para la más
+    # ancha de los fixtures.
+    TAMANO_LOTE = 500
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -86,21 +92,10 @@ class Command(BaseCommand):
         # Los datos de fixtures_inicial/ siempre se tratan así.
         solo_crear = inicial or contenido.get('solo_crear', False)
 
-        creados = actualizados = omitidos = 0
-        for item in contenido['data']:
-            pk = item.pop('id')
-            if solo_crear:
-                _, nuevo = modelo.objects.get_or_create(id=pk, defaults=item)
-                if nuevo:
-                    creados += 1
-                else:
-                    omitidos += 1
-                continue
-            _, nuevo = modelo.objects.update_or_create(id=pk, defaults=item)
-            if nuevo:
-                creados += 1
-            else:
-                actualizados += 1
+        if solo_crear:
+            creados, omitidos = self._sembrar(modelo, contenido['data'])
+        else:
+            creados, actualizados = self._volcar(modelo, contenido['data'])
 
         # Los fixtures_inicial/ insertan ids explícitos en tablas con secuencia
         # (AutoField); hay que avanzar la secuencia o el próximo INSERT del ORM
@@ -116,6 +111,72 @@ class Command(BaseCommand):
             self.stdout.write(
                 f'  {archivo.name} ({contenido["model"]}) — creados: {creados}, actualizados: {actualizados}'
             )
+
+    @staticmethod
+    def _sembrar(modelo, filas):
+        """
+        Semillas editables por el tenant (`fixtures_inicial/`): fila por fila con
+        `get_or_create`, que nunca sobreescribe y sí dispara los signals de auditoría.
+
+        Son ocho filas en total, así que volcarlas en bloque no ahorraría nada y en
+        cambio perdería las dos propiedades de arriba: `GenContacto` lleva
+        `log_auditoria = True` y el contacto sembrado tiene que quedar en `gen_log`.
+        """
+        creados = omitidos = 0
+        for fila in filas:
+            datos = dict(fila)
+            pk = datos.pop('id')
+            _, nuevo = modelo.objects.get_or_create(id=pk, defaults=datos)
+            if nuevo:
+                creados += 1
+            else:
+                omitidos += 1
+        return creados, omitidos
+
+    def _volcar(self, modelo, filas):
+        """
+        Catálogos (`fixtures/`): un `INSERT ... ON CONFLICT DO UPDATE` por lote en vez
+        de un `update_or_create` por fila.
+
+        Son 4.550 filas en 46 archivos: fila por fila eran 9.000 consultas cada vez que
+        se crea un tenant, dentro del request que lo crea. En bloque son 283.
+
+        `bulk_create` no dispara signals, y acá da igual: ningún modelo de catálogo
+        declara `log_auditoria` —solo lo hacen `GenContacto` y `GenDocumento`—, y el
+        único contacto sembrado va por `_sembrar`.
+        """
+        ids = [fila['id'] for fila in filas]
+        existentes = modelo.objects.filter(pk__in=ids).count()
+
+        # Las filas de un mismo archivo no siempre traen las mismas claves (p.ej.
+        # `11_documento_tipo.json` tiene diecinueve formas distintas). Se agrupan por
+        # conjunto de claves para que `update_fields` sea el exacto de cada grupo: con
+        # la unión, una fila que omite una columna la sobreescribiría con el default
+        # del modelo, y el `update_or_create(defaults=...)` anterior no hacía eso.
+        nombre_de = {f.attname: f.name for f in modelo._meta.concrete_fields}
+        grupos = defaultdict(list)
+        for fila in filas:
+            grupos[frozenset(fila) - {'id'}].append(fila)
+
+        for claves, grupo in grupos.items():
+            objetos = [modelo(**fila) for fila in grupo]
+            if claves:
+                modelo.objects.bulk_create(
+                    objetos,
+                    update_conflicts=True,
+                    # El fixture nombra las FK por su columna (`estado_id`) y
+                    # `update_fields` espera el nombre del campo (`estado`).
+                    update_fields=[nombre_de.get(clave, clave) for clave in claves],
+                    unique_fields=[modelo._meta.pk.name],
+                    batch_size=self.TAMANO_LOTE,
+                )
+            else:
+                # Fila que solo trae el id: no hay nada que actualizar.
+                modelo.objects.bulk_create(
+                    objetos, ignore_conflicts=True, batch_size=self.TAMANO_LOTE,
+                )
+
+        return len(ids) - existentes, existentes
 
     def _resetear_secuencia(self, modelo):
         tabla = modelo._meta.db_table

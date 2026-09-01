@@ -1,8 +1,12 @@
+import io
+import logging
+import threading
 from datetime import date, timedelta
 
 from django.conf import settings
 from django.core.management import call_command
-from django.db import transaction
+from django.db import connection, transaction
+from django_tenants.utils import get_public_schema_name, schema_context
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -21,6 +25,73 @@ from seguridad.models import CAMPOS_ACCESO, SegUsuarioCliente
 # cambiar de plan está `/contenedor/suscripcion/`.
 SUSCRIPCION_TIPO_PRUEBA_ID = 13
 DIAS_PRUEBA = 15
+
+logger = logging.getLogger(__name__)
+
+
+def lanzar_carga_de_catalogos(schema_name):
+    """
+    Arranca la carga de catálogos en un hilo aparte y devuelve el hilo.
+
+    Está separada de `_cargar_catalogos` para que las pruebas puedan sustituir el
+    disparo sin tocar el trabajo, y para que llamar al trabajo en forma síncrona
+    siga siendo posible.
+    """
+    hilo = threading.Thread(
+        target=_en_hilo,
+        args=(schema_name,),
+        name=f'catalogos-{schema_name}',
+    )
+    hilo.start()
+    return hilo
+
+
+def _en_hilo(schema_name):
+    """
+    Envoltorio del hilo: hace el trabajo y devuelve la conexión que abrió.
+
+    El cierre va acá y no en `_cargar_catalogos` porque la conexión es del hilo:
+    si lo hiciera el trabajo, llamarlo en forma síncrona —una prueba, el shell—
+    le cerraría la conexión a quien lo llamó.
+    """
+    try:
+        _cargar_catalogos(schema_name)
+    finally:
+        connection.close()
+
+
+def _cargar_catalogos(schema_name):
+    """
+    Siembra los 54 archivos de fixtures del tenant.
+
+    Corre fuera del request porque son 4.550 filas y el request que crea el
+    contenedor ya carga con las 104 migraciones del schema.
+
+    Tres cosas que hay que tener presentes:
+
+    - **No hay reintento, y el fallo solo queda en el log.** Si el worker se
+      recicla, el servicio se cae a mitad de carga o el comando falla, el
+      contenedor queda sin catálogos y nada en la base lo delata: hay que correr
+      `manage.py cargar_datos_tenant --schema <nombre> --inicial` a mano.
+    - **El contenedor existe antes de tener datos.** Entre el 201 y el fin de esta
+      carga, entrar al tenant lo muestra vacío. Peor: si alguien abre configuración
+      en esa ventana, `SingletonMixin` crea la fila con `get_or_create`, y cuando
+      esta carga llega a `01_configuracion.json` la encuentra y omite la semilla.
+    - **Las semillas van con los catálogos, no antes.** `fixtures_inicial/` tiene
+      FKs contra las tablas de `fixtures/` (el contacto semilla apunta a ciudad e
+      identificación), así que no se puede sembrar primero y diferir el resto.
+    """
+    with schema_context(get_public_schema_name()):
+        try:
+            call_command(
+                'cargar_datos_tenant',
+                schema=schema_name,
+                inicial=True,
+                verbosity=0,
+                stdout=io.StringIO(),
+            )
+        except Exception:
+            logger.exception('Falló la carga de catálogos del contenedor %s', schema_name)
 
 
 @extend_schema(tags=['Cliente'])
@@ -106,7 +177,9 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         cliente.suscripcion = suscripcion
         cliente.save(update_fields=['suscripcion'])
 
-        call_command('cargar_datos_tenant', schema=schema_name, inicial=True, verbosity=0)
+        # Después del COMMIT, no antes: el hilo abre su propia conexión y no vería
+        # ni el contenedor ni su schema mientras esta transacción siga abierta.
+        transaction.on_commit(lambda: lanzar_carga_de_catalogos(schema_name))
 
         return Response(CtnClienteSerializer(cliente).data, status=status.HTTP_201_CREATED)
 
