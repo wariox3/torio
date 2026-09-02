@@ -30,6 +30,7 @@ from general.views import (
     GenModeloViewSet,
     GenPaisViewSet,
     GenParametroViewSet,
+    GenPlantillaViewSet,
     GenPlazoPagoViewSet,
     GenPrecioDetalleViewSet,
     GenPrecioViewSet,
@@ -76,6 +77,7 @@ router.register(r'modalidad', GenModalidadViewSet, basename='modalidad')
 router.register(r'modelo', GenModeloViewSet, basename='modelo')
 router.register(r'pais', GenPaisViewSet, basename='pais')
 router.register(r'parametro', GenParametroViewSet, basename='parametro')
+router.register(r'plantilla', GenPlantillaViewSet, basename='plantilla')
 router.register(r'plazo-pago', GenPlazoPagoViewSet, basename='plazo-pago')
 router.register(r'precio', GenPrecioViewSet, basename='precio')
 router.register(r'precio-detalle', GenPrecioDetalleViewSet, basename='precio-detalle')
