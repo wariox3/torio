@@ -16,6 +16,11 @@ class GenPlantillaViewSet(viewsets.GenericViewSet):
     `connection.schema_name`, que fija `TenantHeaderMiddleware` con el header
     `X-Tenant`, y no de un parámetro. Así no hay forma de sembrar el contenedor
     de otro.
+
+    Las dos acciones apagan `gen_asistente_datos_iniciales` y devuelven su nuevo
+    valor, para que el front no tenga que volver a pedir el parámetro solo para
+    ocultar el asistente. Escribir ese campo pasa por acá y no por un PATCH a
+    `GenParametro`, que es de solo lectura a propósito.
     """
 
     @extend_schema(
@@ -41,7 +46,10 @@ class GenPlantillaViewSet(viewsets.GenericViewSet):
                 inline_serializer(
                     'GenPlantillaErrorSerializer', {'detail': serializers.CharField()},
                 ),
-                description='Plantilla inexistente, mal formada o que no se pudo aplicar',
+                description=(
+                    'Plantilla inexistente, mal formada, que no se pudo aplicar, o '
+                    'contenedor que ya pasó por el asistente'
+                ),
             ),
         },
     )
@@ -59,4 +67,32 @@ class GenPlantillaViewSet(viewsets.GenericViewSet):
         except servicio.PlantillaError as error:
             return Response({'detail': str(error)}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({'modelos': modelos}, status=status.HTTP_200_OK)
+        return Response(
+            {'modelos': modelos, 'gen_asistente_datos_iniciales': False},
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        summary='Descartar el asistente de datos iniciales',
+        description=(
+            'Apaga `gen_asistente_datos_iniciales` sin cargar nada: el usuario '
+            'decidió no usar plantilla. Es idempotente y no tiene vuelta atrás '
+            'desde la API.'
+        ),
+        request=None,
+        responses={
+            200: OpenApiResponse(
+                inline_serializer(
+                    'GenPlantillaDescartarSerializer',
+                    {'gen_asistente_datos_iniciales': serializers.BooleanField()},
+                ),
+                description='Asistente apagado',
+            ),
+        },
+    )
+    @action(detail=False, methods=['post'], url_path='descartar')
+    def descartar(self, request):
+        servicio.descartar(connection.schema_name)
+        return Response(
+            {'gen_asistente_datos_iniciales': False}, status=status.HTTP_200_OK,
+        )

@@ -48,6 +48,8 @@ from django.core.exceptions import FieldDoesNotExist, FieldError
 from django.db import DatabaseError, connection, transaction
 from django_tenants.utils import schema_context
 
+from general.models import GenParametro
+
 RUTA = Path(settings.BASE_DIR) / 'general' / 'plantillas'
 
 # Qué hace un bloque con sus filas. Por defecto inserta; los bloques que ajustan
@@ -55,6 +57,9 @@ RUTA = Path(settings.BASE_DIR) / 'general' / 'plantillas'
 MODO_INSERTAR = 'insertar'
 MODO_ACTUALIZAR = 'actualizar'
 MODOS = (MODO_INSERTAR, MODO_ACTUALIZAR)
+
+# `GenParametro` es un singleton con id fijo, igual que `SingletonMixin.id_singleton`.
+ID_PARAMETRO = 1
 
 # Mismo criterio que `cargar_datos_tenant`: 500 filas por sentencia deja margen de
 # sobra frente al tope de 65.535 parámetros por consulta de Postgres.
@@ -101,6 +106,9 @@ def aplicar(schema_name, archivo):
     Corre **después** de `cargar_datos_tenant --inicial`: las filas apuntan por FK a
     los catálogos y a los datos semilla.
 
+    Apaga `gen_asistente_datos_iniciales` en la misma transacción: si la carga se
+    deshace, el asistente sigue encendido y el usuario puede volver a intentarlo.
+
     Devuelve {etiqueta del modelo: filas insertadas}.
     """
     contenido = leer(archivo)
@@ -110,6 +118,7 @@ def aplicar(schema_name, archivo):
 
     resumen = {}
     with schema_context(schema_name), transaction.atomic():
+        parametro = _asistente_pendiente()
         for etiqueta, bloque in modelos.items():
             modelo = _modelo(etiqueta, archivo)
             modo = bloque.get('modo', MODO_INSERTAR)
@@ -123,7 +132,42 @@ def aplicar(schema_name, archivo):
             else:
                 _actualizar(modelo, filas, etiqueta)
             resumen[etiqueta] = len(filas)
+        _apagar_asistente(parametro)
     return resumen
+
+
+def descartar(schema_name):
+    """
+    Apaga el asistente sin cargar nada: el usuario decidió no usar plantilla.
+
+    Es idempotente y no falla si ya estaba apagado, al revés que `aplicar`. La
+    asimetría es deliberada: descartar solo afirma un estado, mientras que aplicar
+    tiene un efecto que no puede repetirse.
+    """
+    with schema_context(schema_name), transaction.atomic():
+        parametro, _ = GenParametro.objects.get_or_create(id=ID_PARAMETRO)
+        _apagar_asistente(parametro)
+
+
+def _asistente_pendiente():
+    """
+    La fila de `GenParametro` con el asistente todavía encendido.
+
+    La guarda evita que un doble clic o un reintento apliquen la plantilla dos
+    veces: reventaría igual por ids duplicados, pero con un error de base de datos
+    en vez de uno que explique qué pasó.
+    """
+    parametro, _ = GenParametro.objects.get_or_create(id=ID_PARAMETRO)
+    if not parametro.gen_asistente_datos_iniciales:
+        raise PlantillaError(
+            'Este contenedor ya pasó por el asistente de datos iniciales.'
+        )
+    return parametro
+
+
+def _apagar_asistente(parametro):
+    parametro.gen_asistente_datos_iniciales = False
+    parametro.save(update_fields=['gen_asistente_datos_iniciales'])
 
 
 def _insertar(modelo, filas, etiqueta):
