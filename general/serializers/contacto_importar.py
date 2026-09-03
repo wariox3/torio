@@ -58,7 +58,7 @@ class GenContactoImportarSerializer(serializers.Serializer):
     )
     campos_requeridos = {
         'identificacion.id', 'numero_identificacion', 'nombre_corto',
-        'ciudad.id', 'tipo_persona.id', 'celular', 'correo',
+        'ciudad.id', 'tipo_persona.id', 'correo',
     }
 
     LIMITE_ERRORES = 100
@@ -170,7 +170,7 @@ class GenContactoImportarSerializer(serializers.Serializer):
                     apellido2=self._texto_o_none(datos.get('apellido2')),
                     direccion=self._texto(datos.get('direccion')),
                     telefono=self._texto(datos.get('telefono')),
-                    celular=normalizar_para_importar(datos.get('celular')) or '',
+                    celular=normalizar_para_importar(datos.get('celular')),
                     correo=self._texto(datos.get('correo')),
                     correo_facturacion_electronica=self._texto_o_none(datos.get('correo_facturacion_electronica')),
                     plazo_pago=plazo_pago,

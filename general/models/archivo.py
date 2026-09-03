@@ -5,12 +5,7 @@ from django.db import models
 
 class GenArchivo(models.Model):
     fecha = models.DateTimeField(auto_now_add=True)
-    archivo_tipo = models.ForeignKey(
-        'general.GenArchivoTipo',
-        on_delete=models.PROTECT,
-        default=1,
-        db_default=1,
-    )
+    archivo_tipo = models.ForeignKey('general.GenArchivoTipo', on_delete=models.PROTECT, default=1, db_default=1)
     modelo = models.ForeignKey('general.GenModelo', on_delete=models.PROTECT)
     objeto_id = models.CharField(max_length=50, db_index=True)
     nombre = models.CharField(max_length=500)

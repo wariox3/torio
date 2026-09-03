@@ -886,6 +886,10 @@ class _Constructor:
             ),
             'cliente': constructor.cliente,
         },
+        # `ConPeriodo` deriva su PK en `save()` (anio*100+mes) e ignora el id explícito
+        # que pone `_pk`, así que es el único modelo que no puede recibir su rango por
+        # esa vía: hay que dárselo a través del año.
+        'ConPeriodo': lambda constructor: constructor.periodo_en_rango(),
     }
 
     def __init__(self, schema, cliente):
@@ -893,10 +897,25 @@ class _Constructor:
         self.cliente = cliente
         self.marcador = MARCADOR[schema]
         self._contador = itertools.count(BASE_ID[schema])
+        self._mes_periodo = itertools.count(1)
         self._cache = {}
 
     def siguiente_id(self):
         return next(self._contador)
+
+    def periodo_en_rango(self):
+        """
+        `anio` y `mes` de un `ConPeriodo` que caiga en el rango del contenedor.
+
+        El año sale del propio `BASE_ID` para que la PK derivada quede donde la señal
+        de fuga la espera: 9000 en A da 900001+, 8000 en B da 800001+. Son años
+        absurdos, y es a propósito — los validadores de rango de `anio` solo corren en
+        el serializer, no en `save()`, y acá lo que importa es que los rangos de A y B
+        queden disjuntos. El mes lleva su propio contador porque `unique_together`
+        cubre (anio, mes) y en cada contenedor se crea más de un periodo: uno para el
+        endpoint y otro como FK de `ConMovimiento`.
+        """
+        return {'anio': BASE_ID[self.schema] // 100, 'mes': next(self._mes_periodo)}
 
     def crear(self, modelo, marcar=True):
         """
@@ -996,8 +1015,8 @@ class _Constructor:
         if isinstance(campo, (campos_db.DecimalField, campos_db.FloatField)):
             return 0
         if isinstance(campo, campos_db.IntegerField):
-            # Valor distinto por fila: `ConPeriodo` tiene único sobre (anio, mes) y con un
-            # 1 fijo la segunda fila choca contra la primera.
+            # Valor distinto por fila: hay enteros bajo `unique_together` y con un 1 fijo
+            # la segunda fila chocaría contra la primera.
             return self.siguiente_id()
         return self.marcador
 
