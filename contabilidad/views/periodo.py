@@ -136,10 +136,12 @@ class ConPeriodoViewSet(
             raise ValidationError({'anio': 'Ya existen periodos para este año'})
 
         with transaction.atomic():
-            # 13 periodos: meses 1–12 + periodo 13 (ajustes/cierre).
-            periodos = ConPeriodo.objects.bulk_create(
-                [ConPeriodo(anio=anio, mes=mes) for mes in range(1, 14)]
-            )
+            # 13 periodos: meses 1–12 + periodo 13 (ajustes/cierre). El id se
+            # asigna explícito porque `bulk_create` no pasa por `save()`.
+            periodos = ConPeriodo.objects.bulk_create([
+                ConPeriodo(id=ConPeriodo.calcular_id(anio, mes), anio=anio, mes=mes)
+                for mes in range(1, 14)
+            ])
 
         datos = ConPeriodoSerializer(periodos, many=True).data
         return Response(datos, status=status.HTTP_201_CREATED)

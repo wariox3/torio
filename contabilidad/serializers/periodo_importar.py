@@ -39,9 +39,13 @@ class ConPeriodoImportarSerializer(serializers.Serializer):
 
         for idx, datos in filas_validas:
             try:
+                anio = self._entero(datos.get('anio'), 'Año', 2000, 2100)
+                mes = self._entero(datos.get('mes'), 'Mes', 1, 13)
+                # El id se asigna explícito porque `bulk_create` no pasa por `save()`.
                 nuevos.append(ConPeriodo(
-                    anio=self._entero(datos.get('anio'), 'Año'),
-                    mes=self._entero(datos.get('mes'), 'Mes'),
+                    id=ConPeriodo.calcular_id(anio, mes),
+                    anio=anio,
+                    mes=mes,
                 ))
             except Exception as e:
                 errores.append({'fila': idx, 'mensaje': str(e)})
@@ -58,10 +62,15 @@ class ConPeriodoImportarSerializer(serializers.Serializer):
     # ---- helpers ----
 
     @staticmethod
-    def _entero(v, etiqueta):
+    def _entero(v, etiqueta, minimo, maximo):
         if v is None or str(v).strip() == '':
             raise ValueError(f'{etiqueta} es obligatorio')
         try:
-            return int(float(str(v).strip()))
+            valor = int(float(str(v).strip()))
         except (TypeError, ValueError):
             raise ValueError(f'{etiqueta} debe ser un entero, recibido: "{v}"')
+        # El rango no es cosmético: el id del periodo es anio*100+mes, así que un
+        # mes fuera de 1–13 codificaría el id de otro año.
+        if not minimo <= valor <= maximo:
+            raise ValueError(f'{etiqueta} debe estar entre {minimo} y {maximo}, recibido: "{v}"')
+        return valor
