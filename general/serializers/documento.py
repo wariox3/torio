@@ -10,8 +10,8 @@ from general.servicios import crear_detalle
 
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
-    campos_filtrables = {'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado'}
-    select_related_lista = ('documento_tipo', 'contacto', 'contacto__precio', 'sector', 'sede', 'plazo_pago', 'metodo_pago', 'forma_pago')
+    campos_filtrables = {'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion', 'centro_costo_id', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado'}
+    select_related_lista = ('documento_tipo', 'contacto', 'contacto__precio', 'sector', 'sede', 'centro_costo', 'plazo_pago', 'metodo_pago', 'forma_pago')
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
@@ -24,6 +24,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
     metodo_pago_nombre = serializers.CharField(source='metodo_pago.nombre', read_only=True, default=None)
     forma_pago_nombre = serializers.CharField(source='forma_pago.nombre', read_only=True, default=None)
     sede_nombre = serializers.CharField(source='sede.nombre', read_only=True, default=None)
+    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
+    centro_costo_codigo = serializers.CharField(source='centro_costo.codigo', read_only=True, default=None)
 
     class Meta:
         model = GenDocumento
@@ -57,6 +59,9 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'cuenta_banco',
             'comprobante',
             'cuenta',
+            'centro_costo',
+            'centro_costo_nombre',
+            'centro_costo_codigo',
             'sector',
             'sector_nombre',
             'sede',

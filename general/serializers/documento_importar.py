@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from contabilidad.models import ConCentroCosto
 from general.models import (
     GenAsesor,
     GenContacto,
@@ -44,6 +45,7 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         ('asesor.id', 'Asesor'),
         ('sector.id', 'Sector'),
         ('modalidad.id', 'Modalidad'),
+        ('centro_costo.id', 'Centro de costo'),
     )
     campos_requeridos = {'documento_tipo.id', 'fecha'}
 
@@ -71,6 +73,7 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         ids_asesor = self._ids_int(filas_validas, 'asesor.id')
         ids_sector = self._ids_int(filas_validas, 'sector.id')
         ids_modalidad = self._ids_int(filas_validas, 'modalidad.id')
+        ids_centro_costo = self._ids_int(filas_validas, 'centro_costo.id')
 
         mapa_documento_tipo = {o.id: o for o in GenDocumentoTipo.objects.filter(id__in=ids_documento_tipo)}
         mapa_contacto = {o.id: o for o in GenContacto.objects.filter(id__in=ids_contacto)}
@@ -79,6 +82,7 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         mapa_asesor = {o.id: o for o in GenAsesor.objects.filter(id__in=ids_asesor)}
         mapa_sector = {o.id: o for o in GenSector.objects.filter(id__in=ids_sector)}
         mapa_modalidad = {o.id: o for o in GenModalidad.objects.filter(id__in=ids_modalidad)}
+        mapa_centro_costo = {o.id: o for o in ConCentroCosto.objects.filter(id__in=ids_centro_costo)}
 
         # 2) Construir instancias en memoria, recolectar errores
         errores = []
@@ -97,6 +101,8 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
                 asesor = self._fk_opcional(datos.get('asesor.id'), mapa_asesor, 'Asesor')
                 sector = self._fk_opcional(datos.get('sector.id'), mapa_sector, 'Sector')
                 modalidad = self._fk_opcional(datos.get('modalidad.id'), mapa_modalidad, 'Modalidad')
+                centro_costo = self._fk_opcional(
+                    datos.get('centro_costo.id'), mapa_centro_costo, 'Centro de costo')
 
                 nuevos.append(GenDocumento(
                     documento_tipo=documento_tipo,
@@ -112,6 +118,7 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
                     asesor=asesor,
                     sector=sector,
                     modalidad=modalidad,
+                    centro_costo=centro_costo,
                 ))
             except Exception as e:
                 errores.append({'fila': idx, 'mensaje': str(e)})

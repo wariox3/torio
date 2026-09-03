@@ -85,6 +85,12 @@ class GenDocumentoDetalle(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_detalles_cuenta_rel',
     )
+    centro_costo = models.ForeignKey(
+        'contabilidad.ConCentroCosto',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_detalles_centro_costo_rel',
+    )
     contacto = models.ForeignKey(
         'general.GenContacto',
         null=True,

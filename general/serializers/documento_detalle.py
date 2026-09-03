@@ -23,8 +23,8 @@ class GenDocumentoImpuestoSerializer(serializers.ModelSerializer):
 
 
 class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
-    campos_filtrables = {'id', 'documento_id', 'documento_detalle_afectado_id', 'item_id', 'tipo_registro', 'cuenta_id', 'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion', 'modalidad_id', 'afectado', 'pendiente'}
-    select_related_lista = ('item', 'modalidad', 'cuenta', 'contacto', 'puesto')
+    campos_filtrables = {'id', 'documento_id', 'documento_detalle_afectado_id', 'item_id', 'tipo_registro', 'cuenta_id', 'centro_costo_id', 'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion', 'modalidad_id', 'afectado', 'pendiente'}
+    select_related_lista = ('item', 'modalidad', 'cuenta', 'centro_costo', 'contacto', 'puesto')
     ordenamiento_default_lista = ('-id',)
 
     documento = serializers.PrimaryKeyRelatedField(
@@ -39,6 +39,8 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
     modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
     modalidad_codigo = serializers.CharField(source='modalidad.codigo', read_only=True, default=None)
     puesto_nombre = serializers.CharField(source='puesto.nombre', read_only=True, default=None)
+    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
+    centro_costo_codigo = serializers.CharField(source='centro_costo.codigo', read_only=True, default=None)
     impuestos = GenDocumentoImpuestoSerializer(
         many=True,
         read_only=True,
@@ -88,6 +90,9 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'puesto',
             'puesto_nombre',
             'cuenta',
+            'centro_costo',
+            'centro_costo_nombre',
+            'centro_costo_codigo',
             'contacto',
             'impuestos',
             'impuestos_ids',

@@ -22,6 +22,8 @@ class GenDocumentoExportarSerializer(serializers.Serializer):
         ('fecha_contable', 'Fecha contable'),
         ('documento_tipo.nombre', 'Tipo documento'),
         ('contacto.nombre_corto', 'Contacto'),
+        ('centro_costo.codigo', 'Centro de costo'),
+        ('centro_costo.nombre', 'Centro de costo nombre'),
         ('forma_pago.nombre', 'Forma pago'),
         ('soporte', 'Soporte'),
         ('orden_compra', 'Orden compra'),
