@@ -52,6 +52,7 @@ from general.servicios import factura_electronica
 from general.servicios import rededoc as rededoc_servicio
 from general.serializers import (
     GenAsesorImportarSerializer,
+    GenDocumentoDetalleSerializer,
     GenDocumentoSerializer,
     GenDocumentoDetalleImportarSerializer,
     GenParametroSerializer,
@@ -2396,6 +2397,27 @@ class DocumentoDetalleRespuestaTests(_ImportarDetalleContableBaseTests):
         self.assertEqual(detalle['cuenta_nombre'], 'Terrenos')
         self.assertEqual(detalle['contacto_numero_identificacion'], '123456789')
         self.assertEqual(detalle['contacto_nombre_corto'], 'Contacto')
+
+    def test_la_lista_trae_naturaleza_y_base_del_apunte(self):
+        """
+        Sin `naturaleza` el front no puede pintar la columna D/C, y `base` es lo que
+        exigen las cuentas de retención. Todo el asiento se armó sobre esos dos.
+        """
+        self.assertEqual(self._importar_asiento([self._fila()]).status_code, 200)
+
+        request = APIRequestFactory().get(
+            '/general/documento-detalle/', {'documento_id': self.asiento.id},
+        )
+        response = _DocumentoDetalleViewSinPermisos.as_view({'get': 'list'})(request)
+
+        detalle = response.data['results'][0]
+        self.assertEqual(detalle['naturaleza'], 'D')
+        self.assertEqual(Decimal(detalle['base']), Decimal('1000'))
+        self.assertEqual(detalle['tipo_registro'], 'C')
+
+    def test_naturaleza_se_puede_filtrar(self):
+        """El front lista los débitos y los créditos por separado."""
+        self.assertIn('naturaleza', GenDocumentoDetalleSerializer.campos_filtrables)
 
     def test_una_linea_sin_cuenta_ni_contacto_los_trae_en_null(self):
         """El detalle de una venta no tiene cuenta: las claves siguen estando."""
