@@ -3,7 +3,7 @@ Balance de prueba: consolidado por cuenta de un rango de fechas.
 """
 from decimal import Decimal
 
-from django.db.models import DecimalField, Q, Sum, Value
+from django.db.models import DecimalField, F, Q, Sum, Value
 from django.db.models.functions import Coalesce
 
 from contabilidad.models import ConMovimiento
@@ -40,7 +40,7 @@ COLUMNAS_TOTALIZABLES = (
 )
 
 
-def balance_prueba(fecha_desde, fecha_hasta):
+def balance_prueba(fecha_desde, fecha_hasta, solo_con_saldo=True):
     """
     Queryset agrupado por cuenta con el movimiento del rango y el acumulado previo.
 
@@ -60,12 +60,18 @@ def balance_prueba(fecha_desde, fecha_hasta):
     `movimiento_debito`, `movimiento_credito`); las columnas que ve el usuario
     las arma `componer_fila`.
 
+    Con `solo_con_saldo` (el default) se descartan las cuentas que no movieron
+    en el rango y llegan con saldo anterior neto cero: son filas de puros ceros,
+    normalmente cuentas que movieron alguna vez y se cancelaron. El descarte va
+    en el HAVING, sobre los importes ya agregados, y no altera los totales de
+    cuadre, porque una fila en ceros aporta cero a las seis columnas.
+
     El `order_by` explícito no es cosmético: `ConMovimiento.Meta.ordering` es
     `['-id']`, y sobre un queryset agrupado Django mete el campo de ordenamiento
     en el GROUP BY, con lo que el balance saldría partido en una fila por
     movimiento en vez de una por cuenta.
     """
-    return (
+    qs = (
         ConMovimiento.objects.filter(fecha__lte=fecha_hasta)
         .values('cuenta_id', 'cuenta__codigo', 'cuenta__nombre')
         .annotate(
@@ -76,6 +82,15 @@ def balance_prueba(fecha_desde, fecha_hasta):
         )
         .order_by('cuenta__codigo')
     )
+
+    if solo_con_saldo:
+        qs = qs.exclude(
+            Q(movimiento_debito=0)
+            & Q(movimiento_credito=0)
+            & Q(anterior_debito=F('anterior_credito'))
+        )
+
+    return qs
 
 
 def componer_fila(fila):

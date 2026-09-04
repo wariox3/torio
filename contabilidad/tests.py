@@ -365,6 +365,54 @@ class BalancePruebaTests(TenantTestCase):
 
         self.assertEqual([fila['cuenta_codigo'] for fila in self._lista()], ['1105', '1110'])
 
+    def test_omite_la_cuenta_en_ceros(self):
+        """
+        La cuenta movió alguna vez, se canceló y no volvió a moverse: llega al
+        rango con saldo cero y sin movimiento, así que es una fila de puros ceros
+        que solo estorba en el balance.
+        """
+        self._movimiento(self.banco, date(2025, 3, 1), debito=90)
+        self._movimiento(self.banco, date(2025, 4, 1), credito=90)
+        self._movimiento(self.caja, date(2026, 1, 10), debito=25)
+
+        codigos = [fila['cuenta_codigo'] for fila in self._lista()]
+
+        self.assertEqual(codigos, ['1105'])
+
+    def test_con_solo_con_saldo_false_sale_la_cuenta_en_ceros(self):
+        self._movimiento(self.banco, date(2025, 3, 1), debito=90)
+        self._movimiento(self.banco, date(2025, 4, 1), credito=90)
+        self._movimiento(self.caja, date(2026, 1, 10), debito=25)
+
+        filas = self._lista(solo_con_saldo=False)
+        fila = self._fila(filas, '1110')
+
+        self.assertEqual([f['cuenta_codigo'] for f in filas], ['1105', '1110'])
+        self.assertEqual(Decimal(fila['saldo_anterior']), Decimal(0))
+        self.assertEqual(Decimal(fila['saldo_final']), Decimal(0))
+
+    def test_la_cuenta_que_movio_en_el_rango_y_quedo_en_cero_si_sale(self):
+        """
+        Netea cero pero movió dentro del rango: el débito y el crédito del periodo
+        son parte del balance aunque el saldo final quede en cero.
+        """
+        self._movimiento(self.banco, date(2026, 1, 5), debito=60)
+        self._movimiento(self.banco, date(2026, 1, 20), credito=60)
+
+        fila = self._fila(self._lista(), '1110')
+
+        self.assertEqual(Decimal(fila['debito']), Decimal(60))
+        self.assertEqual(Decimal(fila['credito']), Decimal(60))
+        self.assertEqual(Decimal(fila['saldo_final']), Decimal(0))
+
+    def test_omitir_ceros_no_cambia_los_totales(self):
+        """Una fila en ceros aporta cero a las seis columnas, con o sin la bandera."""
+        self._movimiento(self.banco, date(2025, 3, 1), debito=90)
+        self._movimiento(self.banco, date(2025, 4, 1), credito=90)
+        self._movimiento(self.caja, date(2026, 1, 10), debito=25)
+
+        self.assertEqual(self._totales(), self._totales(solo_con_saldo=False))
+
     def test_no_acepta_ordenamientos(self):
         self._movimiento(self.caja, date(2026, 1, 5), debito=10)
 

@@ -18,7 +18,8 @@ from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin
 # Registro de informes sobre ConMovimiento.
 # A diferencia de los informes de `general`, que filtran filas y declaran su
 # invariante con un `Q`, acá cada informe declara cómo construir su queryset
-# agrupado: lo que se sirve son totales por cuenta, no movimientos.
+# agrupado: lo que se sirve son totales por cuenta, no movimientos. La firma de
+# `queryset` es (fecha_desde, fecha_hasta, solo_con_saldo).
 INFORMES = {
     'balance_prueba': {
         'queryset': balance_prueba,
@@ -35,6 +36,14 @@ _InformeRequest = inline_serializer(
         'informe': serializers.ChoiceField(choices=sorted(INFORMES)),
         'fecha_desde': serializers.DateField(),
         'fecha_hasta': serializers.DateField(),
+        'solo_con_saldo': serializers.BooleanField(
+            required=False,
+            help_text=(
+                'Por defecto `true`: omite las cuentas sin movimiento en el rango y '
+                'con saldo anterior en cero. Con `false` sale el plan completo de '
+                'cuentas que alguna vez movieron.'
+            ),
+        ),
         'filtros': serializers.ListField(
             child=serializers.DictField(), required=False,
             help_text='Mismos filtros dinámicos de `lista`: propiedad, operador, valor.',
@@ -61,6 +70,9 @@ class ConMovimientoInformeViewSet(
 
     Los `filtros` se aplican antes de agrupar, así que acotan por igual el saldo
     anterior y el movimiento del rango.
+
+    `solo_con_saldo` (por defecto `true`) omite las cuentas que no movieron en el
+    rango y llegan con saldo anterior en cero.
 
     El informe sale siempre ordenado por código de cuenta y no acepta
     `ordenamientos`: sobre un queryset agrupado, ordenar por un campo que no
@@ -90,7 +102,11 @@ class ConMovimientoInformeViewSet(
             valor = request.data.get(clave)
         except Exception:
             valor = None
-        return valor or request.query_params.get(clave)
+        # Comparar contra None y no por verdad: `solo_con_saldo: false` en el body
+        # es un valor, no una ausencia, y con `or` se perdería.
+        if valor is None:
+            valor = request.query_params.get(clave)
+        return valor
 
     def _fecha(self, clave):
         valor = self._parametro(clave)
@@ -112,6 +128,15 @@ class ConMovimientoInformeViewSet(
             raise ValidationError({'fecha_desde': 'No puede ser posterior a `fecha_hasta`.'})
         return desde, hasta
 
+    def _solo_con_saldo(self):
+        valor = self._parametro('solo_con_saldo')
+        if valor is None or valor == '':
+            return True
+        try:
+            return serializers.BooleanField().to_internal_value(valor)
+        except ValidationError as error:
+            raise ValidationError({'solo_con_saldo': error.detail})
+
     def _rechazar_ordenamientos(self, request):
         try:
             ordenamientos = request.data.get('ordenamientos')
@@ -131,7 +156,7 @@ class ConMovimientoInformeViewSet(
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return ConMovimiento.objects.none()
-        return self._informe()['queryset'](*self._rango())
+        return self._informe()['queryset'](*self._rango(), self._solo_con_saldo())
 
     @extend_schema(request=_InformeRequest)
     @action(detail=False, methods=['post'])
