@@ -2897,6 +2897,36 @@ class EfectosAprobarTests(TenantTestCase):
         self.assertEqual(factura.afectado, Decimal('0'))
         self.assertEqual(factura.pendiente, Decimal('1000'))
 
+    # ---- guardas de desaprobar ----
+
+    def test_un_documento_anulado_no_se_desaprueba(self):
+        documento = self._documento(total=Decimal('1000'))
+        self._detalle(documento)
+        documento_servicio.aprobar(documento.id)
+        GenDocumento.objects.filter(pk=documento.pk).update(estado_anulado=True)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.desaprobar(documento.id)
+
+        self.assertIn('anulado', str(caso.exception))
+
+    def test_una_clase_que_no_admite_desaprobacion_se_rechaza(self):
+        """
+        Un pedido aprobado se deshace con otro documento, no quitándole el aprobado.
+        """
+        tipo = GenDocumentoTipo.objects.create(
+            id=26, nombre='PEDIDO CLIENTE', documento_clase=self.clase_pedido,
+        )
+        documento = self._documento(tipo=tipo)
+        documento_servicio.aprobar(documento.id)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.desaprobar(documento.id)
+
+        self.assertIn('no permite desaprobación', str(caso.exception))
+        documento.refresh_from_db()
+        self.assertTrue(documento.estado_aprobado)
+
     def test_una_nota_credito_mayor_al_pendiente_no_se_aprueba(self):
         factura = self._factura_aprobada('1000')
         nota = self._nota_credito(factura, '1500')
@@ -3054,6 +3084,68 @@ class InventarioAprobarTests(TenantTestCase):
 
         detalle.refresh_from_db()
         self.assertEqual(detalle.costo, Decimal('100'))
+
+    def test_desaprobar_no_recalcula_el_costo_promedio(self):
+        """
+        El promedio ponderado no tiene inversa si hubo movimientos en el medio, así
+        que revertir devuelve las cantidades y deja el costo donde quedó. Es una
+        limitación conocida: el costo se corrige con un ajuste, no desaprobando.
+        """
+        entrada = self._documento(self.tipo_entrada)
+        self._detalle(entrada, '10', precio=Decimal('100'))
+        documento_servicio.aprobar(entrada.id)
+
+        documento_servicio.desaprobar(entrada.id)
+
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.existencia, Decimal('0'))
+        self.assertEqual(self.item.costo_promedio, Decimal('100'))
+
+    def test_desaprobar_no_vuelve_a_congelar_el_costo_del_detalle(self):
+        entrada = self._documento(self.tipo_entrada)
+        self._detalle(entrada, '10', precio=Decimal('100'))
+        documento_servicio.aprobar(entrada.id)
+        salida = self._documento(self.tipo_salida)
+        detalle = self._detalle(salida, '-2')
+        documento_servicio.aprobar(salida.id)
+
+        documento_servicio.desaprobar(salida.id)
+
+        detalle.refresh_from_db()
+        self.assertEqual(detalle.costo, Decimal('100'))
+
+    def test_no_se_desaprueba_una_entrada_cuya_mercancia_ya_salio(self):
+        """
+        El riesgo al desaprobar es el opuesto al de aprobar: deshacer una entrada
+        saca mercancía, y si ya se vendió el saldo queda en rojo.
+        """
+        entrada = self._documento(self.tipo_entrada)
+        self._detalle(entrada, '10')
+        documento_servicio.aprobar(entrada.id)
+        salida = self._documento(self.tipo_salida)
+        self._detalle(salida, '-8')
+        documento_servicio.aprobar(salida.id)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.desaprobar(entrada.id)
+
+        self.assertIn('supera la cantidad existente', str(caso.exception))
+        self.assertEqual(self._saldo().existencia, Decimal('2'))
+        entrada.refresh_from_db()
+        self.assertTrue(entrada.estado_aprobado)
+
+    def test_desaprobar_una_salida_siempre_cabe(self):
+        """Revertir una salida devuelve mercancía: nunca puede dejar el saldo en rojo."""
+        entrada = self._documento(self.tipo_entrada)
+        self._detalle(entrada, '10')
+        documento_servicio.aprobar(entrada.id)
+        salida = self._documento(self.tipo_salida)
+        self._detalle(salida, '-8')
+        documento_servicio.aprobar(salida.id)
+
+        documento_servicio.desaprobar(salida.id)
+
+        self.assertEqual(self._saldo().existencia, Decimal('10'))
 
     def test_un_detalle_sin_almacen_no_toca_inventario(self):
         """Una factura de servicios no mueve saldos aunque tenga item."""

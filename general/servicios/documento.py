@@ -75,6 +75,17 @@ DOCUMENTO_TIPOS_CUENTA_DE_FORMA_PAGO = (
     11,  # DOCUMENTO SOPORTE
 )
 
+# Clases que admiten desaprobación. Las que no están acá se deshacen por otro
+# camino (una nota, un ajuste), no quitándoles el aprobado.
+DOCUMENTO_CLASES_QUE_PERMITEN_DESAPROBAR = (
+    100, 101, 102, 104, 105,  # venta
+    200,                      # pago
+    300, 301, 303,            # compra
+    400,                      # egreso
+    500, 501,                 # entrada y salida de almacén
+    601, 603,                 # asiento y cierre contable
+)
+
 DOCUMENTO_TIPO_REMISION = 29
 DOCUMENTO_TIPO_DEVOLUCION_REMISION = 30
 
@@ -210,55 +221,63 @@ def _validar_nota_credito(documento):
         )
 
 
-def _validar_existencias(documento):
+def _validar_existencias(documento, signo=1):
     """
     Un item que no admite negativos no puede quedar en rojo.
 
-    Se valida `existencia` para los detalles que sacan inventario y `disponible`
-    para los que sacan remisión: son dos saldos distintos y una salida puede
-    caber en uno y no en el otro.
+    `signo` dice en qué sentido se va a mover el documento: 1 al aprobar y -1 al
+    desaprobar. Cambia por completo qué líneas hay que mirar. Al aprobar
+    preocupan las salidas; al desaprobar preocupan las entradas, porque deshacer
+    una entrada saca mercancía que quizá ya se vendió.
+
+    Se revisan dos saldos distintos: `existencia` para lo que mueve inventario y
+    `disponible` para lo que mueve remisión. Una salida puede caber en uno y no
+    en el otro.
     """
-    _validar_saldo_inventario(documento, 'operacion_inventario', 'existencia', 'existente')
-    _validar_saldo_inventario(documento, 'operacion_remision', 'disponible', 'disponible')
+    _validar_saldo_inventario(documento, 'operacion_inventario', 'existencia', 'existente', signo)
+    _validar_saldo_inventario(documento, 'operacion_remision', 'disponible', 'disponible', signo)
 
 
-def _validar_saldo_inventario(documento, campo_operacion, campo_saldo, etiqueta):
+def _validar_saldo_inventario(documento, campo_operacion, campo_saldo, etiqueta, signo):
     """
-    `campo_operacion` acota qué detalles salen (-1), y `campo_saldo` cuál de los
-    saldos de `InvExistencia` tiene que alcanzar.
+    `campo_operacion` acota qué líneas mueven ese saldo y `campo_saldo` cuál de
+    los tres de `InvExistencia` tiene que alcanzar.
 
     Se agrupa por (item, almacén) en una consulta: varias líneas del mismo
-    documento pueden sacar el mismo item y lo que importa es la suma.
+    documento pueden mover el mismo item y lo que importa es la suma.
     """
-    salidas = (
+    movimientos = (
         documento.documentos_detalles_documento_rel
-        .filter(**{campo_operacion: -1}, item__negativo=False)
+        .filter(item__negativo=False, almacen__isnull=False)
+        .exclude(**{campo_operacion: 0})
         .values('item_id', 'almacen_id')
         .annotate(cantidad_total=Sum('cantidad_operada'))
     )
-    if not salidas:
+    # `cantidad_operada` ya viene con signo, así que el efecto es la suma por el
+    # sentido del movimiento. Lo que suma no puede dejar nada en rojo.
+    restas = [m for m in movimientos if m['cantidad_total'] * signo < 0]
+    if not restas:
         return
 
     saldos = {
         (e.item_id, e.almacen_id): e
         for e in InvExistencia.objects.filter(
-            item_id__in={s['item_id'] for s in salidas},
-            almacen_id__in={s['almacen_id'] for s in salidas},
+            item_id__in={m['item_id'] for m in restas},
+            almacen_id__in={m['almacen_id'] for m in restas},
         )
     }
-    for salida in salidas:
-        existencia = saldos.get((salida['item_id'], salida['almacen_id']))
+    for movimiento in restas:
+        existencia = saldos.get((movimiento['item_id'], movimiento['almacen_id']))
         if existencia is None:
             raise ValidationError(
-                f"El item {salida['item_id']} no tiene existencias en el almacén "
-                f"{salida['almacen_id']}."
+                f"El item {movimiento['item_id']} no tiene existencias en el almacén "
+                f"{movimiento['almacen_id']}."
             )
-        # `cantidad_operada` ya viene con signo: una salida es negativa.
         saldo = getattr(existencia, campo_saldo)
-        if saldo + salida['cantidad_total'] < 0:
+        if saldo + movimiento['cantidad_total'] * signo < 0:
             raise ValidationError(
-                f"El item {salida['item_id']} en el almacén {salida['almacen_id']} "
-                f"supera la cantidad {etiqueta} {saldo}."
+                f"El item {movimiento['item_id']} en el almacén "
+                f"{movimiento['almacen_id']} supera la cantidad {etiqueta} {saldo}."
             )
 
 
@@ -458,10 +477,19 @@ def desaprobar(documento_id):
             raise NotFound('Documento no encontrado.')
         if not documento.estado_aprobado:
             raise ValidationError('El documento no está aprobado.')
+        if documento.estado_anulado:
+            raise ValidationError('El documento está anulado.')
         if documento.estado_contabilizado:
             raise ValidationError('El documento está contabilizado.')
         if documento.estado_electronico_enviado:
             raise ValidationError('El documento ya fue enviado electrónicamente.')
+        if (documento.documento_tipo.documento_clase_id
+                not in DOCUMENTO_CLASES_QUE_PERMITEN_DESAPROBAR):
+            raise ValidationError('El documento no permite desaprobación.')
+
+        # Deshacer una entrada saca mercancía que quizá ya se despachó: se valida
+        # antes de mover nada.
+        _validar_existencias(documento, signo=-1)
 
         # Revierte exactamente lo que hizo `aprobar`: si algo queda sin deshacer, el
         # documento arrastra cartera o unidades afectadas que ya no corresponden.
@@ -501,8 +529,12 @@ def _afectar_inventario(documento, signo):
         return
 
     es_remision = documento.documento_tipo_id in DOCUMENTO_TIPOS_REMISION
-    promedia_costo = documento.documento_tipo_id in DOCUMENTO_TIPOS_QUE_PROMEDIAN_COSTO
-    congela_costo = documento.documento_tipo_id in DOCUMENTO_TIPOS_QUE_CONGELAN_COSTO
+    # El costo solo se toca al aprobar. Al revertir no se recalcula el promedio
+    # —es ponderado y no tiene inversa si hubo movimientos en el medio— ni se
+    # vuelve a congelar el costo del detalle, que ya quedó con el de ese día.
+    aprueba = signo == 1
+    promedia_costo = aprueba and documento.documento_tipo_id in DOCUMENTO_TIPOS_QUE_PROMEDIAN_COSTO
+    congela_costo = aprueba and documento.documento_tipo_id in DOCUMENTO_TIPOS_QUE_CONGELAN_COSTO
 
     for detalle in detalles:
         if es_remision:
@@ -556,29 +588,31 @@ def _mover_inventario(detalle, signo, promedia_costo, congela_costo):
     else:
         item.disponible += cantidad
 
-    if promedio := _costo_promedio(
-        promedia_costo, existencia_anterior, costo_promedio_anterior, cantidad, detalle.precio,
-        item.existencia,
-    ):
-        item.costo_promedio = promedio
-    item.costo_total = item.costo_promedio * item.existencia
-    item.save(update_fields=[
-        'existencia', 'remision', 'disponible', 'costo_promedio', 'costo_total',
-    ])
+    campos_item = ['existencia', 'remision', 'disponible']
+    if promedia_costo:
+        promedio = _costo_promedio(
+            existencia_anterior, costo_promedio_anterior, cantidad, detalle.precio,
+            item.existencia,
+        )
+        if promedio is not None:
+            item.costo_promedio = promedio
+        item.costo_total = item.costo_promedio * item.existencia
+        campos_item += ['costo_promedio', 'costo_total']
+    item.save(update_fields=campos_item)
 
     if congela_costo:
         detalle.costo = item.costo_promedio
         detalle.save(update_fields=['costo'])
 
 
-def _costo_promedio(aplica, existencia_anterior, costo_anterior, cantidad, precio, existencia):
+def _costo_promedio(existencia_anterior, costo_anterior, cantidad, precio, existencia):
     """
     Promedio ponderado entre lo que había y lo que entra.
 
     Con existencia final en cero o negativa no se promedia: dividir por ahí da un
     costo sin sentido, y el anterior es la mejor aproximación que queda.
     """
-    if not aplica or existencia <= 0:
+    if existencia <= 0:
         return None
     return (
         (existencia_anterior * costo_anterior) + (cantidad * precio)
