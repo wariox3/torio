@@ -14,6 +14,7 @@ from contabilidad.views import (
     ConCuentaSubcuentaViewSet,
     ConCuentaViewSet,
     ConMetodoDepreciacionViewSet,
+    ConMovimientoInformeViewSet,
     ConMovimientoViewSet,
     ConPeriodoViewSet,
 )
@@ -33,6 +34,7 @@ router.register(r'cuenta-grupo', ConCuentaGrupoViewSet, basename='cuenta-grupo')
 router.register(r'cuenta-subcuenta', ConCuentaSubcuentaViewSet, basename='cuenta-subcuenta')
 router.register(r'metodo-depreciacion', ConMetodoDepreciacionViewSet, basename='metodo-depreciacion')
 router.register(r'movimiento', ConMovimientoViewSet, basename='movimiento')
+router.register(r'movimiento-informe', ConMovimientoInformeViewSet, basename='movimiento-informe')
 router.register(r'periodo', ConPeriodoViewSet, basename='periodo')
 
 urlpatterns = router.urls

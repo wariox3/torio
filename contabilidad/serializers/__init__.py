@@ -23,6 +23,11 @@ from .cuenta_seleccionar import ConCuentaSeleccionarSerializer
 from .cuenta_subcuenta import ConCuentaSubcuentaSeleccionarSerializer
 from .metodo_depreciacion import ConMetodoDepreciacionSeleccionarSerializer
 from .movimiento import ConMovimientoSerializer
+from .movimiento_informe import (
+    ConMovimientoInformeBalanceExportarSerializer,
+    ConMovimientoInformeBalanceSerializer,
+    ConMovimientoInformeBalanceTotalesSerializer,
+)
 from .movimiento_exportar import ConMovimientoExportarSerializer
 from .movimiento_importar import ConMovimientoImportarSerializer
 from .movimiento_seleccionar import ConMovimientoSeleccionarSerializer

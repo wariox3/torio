@@ -13,3 +13,4 @@ from .cuenta_subcuenta import ConCuentaSubcuenta
 from .metodo_depreciacion import ConMetodoDepreciacion
 from .movimiento import ConMovimiento
 from .periodo import ConPeriodo
+from .saldo_cuenta import ConSaldoCuenta
