@@ -4,9 +4,13 @@ from django.db import models
 
 
 class GenDocumentoDetalle(models.Model):
+    # Marcas cuya línea es un apunte contable: el valor va en `precio` y no hay
+    # nada que derivar de cantidad x precio.
+    TIPOS_REGISTRO_CONTABLES = ('C', 'D')
+
     # I=Item, C=Cuenta, D=Depreciación, N=Nómina, E=Nómina electrónica,
     # S=Seguridad social. Lo fija quien crea el detalle según el tipo del
-    # documento; ninguna lógica del backend lo lee, el front filtra por él.
+    # documento, y decide si la línea deriva totales (ver `calcular`).
     tipo_registro = models.CharField(max_length=1, default='I', db_default='I')
     cantidad = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     cantidad_operada = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
@@ -129,7 +133,28 @@ class GenDocumentoDetalle(models.Model):
             kwargs['update_fields'] = list(update_fields) + ['pendiente']
         super().save(*args, **kwargs)
 
+    def es_contable(self):
+        """La línea es un apunte contra una cuenta, no una venta ni una compra."""
+        return self.tipo_registro in self.TIPOS_REGISTRO_CONTABLES
+
     def calcular(self):
+        """
+        Deriva subtotal, descuento, impuestos y total de cantidad x precio.
+
+        En una línea contable no corre. Ahí `precio` guarda el valor del apunte
+        (el débito o el crédito) y no hay nada que derivar: si corriera, `total`
+        y `pendiente` quedarían con ese valor y la línea saldría en el cruce de
+        cartera (`/documento-detalle/pendiente/`, que filtra `pendiente > 0`)
+        como si fuera una cuenta por cobrar abierta, y `documento.total` sumaría
+        débitos más créditos.
+
+        El corte va acá y no en `crear_detalle` porque `calcular()` se llama
+        desde varios lados (el POST, el PATCH, el masivo, el importador) y la
+        invariante tiene que valer para todos.
+        """
+        if self.es_contable():
+            return
+
         cantidad = self.cantidad or Decimal('0')
         precio = self.precio or Decimal('0')
         porcentaje = self.porcentaje_descuento or Decimal('0')

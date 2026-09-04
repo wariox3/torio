@@ -11,7 +11,7 @@ from general.servicios import crear_detalle
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
     campos_filtrables = {'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion', 'centro_costo_id', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado'}
-    select_related_lista = ('documento_tipo', 'contacto', 'contacto__precio', 'sector', 'sede', 'centro_costo', 'plazo_pago', 'metodo_pago', 'forma_pago')
+    select_related_lista = ('documento_tipo', 'contacto', 'contacto__precio', 'sector', 'sede', 'centro_costo', 'plazo_pago', 'metodo_pago', 'forma_pago', 'comprobante')
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
@@ -26,6 +26,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
     sede_nombre = serializers.CharField(source='sede.nombre', read_only=True, default=None)
     centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
     centro_costo_codigo = serializers.CharField(source='centro_costo.codigo', read_only=True, default=None)
+    comprobante_nombre = serializers.CharField(source='comprobante.nombre', read_only=True, default=None)
+    comprobante_codigo = serializers.CharField(source='comprobante.codigo', read_only=True, default=None)
 
     class Meta:
         model = GenDocumento
@@ -58,6 +60,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'asesor',
             'cuenta_banco',
             'comprobante',
+            'comprobante_codigo',
+            'comprobante_nombre',
             'cuenta',
             'centro_costo',
             'centro_costo_nombre',

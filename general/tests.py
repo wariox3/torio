@@ -21,7 +21,7 @@ from rest_framework import permissions
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from contabilidad.models import ConCentroCosto, ConCuenta
+from contabilidad.models import ConCentroCosto, ConComprobante, ConCuenta
 from general.models import (
     GenArchivo,
     GenArchivoTipo,
@@ -49,6 +49,7 @@ from general.servicios import factura_electronica
 from general.servicios import rededoc as rededoc_servicio
 from general.serializers import (
     GenAsesorImportarSerializer,
+    GenDocumentoSerializer,
     GenDocumentoDetalleImportarSerializer,
     GenParametroSerializer,
     GenPrecioDetalleImportarSerializer,
@@ -1991,6 +1992,42 @@ class ImportarDetalleContableTests(_ImportarDetalleContableBaseTests):
     habla de débito y crédito; el modelo guarda naturaleza + valor.
     """
 
+    def test_un_asiento_no_deja_cartera(self):
+        """
+        `precio` guarda el valor del apunte, pero los derivados quedan en cero.
+        Si `calcular()` corriera, cada línea del asiento —incluida la del crédito—
+        saldría en `/documento-detalle/pendiente/` como una cuenta por cobrar
+        abierta, y el total del documento sería débitos más créditos.
+        """
+        response = self._importar_asiento([
+            self._fila(),
+            self._fila(numero=16, debito=0, credito=15000),
+        ])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        for detalle in GenDocumentoDetalle.objects.all():
+            self.assertEqual(detalle.precio, Decimal('15000'))
+            self.assertEqual(detalle.subtotal, Decimal('0'))
+            self.assertEqual(detalle.total_bruto, Decimal('0'))
+            self.assertEqual(detalle.base_impuesto, Decimal('0'))
+            self.assertEqual(detalle.total, Decimal('0'))
+            self.assertEqual(detalle.pendiente, Decimal('0'))
+
+        self.assertFalse(GenDocumentoDetalle.objects.filter(pendiente__gt=0).exists())
+
+        self.asiento.refresh_from_db()
+        self.assertEqual(self.asiento.total, Decimal('0'))
+
+    def test_la_linea_comercial_si_calcula(self):
+        """El corte es por `tipo_registro`, no por el importador: una venta no cambia."""
+        response = self._importar([[self.item.id, 2, 100, None, None, None, None]])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        detalle = GenDocumentoDetalle.objects.get()
+        self.assertEqual(detalle.tipo_registro, 'I')
+        self.assertEqual(detalle.total, Decimal('200'))
+        self.assertEqual(detalle.pendiente, Decimal('200'))
+
     def test_los_encabezados_son_los_del_estandar_contable(self):
         from openpyxl import load_workbook
 
@@ -2034,11 +2071,8 @@ class ImportarDetalleContableTests(_ImportarDetalleContableBaseTests):
         self.assertEqual([d.naturaleza for d in detalles], ['D', 'C'])
         # La línea apunta a una cuenta: el default 'I' del modelo es el comercial.
         self.assertEqual([d.tipo_registro for d in detalles], ['C', 'C'])
-        # El par débito/crédito se traduce a naturaleza + valor, y `cantidad = 1`
-        # es lo que hace que `calcular()` deje el valor en total.
+        # El par débito/crédito se traduce a naturaleza + valor en `precio`.
         self.assertEqual([d.precio for d in detalles], [Decimal('15000'), Decimal('15000')])
-        self.assertEqual([d.cantidad for d in detalles], [Decimal('1'), Decimal('1')])
-        self.assertEqual([d.total for d in detalles], [Decimal('15000'), Decimal('15000')])
         self.assertEqual([d.base for d in detalles], [Decimal('1000'), Decimal('1000')])
         self.assertEqual(detalles[0].contacto_id, self.contacto.id)
         self.assertEqual(detalles[0].centro_costo_id, self.centro_costo.id)
@@ -2334,6 +2368,86 @@ class ImportarDetalleErroresCompletosTests(_ImportarDetalleContableBaseTests):
             'La cuenta 240805 no exige centro de costo y la fila lo trae',
         ])
         self.assertFalse(GenDocumentoDetalle.objects.exists())
+
+
+class DocumentoDetalleRespuestaTests(_ImportarDetalleContableBaseTests):
+    """
+    La lista de detalles trae el código y el nombre de cuenta y contacto además
+    del id: en un asiento el front muestra el PUC y el tercero, y sin esto tendría
+    que pedir cada uno por aparte. `cuenta` y `contacto` ya están en
+    `select_related_lista`, así que no agregan consultas.
+    """
+
+    def test_la_lista_trae_los_denormalizados_de_cuenta_y_contacto(self):
+        self.assertEqual(self._importar_asiento([self._fila()]).status_code, 200)
+
+        request = APIRequestFactory().get(
+            '/general/documento-detalle/', {'documento_id': self.asiento.id},
+        )
+        response = _DocumentoDetalleViewSinPermisos.as_view({'get': 'list'})(request)
+
+        self.assertEqual(response.status_code, 200)
+        detalle = response.data['results'][0]
+        self.assertEqual(detalle['cuenta_codigo'], '150505')
+        self.assertEqual(detalle['cuenta_nombre'], 'Terrenos')
+        self.assertEqual(detalle['contacto_numero_identificacion'], '123456789')
+        self.assertEqual(detalle['contacto_nombre_corto'], 'Contacto')
+
+    def test_una_linea_sin_cuenta_ni_contacto_los_trae_en_null(self):
+        """El detalle de una venta no tiene cuenta: las claves siguen estando."""
+        self.assertEqual(
+            self._importar([[self.item.id, 1, 100, None, None, None, None]]).status_code, 200,
+        )
+
+        request = APIRequestFactory().get(
+            '/general/documento-detalle/', {'documento_id': self.documento.id},
+        )
+        response = _DocumentoDetalleViewSinPermisos.as_view({'get': 'list'})(request)
+
+        detalle = response.data['results'][0]
+        self.assertIsNone(detalle['cuenta_codigo'])
+        self.assertIsNone(detalle['contacto_nombre_corto'])
+
+
+class DocumentoRespuestaTests(TenantTestCase):
+    """El GET de documento trae código y nombre del comprobante, no solo el id."""
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def test_trae_los_denormalizados_del_comprobante(self):
+        comprobante = ConComprobante.objects.create(
+            id=10, nombre='AJUSTE CONTABLE', codigo='AJU', permite_asiento=True,
+        )
+        documento = GenDocumento.objects.create(
+            documento_tipo=GenDocumentoTipo.objects.create(id=13, nombre='ASIENTO'),
+            fecha=date(2026, 1, 15),
+            comprobante=comprobante,
+        )
+
+        datos = GenDocumentoSerializer(documento).data
+
+        self.assertEqual(datos['comprobante'], comprobante.id)
+        self.assertEqual(datos['comprobante_codigo'], 'AJU')
+        self.assertEqual(datos['comprobante_nombre'], 'AJUSTE CONTABLE')
+
+    def test_un_documento_sin_comprobante_los_trae_en_null(self):
+        documento = GenDocumento.objects.create(
+            documento_tipo=GenDocumentoTipo.objects.create(nombre='FACTURA'),
+            fecha=date(2026, 1, 15),
+        )
+
+        datos = GenDocumentoSerializer(documento).data
+
+        self.assertIsNone(datos['comprobante_codigo'])
+        self.assertIsNone(datos['comprobante_nombre'])
+
+    def test_el_comprobante_va_en_select_related(self):
+        """Sin esto la lista hace una consulta por fila para leer el código."""
+        self.assertIn('comprobante', GenDocumentoSerializer.select_related_lista)
 
 
 class TipoRegistroContableCoherenteTests(SimpleTestCase):

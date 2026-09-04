@@ -360,8 +360,9 @@ class _PerfilContable(_Perfil):
 
     `GenDocumentoDetalle` no tiene columnas `debito`/`credito` como
     `ConMovimiento`, así que el par se traduce al guardar: el lado va en
-    `naturaleza` y el monto en `precio` con `cantidad = 1`, que es lo que
-    `calcular()` necesita para dejar `subtotal` y `total` en el valor del apunte.
+    `naturaleza` y el monto en `precio`. Los derivados (`subtotal`, `total`,
+    `pendiente`) quedan en cero: `calcular()` no corre sobre una línea contable
+    —ver `GenDocumentoDetalle.calcular`—, porque un apunte no es cartera.
 
     Las FK se resuelven por llave natural —cuenta por código PUC, contacto por
     número de identificación, centro de costo por código— y no por id, que es la
@@ -464,7 +465,6 @@ class _PerfilContable(_Perfil):
             'numero': problemas.intentar(
                 lambda: _entero_o_none(datos.get('numero'), 'Número')),
             'naturaleza': naturaleza,
-            'cantidad': Decimal('1'),
             'precio': valor,
             'base': base,
             'detalle': _texto_o_none(datos.get('detalle')),

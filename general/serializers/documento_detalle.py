@@ -41,6 +41,14 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
     puesto_nombre = serializers.CharField(source='puesto.nombre', read_only=True, default=None)
     centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
     centro_costo_codigo = serializers.CharField(source='centro_costo.codigo', read_only=True, default=None)
+    cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, default=None)
+    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, default=None)
+    contacto_numero_identificacion = serializers.CharField(
+        source='contacto.numero_identificacion', read_only=True, default=None,
+    )
+    contacto_nombre_corto = serializers.CharField(
+        source='contacto.nombre_corto', read_only=True, default=None,
+    )
     impuestos = GenDocumentoImpuestoSerializer(
         many=True,
         read_only=True,
@@ -90,10 +98,14 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'puesto',
             'puesto_nombre',
             'cuenta',
+            'cuenta_codigo',
+            'cuenta_nombre',
             'centro_costo',
             'centro_costo_nombre',
             'centro_costo_codigo',
             'contacto',
+            'contacto_numero_identificacion',
+            'contacto_nombre_corto',
             'impuestos',
             'impuestos_ids',
             'subtotal',
