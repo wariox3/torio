@@ -7,7 +7,7 @@ class ConCuentaSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin y ExportarExcelMixin
     campos_filtrables = {
         'id', 'codigo', 'nombre', 'nivel',
-        'exige_base', 'exige_contacto', 'exige_grupo', 'permite_movimiento',
+        'exige_base', 'exige_contacto', 'exige_centro_costo', 'permite_movimiento',
         'cuenta_clase', 'cuenta_grupo', 'cuenta_cuenta', 'cuenta_subcuenta',
     }
     select_related_lista = (
@@ -28,7 +28,7 @@ class ConCuentaSerializer(serializers.ModelSerializer):
             'nombre',
             'exige_base',
             'exige_contacto',
-            'exige_grupo',
+            'exige_centro_costo',
             'permite_movimiento',
             'nivel',
             'cuenta_clase',

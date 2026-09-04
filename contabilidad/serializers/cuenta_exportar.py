@@ -21,7 +21,7 @@ class ConCuentaExportarSerializer(serializers.Serializer):
         ('nombre', 'Nombre'),
         ('exige_base', 'Exige base'),
         ('exige_contacto', 'Exige contacto'),
-        ('exige_grupo', 'Exige grupo'),
+        ('exige_centro_costo', 'Exige centro de costo'),
         ('permite_movimiento', 'Permite movimiento'),
         ('nivel', 'Nivel'),
         ('cuenta_clase.nombre', 'Clase'),

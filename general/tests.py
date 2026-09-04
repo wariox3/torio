@@ -1867,6 +1867,7 @@ class ImportarDetalleComercialTests(_ImportarDetalleBaseTests):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data['fase'], 'estructural')
+        self.assertEqual(response.data['errores'][0]['fila'], 2)
         self.assertIn('Cantidad', response.data['errores'][0]['mensaje'])
 
     def test_aplica_los_impuestos_de_la_columna(self):
@@ -1919,31 +1920,54 @@ class ImportarDetalleComercialTests(_ImportarDetalleBaseTests):
         self.assertIn('Impuesto con id=999999 no existe', response.data['errores'][0]['mensaje'])
 
 
-class ImportarDetalleContableTests(_ImportarDetalleBaseTests):
-    """
-    El perfil contable trae las mismas columnas que `ConMovimientoImportarSerializer`
-    menos las que pone el padre (comprobante, periodo, fecha, documento). El Excel
-    habla de débito y crédito; el modelo guarda naturaleza + valor.
-    """
+class _ImportarDetalleContableBaseTests(_ImportarDetalleBaseTests):
+    """Documento de tipo ASIENTO, catálogo contable mínimo y el renglón de referencia."""
 
     def setUp(self):
         super().setUp()
         self.asiento = self._documento(self.tipo_asiento)
+        # La cuenta del renglón de referencia exige las tres: por eso ese renglón
+        # trae tercero, grupo y base.
         self.cuenta = ConCuenta.objects.create(
             codigo='150505', nombre='Terrenos', permite_movimiento=True,
+            exige_base=True, exige_contacto=True, exige_centro_costo=True,
         )
+        self.cuenta_simple = ConCuenta.objects.create(
+            codigo='240805', nombre='Impuesto a las ventas', permite_movimiento=True,
+        )
+        self.centro_costo = ConCentroCosto.objects.create(codigo='01', nombre='Administración')
+        self.contacto = self._contacto('123456789')
         self.serializer = GenDocumentoDetalleImportarSerializer(self.asiento)
+
+    def _contacto(self, numero_identificacion):
+        """El tenant de pruebas no carga fixtures: la cadena ciudad -> estado -> país va acá."""
+        pais, _ = GenPais.objects.get_or_create(id=250, nombre='Colombia', codigo='CO')
+        estado, _ = GenEstado.objects.get_or_create(
+            id=1, nombre='Antioquia', codigo='05', pais=pais,
+        )
+        ciudad, _ = GenCiudad.objects.get_or_create(
+            id=1, nombre='Medellín', codigo='05001', estado=estado,
+        )
+        identificacion, _ = GenIdentificacion.objects.get_or_create(
+            id=6, nombre='Número de identificación tributaria', codigo='31',
+        )
+        tipo_persona, _ = GenTipoPersona.objects.get_or_create(id=1, nombre='Jurídica')
+        return GenContacto.objects.create(
+            numero_identificacion=numero_identificacion, nombre_corto='Contacto',
+            ciudad=ciudad, identificacion=identificacion, tipo_persona=tipo_persona,
+            direccion='calle 1', telefono='1', correo='t@t.com',
+        )
 
     def _importar_asiento(self, filas):
         return self._importar(filas, documento=self.asiento, serializer=self.serializer)
 
     def _fila(self, **overrides):
-        """Número | Cuenta | Tercero | Centro de costo | Débito | Crédito | Base | Detalle"""
+        """Número | Cuenta | Contacto | Centro de costo | Débito | Crédito | Base | Detalle"""
         fila = {
             'numero': 15,
-            'cuenta': self.cuenta.id,
-            'contacto': None,
-            'centro_costo': None,
+            'cuenta': '150505',
+            'contacto': '123456789',
+            'centro_costo': '01',
             'debito': 15000,
             'credito': 0,
             'base': 1000,
@@ -1951,6 +1975,21 @@ class ImportarDetalleContableTests(_ImportarDetalleBaseTests):
         }
         fila.update(overrides)
         return list(fila.values())
+
+    def _fila_simple(self, **overrides):
+        """Contra una cuenta que no exige tercero, grupo ni base."""
+        sin_exigencias = {
+            'cuenta': '240805', 'contacto': None, 'centro_costo': None, 'base': None,
+        }
+        return self._fila(**{**sin_exigencias, **overrides})
+
+
+class ImportarDetalleContableTests(_ImportarDetalleContableBaseTests):
+    """
+    El perfil contable trae las mismas columnas que `ConMovimientoImportarSerializer`
+    menos las que pone el padre (comprobante, periodo, fecha, documento). El Excel
+    habla de débito y crédito; el modelo guarda naturaleza + valor.
+    """
 
     def test_los_encabezados_son_los_del_estandar_contable(self):
         from openpyxl import load_workbook
@@ -1960,9 +1999,9 @@ class ImportarDetalleContableTests(_ImportarDetalleBaseTests):
         ws = load_workbook(io.BytesIO(response.content)).active
         self.assertEqual([c.value for c in next(ws.iter_rows())], [
             'Número',
-            'Cuenta (ID) *',
-            'Tercero (ID)',
-            'Centro de costo (ID)',
+            'Cuenta (Código) *',
+            'Contacto (Número identificación)',
+            'Centro de costo (Código)',
             'Débito',
             'Crédito',
             'Base',
@@ -1982,23 +2021,9 @@ class ImportarDetalleContableTests(_ImportarDetalleBaseTests):
         self.assertEqual(creditos, [0, 15000])
 
     def test_importa_un_asiento(self):
-        pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
-        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
-        ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
-        identificacion = GenIdentificacion.objects.create(
-            id=6, nombre='Número de identificación tributaria', codigo='31',
-        )
-        tipo_persona = GenTipoPersona.objects.create(id=1, nombre='Jurídica')
-        contacto = GenContacto.objects.create(
-            numero_identificacion='123456789', nombre_corto='Tercero', ciudad=ciudad,
-            identificacion=identificacion, tipo_persona=tipo_persona,
-            direccion='calle 1', telefono='1', correo='t@t.com',
-        )
-        centro_costo = ConCentroCosto.objects.create(codigo='01', nombre='Administración')
-
         response = self._importar_asiento([
-            self._fila(contacto=contacto.id, centro_costo=centro_costo.id),
-            self._fila(numero=16, debito=0, credito=15000, base=0),
+            self._fila(),
+            self._fila(numero=16, debito=0, credito=15000),
         ])
 
         self.assertEqual(response.status_code, 200, response.data)
@@ -2007,18 +2032,20 @@ class ImportarDetalleContableTests(_ImportarDetalleBaseTests):
         detalles = GenDocumentoDetalle.objects.order_by('id')
         self.assertEqual([d.numero for d in detalles], [15, 16])
         self.assertEqual([d.naturaleza for d in detalles], ['D', 'C'])
+        # La línea apunta a una cuenta: el default 'I' del modelo es el comercial.
+        self.assertEqual([d.tipo_registro for d in detalles], ['C', 'C'])
         # El par débito/crédito se traduce a naturaleza + valor, y `cantidad = 1`
         # es lo que hace que `calcular()` deje el valor en total.
         self.assertEqual([d.precio for d in detalles], [Decimal('15000'), Decimal('15000')])
         self.assertEqual([d.cantidad for d in detalles], [Decimal('1'), Decimal('1')])
         self.assertEqual([d.total for d in detalles], [Decimal('15000'), Decimal('15000')])
-        self.assertEqual([d.base for d in detalles], [Decimal('1000'), Decimal('0')])
-        self.assertEqual(detalles[0].contacto_id, contacto.id)
-        self.assertEqual(detalles[0].centro_costo_id, centro_costo.id)
+        self.assertEqual([d.base for d in detalles], [Decimal('1000'), Decimal('1000')])
+        self.assertEqual(detalles[0].contacto_id, self.contacto.id)
+        self.assertEqual(detalles[0].centro_costo_id, self.centro_costo.id)
         self.assertEqual(detalles[0].detalle, 'Ajustes')
 
     def test_credito_guarda_naturaleza_c(self):
-        response = self._importar_asiento([self._fila(debito=0, credito=15000)])
+        response = self._importar_asiento([self._fila_simple(debito=0, credito=15000)])
 
         self.assertEqual(response.status_code, 200, response.data)
         detalle = GenDocumentoDetalle.objects.get()
@@ -2027,7 +2054,7 @@ class ImportarDetalleContableTests(_ImportarDetalleBaseTests):
 
     def test_las_celdas_vacias_valen_cero(self):
         """El contador deja en blanco el lado que no usa en vez de escribir 0."""
-        response = self._importar_asiento([self._fila(debito=None, credito=15000, base=None)])
+        response = self._importar_asiento([self._fila_simple(debito=None, credito=15000)])
 
         self.assertEqual(response.status_code, 200, response.data)
         detalle = GenDocumentoDetalle.objects.get()
@@ -2059,19 +2086,64 @@ class ImportarDetalleContableTests(_ImportarDetalleBaseTests):
         Una cuenta que no permite movimiento descuadra los informes del periodo;
         el importador la para acá y no cuando ya está en la BD.
         """
-        mayor = ConCuenta.objects.create(codigo='1505', nombre='Terrenos', permite_movimiento=False)
+        ConCuenta.objects.create(codigo='1505', nombre='Terrenos', permite_movimiento=False)
 
-        response = self._importar_asiento([self._fila(cuenta=mayor.id)])
+        response = self._importar_asiento([self._fila(cuenta='1505')])
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('no permite movimientos', response.data['errores'][0]['mensaje'])
         self.assertFalse(GenDocumentoDetalle.objects.exists())
 
-    def test_tercero_inexistente_da_error(self):
-        response = self._importar_asiento([self._fila(contacto=999999)])
+    def test_cuenta_inexistente_da_error(self):
+        response = self._importar_asiento([self._fila(cuenta='999999')])
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('Tercero con id=999999 no existe', response.data['errores'][0]['mensaje'])
+        self.assertIn('Cuenta con código "999999" no existe', response.data['errores'][0]['mensaje'])
+
+    def test_contacto_inexistente_da_error(self):
+        response = self._importar_asiento([self._fila(contacto='999')])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'Contacto con número de identificación "999" no existe',
+            response.data['errores'][0]['mensaje'],
+        )
+
+    def test_nit_repetido_es_ambiguo(self):
+        """
+        `numero_identificacion` no es único en el modelo. Escoger uno de los dos en
+        silencio deja el asiento contra el tercero equivocado, así que se rechaza.
+        """
+        self._contacto('123456789')  # el segundo con el mismo NIT
+
+        response = self._importar_asiento([self._fila(contacto='123456789')])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('está repetido', response.data['errores'][0]['mensaje'])
+        self.assertFalse(GenDocumentoDetalle.objects.exists())
+
+    def test_una_celda_numerica_cruza_contra_el_codigo(self):
+        """
+        Excel devuelve int cuando el código parece número: 150505 llega como 150505,
+        no como '150505', y sin normalizar no cruzaría contra el CharField.
+        """
+        response = self._importar_asiento([self._fila(cuenta=150505, contacto=123456789)])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(GenDocumentoDetalle.objects.get().cuenta_id, self.cuenta.id)
+
+    def test_un_codigo_con_cero_a_la_izquierda_escrito_como_numero_no_cruza(self):
+        """
+        Lo que la normalización no puede arreglar: '01' escrito como número llega
+        como 1. La columna tiene que ser texto, y el error lo dice.
+        """
+        response = self._importar_asiento([self._fila(centro_costo=1)])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'Centro de costo con código "1" no existe',
+            response.data['errores'][0]['mensaje'],
+        )
 
     def test_la_plantilla_contable_no_sirve_para_una_factura(self):
         """Los encabezados se validan contra el perfil del padre, no contra el archivo."""
@@ -2086,3 +2158,200 @@ class ImportarDetalleContableTests(_ImportarDetalleBaseTests):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data['fase'], 'encabezados')
+
+
+class ImportarDetalleExigenciasCuentaTests(_ImportarDetalleContableBaseTests):
+    """
+    La cuenta decide qué debe traer la fila, en los dos sentidos. El informe de
+    inconsistencias del periodo (`contabilidad/servicios/movimiento.py`) ya reporta
+    la mitad de esto, pero cuando el dato ya entró; acá se para en la puerta.
+    """
+
+    def _mensaje(self, response):
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertFalse(GenDocumentoDetalle.objects.exists())
+        return response.data['errores'][0]['mensaje']
+
+    def test_exige_base_y_no_la_trae(self):
+        mensaje = self._mensaje(self._importar_asiento([self._fila(base=None)]))
+
+        self.assertIn('exige base y la fila no lo trae', mensaje)
+
+    def test_no_exige_base_y_la_trae(self):
+        mensaje = self._mensaje(self._importar_asiento([self._fila_simple(base=1000)]))
+
+        self.assertIn('no exige base y la fila lo trae', mensaje)
+
+    def test_exige_contacto_y_no_lo_trae(self):
+        mensaje = self._mensaje(self._importar_asiento([self._fila(contacto=None)]))
+
+        self.assertIn('exige contacto y la fila no lo trae', mensaje)
+
+    def test_no_exige_contacto_y_lo_trae(self):
+        mensaje = self._mensaje(
+            self._importar_asiento([self._fila_simple(contacto='123456789')])
+        )
+
+        self.assertIn('no exige contacto y la fila lo trae', mensaje)
+
+    def test_exige_centro_costo_y_no_lo_trae(self):
+        mensaje = self._mensaje(self._importar_asiento([self._fila(centro_costo=None)]))
+
+        self.assertIn('exige centro de costo y la fila no lo trae', mensaje)
+
+    def test_no_exige_centro_costo_y_lo_trae(self):
+        mensaje = self._mensaje(
+            self._importar_asiento([self._fila_simple(centro_costo='01')])
+        )
+
+        self.assertIn('no exige centro de costo y la fila lo trae', mensaje)
+
+    def test_las_exigencias_incumplidas_salen_todas(self):
+        """
+        Tres exigencias incumplidas se ven de una vez, no de a una por intento.
+        Salen como tres errores de la misma fila, no como un mensaje largo.
+        """
+        response = self._importar_asiento([
+            self._fila(contacto=None, centro_costo=None, base=None),
+        ])
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertFalse(GenDocumentoDetalle.objects.exists())
+        self.assertEqual(response.data['total_errores'], 3)
+        self.assertEqual({e['fila'] for e in response.data['errores']}, {2})
+        mensajes = ' | '.join(e['mensaje'] for e in response.data['errores'])
+        self.assertIn('exige base', mensajes)
+        self.assertIn('exige contacto', mensajes)
+        self.assertIn('exige centro de costo', mensajes)
+
+    def test_la_base_en_cero_cuenta_como_ausente(self):
+        """Una base de 0 no es una base: la celda vacía y el 0 significan lo mismo."""
+        mensaje = self._mensaje(self._importar_asiento([self._fila(base=0)]))
+
+        self.assertIn('exige base y la fila no lo trae', mensaje)
+
+
+class ImportarDetalleErroresCompletosTests(_ImportarDetalleContableBaseTests):
+    """
+    Un asiento se arma una vez y se sube una vez: descubrir los errores de tipo en
+    un intento y los de cuenta en el siguiente son dos vueltas por el mismo archivo.
+    """
+
+    def test_reporta_las_dos_fases_de_una_vez(self):
+        response = self._importar(
+            [
+                # fila 2: falta el requerido -> estructural
+                self._fila(cuenta=None),
+                # fila 3: 'x' no es un número -> estructural
+                self._fila(numero='x'),
+                # fila 4: pasa la estructura, la cuenta no existe -> negocio
+                self._fila(cuenta='999999'),
+            ],
+            documento=self.asiento,
+            serializer=self.serializer,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['fase'], 'validacion')
+        self.assertEqual(response.data['total_errores'], 3)
+        self.assertEqual(
+            [(e['fila'], e['fase']) for e in response.data['errores']],
+            [(2, 'estructural'), (3, 'estructural'), (4, 'negocio')],
+        )
+        self.assertFalse(GenDocumentoDetalle.objects.exists())
+
+    def test_sin_errores_estructurales_la_fase_sigue_siendo_negocio(self):
+        response = self._importar(
+            [self._fila(cuenta='999999')], documento=self.asiento, serializer=self.serializer,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['fase'], 'negocio')
+        self.assertNotIn('fase', response.data['errores'][0])
+
+    def test_los_demas_importadores_siguen_cortando_en_estructural(self):
+        """
+        `errores_completos` es opt-in: los otros 35 importadores no consultan la BD
+        por un archivo que ya se sabe malo.
+        """
+        serializer = GenPrecioDetalleImportarSerializer()
+        precio = GenPrecio.objects.create(nombre='Lista 1', fecha_vence=date(2026, 12, 31))
+        item = GenItem.objects.create(nombre='Item 1')
+
+        self.assertFalse(getattr(serializer, 'errores_completos', False))
+
+        archivo = self._archivo(serializer, [
+            [precio.id, item.id, 'no es un decimal'],  # estructural
+            [precio.id, 999999, '100'],                # negocio
+        ])
+        request = APIRequestFactory().post(
+            '/general/precio-detalle/importar/', {'archivo': archivo}, format='multipart',
+        )
+        response = _PrecioDetalleViewSinPermisos.as_view({'post': 'importar'})(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['fase'], 'estructural')
+        self.assertEqual(response.data['total_errores'], 1)
+
+    def test_cada_problema_de_la_fila_es_un_error(self):
+        """
+        `construir` cortaba en el primero: el usuario arreglaba la cuenta, volvía a
+        subir, y recién ahí se enteraba de que el contacto tampoco existía. Ahora
+        cada problema es un error propio, con el número de fila repetido.
+        """
+        response = self._importar(
+            [self._fila(cuenta='999999', contacto='888', centro_costo='99')],
+            documento=self.asiento,
+            serializer=self.serializer,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            [(e['fila'], e['mensaje']) for e in response.data['errores']],
+            [
+                (2, 'Cuenta con código "999999" no existe'),
+                (2, 'Centro de costo con código "99" no existe'),
+                (2, 'Contacto con número de identificación "888" no existe'),
+            ],
+        )
+
+    def test_lo_que_trae_la_fila_no_depende_de_que_la_fk_resuelva(self):
+        """
+        Un contacto que no existe igual lo escribió el usuario. Si "la fila lo trae"
+        se juzgara por el objeto resuelto, el error de "no exige contacto" se caería
+        justo cuando el dato está peor: mal escrito Y contra una cuenta que no lo pide.
+        """
+        response = self._importar_asiento([
+            self._fila_simple(contacto='999', centro_costo='99'),
+        ])
+
+        self.assertEqual(response.status_code, 400, response.data)
+        mensajes = [e['mensaje'] for e in response.data['errores']]
+        self.assertEqual(mensajes, [
+            'Centro de costo con código "99" no existe',
+            'Contacto con número de identificación "999" no existe',
+            'La cuenta 240805 no exige contacto y la fila lo trae',
+            'La cuenta 240805 no exige centro de costo y la fila lo trae',
+        ])
+        self.assertFalse(GenDocumentoDetalle.objects.exists())
+
+
+class TipoRegistroContableCoherenteTests(SimpleTestCase):
+    """
+    Son dos mapas: `PERFIL_POR_TIPO` dice qué tipos usan el perfil contable y
+    `TIPO_REGISTRO_POR_TIPO` con qué marca se guarda cada uno. Nada obliga a que
+    coincidan, y si se separan el tipo que falte revienta con KeyError —un 500—
+    en vez de un error de importación.
+    """
+
+    def test_todo_tipo_contable_tiene_tipo_registro(self):
+        from general.serializers.documento_detalle_importar import (
+            PERFIL_CONTABLE,
+            PERFIL_POR_TIPO,
+        )
+
+        contables = {
+            tipo for tipo, perfil in PERFIL_POR_TIPO.items() if perfil is PERFIL_CONTABLE
+        }
+
+        self.assertEqual(contables, set(PERFIL_CONTABLE.TIPO_REGISTRO_POR_TIPO))

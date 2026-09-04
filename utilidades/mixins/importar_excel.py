@@ -61,6 +61,9 @@ class ImportarExcelMixin:
                 campos_requeridos: set[str]
                 nombre_archivo:    str
                 valores_ejemplo:   dict[campo, (fila1, fila2)]
+                errores_completos: bool  # reportar las dos fases de una vez,
+                                         # y un error por problema en vez de
+                                         # uno por fila
 
         Si el Excel depende de algo más que la clase (p.ej. el documento padre),
         el ViewSet puede sobrescribir `get_serializer_importar()` y construir el
@@ -70,8 +73,9 @@ class ImportarExcelMixin:
     con la lista de errores. La respuesta exitosa es `{creados: N}`.
 
     Convención FK: campos con notación dotted (p.ej. `ciudad.id`) se marcan en la
-    plantilla con sufijo `(ID)` y fondo amarillo para indicar al usuario que debe
-    ingresar el identificador numérico del registro relacionado.
+    plantilla con fondo amarillo y con el sufijo de la llave que se espera —`(ID)`
+    para `ciudad.id`, `(Código)` para `cuenta.codigo`— para que el usuario sepa qué
+    escribir. Ver `ETIQUETAS_LLAVE_FK`.
     """
 
     EXTENSIONES_VALIDAS_IMPORTAR = ('.xlsx',)
@@ -87,11 +91,22 @@ class ImportarExcelMixin:
             )
         return self.serializer_class_importar()
 
-    @staticmethod
-    def _encabezado_importar(campo, encabezado, requeridos=()):
+    # Cómo se rotula la llave de una columna FK. Casi todas las columnas dotted del
+    # proyecto apuntan al PK (`cuenta.id`), pero un importador puede resolver por una
+    # llave natural (`cuenta.codigo`) y el encabezado tiene que decir cuál se espera:
+    # un usuario que ve "(ID)" escribe el id.
+    ETIQUETAS_LLAVE_FK = {
+        'id': 'ID',
+        'codigo': 'Código',
+        'numero_identificacion': 'Número identificación',
+    }
+
+    @classmethod
+    def _encabezado_importar(cls, campo, encabezado, requeridos=()):
         sufijo = ''
         if '.' in campo:
-            sufijo += ' (ID)'
+            llave = campo.rsplit('.', 1)[1]
+            sufijo += f' ({cls.ETIQUETAS_LLAVE_FK.get(llave, llave)})'
         if campo in requeridos:
             sufijo += ' *'
         return f'{encabezado}{sufijo}'
@@ -104,10 +119,15 @@ class ImportarExcelMixin:
         Shape estándar (todas las respuestas de error lo cumplen):
             {
                 "detail": str,                      # siempre
-                "fase": str,                        # opcional: encabezados | estructural | negocio
+                "fase": str,                        # opcional: encabezados | estructural |
+                                                    #           negocio | validacion
                 "total_errores": int,               # presente solo si hay `errores`
-                "errores": [{"fila"?: int, "mensaje": str}]   # opcional
+                "errores": [{"fila"?: int, "mensaje": str, "fase"?: str}]  # opcional
             }
+
+        `validacion` es la fase mixta: aparece solo cuando el serializer declara
+        `errores_completos` y el archivo falló en las dos fases a la vez. Ahí cada
+        error trae su propia `fase`.
         """
         cuerpo = {'detail': detail}
         if fase is not None:
@@ -117,12 +137,26 @@ class ImportarExcelMixin:
             cuerpo['errores'] = errores
         return Response(cuerpo, status=status_code)
 
+    def _agregar_errores(self, destino, fila, mensajes, separados):
+        """
+        Agrega los problemas de una fila y dice si ya se llegó al tope.
+
+        Con `separados` va uno por problema aunque la fila se repita, que es lo
+        que deja ver todo lo que hay que arreglar; sin él van juntos en un solo
+        mensaje, que es como responden los importadores de tabla plana.
+        """
+        if separados:
+            destino.extend({'fila': fila, 'mensaje': m} for m in mensajes)
+        else:
+            destino.append({'fila': fila, 'mensaje': '; '.join(mensajes)})
+        return len(destino) >= self.LIMITE_ERRORES_IMPORTAR
+
     @extend_schema(
         summary='Descargar plantilla de importación',
         description=(
-            'Devuelve un archivo .xlsx con dos filas de ejemplo. Los campos FK se '
-            'marcan con sufijo "(ID)" y fondo amarillo: deben rellenarse con el PK '
-            'del registro relacionado.'
+            'Devuelve un archivo .xlsx con dos filas de ejemplo. Los campos FK van '
+            'con fondo amarillo y el sufijo de la llave que esperan —"(ID)", '
+            '"(Código)"—, que es lo que debe escribirse en la celda.'
         ),
     )
     @action(detail=False, methods=['get'], url_path='importar-ejemplo')
@@ -318,6 +352,7 @@ class ImportarExcelMixin:
 
             # ============ FASE 1: validación estructural (sin BD) ============
             # fórmulas, tipos de datos, campos requeridos.
+            errores_completos = getattr(serializer, 'errores_completos', False)
             filas_validas = []
             errores_estructurales = []
             filas_procesadas = 0
@@ -364,22 +399,21 @@ class ImportarExcelMixin:
                     if msg:
                         errores_tipo.append(msg)
                 if errores_tipo:
-                    errores_estructurales.append({'fila': idx, 'mensaje': '; '.join(errores_tipo)})
-                    if len(errores_estructurales) >= self.LIMITE_ERRORES_IMPORTAR:
+                    if self._agregar_errores(
+                        errores_estructurales, idx, errores_tipo, errores_completos,
+                    ):
                         break
                     continue
 
                 faltantes = [
-                    encabezado
+                    f'Falta el campo requerido: {encabezado}'
                     for campo, encabezado in campos
                     if campo in requeridos and datos.get(campo) in (None, '')
                 ]
                 if faltantes:
-                    errores_estructurales.append({
-                        'fila': idx,
-                        'mensaje': f'Faltan campos requeridos: {", ".join(faltantes)}',
-                    })
-                    if len(errores_estructurales) >= self.LIMITE_ERRORES_IMPORTAR:
+                    if self._agregar_errores(
+                        errores_estructurales, idx, faltantes, errores_completos,
+                    ):
                         break
                     continue
 
@@ -395,20 +429,44 @@ class ImportarExcelMixin:
         if filas_procesadas == 0:
             return self._error_importar('El archivo no tiene filas para importar')
 
-        if errores_estructurales:
+        # Por defecto la fase estructural corta: no vale la pena consultar la BD por
+        # un archivo que ya se sabe malo. Un importador puede pedir el reporte
+        # completo (`errores_completos`) y entonces la fase 2 corre igual, solo para
+        # recolectar sus errores: el usuario corrige el archivo una vez y no dos.
+        errores_completos = getattr(serializer, 'errores_completos', False)
+        if errores_estructurales and not errores_completos:
             return self._respuesta_errores_importar('estructural', errores_estructurales)
 
         # ============ FASE 2: lógica de negocio + creación (transaccional) ============
         # El serializer procesa el lote completo: pre-carga FKs, valida, bulk_create.
         with transaction.atomic():
             creados, errores_negocio = serializer.procesar_lote(filas_validas)
-            if errores_negocio:
+            if errores_negocio or errores_estructurales:
                 transaction.set_rollback(True)
 
+        # `validacion` es la fase mixta: si solo falló una, se reporta como siempre.
+        if errores_estructurales and errores_negocio:
+            return self._respuesta_errores_importar(
+                'validacion', self._unir_errores(errores_estructurales, errores_negocio),
+            )
+        if errores_estructurales:
+            return self._respuesta_errores_importar('estructural', errores_estructurales)
         if errores_negocio:
             return self._respuesta_errores_importar('negocio', errores_negocio)
 
         return Response({'creados': creados})
+
+    def _unir_errores(self, estructurales, negocio):
+        """
+        Junta las dos fases en una sola lista ordenada por fila, con la fase en cada
+        error. Se recorta al mismo tope que cada fase por separado.
+        """
+        unidos = (
+            [{**e, 'fase': 'estructural'} for e in estructurales]
+            + [{**e, 'fase': 'negocio'} for e in negocio]
+        )
+        unidos.sort(key=lambda e: e.get('fila') or 0)
+        return unidos[:self.LIMITE_ERRORES_IMPORTAR]
 
     def _respuesta_errores_importar(self, fase, errores):
         limite_alcanzado = len(errores) >= self.LIMITE_ERRORES_IMPORTAR
@@ -421,6 +479,11 @@ class ImportarExcelMixin:
             detail = (
                 'El archivo tiene problemas estructurales (fórmulas, tipos o requeridos). '
                 'No se procesó ningún registro.'
+            )
+        elif fase == 'validacion':
+            detail = (
+                'El archivo tiene errores de estructura y de datos. Cada error trae su '
+                'fase. No se importó nada — corrija y reintente.'
             )
         else:
             detail = (

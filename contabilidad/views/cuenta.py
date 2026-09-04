@@ -34,7 +34,7 @@ _LIST_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por código o nombre'),
     OpenApiParameter('exige_base', bool, description='Filtrar por exige base'),
     OpenApiParameter('exige_contacto', bool, description='Filtrar por exige contacto'),
-    OpenApiParameter('exige_grupo', bool, description='Filtrar por exige grupo'),
+    OpenApiParameter('exige_centro_costo', bool, description='Filtrar por exige centro de costo'),
     OpenApiParameter('permite_movimiento', bool, description='Filtrar por permite movimiento'),
 ]
 
@@ -82,7 +82,7 @@ class ConCuentaViewSet(
         if search:
             qs = qs.filter(codigo__icontains=search) | qs.filter(nombre__icontains=search)
 
-        for filtro in ('exige_base', 'exige_contacto', 'exige_grupo', 'permite_movimiento'):
+        for filtro in ('exige_base', 'exige_contacto', 'exige_centro_costo', 'permite_movimiento'):
             valor = self.request.query_params.get(filtro)
             if valor is not None:
                 qs = qs.filter(**{filtro: valor.lower() == 'true'})

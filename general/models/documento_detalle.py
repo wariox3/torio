@@ -4,6 +4,9 @@ from django.db import models
 
 
 class GenDocumentoDetalle(models.Model):
+    # I=Item, C=Cuenta, D=Depreciación, N=Nómina, E=Nómina electrónica,
+    # S=Seguridad social. Lo fija quien crea el detalle según el tipo del
+    # documento; ninguna lógica del backend lo lee, el front filtra por él.
     tipo_registro = models.CharField(max_length=1, default='I', db_default='I')
     cantidad = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     cantidad_operada = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)

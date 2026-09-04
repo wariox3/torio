@@ -106,6 +106,76 @@ def _fk_obligatorio(valor, mapa, etiqueta):
     return obj
 
 
+def _texto_llave(valor):
+    """
+    Normaliza el valor de una celda que se usa como llave de texto.
+
+    Excel devuelve números cuando la celda parece un número: el código PUC 150505
+    llega como int y el NIT 123456789 también. Sin esto ninguno cruzaría contra un
+    CharField. Lo que no tiene arreglo son los ceros a la izquierda —un centro de
+    costo "01" escrito como número llega como 1—, así que esas columnas deben
+    formatearse como texto en el archivo.
+    """
+    if valor is None:
+        return ''
+    if isinstance(valor, bool):
+        return str(valor)
+    if isinstance(valor, float) and valor.is_integer():
+        return str(int(valor))
+    if isinstance(valor, int):
+        return str(valor)
+    return str(valor).strip()
+
+
+class _Indice:
+    """
+    Resuelve una FK por una llave natural (código, NIT) en vez de por PK.
+
+    Las llaves naturales no siempre son únicas —`GenContacto.numero_identificacion`
+    no lo es en el modelo—, así que un valor duplicado en la BD se reporta como
+    error de fila en vez de escoger un registro cualquiera en silencio.
+    """
+
+    def __init__(self, modelo, llave, etiqueta_llave, valores):
+        self.etiqueta_llave = etiqueta_llave
+        self.mapa = {}
+        self.ambiguos = set()
+        if not valores:
+            return
+        for obj in modelo.objects.filter(**{f'{llave}__in': valores}):
+            clave = _texto_llave(getattr(obj, llave))
+            if clave in self.mapa:
+                self.ambiguos.add(clave)
+            else:
+                self.mapa[clave] = obj
+
+    def opcional(self, valor, etiqueta):
+        clave = _texto_llave(valor)
+        if clave == '':
+            return None
+        if clave in self.ambiguos:
+            raise ValueError(
+                f'{etiqueta} con {self.etiqueta_llave} "{clave}" está repetido: '
+                f'hay más de un registro y no se puede saber cuál es'
+            )
+        obj = self.mapa.get(clave)
+        if obj is None:
+            raise ValueError(f'{etiqueta} con {self.etiqueta_llave} "{clave}" no existe')
+        return obj
+
+    def obligatorio(self, valor, etiqueta):
+        obj = self.opcional(valor, etiqueta)
+        if obj is None:
+            raise ValueError(f'{etiqueta} es obligatorio')
+        return obj
+
+
+def _indice(filas_validas, campo, modelo, llave, etiqueta_llave):
+    valores = {_texto_llave(datos.get(campo)) for _, datos in filas_validas}
+    valores.discard('')
+    return _Indice(modelo, llave, etiqueta_llave, valores)
+
+
 def _ids_impuestos(valor):
     """
     Parsea la columna de impuestos: ids separados por coma.
@@ -125,6 +195,47 @@ def _ids_impuestos(valor):
         except (TypeError, ValueError):
             raise ValueError(f'Impuestos debe ser una lista de ids separados por coma (recibido: "{valor}")')
     return ids
+
+
+class ErroresFila(ValueError):
+    """
+    Varios problemas de una misma fila. `procesar_lote` los reporta por separado,
+    repitiendo el número de fila, en vez de juntarlos en un mensaje largo.
+    """
+
+    def __init__(self, mensajes):
+        self.mensajes = list(mensajes)
+        super().__init__('; '.join(self.mensajes))
+
+
+def _mensajes_de(error):
+    """Los problemas que trae un error de fila, sea uno solo o varios."""
+    return getattr(error, 'mensajes', None) or [str(error)]
+
+
+class _Problemas:
+    """
+    Acumula los problemas de una fila para reportarlos todos.
+
+    Sin esto `construir` corta en el primero y el usuario los descubre de a uno
+    por intento: arregla la cuenta, vuelve a subir, y recién ahí se entera de que
+    el contacto tampoco existía. Es el mismo criterio que `errores_completos`
+    aplica entre fases, pero dentro de la fila.
+    """
+
+    def __init__(self):
+        self.mensajes = []
+
+    def intentar(self, fn, defecto=None):
+        try:
+            return fn()
+        except ValueError as e:
+            self.mensajes.extend(_mensajes_de(e))
+            return defecto
+
+    def levantar(self):
+        if self.mensajes:
+            raise ErroresFila(self.mensajes)
 
 
 # --------------------------------------------------------------- perfiles ----
@@ -147,7 +258,7 @@ class _Perfil:
     def precargar(self, filas_validas):
         return {}
 
-    def construir(self, datos, mapas):
+    def construir(self, datos, mapas, documento):
         raise NotImplementedError
 
 
@@ -189,7 +300,30 @@ class _PerfilComercial(_Perfil):
             'impuesto': {o.id: o for o in impuestos},
         }
 
-    def construir(self, datos, mapas):
+    def construir(self, datos, mapas, documento):
+        problemas = _Problemas()
+        campos = {
+            # La línea apunta a un item; es el default del modelo, explícito acá
+            # porque el perfil contable guarda otro.
+            'tipo_registro': 'I',
+            'item': problemas.intentar(
+                lambda: _fk_obligatorio(datos.get('item.id'), mapas['item'], 'Item')),
+            'centro_costo': problemas.intentar(
+                lambda: _fk_opcional(
+                    datos.get('centro_costo.id'), mapas['centro_costo'], 'Centro de costo')),
+            'cantidad': problemas.intentar(
+                lambda: _decimal_obligatorio(datos.get('cantidad'), 'Cantidad')),
+            'precio': problemas.intentar(
+                lambda: _decimal_obligatorio(datos.get('precio'), 'Precio')),
+            'porcentaje_descuento': problemas.intentar(
+                lambda: _decimal(datos.get('porcentaje_descuento'), 'Porcentaje descuento')),
+            'detalle': _texto_o_none(datos.get('detalle')),
+            'impuestos_ids': problemas.intentar(lambda: self._impuestos(datos, mapas), []),
+        }
+        problemas.levantar()
+        return campos
+
+    def _impuestos(self, datos, mapas):
         impuestos = []
         for pk in _ids_impuestos(datos.get('impuestos')):
             impuesto = mapas['impuesto'].get(pk)
@@ -202,20 +336,7 @@ class _PerfilComercial(_Perfil):
                     f'El impuesto {impuesto.nombre} no aplica a documentos de {self.nombre}'
                 )
             impuestos.append(impuesto)
-
-        return {
-            'item': _fk_obligatorio(datos.get('item.id'), mapas['item'], 'Item'),
-            'centro_costo': _fk_opcional(
-                datos.get('centro_costo.id'), mapas['centro_costo'], 'Centro de costo',
-            ),
-            'cantidad': _decimal_obligatorio(datos.get('cantidad'), 'Cantidad'),
-            'precio': _decimal_obligatorio(datos.get('precio'), 'Precio'),
-            'porcentaje_descuento': _decimal(
-                datos.get('porcentaje_descuento'), 'Porcentaje descuento',
-            ),
-            'detalle': _texto_o_none(datos.get('detalle')),
-            'impuestos_ids': impuestos,
-        }
+        return impuestos
 
 
 class _PerfilVenta(_PerfilComercial):
@@ -241,15 +362,31 @@ class _PerfilContable(_Perfil):
     `ConMovimiento`, así que el par se traduce al guardar: el lado va en
     `naturaleza` y el monto en `precio` con `cantidad = 1`, que es lo que
     `calcular()` necesita para dejar `subtotal` y `total` en el valor del apunte.
+
+    Las FK se resuelven por llave natural —cuenta por código PUC, contacto por
+    número de identificación, centro de costo por código— y no por id, que es la
+    convención de los demás importadores: acá el que llena el archivo es el
+    contador, que tiene el PUC y el NIT a la mano pero no los ids. El precio de
+    eso es que el número de identificación no es único en el modelo, así que un
+    NIT repetido se rechaza como ambiguo (ver `_Indice`).
     """
 
     nombre = 'contable'
 
+    # `tipo_registro` no lo decide el perfil sino el tipo del documento: los tres
+    # tipos contables comparten columnas pero no marcan la línea igual. Ver la
+    # leyenda completa en `GenDocumentoDetalle.tipo_registro`.
+    TIPO_REGISTRO_POR_TIPO = {
+        13: 'C',  # ASIENTO           -> Cuenta
+        23: 'D',  # DEPRECIACION      -> Depreciación
+        25: 'C',  # CIERRE CONTABLE   -> Cuenta
+    }
+
     campos_excel = (
         ('numero', 'Número'),
-        ('cuenta.id', 'Cuenta'),
-        ('contacto.id', 'Tercero'),
-        ('centro_costo.id', 'Centro de costo'),
+        ('cuenta.codigo', 'Cuenta'),
+        ('contacto.numero_identificacion', 'Contacto'),
+        ('centro_costo.codigo', 'Centro de costo'),
         ('debito', 'Débito'),
         ('credito', 'Crédito'),
         ('base', 'Base'),
@@ -257,40 +394,119 @@ class _PerfilContable(_Perfil):
     )
     # Débito y crédito no se exigen por separado —una celda vacía vale cero—;
     # lo que se valida es el par, en `construir`.
-    campos_requeridos = frozenset({'cuenta.id'})
-    # `debito` y `credito` no son campos del modelo, así que el ejemplo no se
-    # puede derivar: se muestra un par cuadrado.
-    valores_ejemplo = {'debito': (15000, 0), 'credito': (0, 15000)}
+    campos_requeridos = frozenset({'cuenta.codigo'})
+    # `debito` y `credito` no son campos del modelo, y las llaves naturales
+    # necesitan mostrar su forma (un PUC, un NIT, un código con ceros).
+    valores_ejemplo = {
+        'cuenta.codigo': ('150505', '150505'),
+        'contacto.numero_identificacion': ('123456789', ''),
+        'centro_costo.codigo': ('01', ''),
+        'debito': (15000, 0),
+        'credito': (0, 15000),
+    }
 
     def precargar(self, filas_validas):
         return {
-            'cuenta': _mapa_fk(filas_validas, 'cuenta.id', ConCuenta),
-            'centro_costo': _mapa_fk(filas_validas, 'centro_costo.id', ConCentroCosto),
-            'contacto': _mapa_fk(filas_validas, 'contacto.id', GenContacto),
+            'cuenta': _indice(filas_validas, 'cuenta.codigo', ConCuenta, 'codigo', 'código'),
+            'centro_costo': _indice(
+                filas_validas, 'centro_costo.codigo', ConCentroCosto, 'codigo', 'código',
+            ),
+            'contacto': _indice(
+                filas_validas, 'contacto.numero_identificacion', GenContacto,
+                'numero_identificacion', 'número de identificación',
+            ),
         }
 
-    def construir(self, datos, mapas):
-        cuenta = _fk_obligatorio(datos.get('cuenta.id'), mapas['cuenta'], 'Cuenta')
+    # Qué columna del Excel gobierna cada bandera de la cuenta.
+    EXIGENCIAS = (
+        ('exige_base', 'base', 'base'),
+        ('exige_contacto', 'contacto', 'contacto'),
+        ('exige_centro_costo', 'centro de costo', 'centro_costo'),
+    )
+
+    def construir(self, datos, mapas, documento):
+        problemas = _Problemas()
+
+        cuenta = problemas.intentar(
+            lambda: self._cuenta(datos.get('cuenta.codigo'), mapas['cuenta']))
+        naturaleza, valor = problemas.intentar(lambda: self._lado(datos), (None, None))
+        centro_costo = problemas.intentar(
+            lambda: mapas['centro_costo'].opcional(
+                datos.get('centro_costo.codigo'), 'Centro de costo'))
+        contacto = problemas.intentar(
+            lambda: mapas['contacto'].opcional(
+                datos.get('contacto.numero_identificacion'), 'Contacto'))
+        base = problemas.intentar(lambda: _decimal(datos.get('base'), 'Base'), Decimal('0'))
+
+        # Sin cuenta no hay contra qué validar las exigencias; el error de la
+        # cuenta ya está recolectado.
+        #
+        # Lo que se mira es lo que trae el ARCHIVO, no lo que resolvió: un contacto
+        # que no existe igual fue escrito por el usuario, y si la cuenta no lo exige
+        # hay que decírselo. Mirar el objeto resuelto haría que el error dependiera
+        # de si la FK cruzó o no.
+        if cuenta is not None:
+            presentes = {
+                'base': base != 0,
+                'contacto': _texto_llave(
+                    datos.get('contacto.numero_identificacion')) != '',
+                'centro_costo': _texto_llave(datos.get('centro_costo.codigo')) != '',
+            }
+            problemas.intentar(lambda: self._validar_exigencias(cuenta, presentes))
+
+        problemas.levantar()
+
+        return {
+            'tipo_registro': self.TIPO_REGISTRO_POR_TIPO[documento.documento_tipo_id],
+            'cuenta': cuenta,
+            'centro_costo': centro_costo,
+            'contacto': contacto,
+            'numero': problemas.intentar(
+                lambda: _entero_o_none(datos.get('numero'), 'Número')),
+            'naturaleza': naturaleza,
+            'cantidad': Decimal('1'),
+            'precio': valor,
+            'base': base,
+            'detalle': _texto_o_none(datos.get('detalle')),
+        }
+
+    @staticmethod
+    def _cuenta(codigo, indice):
+        cuenta = indice.obligatorio(codigo, 'Cuenta')
         # Las cuentas de agrupación (clase, grupo, mayor) no reciben movimiento:
         # importar contra ellas descuadra los informes del periodo.
         if not cuenta.permite_movimiento:
             raise ValueError(f'La cuenta {cuenta.codigo} no permite movimientos')
+        return cuenta
 
-        naturaleza, valor = self._lado(datos)
+    @classmethod
+    def _validar_exigencias(cls, cuenta, presentes):
+        """
+        La cuenta decide qué debe traer la fila, en los dos sentidos.
 
-        return {
-            'cuenta': cuenta,
-            'centro_costo': _fk_opcional(
-                datos.get('centro_costo.id'), mapas['centro_costo'], 'Centro de costo',
-            ),
-            'contacto': _fk_opcional(datos.get('contacto.id'), mapas['contacto'], 'Tercero'),
-            'numero': _entero_o_none(datos.get('numero'), 'Número'),
-            'naturaleza': naturaleza,
-            'cantidad': Decimal('1'),
-            'precio': valor,
-            'base': _decimal(datos.get('base'), 'Base'),
-            'detalle': _texto_o_none(datos.get('detalle')),
-        }
+        `contabilidad/servicios/movimiento.py` ya reporta la mitad de esto sobre
+        los movimientos del periodo ("la cuenta exige centro de costo y no lo
+        tiene"),
+        pero cuando el dato ya está adentro. Acá se para en la puerta, y también
+        al revés: un contacto contra una cuenta que no lo exige es dato que nadie
+        pidió y que después ensucia los informes por tercero.
+
+        `presentes` dice qué columnas trae la fila, no qué se pudo resolver.
+        """
+        problemas = []
+        for bandera, etiqueta, clave in cls.EXIGENCIAS:
+            exige = getattr(cuenta, bandera)
+            tiene = presentes[clave]
+            if exige and not tiene:
+                problemas.append(
+                    f'La cuenta {cuenta.codigo} exige {etiqueta} y la fila no lo trae'
+                )
+            elif not exige and tiene:
+                problemas.append(
+                    f'La cuenta {cuenta.codigo} no exige {etiqueta} y la fila lo trae'
+                )
+        if problemas:
+            raise ErroresFila(problemas)
 
     @staticmethod
     def _lado(datos):
@@ -372,6 +588,12 @@ class GenDocumentoDetalleImportarSerializer(serializers.Serializer):
 
     LIMITE_ERRORES = 100
 
+    # Un asiento se arma una vez y se sube una vez. Que el usuario descubra los
+    # errores de tipo en un intento y los de cuenta/tercero en el siguiente es
+    # obligarlo a dos vueltas por el mismo archivo, así que acá el mixin reporta
+    # las dos fases juntas.
+    errores_completos = True
+
     def __init__(self, documento, **kwargs):
         super().__init__(**kwargs)
         self.documento = documento
@@ -427,9 +649,11 @@ class GenDocumentoDetalleImportarSerializer(serializers.Serializer):
         creados = 0
         for idx, datos in filas_validas:
             try:
-                campos = self.perfil.construir(datos, mapas)
+                campos = self.perfil.construir(datos, mapas, documento)
             except ValueError as e:
-                errores.append({'fila': idx, 'mensaje': str(e)})
+                # Uno por problema, aunque la fila se repita: así el usuario ve de
+                # una vez todo lo que tiene que arreglar en esa línea.
+                errores.extend({'fila': idx, 'mensaje': m} for m in _mensajes_de(e))
                 if len(errores) >= self.LIMITE_ERRORES:
                     break
                 continue

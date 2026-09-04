@@ -34,7 +34,7 @@ class ConCuentaImportarSerializer(serializers.Serializer):
         ('nombre', 'Nombre'),
         ('exige_base', 'Exige base'),
         ('exige_contacto', 'Exige contacto'),
-        ('exige_grupo', 'Exige grupo'),
+        ('exige_centro_costo', 'Exige centro de costo'),
         ('permite_movimiento', 'Permite movimiento'),
     )
     campos_requeridos = {'nombre'}
@@ -84,7 +84,7 @@ class ConCuentaImportarSerializer(serializers.Serializer):
                     nombre=self._texto(datos.get('nombre')),
                     exige_base=self._si_no(datos.get('exige_base')),
                     exige_contacto=self._si_no(datos.get('exige_contacto')),
-                    exige_grupo=self._si_no(datos.get('exige_grupo')),
+                    exige_centro_costo=self._si_no(datos.get('exige_centro_costo')),
                     permite_movimiento=self._si_no(datos.get('permite_movimiento')),
                     nivel=nivel,
                     # Si el prefijo derivado no existe en el catálogo, se deja en null.

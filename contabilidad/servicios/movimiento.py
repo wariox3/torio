@@ -47,7 +47,7 @@ def analizar_inconsistencias(periodo):
         'documento_id',
         'cuenta__codigo',
         'cuenta__permite_movimiento',
-        'cuenta__exige_grupo',
+        'cuenta__exige_centro_costo',
         'cuenta__exige_contacto',
         'cuenta__exige_base',
         'documento__documento_tipo__nombre',
@@ -67,10 +67,10 @@ def analizar_inconsistencias(periodo):
                 **base,
                 'inconsistencia': f'La cuenta {codigo} no permite movimientos y tiene movimientos en el periodo',
             })
-        if movimiento['cuenta__exige_grupo'] and movimiento['centro_costo_id'] is None:
+        if movimiento['cuenta__exige_centro_costo'] and movimiento['centro_costo_id'] is None:
             inconsistencias.append({
                 **base,
-                'inconsistencia': f'La cuenta {codigo} exige grupo y no tiene grupo',
+                'inconsistencia': f'La cuenta {codigo} exige centro de costo y no tiene centro de costo',
             })
         if movimiento['cuenta__exige_contacto'] and movimiento['contacto_id'] is None:
             inconsistencias.append({
