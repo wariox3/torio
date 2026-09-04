@@ -21,6 +21,7 @@ from .documento import (
 )
 from .documento_clase import GenDocumentoClaseSeleccionarSerializer
 from .documento_detalle import GenDocumentoDetalleSerializer
+from .documento_detalle_importar import GenDocumentoDetalleImportarSerializer
 from .documento_detalle_informe import (
     GenDocumentoDetalleInformeExportarSerializer,
     GenDocumentoDetalleInformeSerializer,

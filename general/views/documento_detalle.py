@@ -1,21 +1,24 @@
 from django.db import transaction
 from django.db.models import Sum
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
 from general.models import GenDocumento, GenDocumentoDetalle, GenModalidad, GenSector
 from general.serializers import (
+    GenDocumentoDetalleImportarSerializer,
     GenDocumentoDetallePendienteSerializer,
     GenDocumentoDetalleSerializer,
 )
 from general.servicios import LiquidadorSupervigilancia, crear_detalle, sincronizar_impuestos
 from turno.models import TurProgramacion
 from utilidades.filtros import aplicar_filtros, aplicar_ordenamientos
-from utilidades.mixins import FiltrosDinamicosMixin
+from utilidades.mixins import FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.mixins.filtros import BusquedaRequest
+from utilidades.throttles import ImportarUsuarioTenantThrottle
 
 
 # Solo se regeneran horas de los documentos de este tipo (programación de turnos).
@@ -48,10 +51,24 @@ _LIST_PARAMS = [
     OpenApiParameter('documento_id', int, description='Filtrar por documento'),
 ]
 
+_DOCUMENTO_PARAM = OpenApiParameter(
+    'documento', int, required=True,
+    description='Documento padre sobre el que se van a importar los detalles.',
+)
+
+_ImportarDetalleRequest = inline_serializer(
+    name='ImportarDocumentoDetalleRequest',
+    fields={
+        'archivo': serializers.FileField(help_text='Archivo .xlsx'),
+        'documento': serializers.IntegerField(help_text='Documento padre'),
+    },
+)
+
 
 @extend_schema(tags=['DocumentoDetalle'])
 class GenDocumentoDetalleViewSet(
     FiltrosDinamicosMixin,
+    ImportarExcelMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
@@ -155,6 +172,70 @@ class GenDocumentoDetalleViewSet(
             self.get_serializer(detalles, many=True).data,
             status=status.HTTP_201_CREATED,
         )
+
+    # ---- importación ----
+    #
+    # Un detalle no existe sin su documento, así que el padre no viaja en el Excel:
+    # lo manda el front en `documento` y se valida antes de mirar el archivo. De ese
+    # padre sale el `documento_tipo`, y del tipo salen las columnas de la plantilla.
+
+    def _documento_de_importacion(self):
+        """Resuelve y valida el padre que manda el front en `documento`."""
+        origen = (
+            self.request.query_params
+            if self.request.method == 'GET'
+            else self.request.data
+        )
+        valor = origen.get('documento')
+        if valor in (None, ''):
+            raise ValidationError({'documento': 'Este campo es requerido.'})
+        try:
+            pk = int(valor)
+        except (TypeError, ValueError):
+            raise ValidationError({'documento': f'Debe ser un número (PK), recibido: "{valor}"'})
+
+        try:
+            documento = GenDocumento.objects.select_related('documento_tipo').get(pk=pk)
+        except GenDocumento.DoesNotExist:
+            raise NotFound('Documento no encontrado.')
+        if not documento.es_mutable():
+            raise ValidationError('El documento no es modificable.')
+        return documento
+
+    def get_serializer_importar(self):
+        return GenDocumentoDetalleImportarSerializer(self._documento_de_importacion())
+
+    @extend_schema(
+        summary='Descargar plantilla de importación de detalles',
+        description=(
+            'Devuelve un archivo .xlsx con las columnas que corresponden al tipo del '
+            'documento indicado en `documento`: no se llena igual una factura que un '
+            'asiento contable. Responde 404 si el documento no existe, y 400 si no es '
+            'modificable o si su tipo no admite importación de detalles.'
+        ),
+        parameters=[_DOCUMENTO_PARAM],
+    )
+    @action(detail=False, methods=['get'], url_path='importar-ejemplo')
+    def importar_ejemplo(self, request):
+        return super().importar_ejemplo(request)
+
+    @extend_schema(
+        summary='Importar detalles desde Excel',
+        description=(
+            'Agrega detalles al documento indicado en `documento`. Cada fila pasa por '
+            'la misma creación que el POST individual (impuestos y cálculo de totales), '
+            'y al cerrar se recalculan los totales del documento. Procesamiento '
+            'todo-o-nada: si alguna fila falla, no se guarda nada.'
+        ),
+        request={'multipart/form-data': _ImportarDetalleRequest},
+    )
+    @action(
+        detail=False, methods=['post'],
+        parser_classes=[MultiPartParser],
+        throttle_classes=[ImportarUsuarioTenantThrottle],
+    )
+    def importar(self, request):
+        return super().importar(request)
 
     @extend_schema(request=BusquedaRequest)
     @action(detail=False, methods=['post'], url_path='pendiente')

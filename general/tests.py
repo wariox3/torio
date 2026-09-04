@@ -21,6 +21,7 @@ from rest_framework import permissions
 from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from contabilidad.models import ConCentroCosto, ConCuenta
 from general.models import (
     GenArchivo,
     GenArchivoTipo,
@@ -30,6 +31,8 @@ from general.models import (
     GenDocumentoDetalle,
     GenDocumentoTipo,
     GenFestivo,
+    GenContacto,
+    GenImpuesto,
     GenCiudad,
     GenEstado,
     GenIdentificacion,
@@ -46,11 +49,13 @@ from general.servicios import factura_electronica
 from general.servicios import rededoc as rededoc_servicio
 from general.serializers import (
     GenAsesorImportarSerializer,
+    GenDocumentoDetalleImportarSerializer,
     GenParametroSerializer,
     GenPrecioDetalleImportarSerializer,
 )
 from general.views.archivo import GenArchivoViewSet
 from general.views.configuracion import GenConfiguracionViewSet
+from general.views.documento_detalle import GenDocumentoDetalleViewSet
 from general.views.factura_electronica import GenFacturaElectronicaViewSet
 from general.views.parametro import GenParametroViewSet
 from general.views.modelo import GenModeloViewSet
@@ -58,6 +63,7 @@ from general.views.precio_detalle import GenPrecioDetalleViewSet
 from seguridad.models import SegUsuario
 from general.servicios import archivo as archivo_servicio
 from utilidades import backblaze, mime
+from utilidades.mixins import ImportarExcelMixin
 
 
 class _ModeloViewSinPermisos(GenModeloViewSet):
@@ -1672,3 +1678,411 @@ class CargarDatosTenantTests(TenantTestCase):
         # Medido: 9.000 consultas fila por fila contra 283 en bloque. El tope es
         # holgado a propósito: fija el orden de magnitud, no un número exacto.
         self.assertLess(len(consultas), 500, f'{len(consultas)} consultas')
+
+
+class _DocumentoDetalleViewSinPermisos(GenDocumentoDetalleViewSet):
+    """Variante sin auth ni throttle: acá se prueba la importación, no la membresía."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class _ImportarDetalleBaseTests(TenantTestCase):
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        # Los ids importan: PERFIL_POR_TIPO mapea por documento_tipo_id.
+        self.tipo_venta = GenDocumentoTipo.objects.create(id=1, nombre='FACTURA', venta=True)
+        self.tipo_compra = GenDocumentoTipo.objects.create(id=5, nombre='COMPRA', compra=True)
+        self.tipo_asiento = GenDocumentoTipo.objects.create(id=13, nombre='ASIENTO', contabilidad=True)
+        self.tipo_sin_perfil = GenDocumentoTipo.objects.create(id=9, nombre='ENTRADA ALMACEN')
+
+        self.documento = self._documento(self.tipo_venta)
+        self.item = GenItem.objects.create(nombre='Servicio')
+
+    def _documento(self, tipo, **overrides):
+        return GenDocumento.objects.create(
+            documento_tipo=tipo, fecha=date(2026, 1, 15), **overrides,
+        )
+
+    def _archivo(self, serializer, filas, nombre='detalles.xlsx'):
+        """Arma un .xlsx real con los encabezados que espera la plantilla."""
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        ws = wb.active
+        ws.append([
+            ImportarExcelMixin._encabezado_importar(campo, encabezado, serializer.campos_requeridos)
+            for campo, encabezado in serializer.campos_excel
+        ])
+        for fila in filas:
+            ws.append(fila)
+        buf = io.BytesIO()
+        wb.save(buf)
+        return SimpleUploadedFile(
+            nombre, buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+
+    def _importar(self, filas, documento=None, serializer=None):
+        documento = documento or self.documento
+        serializer = serializer or GenDocumentoDetalleImportarSerializer(documento)
+        archivo = self._archivo(serializer, filas)
+        request = APIRequestFactory().post(
+            '/general/documento-detalle/importar/',
+            {'archivo': archivo, 'documento': documento.id},
+            format='multipart',
+        )
+        return _DocumentoDetalleViewSinPermisos.as_view({'post': 'importar'})(request)
+
+    def _plantilla(self, params):
+        request = APIRequestFactory().get('/general/documento-detalle/importar-ejemplo/', params)
+        return _DocumentoDetalleViewSinPermisos.as_view({'get': 'importar_ejemplo'})(request)
+
+
+class ImportarDetallePadreTests(_ImportarDetalleBaseTests):
+    """
+    El padre es parte del contrato, no un dato del archivo: sin él no hay tipo, y
+    sin tipo no hay columnas. Las cuatro puertas se cierran antes de leer el Excel.
+    """
+
+    def test_sin_documento_da_400(self):
+        response = self._plantilla({})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('documento', response.data)
+
+    def test_documento_inexistente_da_404(self):
+        response = self._plantilla({'documento': 999999})
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_documento_no_modificable_da_400(self):
+        aprobado = self._documento(self.tipo_venta, estado_aprobado=True)
+
+        response = self._plantilla({'documento': aprobado.id})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('no es modificable', str(response.data))
+
+    def test_tipo_sin_perfil_da_400(self):
+        documento = self._documento(self.tipo_sin_perfil)
+
+        response = self._plantilla({'documento': documento.id})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('no admite importación', str(response.data))
+
+    def test_documento_aprobado_entre_validar_y_escribir_no_guarda(self):
+        """
+        El ViewSet valida el padre antes de leer el archivo; para cuando se
+        escribe pudo aprobarse en otra petición. Por eso `procesar_lote` lo
+        relee bloqueado en vez de confiar en la instancia que ya tiene.
+        """
+        serializer = GenDocumentoDetalleImportarSerializer(self.documento)
+        GenDocumento.objects.filter(pk=self.documento.pk).update(estado_aprobado=True)
+
+        creados, errores = serializer.procesar_lote([
+            (2, {'item.id': self.item.id, 'cantidad': 1, 'precio': 100}),
+        ])
+
+        self.assertEqual(creados, 0)
+        self.assertIn('no es modificable', errores[0]['mensaje'])
+        self.assertFalse(GenDocumentoDetalle.objects.exists())
+
+
+class ImportarDetallePlantillaTests(_ImportarDetalleBaseTests):
+    """La plantilla la decide el tipo del padre: factura y asiento no traen lo mismo."""
+
+    def _encabezados(self, documento):
+        from openpyxl import load_workbook
+
+        response = self._plantilla({'documento': documento.id})
+        self.assertEqual(response.status_code, 200)
+        ws = load_workbook(io.BytesIO(response.content)).active
+        return [c.value for c in next(ws.iter_rows())], ws
+
+    def test_plantilla_de_venta_trae_item_y_precio(self):
+        encabezados, _ = self._encabezados(self.documento)
+
+        self.assertEqual(encabezados, [
+            'Item (ID) *',
+            'Cantidad *',
+            'Precio *',
+            'Porcentaje descuento',
+            'Centro de costo (ID)',
+            'Detalle',
+            'Impuestos separados por coma',
+        ])
+
+    def test_el_ejemplo_de_impuestos_muestra_la_lista(self):
+        _, ws = self._encabezados(self.documento)
+
+        self.assertEqual(ws.cell(row=2, column=7).value, '1,2')
+
+
+class ImportarDetalleComercialTests(_ImportarDetalleBaseTests):
+    def test_importa_y_recalcula_los_totales_del_padre(self):
+        """
+        Lo que un `bulk_create` dejaría roto: el detalle sin calcular y el
+        encabezado con los totales viejos.
+        """
+        response = self._importar([
+            [self.item.id, 2, 100, None, None, 'Primera', None],
+            [self.item.id, 1, 50, 10, None, None, None],
+        ])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data, {'creados': 2})
+
+        detalles = GenDocumentoDetalle.objects.order_by('id')
+        self.assertEqual([d.total for d in detalles], [Decimal('200'), Decimal('45')])
+        self.assertEqual(detalles[0].detalle, 'Primera')
+
+        self.documento.refresh_from_db()
+        self.assertEqual(self.documento.total, Decimal('245'))
+        self.assertEqual(self.documento.subtotal, Decimal('250'))
+        self.assertEqual(self.documento.descuento, Decimal('5'))
+
+    def test_una_fila_mala_no_deja_nada(self):
+        response = self._importar([
+            [self.item.id, 2, 100, None, None, None, None],
+            [999999, 1, 50, None, None, None, None],
+        ])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['fase'], 'negocio')
+        self.assertEqual(response.data['errores'][0]['fila'], 3)
+        self.assertFalse(GenDocumentoDetalle.objects.exists())
+
+        self.documento.refresh_from_db()
+        self.assertEqual(self.documento.total, Decimal('0'))
+
+    def test_falta_un_requerido_y_se_reporta_como_estructural(self):
+        response = self._importar([[self.item.id, None, 100, None, None, None, None]])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['fase'], 'estructural')
+        self.assertIn('Cantidad', response.data['errores'][0]['mensaje'])
+
+    def test_aplica_los_impuestos_de_la_columna(self):
+        iva = GenImpuesto.objects.create(
+            nombre='IVA', nombre_extendido='IVA 19%', porcentaje=19, venta=True, compra=True,
+        )
+
+        response = self._importar([[self.item.id, 1, 100, None, None, None, str(iva.id)]])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        detalle = GenDocumentoDetalle.objects.get()
+        self.assertEqual(detalle.impuesto, Decimal('19'))
+        self.assertEqual(detalle.total, Decimal('119'))
+
+    def test_impuesto_que_no_aplica_al_tipo_se_rechaza(self):
+        """
+        La mitad del contrato que depende del documento_tipo: un impuesto solo de
+        compra no puede entrar por la puerta de una factura de venta.
+        """
+        solo_compra = GenImpuesto.objects.create(
+            nombre='RTE', nombre_extendido='Retefuente', porcentaje=2,
+            venta=False, compra=True,
+        )
+
+        response = self._importar([[self.item.id, 1, 100, None, None, None, str(solo_compra.id)]])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('no aplica a documentos de venta', response.data['errores'][0]['mensaje'])
+        self.assertFalse(GenDocumentoDetalle.objects.exists())
+
+    def test_el_mismo_impuesto_si_entra_en_una_compra(self):
+        solo_compra = GenImpuesto.objects.create(
+            nombre='RTE', nombre_extendido='Retefuente', porcentaje=2,
+            venta=False, compra=True,
+        )
+        compra = self._documento(self.tipo_compra)
+
+        response = self._importar(
+            [[self.item.id, 1, 100, None, None, None, str(solo_compra.id)]],
+            documento=compra,
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(GenDocumentoDetalle.objects.get().impuesto_retencion, Decimal('0'))
+
+    def test_impuesto_inexistente_da_error(self):
+        response = self._importar([[self.item.id, 1, 100, None, None, None, '999999']])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Impuesto con id=999999 no existe', response.data['errores'][0]['mensaje'])
+
+
+class ImportarDetalleContableTests(_ImportarDetalleBaseTests):
+    """
+    El perfil contable trae las mismas columnas que `ConMovimientoImportarSerializer`
+    menos las que pone el padre (comprobante, periodo, fecha, documento). El Excel
+    habla de débito y crédito; el modelo guarda naturaleza + valor.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.asiento = self._documento(self.tipo_asiento)
+        self.cuenta = ConCuenta.objects.create(
+            codigo='150505', nombre='Terrenos', permite_movimiento=True,
+        )
+        self.serializer = GenDocumentoDetalleImportarSerializer(self.asiento)
+
+    def _importar_asiento(self, filas):
+        return self._importar(filas, documento=self.asiento, serializer=self.serializer)
+
+    def _fila(self, **overrides):
+        """Número | Cuenta | Tercero | Centro de costo | Débito | Crédito | Base | Detalle"""
+        fila = {
+            'numero': 15,
+            'cuenta': self.cuenta.id,
+            'contacto': None,
+            'centro_costo': None,
+            'debito': 15000,
+            'credito': 0,
+            'base': 1000,
+            'detalle': 'Ajustes',
+        }
+        fila.update(overrides)
+        return list(fila.values())
+
+    def test_los_encabezados_son_los_del_estandar_contable(self):
+        from openpyxl import load_workbook
+
+        response = self._plantilla({'documento': self.asiento.id})
+
+        ws = load_workbook(io.BytesIO(response.content)).active
+        self.assertEqual([c.value for c in next(ws.iter_rows())], [
+            'Número',
+            'Cuenta (ID) *',
+            'Tercero (ID)',
+            'Centro de costo (ID)',
+            'Débito',
+            'Crédito',
+            'Base',
+            'Detalle',
+        ])
+
+    def test_el_ejemplo_muestra_un_par_cuadrado(self):
+        """Débito y crédito no son campos del modelo: sin ejemplo saldría 'ejemplo 1'."""
+        from openpyxl import load_workbook
+
+        response = self._plantilla({'documento': self.asiento.id})
+
+        ws = load_workbook(io.BytesIO(response.content)).active
+        debitos = [ws.cell(row=f, column=5).value for f in (2, 3)]
+        creditos = [ws.cell(row=f, column=6).value for f in (2, 3)]
+        self.assertEqual(debitos, [15000, 0])
+        self.assertEqual(creditos, [0, 15000])
+
+    def test_importa_un_asiento(self):
+        pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
+        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        identificacion = GenIdentificacion.objects.create(
+            id=6, nombre='Número de identificación tributaria', codigo='31',
+        )
+        tipo_persona = GenTipoPersona.objects.create(id=1, nombre='Jurídica')
+        contacto = GenContacto.objects.create(
+            numero_identificacion='123456789', nombre_corto='Tercero', ciudad=ciudad,
+            identificacion=identificacion, tipo_persona=tipo_persona,
+            direccion='calle 1', telefono='1', correo='t@t.com',
+        )
+        centro_costo = ConCentroCosto.objects.create(codigo='01', nombre='Administración')
+
+        response = self._importar_asiento([
+            self._fila(contacto=contacto.id, centro_costo=centro_costo.id),
+            self._fila(numero=16, debito=0, credito=15000, base=0),
+        ])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data, {'creados': 2})
+
+        detalles = GenDocumentoDetalle.objects.order_by('id')
+        self.assertEqual([d.numero for d in detalles], [15, 16])
+        self.assertEqual([d.naturaleza for d in detalles], ['D', 'C'])
+        # El par débito/crédito se traduce a naturaleza + valor, y `cantidad = 1`
+        # es lo que hace que `calcular()` deje el valor en total.
+        self.assertEqual([d.precio for d in detalles], [Decimal('15000'), Decimal('15000')])
+        self.assertEqual([d.cantidad for d in detalles], [Decimal('1'), Decimal('1')])
+        self.assertEqual([d.total for d in detalles], [Decimal('15000'), Decimal('15000')])
+        self.assertEqual([d.base for d in detalles], [Decimal('1000'), Decimal('0')])
+        self.assertEqual(detalles[0].contacto_id, contacto.id)
+        self.assertEqual(detalles[0].centro_costo_id, centro_costo.id)
+        self.assertEqual(detalles[0].detalle, 'Ajustes')
+
+    def test_credito_guarda_naturaleza_c(self):
+        response = self._importar_asiento([self._fila(debito=0, credito=15000)])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        detalle = GenDocumentoDetalle.objects.get()
+        self.assertEqual(detalle.naturaleza, 'C')
+        self.assertEqual(detalle.precio, Decimal('15000'))
+
+    def test_las_celdas_vacias_valen_cero(self):
+        """El contador deja en blanco el lado que no usa en vez de escribir 0."""
+        response = self._importar_asiento([self._fila(debito=None, credito=15000, base=None)])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        detalle = GenDocumentoDetalle.objects.get()
+        self.assertEqual(detalle.naturaleza, 'C')
+        self.assertEqual(detalle.base, Decimal('0'))
+
+    def test_debito_y_credito_a_la_vez_da_error(self):
+        response = self._importar_asiento([self._fila(debito=15000, credito=15000)])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Débito y Crédito a la vez', response.data['errores'][0]['mensaje'])
+        self.assertFalse(GenDocumentoDetalle.objects.exists())
+
+    def test_linea_sin_valor_da_error(self):
+        response = self._importar_asiento([self._fila(debito=0, credito=0)])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Débito o Crédito mayor que cero', response.data['errores'][0]['mensaje'])
+
+    def test_valor_negativo_da_error(self):
+        """Un crédito negativo es un débito mal escrito: el lado lo dice la columna."""
+        response = self._importar_asiento([self._fila(debito=0, credito=-15000)])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('no puede ser negativo', response.data['errores'][0]['mensaje'])
+
+    def test_cuenta_de_agrupacion_se_rechaza(self):
+        """
+        Una cuenta que no permite movimiento descuadra los informes del periodo;
+        el importador la para acá y no cuando ya está en la BD.
+        """
+        mayor = ConCuenta.objects.create(codigo='1505', nombre='Terrenos', permite_movimiento=False)
+
+        response = self._importar_asiento([self._fila(cuenta=mayor.id)])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('no permite movimientos', response.data['errores'][0]['mensaje'])
+        self.assertFalse(GenDocumentoDetalle.objects.exists())
+
+    def test_tercero_inexistente_da_error(self):
+        response = self._importar_asiento([self._fila(contacto=999999)])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Tercero con id=999999 no existe', response.data['errores'][0]['mensaje'])
+
+    def test_la_plantilla_contable_no_sirve_para_una_factura(self):
+        """Los encabezados se validan contra el perfil del padre, no contra el archivo."""
+        archivo = self._archivo(self.serializer, [self._fila()])
+        request = APIRequestFactory().post(
+            '/general/documento-detalle/importar/',
+            {'archivo': archivo, 'documento': self.documento.id},  # documento de venta
+            format='multipart',
+        )
+
+        response = _DocumentoDetalleViewSinPermisos.as_view({'post': 'importar'})(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['fase'], 'encabezados')

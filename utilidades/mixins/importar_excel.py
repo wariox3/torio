@@ -48,12 +48,23 @@ class ImportarExcelMixin:
         serializer_class_importar: Serializer
             Serializer que define la estructura del Excel y la lógica de creación.
             Debe exponer:
-                model:        clase del modelo Django
-                campos_excel: tuple[tuple[campo, encabezado], ...]
-                procesar_fila(datos, fila)
-                              # crea el registro o lanza Exception con mensaje.
-                              # Si el registro ya existe debe lanzar error
-                              # (el import solo crea, no actualiza).
+                model:          clase del modelo Django
+                campos_excel:   tuple[tuple[campo, encabezado], ...]
+                procesar_lote(filas_validas) -> (creados, errores)
+                                # filas_validas: list[(fila, datos)] ya validadas
+                                # estructuralmente. Devuelve cuántos creó y la
+                                # lista [{fila, mensaje}] de lo que falló; si
+                                # devuelve errores, el mixin revierte todo.
+                                # El import solo crea, no actualiza: un registro
+                                # que ya existe debe reportarse como error.
+            Opcionales:
+                campos_requeridos: set[str]
+                nombre_archivo:    str
+                valores_ejemplo:   dict[campo, (fila1, fila2)]
+
+        Si el Excel depende de algo más que la clase (p.ej. el documento padre),
+        el ViewSet puede sobrescribir `get_serializer_importar()` y construir el
+        serializer a mano; el resto del flujo no cambia.
 
     Si CUALQUIER fila falla, toda la transacción se revierte y se devuelve 400
     con la lista de errores. La respuesta exitosa es `{creados: N}`.
@@ -136,10 +147,18 @@ class ImportarExcelMixin:
             ancho = max(len(str(texto)), 12)
             ws.column_dimensions[get_column_letter(col)].width = min(ancho + 2, 50)
 
+        # `valores_ejemplo` es opcional: solo hace falta cuando el valor derivado del
+        # campo del modelo no orienta al usuario (columnas que no son un campo, como
+        # una lista de ids, o campos con un dominio cerrado como D/C).
+        valores_ejemplo = getattr(serializer, 'valores_ejemplo', None) or {}
         for fila in (1, 2):
             for col, (campo, _) in enumerate(campos, start=1):
-                field = self._resolver_campo(modelo, campo)
-                celda = ws.cell(row=fila + 1, column=col, value=self._valor_ejemplo(field, fila, campo))
+                if campo in valores_ejemplo:
+                    valor = valores_ejemplo[campo][fila - 1]
+                else:
+                    field = self._resolver_campo(modelo, campo)
+                    valor = self._valor_ejemplo(field, fila, campo)
+                celda = ws.cell(row=fila + 1, column=col, value=valor)
                 celda.font = _FUENTE_NORMAL
 
         buf = BytesIO()
