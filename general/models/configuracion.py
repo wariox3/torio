@@ -35,6 +35,9 @@ class GenConfiguracion(models.Model):
         'general.GenCiudad', null=True, on_delete=models.PROTECT,
         related_name='configuraciones_empresa_ciudad_rel',
     )
+    # Si está activo, aprobar un documento de tipo electrónico dispara la emisión
+    # sin que el usuario tenga que pedirla.
+    gen_emitir_automaticamente = models.BooleanField(default=False, db_default=False)
     gen_empresa_tipo_persona = models.ForeignKey(
         'general.GenTipoPersona', null=True, on_delete=models.PROTECT,
         related_name='configuraciones_empresa_tipo_persona_rel',

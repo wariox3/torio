@@ -110,6 +110,12 @@ class GenDocumentoDetalle(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_detalles_modalidad_rel',
     )
+    almacen = models.ForeignKey(
+        'inventario.InvAlmacen',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_detalles_almacen_rel',
+    )
     puesto = models.ForeignKey(
         'turno.TurPuesto',
         null=True,

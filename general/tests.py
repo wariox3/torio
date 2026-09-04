@@ -28,9 +28,11 @@ from general.models import (
     GenAsesor,
     GenConfiguracion,
     GenDocumento,
+    GenDocumentoClase,
     GenDocumentoDetalle,
     GenDocumentoTipo,
     GenFestivo,
+    GenFormaPago,
     GenContacto,
     GenImpuesto,
     GenCiudad,
@@ -42,6 +44,7 @@ from general.models import (
     GenParametro,
     GenPrecio,
     GenPrecioDetalle,
+    GenResolucion,
     GenTipoPersona,
 )
 from general.servicios import documento as documento_servicio
@@ -63,6 +66,7 @@ from general.views.modelo import GenModeloViewSet
 from general.views.precio_detalle import GenPrecioDetalleViewSet
 from seguridad.models import SegUsuario
 from general.servicios import archivo as archivo_servicio
+from inventario.models import InvAlmacen, InvExistencia
 from utilidades import backblaze, mime
 from utilidades.mixins import ImportarExcelMixin
 
@@ -2448,6 +2452,617 @@ class DocumentoRespuestaTests(TenantTestCase):
     def test_el_comprobante_va_en_select_related(self):
         """Sin esto la lista hace una consulta por fila para leer el código."""
         self.assertIn('comprobante', GenDocumentoSerializer.select_related_lista)
+
+
+class AprobarAsientoTests(TenantTestCase):
+    """
+    Un asiento descuadrado aprobado es un descuadre contable que después hay que
+    perseguir en el informe del periodo. La validación va en `aprobar`, que es el
+    único punto por donde el documento pasa a firme.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.tipo_asiento = GenDocumentoTipo.objects.create(id=13, nombre='ASIENTO')
+        self.tipo_factura = GenDocumentoTipo.objects.create(id=1, nombre='FACTURA', venta=True)
+        self.cuenta = ConCuenta.objects.create(
+            codigo='150505', nombre='Terrenos', permite_movimiento=True,
+        )
+
+    def _documento(self, tipo):
+        return GenDocumento.objects.create(documento_tipo=tipo, fecha=date(2026, 1, 15))
+
+    def _apunte(self, documento, naturaleza, valor):
+        return GenDocumentoDetalle.objects.create(
+            documento=documento, cuenta=self.cuenta, tipo_registro='C',
+            naturaleza=naturaleza, precio=Decimal(valor),
+        )
+
+    def test_un_asiento_cuadrado_se_aprueba(self):
+        documento = self._documento(self.tipo_asiento)
+        self._apunte(documento, 'D', '15000')
+        self._apunte(documento, 'C', '10000')
+        self._apunte(documento, 'C', '5000')
+
+        aprobado = documento_servicio.aprobar(documento.id)
+
+        self.assertTrue(aprobado.estado_aprobado)
+
+    def test_un_asiento_descuadrado_no_se_aprueba(self):
+        documento = self._documento(self.tipo_asiento)
+        self._apunte(documento, 'D', '15000')
+        self._apunte(documento, 'C', '9000')
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(documento.id)
+
+        self.assertIn('no cuadra', str(caso.exception))
+        self.assertIn('6,000.00', str(caso.exception))
+        documento.refresh_from_db()
+        self.assertFalse(documento.estado_aprobado)
+
+    def test_el_descuadre_no_consume_consecutivo(self):
+        """
+        La validación va antes de tomar el consecutivo del tipo: si no, cada intento
+        fallido dejaría un hueco en la numeración.
+        """
+        documento = self._documento(self.tipo_asiento)
+        self._apunte(documento, 'D', '15000')
+        consecutivo = self.tipo_asiento.consecutivo
+
+        with self.assertRaises(ValidationError):
+            documento_servicio.aprobar(documento.id)
+
+        self.tipo_asiento.refresh_from_db()
+        self.assertEqual(self.tipo_asiento.consecutivo, consecutivo)
+        documento.refresh_from_db()
+        self.assertIsNone(documento.numero)
+
+    def test_la_suma_va_sobre_precio_y_no_sobre_total(self):
+        """En una línea contable `total` queda en cero: sumar por ahí cuadraría siempre."""
+        documento = self._documento(self.tipo_asiento)
+        debito = self._apunte(documento, 'D', '15000')
+        self._apunte(documento, 'C', '9000')
+
+        self.assertEqual(debito.total, Decimal('0'))
+        with self.assertRaises(ValidationError):
+            documento_servicio.aprobar(documento.id)
+
+    def test_otro_tipo_de_documento_no_se_valida(self):
+        """Una factura no es partida doble: sus detalles no tienen naturaleza."""
+        documento = self._documento(self.tipo_factura)
+        GenDocumentoDetalle.objects.create(
+            documento=documento, item=GenItem.objects.create(nombre='Item'),
+            cantidad=1, precio=Decimal('15000'),
+        )
+
+        aprobado = documento_servicio.aprobar(documento.id)
+
+        self.assertTrue(aprobado.estado_aprobado)
+
+
+class ValidarAprobacionTests(TenantTestCase):
+    """
+    Aprobar es el punto sin retorno: asigna consecutivo, afecta cartera y deja el
+    documento inmutable. Cada regla acá impide un documento que después no se
+    puede deshacer.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.clase_factura = GenDocumentoClase.objects.create(id=100, nombre='Factura venta')
+        self.clase_nomina = GenDocumentoClase.objects.create(id=702, nombre='Nomina electronica')
+        self.tipo_factura = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', venta=True, documento_clase=self.clase_factura,
+        )
+        self.item = GenItem.objects.create(nombre='Item')
+
+    def _documento(self, tipo=None, **overrides):
+        return GenDocumento.objects.create(
+            documento_tipo=tipo or self.tipo_factura, fecha=date(2026, 1, 15), **overrides,
+        )
+
+    def _detalle(self, documento, **overrides):
+        datos = {'documento': documento, 'item': self.item, 'cantidad': 1,
+                 'precio': Decimal('100')}
+        datos.update(overrides)
+        return GenDocumentoDetalle.objects.create(**datos)
+
+    def _resolucion(self, **overrides):
+        datos = {
+            'numero': '18760000001', 'consecutivo_desde': 1, 'consecutivo_hasta': 1000,
+            'fecha_desde': date(2020, 1, 1), 'fecha_hasta': date(2030, 12, 31),
+        }
+        datos.update(overrides)
+        return GenResolucion.objects.create(**datos)
+
+    def _contacto(self, **overrides):
+        pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
+        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        identificacion = GenIdentificacion.objects.create(id=6, nombre='NIT', codigo='31')
+        tipo_persona = GenTipoPersona.objects.create(id=1, nombre='Natural')
+        datos = {
+            'numero_identificacion': '123', 'nombre_corto': 'Empleado',
+            'ciudad': ciudad, 'identificacion': identificacion, 'tipo_persona': tipo_persona,
+            'direccion': 'x', 'telefono': '1', 'correo': 'a@b.com',
+        }
+        datos.update(overrides)
+        return GenContacto.objects.create(**datos)
+
+    # ---- total ----
+
+    def test_un_total_negativo_no_se_aprueba(self):
+        documento = self._documento(total=Decimal('-1'))
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(documento.id)
+
+        self.assertIn('no puede ser menor a cero', str(caso.exception))
+
+    # ---- resolución ----
+
+    def test_una_factura_sin_detalles_no_se_aprueba(self):
+        documento = self._documento()
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(documento.id)
+
+        self.assertIn('no tiene detalles', str(caso.exception))
+
+    def test_una_resolucion_vencida_no_se_aprueba(self):
+        documento = self._documento(resolucion=self._resolucion(fecha_hasta=date(2020, 1, 1)))
+        self._detalle(documento)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(documento.id)
+
+        self.assertIn('resolución está vencida', str(caso.exception))
+
+    def test_un_consecutivo_fuera_del_rango_no_se_aprueba(self):
+        documento = self._documento(
+            resolucion=self._resolucion(consecutivo_desde=500, consecutivo_hasta=600),
+        )
+        self._detalle(documento)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(documento.id)
+
+        self.assertIn('desde 500 hasta 600', str(caso.exception))
+
+    def test_el_rango_se_valida_contra_el_numero_que_va_a_quedar(self):
+        """
+        El consecutivo se toma del tipo pero se valida antes de incrementarlo: si se
+        validara después, se compararía contra el número del documento siguiente.
+        """
+        self.tipo_factura.consecutivo = 1000
+        self.tipo_factura.save(update_fields=['consecutivo'])
+        documento = self._documento(
+            resolucion=self._resolucion(consecutivo_desde=1, consecutivo_hasta=1000),
+        )
+        self._detalle(documento)
+
+        aprobado = documento_servicio.aprobar(documento.id)
+
+        self.assertEqual(aprobado.numero, 1000)
+
+    def test_una_factura_sin_resolucion_se_aprueba(self):
+        documento = self._documento()
+        self._detalle(documento)
+
+        self.assertTrue(documento_servicio.aprobar(documento.id).estado_aprobado)
+
+    def test_un_rechazo_de_resolucion_no_gasta_consecutivo(self):
+        documento = self._documento(resolucion=self._resolucion(consecutivo_desde=500))
+        self._detalle(documento)
+        consecutivo = self.tipo_factura.consecutivo
+
+        with self.assertRaises(ValidationError):
+            documento_servicio.aprobar(documento.id)
+
+        self.tipo_factura.refresh_from_db()
+        self.assertEqual(self.tipo_factura.consecutivo, consecutivo)
+
+    # ---- nómina electrónica ----
+
+    def test_nomina_electronica_exige_nombre_y_apellido(self):
+        tipo = GenDocumentoTipo.objects.create(
+            id=15, nombre='NOMINA ELECTRONICA', documento_clase=self.clase_nomina,
+        )
+        documento = self._documento(tipo=tipo, contacto=self._contacto(nombre1='Ana'))
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(documento.id)
+
+        self.assertIn('nombre1 o apellido1', str(caso.exception))
+
+    def test_nomina_electronica_con_nombre_y_apellido_se_aprueba(self):
+        tipo = GenDocumentoTipo.objects.create(
+            id=15, nombre='NOMINA ELECTRONICA', documento_clase=self.clase_nomina,
+        )
+        documento = self._documento(
+            tipo=tipo, contacto=self._contacto(nombre1='Ana', apellido1='Pérez'),
+        )
+
+        self.assertTrue(documento_servicio.aprobar(documento.id).estado_aprobado)
+
+    # ---- cantidad afectada ----
+
+    def test_no_se_afecta_mas_cantidad_de_la_que_tiene_el_detalle_afectado(self):
+        origen = self._documento()
+        afectado = self._detalle(origen, cantidad=Decimal('10'))
+        documento = self._documento()
+        self._detalle(documento, cantidad=Decimal('6'), documento_detalle_afectado=afectado)
+        self._detalle(documento, cantidad=Decimal('5'), documento_detalle_afectado=afectado)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(documento.id)
+
+        # Se suman las dos líneas que apuntan al mismo detalle: 6 + 5 contra 10.
+        self.assertIn('No se pueden afectar 11', str(caso.exception))
+
+    # ---- nota crédito ----
+
+    def test_una_nota_credito_no_devuelve_mas_de_lo_pendiente(self):
+        factura = self._documento()
+        self._detalle(factura, cantidad=1, precio=Decimal('100'))
+        for detalle in factura.documentos_detalles_documento_rel.all():
+            detalle.calcular()
+            detalle.save()
+
+        tipo_nota = GenDocumentoTipo.objects.create(
+            id=2, nombre='NOTA CRÉDITO DE VENTA',
+            documento_clase=GenDocumentoClase.objects.create(id=101, nombre='Nota credito venta'),
+        )
+        nota = self._documento(
+            tipo=tipo_nota, documento_referencia=factura, total=Decimal('500'),
+        )
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(nota.id)
+
+        self.assertIn('pendiente', str(caso.exception))
+
+
+class EfectosAprobarTests(TenantTestCase):
+    """
+    Lo que aprobar deja escrito además del estado. Cada efecto tiene su contraparte
+    en `desaprobar`: un ciclo aprobar/desaprobar tiene que dejar los saldos como
+    estaban, o el documento arrastra cartera y unidades que ya no corresponden.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.clase_factura = GenDocumentoClase.objects.create(id=100, nombre='Factura venta')
+        self.clase_nota = GenDocumentoClase.objects.create(id=101, nombre='Nota credito venta')
+        self.clase_pedido = GenDocumentoClase.objects.create(id=106, nombre='Pedido cliente')
+        self.tipo_factura = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', venta=True, documento_clase=self.clase_factura,
+        )
+        self.item = GenItem.objects.create(nombre='Item')
+
+    def _documento(self, tipo=None, **overrides):
+        return GenDocumento.objects.create(
+            documento_tipo=tipo or self.tipo_factura, fecha=date(2026, 1, 15), **overrides,
+        )
+
+    def _detalle(self, documento, **overrides):
+        datos = {'documento': documento, 'item': self.item, 'cantidad': Decimal('1'),
+                 'precio': Decimal('100')}
+        datos.update(overrides)
+        detalle = GenDocumentoDetalle.objects.create(**datos)
+        detalle.calcular()
+        detalle.save()
+        return detalle
+
+    # ---- cartera ----
+
+    def test_aprobar_deja_el_documento_con_saldo(self):
+        documento = self._documento(total=Decimal('1000'), pago=Decimal('300'))
+        self._detalle(documento)
+
+        aprobado = documento_servicio.aprobar(documento.id)
+
+        self.assertEqual(aprobado.pendiente, Decimal('700'))
+
+    def test_desaprobar_le_quita_el_saldo(self):
+        documento = self._documento(total=Decimal('1000'))
+        self._detalle(documento)
+        documento_servicio.aprobar(documento.id)
+
+        desaprobado = documento_servicio.desaprobar(documento.id)
+
+        self.assertEqual(desaprobado.pendiente, Decimal('0'))
+
+    def test_una_clase_sin_cartera_no_queda_con_saldo(self):
+        """Un pedido no se cobra: no tiene por qué aparecer en cartera."""
+        tipo = GenDocumentoTipo.objects.create(
+            id=26, nombre='PEDIDO CLIENTE', documento_clase=self.clase_pedido,
+        )
+        documento = self._documento(tipo=tipo, total=Decimal('1000'))
+
+        aprobado = documento_servicio.aprobar(documento.id)
+
+        self.assertEqual(aprobado.pendiente, Decimal('0'))
+
+    # ---- cuenta desde la forma de pago ----
+
+    def test_una_compra_toma_la_cuenta_de_la_forma_de_pago(self):
+        cuenta = ConCuenta.objects.create(codigo='110505', nombre='Caja', permite_movimiento=True)
+        forma_pago = GenFormaPago.objects.create(nombre='Efectivo', cuenta=cuenta)
+        tipo = GenDocumentoTipo.objects.create(
+            id=5, nombre='COMPRA', compra=True,
+            documento_clase=GenDocumentoClase.objects.create(id=300, nombre='Compra'),
+        )
+        documento = self._documento(tipo=tipo, forma_pago=forma_pago)
+        self._detalle(documento)
+
+        aprobado = documento_servicio.aprobar(documento.id)
+
+        self.assertEqual(aprobado.cuenta_id, cuenta.id)
+
+    # ---- cantidades afectadas ----
+
+    def test_aprobar_mueve_las_cantidades_del_detalle_afectado(self):
+        pedido = self._documento()
+        afectado = self._detalle(pedido, cantidad=Decimal('10'), precio=Decimal('100'))
+        afectado.cantidad_pendiente = Decimal('10')
+        afectado.save(update_fields=['cantidad_pendiente'])
+
+        documento = self._documento()
+        self._detalle(documento, cantidad=Decimal('4'), precio=Decimal('0'),
+                      documento_detalle_afectado=afectado)
+
+        documento_servicio.aprobar(documento.id)
+
+        afectado.refresh_from_db()
+        self.assertEqual(afectado.cantidad_afectada, Decimal('4'))
+        self.assertEqual(afectado.cantidad_pendiente, Decimal('6'))
+
+    def test_desaprobar_devuelve_las_cantidades(self):
+        pedido = self._documento()
+        afectado = self._detalle(pedido, cantidad=Decimal('10'), precio=Decimal('100'))
+        afectado.cantidad_pendiente = Decimal('10')
+        afectado.save(update_fields=['cantidad_pendiente'])
+
+        documento = self._documento()
+        self._detalle(documento, cantidad=Decimal('4'), precio=Decimal('0'),
+                      documento_detalle_afectado=afectado)
+        documento_servicio.aprobar(documento.id)
+
+        documento_servicio.desaprobar(documento.id)
+
+        afectado.refresh_from_db()
+        self.assertEqual(afectado.cantidad_afectada, Decimal('0'))
+        self.assertEqual(afectado.cantidad_pendiente, Decimal('10'))
+
+    # ---- nota crédito ----
+
+    def _factura_aprobada(self, total):
+        factura = self._documento(total=Decimal(total))
+        self._detalle(factura)
+        return documento_servicio.aprobar(factura.id)
+
+    def _nota_credito(self, factura, total):
+        tipo = GenDocumentoTipo.objects.create(
+            id=2, nombre='NOTA CRÉDITO DE VENTA', documento_clase=self.clase_nota,
+        )
+        return self._documento(
+            tipo=tipo, documento_referencia=factura, total=Decimal(total),
+        )
+
+    def test_una_nota_credito_descarga_la_factura(self):
+        factura = self._factura_aprobada('1000')
+        nota = self._nota_credito(factura, '400')
+
+        documento_servicio.aprobar(nota.id)
+
+        factura.refresh_from_db()
+        self.assertEqual(factura.afectado, Decimal('400'))
+        self.assertEqual(factura.pendiente, Decimal('600'))
+
+    def test_la_nota_credito_queda_sin_saldo_propio(self):
+        """Su clase lleva cartera, pero lo que deja pendiente lo descarga ella misma."""
+        factura = self._factura_aprobada('1000')
+        nota = self._nota_credito(factura, '400')
+
+        aprobada = documento_servicio.aprobar(nota.id)
+
+        self.assertEqual(aprobada.afectado, Decimal('400'))
+        self.assertEqual(aprobada.pendiente, Decimal('0'))
+
+    def test_desaprobar_la_nota_devuelve_el_saldo_a_la_factura(self):
+        factura = self._factura_aprobada('1000')
+        nota = self._nota_credito(factura, '400')
+        documento_servicio.aprobar(nota.id)
+
+        documento_servicio.desaprobar(nota.id)
+
+        factura.refresh_from_db()
+        self.assertEqual(factura.afectado, Decimal('0'))
+        self.assertEqual(factura.pendiente, Decimal('1000'))
+
+    def test_una_nota_credito_mayor_al_pendiente_no_se_aprueba(self):
+        factura = self._factura_aprobada('1000')
+        nota = self._nota_credito(factura, '1500')
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(nota.id)
+
+        self.assertIn('pendiente', str(caso.exception))
+        factura.refresh_from_db()
+        self.assertEqual(factura.pendiente, Decimal('1000'))
+
+
+class InventarioAprobarTests(TenantTestCase):
+    """
+    Aprobar mueve dos saldos en paralelo: `InvExistencia` por almacén y los
+    acumulados del item. `cantidad_operada` ya trae el signo del movimiento.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.clase = GenDocumentoClase.objects.create(id=500, nombre='Entrada')
+        self.tipo_entrada = GenDocumentoTipo.objects.create(
+            id=9, nombre='ENTRADA ALMACEN', inventario=True, documento_clase=self.clase,
+        )
+        self.tipo_salida = GenDocumentoTipo.objects.create(
+            id=10, nombre='SALIDA ALMACEN', inventario=True, documento_clase=self.clase,
+        )
+        self.almacen = InvAlmacen.objects.create(nombre='Principal')
+        self.item = GenItem.objects.create(nombre='Item', negativo=False)
+
+    def _documento(self, tipo):
+        return GenDocumento.objects.create(documento_tipo=tipo, fecha=date(2026, 1, 15))
+
+    def _detalle(self, documento, cantidad_operada, **overrides):
+        datos = {
+            'documento': documento, 'item': self.item, 'almacen': self.almacen,
+            'cantidad': abs(Decimal(cantidad_operada)),
+            'cantidad_operada': Decimal(cantidad_operada),
+            'precio': Decimal('100'),
+            'operacion_inventario': 1 if Decimal(cantidad_operada) > 0 else -1,
+        }
+        datos.update(overrides)
+        return GenDocumentoDetalle.objects.create(**datos)
+
+    def _saldo(self):
+        return InvExistencia.objects.get(item=self.item, almacen=self.almacen)
+
+    def test_una_entrada_crea_el_saldo(self):
+        documento = self._documento(self.tipo_entrada)
+        self._detalle(documento, '10')
+
+        documento_servicio.aprobar(documento.id)
+
+        saldo = self._saldo()
+        self.assertEqual(saldo.existencia, Decimal('10'))
+        self.assertEqual(saldo.disponible, Decimal('10'))
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.existencia, Decimal('10'))
+
+    def test_desaprobar_devuelve_el_saldo(self):
+        documento = self._documento(self.tipo_entrada)
+        self._detalle(documento, '10')
+        documento_servicio.aprobar(documento.id)
+
+        documento_servicio.desaprobar(documento.id)
+
+        self.assertEqual(self._saldo().existencia, Decimal('0'))
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.existencia, Decimal('0'))
+
+    def test_una_salida_baja_el_saldo(self):
+        entrada = self._documento(self.tipo_entrada)
+        self._detalle(entrada, '10')
+        documento_servicio.aprobar(entrada.id)
+
+        salida = self._documento(self.tipo_salida)
+        self._detalle(salida, '-4')
+        documento_servicio.aprobar(salida.id)
+
+        self.assertEqual(self._saldo().existencia, Decimal('6'))
+
+    def test_no_se_saca_mas_de_lo_que_hay(self):
+        entrada = self._documento(self.tipo_entrada)
+        self._detalle(entrada, '10')
+        documento_servicio.aprobar(entrada.id)
+
+        salida = self._documento(self.tipo_salida)
+        self._detalle(salida, '-15')
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(salida.id)
+
+        self.assertIn('supera la cantidad existente', str(caso.exception))
+        self.assertEqual(self._saldo().existencia, Decimal('10'))
+
+    def test_un_item_sin_existencias_no_se_saca(self):
+        salida = self._documento(self.tipo_salida)
+        self._detalle(salida, '-1')
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(salida.id)
+
+        self.assertIn('no tiene existencias', str(caso.exception))
+
+    def test_un_item_que_admite_negativos_se_salta_la_validacion(self):
+        self.item.negativo = True
+        self.item.save(update_fields=['negativo'])
+        salida = self._documento(self.tipo_salida)
+        self._detalle(salida, '-5')
+
+        documento_servicio.aprobar(salida.id)
+
+        self.assertEqual(self._saldo().existencia, Decimal('-5'))
+
+    def test_varias_lineas_del_mismo_item_se_suman_para_validar(self):
+        """Cada línea cabe por separado, pero juntas no."""
+        entrada = self._documento(self.tipo_entrada)
+        self._detalle(entrada, '10')
+        documento_servicio.aprobar(entrada.id)
+
+        salida = self._documento(self.tipo_salida)
+        self._detalle(salida, '-6')
+        self._detalle(salida, '-6')
+
+        with self.assertRaises(ValidationError):
+            documento_servicio.aprobar(salida.id)
+
+    def test_la_entrada_promedia_el_costo(self):
+        primera = self._documento(self.tipo_entrada)
+        self._detalle(primera, '10', precio=Decimal('100'))
+        documento_servicio.aprobar(primera.id)
+
+        segunda = self._documento(self.tipo_entrada)
+        self._detalle(segunda, '10', precio=Decimal('200'))
+        documento_servicio.aprobar(segunda.id)
+
+        self.item.refresh_from_db()
+        # (10 x 100 + 10 x 200) / 20
+        self.assertEqual(self.item.costo_promedio, Decimal('150'))
+        self.assertEqual(self.item.costo_total, Decimal('3000'))
+
+    def test_la_salida_congela_el_costo_en_el_detalle(self):
+        entrada = self._documento(self.tipo_entrada)
+        self._detalle(entrada, '10', precio=Decimal('100'))
+        documento_servicio.aprobar(entrada.id)
+
+        salida = self._documento(self.tipo_salida)
+        detalle = self._detalle(salida, '-2')
+        documento_servicio.aprobar(salida.id)
+
+        detalle.refresh_from_db()
+        self.assertEqual(detalle.costo, Decimal('100'))
+
+    def test_un_detalle_sin_almacen_no_toca_inventario(self):
+        """Una factura de servicios no mueve saldos aunque tenga item."""
+        documento = self._documento(self.tipo_entrada)
+        self._detalle(documento, '10', almacen=None)
+
+        documento_servicio.aprobar(documento.id)
+
+        self.assertFalse(InvExistencia.objects.exists())
 
 
 class TipoRegistroContableCoherenteTests(SimpleTestCase):

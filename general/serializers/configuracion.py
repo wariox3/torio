@@ -29,5 +29,6 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
             'gen_empresa_identificacion',
             'gen_empresa_ciudad',
             'gen_empresa_tipo_persona',
+            'gen_emitir_automaticamente',
         ]
         read_only_fields = ['id']
