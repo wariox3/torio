@@ -5,6 +5,7 @@ from rest_framework import permissions
 from rest_framework.test import APIRequestFactory
 
 from contabilidad.models import ConComprobante, ConCuenta, ConMovimiento, ConPeriodo
+from contabilidad.views.comprobante import ConComprobanteViewSet
 from contabilidad.views.cuenta import ConCuentaViewSet
 from general.models import GenDocumento, GenDocumentoDetalle, GenDocumentoTipo
 
@@ -139,3 +140,52 @@ class TrasladarCuentaTests(TenantTestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('cuenta_destino', response.data)
+
+
+class _ComprobanteViewSinPermisos(ConComprobanteViewSet):
+    """Variante de la vista sin auth/permiso/throttle para probar el action aislado."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class SeleccionarComprobanteTests(TenantTestCase):
+    """
+    De los 24 comprobantes del catálogo solo AJUSTE CONTABLE admite asiento manual,
+    así que el selector del front necesita poder acotarse: sin el filtro le ofrece
+    al usuario 23 comprobantes que no puede usar.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.ajuste = ConComprobante.objects.create(
+            id=10, nombre='AJUSTE CONTABLE', codigo='AJU', permite_asiento=True,
+        )
+        self.venta = ConComprobante.objects.create(id=4, nombre='VENTA', codigo='VEN')
+
+    def _seleccionar(self, params=None):
+        request = APIRequestFactory().get('/contabilidad/comprobante/seleccionar/', params or {})
+        response = _ComprobanteViewSinPermisos.as_view({'get': 'seleccionar'})(request)
+        self.assertEqual(response.status_code, 200)
+        return [c['id'] for c in response.data['results']]
+
+    def test_sin_el_parametro_los_lista_todos(self):
+        self.assertEqual(sorted(self._seleccionar()), [4, 10])
+
+    def test_filtra_los_que_permiten_asiento(self):
+        self.assertEqual(self._seleccionar({'permite_asiento': 'true'}), [10])
+
+    def test_filtra_los_que_no_permiten_asiento(self):
+        self.assertEqual(self._seleccionar({'permite_asiento': 'false'}), [4])
+
+    def test_el_search_no_recupera_uno_excluido(self):
+        """
+        El `search` arma un OR sobre el queryset; si el filtro se aplicara después,
+        buscar 'VEN' devolvería VENTA aunque no permita asiento.
+        """
+        self.assertEqual(self._seleccionar({'permite_asiento': 'true', 'search': 'VEN'}), [])
