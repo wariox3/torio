@@ -6,8 +6,8 @@ from django.db.models import Sum
 from django.db.models.functions import TruncMonth
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import mixins, status, viewsets
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
@@ -20,12 +20,24 @@ from general.serializers import (
     GenDocumentoImportarSerializer,
     GenDocumentoSerializer,
 )
+from contabilidad.servicios import contabilizar as contabilizar_servicio
 from general.servicios import documento as documento_servicio
 from general.servicios import documento_imprimir
 from utilidades.filtros import aplicar_filtros
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.mixins.filtros import BusquedaRequest
 from seguridad.permissions import TienePermisoModelo
+
+
+_IdsRequest = inline_serializer(
+    name='DocumentoIdsRequest',
+    fields={
+        'ids': serializers.ListField(
+            child=serializers.IntegerField(),
+            help_text='Ids de los documentos a procesar.',
+        ),
+    },
+)
 
 
 @extend_schema(tags=['Documento'])
@@ -108,6 +120,43 @@ class GenDocumentoViewSet(
         documento = documento_servicio.desaprobar(documento_id)
         salida = GenDocumentoSerializer(documento)
         return Response(salida.data, status=status.HTTP_200_OK)
+
+    def _ids_del_request(self, request):
+        ids = request.data.get('ids')
+        if not ids:
+            raise ValidationError({'ids': 'Este campo es requerido.'})
+        if not isinstance(ids, list):
+            raise ValidationError({'ids': 'Debe ser una lista de ids de documento.'})
+        return ids
+
+    @extend_schema(
+        summary='Contabilizar documentos',
+        description=(
+            'Genera los movimientos contables de cada documento aprobado y lo marca '
+            'como contabilizado. El lote va en una sola transacción: si un documento '
+            'falla, no queda ninguno contabilizado.'
+        ),
+        request=_IdsRequest,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['post'])
+    def contabilizar(self, request):
+        cantidad = contabilizar_servicio.contabilizar(self._ids_del_request(request))
+        return Response({'contabilizados': cantidad}, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Descontabilizar documentos',
+        description=(
+            'Borra los movimientos contables de cada documento y le quita el '
+            'contabilizado. Mismo criterio de transacción que `contabilizar`.'
+        ),
+        request=_IdsRequest,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['post'])
+    def descontabilizar(self, request):
+        cantidad = contabilizar_servicio.descontabilizar(self._ids_del_request(request))
+        return Response({'descontabilizados': cantidad}, status=status.HTTP_200_OK)
 
     def _queryset_imprimir(self, request):
         filtros = request.data.get('filtros') or []

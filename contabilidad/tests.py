@@ -5,6 +5,8 @@ from django_tenants.test.cases import TenantTestCase
 from rest_framework import permissions
 from rest_framework.test import APIRequestFactory
 
+from rest_framework.exceptions import ValidationError
+
 from contabilidad.models import (
     ConCentroCosto,
     ConComprobante,
@@ -12,10 +14,20 @@ from contabilidad.models import (
     ConMovimiento,
     ConPeriodo,
 )
+from contabilidad.servicios import contabilizar
 from contabilidad.views.comprobante import ConComprobanteViewSet
 from contabilidad.views.cuenta import ConCuentaViewSet
 from contabilidad.views.movimiento_informe import ConMovimientoInformeViewSet
-from general.models import GenDocumento, GenDocumentoDetalle, GenDocumentoTipo
+from general.models import (
+    GenCuentaBanco,
+    GenCuentaBancoTipo,
+    GenDocumento,
+    GenDocumentoDetalle,
+    GenDocumentoPago,
+    GenDocumentoTipo,
+    GenItem,
+    GenSede,
+)
 
 
 class _CuentaViewSinPermisos(ConCuentaViewSet):
@@ -451,3 +463,327 @@ class BalancePruebaTests(TenantTestCase):
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         )
         self.assertIn('balance_prueba.xlsx', response['Content-Disposition'])
+
+
+class _ContabilizarBase(TenantTestCase):
+    """Montaje común de las pruebas de contabilización: plan de cuentas y tipos."""
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.comprobante = ConComprobante.objects.create(id=1, nombre='Comprobante')
+        self.periodo = ConPeriodo.objects.create(anio=2026, mes=1)
+
+        self.cuenta_cobrar = ConCuenta.objects.create(
+            codigo='1305', nombre='Clientes', permite_movimiento=True,
+        )
+        self.cuenta_venta = ConCuenta.objects.create(
+            codigo='4135', nombre='Ingresos', permite_movimiento=True,
+        )
+        self.cuenta_pagar = ConCuenta.objects.create(
+            codigo='2205', nombre='Proveedores', permite_movimiento=True,
+        )
+        self.cuenta_gasto = ConCuenta.objects.create(
+            codigo='5135', nombre='Gastos', permite_movimiento=True,
+        )
+
+        # Ids propios y fuera del rango que el servicio reserva (PAGO, EGRESO,
+        # ASIENTO, NOMINA, PRIMA, SEGURIDAD SOCIAL, CIERRE): con ids
+        # autogenerados una prueba caería sobre uno de ellos y tomaría su rama.
+        self.factura_tipo = self._crear_tipo(901, 'FACTURA', operacion=1, venta=True, cobrar=True)
+        self.nota_credito_tipo = self._crear_tipo(902, 'NOTA CREDITO', operacion=-1, venta=True, cobrar=True)
+        self.compra_tipo = self._crear_tipo(903, 'COMPRA', operacion=1, compra=True, pagar=True)
+
+    def _crear_tipo(self, pk, nombre, operacion, venta=False, compra=False, cobrar=False, pagar=False):
+        return GenDocumentoTipo.objects.create(
+            pk=pk,
+            nombre=nombre,
+            operacion=operacion,
+            venta=venta,
+            compra=compra,
+            cobrar=cobrar,
+            pagar=pagar,
+            comprobante=self.comprobante,
+            cuenta_cobrar=self.cuenta_cobrar,
+            cuenta_pagar=self.cuenta_pagar,
+        )
+
+    def _crear_documento(self, documento_tipo, total='100', **extra):
+        datos = {
+            'documento_tipo': documento_tipo,
+            'fecha': date(2026, 1, 15),
+            'fecha_contable': date(2026, 1, 15),
+            'numero': 1,
+            'total': Decimal(total),
+            'estado_aprobado': True,
+        }
+        datos.update(extra)
+        return GenDocumento.objects.create(**datos)
+
+    def _crear_detalle_item(self, documento, item, subtotal='100'):
+        return GenDocumentoDetalle.objects.create(
+            documento=documento, item=item, tipo_registro='I',
+            cantidad=1, precio=Decimal(subtotal), subtotal=Decimal(subtotal),
+            total=Decimal(subtotal),
+        )
+
+    def _crear_item(self):
+        return GenItem.objects.create(
+            nombre='Item', cuenta_venta=self.cuenta_venta, cuenta_compra=self.cuenta_gasto,
+        )
+
+    def _movimientos(self, documento):
+        return list(ConMovimiento.objects.filter(documento=documento).order_by('id'))
+
+
+class ContabilizarTests(_ContabilizarBase):
+    """
+    Contabilizar deriva el asiento del documento: la naturaleza sale del signo de
+    `GenDocumentoTipo.operacion` y no de listas de ids, el lote es atómico y el
+    periodo se valida antes de escribir nada.
+    """
+
+    # ------------------------------------------------------------- asiento ----
+
+    def test_una_factura_debita_el_cliente_y_acredita_el_ingreso(self):
+        documento = self._crear_documento(self.factura_tipo)
+        self._crear_detalle_item(documento, self._crear_item())
+
+        contabilizar.contabilizar([documento.pk])
+
+        movimientos = self._movimientos(documento)
+        por_cuenta = {m.cuenta_id: m for m in movimientos}
+        self.assertEqual(por_cuenta[self.cuenta_cobrar.pk].naturaleza, 'D')
+        self.assertEqual(por_cuenta[self.cuenta_cobrar.pk].debito, Decimal('100'))
+        self.assertEqual(por_cuenta[self.cuenta_venta.pk].naturaleza, 'C')
+        self.assertEqual(por_cuenta[self.cuenta_venta.pk].credito, Decimal('100'))
+
+    def test_el_asiento_cuadra(self):
+        documento = self._crear_documento(self.factura_tipo)
+        self._crear_detalle_item(documento, self._crear_item())
+
+        contabilizar.contabilizar([documento.pk])
+
+        movimientos = self._movimientos(documento)
+        self.assertEqual(
+            sum(m.debito for m in movimientos), sum(m.credito for m in movimientos),
+        )
+
+    def test_la_nota_credito_invierte_la_naturaleza(self):
+        """Mismo asiento que la factura pero al revés, por `operacion = -1`."""
+        documento = self._crear_documento(self.nota_credito_tipo)
+        self._crear_detalle_item(documento, self._crear_item())
+
+        contabilizar.contabilizar([documento.pk])
+
+        por_cuenta = {m.cuenta_id: m for m in self._movimientos(documento)}
+        self.assertEqual(por_cuenta[self.cuenta_cobrar.pk].naturaleza, 'C')
+        self.assertEqual(por_cuenta[self.cuenta_venta.pk].naturaleza, 'D')
+
+    def test_una_compra_acredita_el_proveedor_y_debita_el_gasto(self):
+        documento = self._crear_documento(self.compra_tipo)
+        self._crear_detalle_item(documento, self._crear_item())
+
+        contabilizar.contabilizar([documento.pk])
+
+        por_cuenta = {m.cuenta_id: m for m in self._movimientos(documento)}
+        self.assertEqual(por_cuenta[self.cuenta_pagar.pk].naturaleza, 'C')
+        self.assertEqual(por_cuenta[self.cuenta_gasto.pk].naturaleza, 'D')
+
+    def test_el_pago_registrado_reduce_lo_que_queda_en_cartera(self):
+        cuenta_banco_contable = ConCuenta.objects.create(
+            codigo='1110', nombre='Banco', permite_movimiento=True,
+        )
+        cuenta_banco = GenCuentaBanco.objects.create(
+            nombre='Banco', cuenta=cuenta_banco_contable,
+            cuenta_banco_tipo=GenCuentaBancoTipo.objects.create(nombre='Ahorros'),
+        )
+        documento = self._crear_documento(self.factura_tipo)
+        self._crear_detalle_item(documento, self._crear_item())
+        GenDocumentoPago.objects.create(
+            documento=documento, cuenta_banco=cuenta_banco, pago=Decimal('40'),
+        )
+
+        contabilizar.contabilizar([documento.pk])
+
+        por_cuenta = {m.cuenta_id: m for m in self._movimientos(documento)}
+        self.assertEqual(por_cuenta[cuenta_banco_contable.pk].debito, Decimal('40'))
+        self.assertEqual(por_cuenta[self.cuenta_cobrar.pk].debito, Decimal('60'))
+
+    def test_el_pago_anulado_no_genera_movimiento(self):
+        cuenta_banco_contable = ConCuenta.objects.create(
+            codigo='1110', nombre='Banco', permite_movimiento=True,
+        )
+        cuenta_banco = GenCuentaBanco.objects.create(
+            nombre='Banco', cuenta=cuenta_banco_contable,
+            cuenta_banco_tipo=GenCuentaBancoTipo.objects.create(nombre='Ahorros'),
+        )
+        documento = self._crear_documento(self.factura_tipo)
+        self._crear_detalle_item(documento, self._crear_item())
+        GenDocumentoPago.objects.create(
+            documento=documento, cuenta_banco=cuenta_banco, pago=Decimal('40'),
+            estado_anulado=True,
+        )
+
+        contabilizar.contabilizar([documento.pk])
+
+        por_cuenta = {m.cuenta_id: m for m in self._movimientos(documento)}
+        self.assertNotIn(cuenta_banco_contable.pk, por_cuenta)
+        self.assertEqual(por_cuenta[self.cuenta_cobrar.pk].debito, Decimal('100'))
+
+    def test_el_centro_de_costo_solo_se_guarda_si_la_cuenta_lo_exige(self):
+        centro_costo = ConCentroCosto.objects.create(nombre='Centro')
+        self.cuenta_venta.exige_centro_costo = True
+        self.cuenta_venta.save(update_fields=['exige_centro_costo'])
+        sede = GenSede.objects.create(nombre='Sede', centro_costo=centro_costo)
+        documento = self._crear_documento(self.factura_tipo, sede=sede)
+        self._crear_detalle_item(documento, self._crear_item())
+
+        contabilizar.contabilizar([documento.pk])
+
+        por_cuenta = {m.cuenta_id: m for m in self._movimientos(documento)}
+        self.assertEqual(por_cuenta[self.cuenta_venta.pk].centro_costo_id, centro_costo.pk)
+        self.assertIsNone(por_cuenta[self.cuenta_cobrar.pk].centro_costo_id)
+
+    # ---------------------------------------------------------- validación ----
+
+    def test_rechaza_un_documento_sin_aprobar(self):
+        documento = self._crear_documento(self.factura_tipo, estado_aprobado=False)
+
+        with self.assertRaises(ValidationError):
+            contabilizar.contabilizar([documento.pk])
+
+    def test_rechaza_un_documento_ya_contabilizado(self):
+        documento = self._crear_documento(self.factura_tipo, estado_contabilizado=True)
+
+        with self.assertRaises(ValidationError):
+            contabilizar.contabilizar([documento.pk])
+
+    def test_rechaza_un_periodo_bloqueado(self):
+        self.periodo.estado_bloqueado = True
+        self.periodo.save(update_fields=['estado_bloqueado'])
+        documento = self._crear_documento(self.factura_tipo)
+
+        with self.assertRaises(ValidationError):
+            contabilizar.contabilizar([documento.pk])
+
+    def test_rechaza_un_periodo_que_no_existe(self):
+        documento = self._crear_documento(
+            self.factura_tipo, fecha_contable=date(2030, 6, 1),
+        )
+
+        with self.assertRaises(ValidationError):
+            contabilizar.contabilizar([documento.pk])
+
+    def test_una_fecha_contable_vacia_da_error_de_validacion(self):
+        """Sin fecha no hay periodo: tiene que decirlo, no fallar al derivarlo."""
+        documento = self._crear_documento(self.factura_tipo, fecha_contable=None)
+
+        with self.assertRaises(ValidationError):
+            contabilizar.contabilizar([documento.pk])
+
+    def test_rechaza_un_tipo_sin_comprobante(self):
+        self.factura_tipo.comprobante = None
+        self.factura_tipo.save(update_fields=['comprobante'])
+        documento = self._crear_documento(self.factura_tipo)
+
+        with self.assertRaises(ValidationError):
+            contabilizar.contabilizar([documento.pk])
+
+    def test_rechaza_un_tipo_con_operacion_en_cero(self):
+        """En cero la naturaleza saldría acreditada para todo, sin que nadie lo note."""
+        self.factura_tipo.operacion = 0
+        self.factura_tipo.save(update_fields=['operacion'])
+        documento = self._crear_documento(self.factura_tipo)
+
+        with self.assertRaises(ValidationError):
+            contabilizar.contabilizar([documento.pk])
+
+    # ------------------------------------------------------------- el lote ----
+
+    def test_si_un_documento_del_lote_falla_no_queda_ninguno_contabilizado(self):
+        bueno = self._crear_documento(self.factura_tipo)
+        self._crear_detalle_item(bueno, self._crear_item())
+        malo = self._crear_documento(self.factura_tipo, estado_aprobado=False)
+
+        with self.assertRaises(ValidationError):
+            contabilizar.contabilizar([bueno.pk, malo.pk])
+
+        bueno.refresh_from_db()
+        self.assertFalse(bueno.estado_contabilizado)
+        self.assertEqual(ConMovimiento.objects.filter(documento=bueno).count(), 0)
+
+    def test_un_documento_anulado_se_marca_sin_generar_movimientos(self):
+        documento = self._crear_documento(self.factura_tipo, estado_anulado=True)
+        self._crear_detalle_item(documento, self._crear_item())
+
+        contabilizar.contabilizar([documento.pk])
+
+        documento.refresh_from_db()
+        self.assertTrue(documento.estado_contabilizado)
+        self.assertEqual(self._movimientos(documento), [])
+
+
+class DescontabilizarTests(_ContabilizarBase):
+    """Descontabilizar deshace exactamente lo que hizo contabilizar."""
+
+    def test_borra_los_movimientos_y_quita_el_contabilizado(self):
+        documento = self._crear_documento(self.factura_tipo)
+        self._crear_detalle_item(documento, self._crear_item())
+        contabilizar.contabilizar([documento.pk])
+
+        contabilizar.descontabilizar([documento.pk])
+
+        documento.refresh_from_db()
+        self.assertFalse(documento.estado_contabilizado)
+        self.assertEqual(self._movimientos(documento), [])
+
+    def test_rechaza_un_documento_que_no_esta_contabilizado(self):
+        documento = self._crear_documento(self.factura_tipo)
+
+        with self.assertRaises(ValidationError):
+            contabilizar.descontabilizar([documento.pk])
+
+    def test_rechaza_un_periodo_bloqueado(self):
+        documento = self._crear_documento(self.factura_tipo)
+        self._crear_detalle_item(documento, self._crear_item())
+        contabilizar.contabilizar([documento.pk])
+        self.periodo.estado_bloqueado = True
+        self.periodo.save(update_fields=['estado_bloqueado'])
+
+        with self.assertRaises(ValidationError):
+            contabilizar.descontabilizar([documento.pk])
+
+    def test_el_periodo_sale_de_los_movimientos_y_no_de_la_fecha(self):
+        """
+        Un cierre se contabiliza en el periodo 13, no en el de su mes. Si el
+        periodo se recalculara desde la fecha, se buscaría uno que no es el que se
+        afectó y el documento no se podría descontabilizar.
+        """
+        periodo_ajustes = ConPeriodo.objects.create(anio=2026, mes=13)
+        cierre_tipo = GenDocumentoTipo.objects.create(
+            pk=contabilizar.DOCUMENTO_TIPO_CIERRE, nombre='CIERRE CONTABLE',
+            operacion=1, comprobante=self.comprobante,
+        )
+        documento = GenDocumento.objects.create(
+            documento_tipo=cierre_tipo, fecha=date(2026, 1, 15),
+            fecha_contable=date(2026, 1, 15), numero=1, estado_aprobado=True,
+        )
+        GenDocumentoDetalle.objects.create(
+            documento=documento, tipo_registro='C', cuenta=self.cuenta_venta,
+            naturaleza='D', precio=Decimal('50'),
+        )
+
+        contabilizar.contabilizar([documento.pk])
+        movimiento = ConMovimiento.objects.filter(documento=documento).first()
+        self.assertEqual(movimiento.periodo_id, periodo_ajustes.pk)
+        self.assertTrue(movimiento.cierre)
+
+        contabilizar.descontabilizar([documento.pk])
+
+        documento.refresh_from_db()
+        self.assertFalse(documento.estado_contabilizado)
