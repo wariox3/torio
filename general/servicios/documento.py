@@ -734,7 +734,10 @@ def generar(documento_tipo_origen, documento_tipo_destino_id, anio, mes, documen
         return type(instancia)(**datos)
 
     excluir_documento = {
-        'id', 'numero', 'fecha', 'fecha_validacion',
+        # `fecha_contable` se excluye y se fija abajo: clonarla del origen le
+        # dejaría al documento generado el periodo contable del contrato del que
+        # salió, que es de otro mes.
+        'id', 'numero', 'fecha', 'fecha_contable', 'fecha_validacion',
         'documento_tipo', 'documento_referencia',
         'cue', 'qr', 'referencia_cue', 'referencia_numero', 'referencia_prefijo',
         'electronico_id',
@@ -778,6 +781,7 @@ def generar(documento_tipo_origen, documento_tipo_destino_id, anio, mes, documen
             nuevo = clonar(origen, excluir_documento, {
                 'documento_tipo_id': documento_tipo_destino_id,
                 'fecha': fecha,
+                'fecha_contable': fecha,
                 'documento_referencia_id': origen.id,
             })
             nuevo.save()

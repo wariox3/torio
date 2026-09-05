@@ -52,7 +52,9 @@ from general.servicios import factura_electronica
 from general.servicios import rededoc as rededoc_servicio
 from general.serializers import (
     GenAsesorImportarSerializer,
+    GenDocumentoCrearSerializer,
     GenDocumentoDetalleSerializer,
+    GenDocumentoImportarSerializer,
     GenDocumentoSerializer,
     GenDocumentoDetalleImportarSerializer,
     GenParametroSerializer,
@@ -3198,3 +3200,139 @@ class TipoRegistroContableCoherenteTests(SimpleTestCase):
         }
 
         self.assertEqual(contables, set(PERFIL_CONTABLE.TIPO_REGISTRO_POR_TIPO))
+
+
+class FechaContableTests(TenantTestCase):
+    """
+    `fecha_contable` decide el periodo al contabilizar, así que no puede quedar
+    nula por descuido: se rellena con `fecha` cuando no la mandan. Es un default,
+    no una sobrescritura — nómina y aportes la usan para apuntar a un periodo
+    distinto del de `fecha`.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.documento_tipo = GenDocumentoTipo.objects.create(nombre='Factura')
+
+    def _crear(self, **datos):
+        serializador = GenDocumentoCrearSerializer(data={
+            'documento_tipo': self.documento_tipo.pk,
+            'fecha': '2026-03-10',
+            **datos,
+        })
+        serializador.is_valid(raise_exception=True)
+        return serializador.save()
+
+    def test_al_crear_sin_fecha_contable_se_usa_la_fecha(self):
+        documento = self._crear()
+
+        self.assertEqual(documento.fecha_contable, date(2026, 3, 10))
+
+    def test_al_crear_se_respeta_la_fecha_contable_enviada(self):
+        documento = self._crear(fecha_contable='2026-01-31')
+
+        self.assertEqual(documento.fecha_contable, date(2026, 1, 31))
+
+    def test_al_cambiar_la_fecha_la_contable_la_sigue(self):
+        """Mover la fecha de un asiento mueve también su periodo contable."""
+        documento = self._crear()
+
+        serializador = GenDocumentoSerializer(
+            documento, data={'fecha': '2026-04-20'}, partial=True,
+        )
+        serializador.is_valid(raise_exception=True)
+        documento = serializador.save()
+
+        self.assertEqual(documento.fecha_contable, date(2026, 4, 20))
+
+    def test_una_fecha_contable_separada_no_sigue_a_la_fecha(self):
+        """Si alguien la fijó distinta, editar la fecha no se la vuelve a pegar."""
+        documento = self._crear(fecha_contable='2026-01-31')
+
+        serializador = GenDocumentoSerializer(
+            documento, data={'fecha': '2026-04-20'}, partial=True,
+        )
+        serializador.is_valid(raise_exception=True)
+        documento = serializador.save()
+
+        self.assertEqual(documento.fecha_contable, date(2026, 1, 31))
+
+    def test_un_patch_que_no_la_menciona_no_la_toca(self):
+        """La fecha contable propia de un documento no se pierde al editar otra cosa."""
+        documento = self._crear(fecha_contable='2026-01-31')
+
+        serializador = GenDocumentoSerializer(
+            documento, data={'comentario': 'ajuste'}, partial=True,
+        )
+        serializador.is_valid(raise_exception=True)
+        documento = serializador.save()
+
+        self.assertEqual(documento.fecha_contable, date(2026, 1, 31))
+
+    def test_un_patch_la_completa_si_estaba_vacia(self):
+        documento = GenDocumento.objects.create(
+            documento_tipo=self.documento_tipo, fecha=date(2026, 3, 10),
+        )
+
+        serializador = GenDocumentoSerializer(
+            documento, data={'comentario': 'ajuste'}, partial=True,
+        )
+        serializador.is_valid(raise_exception=True)
+        documento = serializador.save()
+
+        self.assertEqual(documento.fecha_contable, date(2026, 3, 10))
+
+    def test_el_documento_generado_no_hereda_la_fecha_contable_del_origen(self):
+        """
+        `generar` clona el origen: sin excluir `fecha_contable`, el documento de
+        junio se quedaría con el periodo contable del contrato del que salió.
+        """
+        tipo_origen = GenDocumentoTipo.objects.create(nombre='Contrato')
+        tipo_destino = GenDocumentoTipo.objects.create(nombre='Programación')
+        origen = GenDocumento.objects.create(
+            documento_tipo=tipo_origen,
+            fecha=date(2026, 1, 1),
+            fecha_contable=date(2025, 1, 1),
+        )
+        GenDocumentoDetalle.objects.create(
+            documento=origen,
+            fecha_desde=date(2026, 6, 1), fecha_hasta=date(2026, 6, 30),
+            hora_desde=time(6, 0), hora_hasta=time(14, 0),
+            lunes=True, martes=True, miercoles=True, jueves=True,
+            viernes=True, sabado=True, domingo=True,
+        )
+
+        generados = documento_servicio.generar(
+            documento_tipo_origen=tipo_origen,
+            documento_tipo_destino_id=tipo_destino.id,
+            anio=2026, mes=6,
+        )
+
+        self.assertEqual(generados[0].fecha_contable, date(2026, 6, 30))
+        self.assertEqual(generados[0].fecha_contable, generados[0].fecha)
+
+    def _importar(self, **datos):
+        serializador = GenDocumentoImportarSerializer()
+        creados, errores = serializador.procesar_lote([(2, {
+            'documento_tipo.id': self.documento_tipo.pk,
+            'fecha': date(2026, 3, 10),
+            **datos,
+        })])
+        self.assertEqual(errores, [])
+        self.assertEqual(creados, 1)
+        return GenDocumento.objects.latest('id')
+
+    def test_al_importar_sin_fecha_contable_se_usa_la_fecha(self):
+        documento = self._importar(fecha_contable='')
+
+        self.assertEqual(documento.fecha_contable, date(2026, 3, 10))
+
+    def test_al_importar_se_respeta_la_fecha_contable_de_la_celda(self):
+        documento = self._importar(fecha_contable=date(2026, 1, 31))
+
+        self.assertEqual(documento.fecha_contable, date(2026, 1, 31))

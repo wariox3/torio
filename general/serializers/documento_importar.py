@@ -104,10 +104,16 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
                 centro_costo = self._fk_opcional(
                     datos.get('centro_costo.id'), mapa_centro_costo, 'Centro de costo')
 
+                fecha = datos.get('fecha')
+                # Mismo default que en `GenDocumentoSerializer`: sin fecha contable
+                # manda la del documento. `fecha` es obligatoria en la plantilla,
+                # así que el importado nunca queda sin periodo que contabilizar.
+                fecha_contable = self._fecha_o_none(datos.get('fecha_contable')) or fecha
+
                 nuevos.append(GenDocumento(
                     documento_tipo=documento_tipo,
-                    fecha=datos.get('fecha'),
-                    fecha_contable=self._fecha_o_none(datos.get('fecha_contable')),
+                    fecha=fecha,
+                    fecha_contable=fecha_contable,
                     contacto=contacto,
                     soporte=self._texto_o_none(datos.get('soporte')),
                     orden_compra=self._texto_o_none(datos.get('orden_compra')),

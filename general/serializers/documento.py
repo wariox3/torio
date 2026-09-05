@@ -104,6 +104,32 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'estado_contabilizado',
         ]
 
+    def validate(self, datos):
+        """
+        Mantiene `fecha_contable` a la par de `fecha` mientras nadie las separe.
+
+        De `fecha_contable` sale el periodo al contabilizar. El sistema anterior
+        la pisaba con `fecha` en cada guardado, lo que dejaba el campo inservible
+        para nómina y aportes, que la usan justamente para apuntar a otro
+        periodo. Acá sigue a `fecha` mientras vengan iguales —así al mover la
+        fecha de un asiento se mueve también su periodo—, y apenas alguien la
+        fija distinta se respeta y deja de seguirla.
+        """
+        if datos.get('fecha_contable'):
+            return datos
+
+        fecha = datos.get('fecha') or getattr(self.instance, 'fecha', None)
+        if fecha is None:
+            return datos
+
+        anterior = getattr(self.instance, 'fecha_contable', None)
+        if anterior and anterior != getattr(self.instance, 'fecha', None):
+            # Ya venía separada a propósito: no se toca.
+            return datos
+
+        datos['fecha_contable'] = fecha
+        return datos
+
 
 class GenDocumentoCrearSerializer(GenDocumentoSerializer):
     detalles = GenDocumentoDetalleSerializer(

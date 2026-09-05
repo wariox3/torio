@@ -35,6 +35,16 @@ class ConMovimiento(models.Model):
         'general.GenDocumento', null=True, on_delete=models.PROTECT,
         related_name='movimientos_documento_rel',
     )
+    # Quién y cuándo llevó esta fila al mayor. El movimiento es inmutable —se crea
+    # al contabilizar y se borra al descontabilizar, nunca se edita—, así que una
+    # sola marca de creación describe su vida entera. Va acá y no en `gen_log`
+    # porque los movimientos se escriben con `bulk_create`, que no dispara los
+    # signals de auditoría.
+    fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
+    usuario = models.ForeignKey(
+        'seguridad.SegUsuario', null=True, on_delete=models.PROTECT,
+        related_name='movimientos_usuario_rel',
+    )
 
     class Meta:
         db_table = 'con_movimiento'

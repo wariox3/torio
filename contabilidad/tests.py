@@ -649,6 +649,21 @@ class ContabilizarTests(_ContabilizarBase):
         self.assertEqual(por_cuenta[self.cuenta_venta.pk].centro_costo_id, centro_costo.pk)
         self.assertIsNone(por_cuenta[self.cuenta_cobrar.pk].centro_costo_id)
 
+    def test_el_movimiento_guarda_cuando_se_contabilizo(self):
+        """
+        `bulk_create` no dispara los signals de `gen_log`, así que la marca de
+        creación tiene que estar en la propia fila.
+        """
+        documento = self._crear_documento(self.factura_tipo)
+        self._crear_detalle_item(documento, self._crear_item())
+
+        contabilizar.contabilizar([documento.pk])
+
+        for movimiento in self._movimientos(documento):
+            self.assertIsNotNone(movimiento.fecha_creacion)
+            # Fuera de un request no hay usuario en contexto.
+            self.assertIsNone(movimiento.usuario_id)
+
     # ---------------------------------------------------------- validación ----
 
     def test_rechaza_un_documento_sin_aprobar(self):

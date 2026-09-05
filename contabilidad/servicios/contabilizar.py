@@ -13,6 +13,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 
 from contabilidad.models import ConMovimiento, ConPeriodo
 from general.models import GenDocumento, GenDocumentoImpuesto
+from seguridad.contexto import obtener_usuario_actual
 from humano.models import (
     HumConceptoCuenta,
     HumConfiguracionAporte,
@@ -265,11 +266,17 @@ def _movimiento(comun, cuenta, signo, valor, detalle, etiqueta,
         detalle=detalle,
         cierre=cierre,
         contacto_id=contacto_id,
+        usuario_id=comun['usuario_id'],
         # El centro de costo solo se guarda si la cuenta lo exige; así el mayor no
         # se llena de centros de costo que nadie pidió y `analizar_inconsistencias`
         # sigue midiendo lo mismo.
         centro_costo_id=centro_costo_id if cuenta.exige_centro_costo else None,
     )
+
+
+def _usuario_actual_id():
+    usuario = obtener_usuario_actual()
+    return usuario.pk if usuario is not None else None
 
 
 def _movimientos(documento, periodo, campos_actualizar):
@@ -289,6 +296,9 @@ def _movimientos(documento, periodo, campos_actualizar):
         'numero': documento.numero,
         'fecha': documento.fecha_contable,
         'comprobante_id': _comprobante_id(documento),
+        # Quién contabiliza. Fuera de un request (un comando, el shell) queda en
+        # null, igual que en `gen_log`.
+        'usuario_id': _usuario_actual_id(),
     }
 
     movimientos = []
