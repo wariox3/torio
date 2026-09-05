@@ -122,6 +122,24 @@ class GenDocumentoDetalle(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_detalles_puesto_rel',
     )
+    contrato = models.ForeignKey(
+        'humano.HumContrato',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_detalles_contrato_rel',
+    )
+    concepto = models.ForeignKey(
+        'humano.HumConcepto',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_detalles_concepto_rel',
+    )
+    activo = models.ForeignKey(
+        'contabilidad.ConActivo',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_detalles_activo_rel',
+    )
 
     class Meta:
         db_table = 'gen_documento_detalle'

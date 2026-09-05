@@ -40,7 +40,7 @@ class HumContratoExportarSerializer(serializers.Serializer):
         ('entidad_caja.nombre', 'Entidad caja'),
         ('tiempo.nombre', 'Tiempo'),
         ('tipo_costo.nombre', 'Tipo costo'),
-        ('grupo_contabilidad.nombre', 'Centro de costo'),
+        ('centro_costo.nombre', 'Centro de costo'),
         ('estado_terminado', 'Terminado'),
         ('motivo_terminacion.nombre', 'Motivo terminación'),
         ('comentario', 'Comentario'),

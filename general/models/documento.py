@@ -154,6 +154,12 @@ class GenDocumento(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_sede_rel',
     )
+    contrato = models.ForeignKey(
+        'humano.HumContrato',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_contrato_rel',
+    )
     estrato = models.PositiveSmallIntegerField(
         null=True,
         validators=[MinValueValidator(1), MaxValueValidator(9)],

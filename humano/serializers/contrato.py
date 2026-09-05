@@ -18,7 +18,7 @@ class HumContratoSerializer(serializers.ModelSerializer):
         'grupo', 'sucursal', 'riesgo', 'tipo_cotizante', 'subtipo_cotizante',
         'cargo', 'salud', 'pension', 'entidad_salud', 'entidad_pension',
         'entidad_cesantias', 'entidad_caja', 'tiempo', 'tipo_costo',
-        'grupo_contabilidad', 'motivo_terminacion',
+        'centro_costo', 'motivo_terminacion',
     )
     ordenamiento_default_lista = ('-id',)
 
@@ -43,7 +43,7 @@ class HumContratoSerializer(serializers.ModelSerializer):
     entidad_caja_nombre = serializers.CharField(source='entidad_caja.nombre', read_only=True, default=None)
     tiempo_nombre = serializers.CharField(source='tiempo.nombre', read_only=True, default=None)
     tipo_costo_nombre = serializers.CharField(source='tipo_costo.nombre', read_only=True, default=None)
-    grupo_contabilidad_nombre = serializers.CharField(source='grupo_contabilidad.nombre', read_only=True, default=None)
+    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
     motivo_terminacion_nombre = serializers.CharField(source='motivo_terminacion.nombre', read_only=True, default=None)
 
     class Meta:
@@ -99,8 +99,8 @@ class HumContratoSerializer(serializers.ModelSerializer):
             'tiempo_nombre',
             'tipo_costo',
             'tipo_costo_nombre',
-            'grupo_contabilidad',
-            'grupo_contabilidad_nombre',
+            'centro_costo',
+            'centro_costo_nombre',
             'motivo_terminacion',
             'motivo_terminacion_nombre',
         ]

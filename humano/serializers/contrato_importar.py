@@ -66,7 +66,7 @@ class HumContratoImportarSerializer(serializers.Serializer):
         ('entidad_caja.id', 'Entidad caja'),
         ('tiempo.id', 'Tiempo'),
         ('tipo_costo.id', 'Tipo costo'),
-        ('grupo_contabilidad.id', 'Centro de costo'),
+        ('centro_costo.id', 'Centro de costo'),
         ('comentario', 'Comentario'),
     )
     campos_requeridos = {'contacto.id', 'contrato_tipo.id', 'fecha_desde', 'fecha_hasta', 'grupo.id'}
@@ -94,7 +94,7 @@ class HumContratoImportarSerializer(serializers.Serializer):
         'entidad_caja': ('entidad_caja.id', HumEntidad, 'Entidad caja'),
         'tiempo': ('tiempo.id', HumTiempo, 'Tiempo'),
         'tipo_costo': ('tipo_costo.id', HumTipoCosto, 'Tipo costo'),
-        'grupo_contabilidad': ('grupo_contabilidad.id', ConCentroCosto, 'Centro de costo'),
+        'centro_costo': ('centro_costo.id', ConCentroCosto, 'Centro de costo'),
     }
 
     def procesar_lote(self, filas_validas):

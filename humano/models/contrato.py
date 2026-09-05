@@ -86,9 +86,9 @@ class HumContrato(models.Model):
         'humano.HumTipoCosto', null=True, on_delete=models.PROTECT,
         related_name='contratos_tipo_costo_rel',
     )
-    grupo_contabilidad = models.ForeignKey(
+    centro_costo = models.ForeignKey(
         'contabilidad.ConCentroCosto', null=True, on_delete=models.PROTECT,
-        related_name='contratos_grupo_contabilidad_rel',
+        related_name='contratos_centro_costo_rel',
     )
     motivo_terminacion = models.ForeignKey(
         'humano.HumMotivoTerminacion', null=True, on_delete=models.PROTECT,

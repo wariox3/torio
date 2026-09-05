@@ -6,6 +6,7 @@ from .documento import GenDocumento
 from .documento_clase import GenDocumentoClase
 from .documento_detalle import GenDocumentoDetalle
 from .documento_impuesto import GenDocumentoImpuesto
+from .documento_pago import GenDocumentoPago
 from .documento_tipo import GenDocumentoTipo
 from .banco import GenBanco
 from .ciudad import GenCiudad
