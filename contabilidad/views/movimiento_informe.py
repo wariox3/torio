@@ -1,5 +1,6 @@
+from django.http import HttpResponse
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiTypes, extend_schema, inline_serializer
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -7,24 +8,120 @@ from rest_framework.response import Response
 
 from contabilidad.models import ConMovimiento
 from contabilidad.serializers import (
-    ConMovimientoInformeBalanceExportarSerializer,
+    ConMovimientoInformeAuxiliarContactoSerializer,
+    ConMovimientoInformeAuxiliarCuentaSerializer,
+    ConMovimientoInformeAuxiliarGeneralSerializer,
+    ConMovimientoInformeBalanceContactoSerializer,
     ConMovimientoInformeBalanceSerializer,
     ConMovimientoInformeBalanceTotalesSerializer,
+    ConMovimientoInformeBasesSerializer,
+    ConMovimientoInformeBasesTotalesSerializer,
+    ConMovimientoInformeCertificadoSerializer,
+    ConMovimientoInformeCertificadoTotalesSerializer,
+    ConMovimientoInformeEstadoSerializer,
+    ConMovimientoInformeEstadoTotalesSerializer,
 )
-from contabilidad.servicios.balance import balance_prueba, totalizar
+from contabilidad.servicios import balance, balance_excel
+from general.models import GenConfiguracion
 from utilidades.filtros import aplicar_filtros
-from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin
+from utilidades.mixins import FiltrosDinamicosMixin
 
 # Registro de informes sobre ConMovimiento.
 # A diferencia de los informes de `general`, que filtran filas y declaran su
-# invariante con un `Q`, acá cada informe declara cómo construir su queryset
-# agrupado: lo que se sirve son totales por cuenta, no movimientos. La firma de
-# `queryset` es (fecha_desde, fecha_hasta, solo_con_saldo).
+# invariante con un `Q`, acá cada informe se declara entero y no se programa.
+# Hay dos familias y `detalle` las separa:
+#
+#   jerárquicos (detalle != None): `agrupar` da el agregado por cuenta que se
+#       filtra en el WHERE, `movimiento` la segunda consulta cuando el detalle
+#       la pide, y `balance.jerarquizar` arma la jerarquía. La aritmética y el
+#       orden son los mismos para los cinco.
+#   planos (detalle = None): `agrupar` da la única consulta y `filas` la
+#       convierte en las filas del informe. No hay plan de cuentas que recorrer.
+#
+# `excel` es la forma de la tabla, que no se puede delegar en
+# `ExportarExcelMixin` porque lleva bloque de título, y `totales` el serializer
+# que además declara qué suma `totales/`.
 INFORMES = {
     'balance_prueba': {
-        'queryset': balance_prueba,
+        'agrupar': balance.balance_prueba,
+        'movimiento': None,
+        'detalle': balance.SIN_DETALLE,
+        'filas': None,
         'serializer': ConMovimientoInformeBalanceSerializer,
-        'exportar': ConMovimientoInformeBalanceExportarSerializer,
+        'totales': ConMovimientoInformeBalanceTotalesSerializer,
+        'excel': balance_excel.BALANCE,
+    },
+    'balance_prueba_contacto': {
+        'agrupar': balance.balance_prueba_contacto,
+        'movimiento': None,
+        'detalle': balance.POR_TERCERO,
+        'filas': None,
+        'serializer': ConMovimientoInformeBalanceContactoSerializer,
+        'totales': ConMovimientoInformeBalanceTotalesSerializer,
+        'excel': balance_excel.BALANCE_CONTACTO,
+    },
+    'auxiliar_cuenta': {
+        'agrupar': balance.balance_prueba,
+        'movimiento': balance.movimientos,
+        'detalle': balance.POR_MOVIMIENTO,
+        'filas': None,
+        'serializer': ConMovimientoInformeAuxiliarCuentaSerializer,
+        'totales': ConMovimientoInformeBalanceTotalesSerializer,
+        'excel': balance_excel.AUXILIAR_CUENTA,
+    },
+    'auxiliar_contacto': {
+        'agrupar': balance.balance_prueba_contacto,
+        'movimiento': balance.movimientos,
+        'detalle': balance.POR_TERCERO_ANIDADO,
+        'filas': None,
+        'serializer': ConMovimientoInformeAuxiliarContactoSerializer,
+        'totales': ConMovimientoInformeBalanceTotalesSerializer,
+        'excel': balance_excel.AUXILIAR_CONTACTO,
+    },
+    'auxiliar_general': {
+        'agrupar': balance.balance_prueba_contacto,
+        'movimiento': balance.movimientos,
+        'detalle': balance.POR_TERCERO_Y_MOVIMIENTO,
+        'filas': None,
+        'serializer': ConMovimientoInformeAuxiliarGeneralSerializer,
+        'totales': ConMovimientoInformeBalanceTotalesSerializer,
+        'excel': balance_excel.AUXILIAR_GENERAL,
+    },
+    'bases': {
+        'agrupar': balance.movimientos_con_base,
+        'movimiento': None,
+        'detalle': None,
+        'filas': balance.filas_movimiento,
+        'serializer': ConMovimientoInformeBasesSerializer,
+        'totales': ConMovimientoInformeBasesTotalesSerializer,
+        'excel': balance_excel.BASES,
+    },
+    'certificado_retencion': {
+        'agrupar': balance.certificado_retencion,
+        'movimiento': None,
+        'detalle': None,
+        'filas': balance.filas_certificado,
+        'serializer': ConMovimientoInformeCertificadoSerializer,
+        'totales': ConMovimientoInformeCertificadoTotalesSerializer,
+        'excel': balance_excel.CERTIFICADO_RETENCION,
+    },
+    'estado_resultados': {
+        'agrupar': balance.estado_resultados,
+        'movimiento': None,
+        'detalle': None,
+        'filas': balance.filas_estado,
+        'serializer': ConMovimientoInformeEstadoSerializer,
+        'totales': ConMovimientoInformeEstadoTotalesSerializer,
+        'excel': balance_excel.ESTADO_RESULTADOS,
+    },
+    'estado_situacion_financiera': {
+        'agrupar': balance.estado_situacion_financiera,
+        'movimiento': None,
+        'detalle': None,
+        'filas': balance.filas_estado,
+        'serializer': ConMovimientoInformeEstadoSerializer,
+        'totales': ConMovimientoInformeEstadoTotalesSerializer,
+        'excel': balance_excel.ESTADO_SITUACION_FINANCIERA,
     },
 }
 
@@ -39,9 +136,9 @@ _InformeRequest = inline_serializer(
         'solo_con_saldo': serializers.BooleanField(
             required=False,
             help_text=(
-                'Por defecto `true`: omite las cuentas sin movimiento en el rango y '
-                'con saldo anterior en cero. Con `false` sale el plan completo de '
-                'cuentas que alguna vez movieron.'
+                'Por defecto `false`: sale el plan de cuentas completo, incluidas '
+                'las cuentas que nunca movieron. Con `true` se omiten las cuentas '
+                'que quedan en ceros en las cuatro columnas, y sus terceros.'
             ),
         ),
         'filtros': serializers.ListField(
@@ -53,31 +150,55 @@ _InformeRequest = inline_serializer(
 
 
 @extend_schema(tags=['Informe: Contabilidad'])
-class ConMovimientoInformeViewSet(
-    FiltrosDinamicosMixin,
-    ExportarExcelMixin,
-    viewsets.GenericViewSet,
-):
+class ConMovimientoInformeViewSet(FiltrosDinamicosMixin, viewsets.GenericViewSet):
     """
     Punto único de informes agregados sobre ConMovimiento.
+
+    Cinco son jerárquicos: el mismo esqueleto —el plan de cuentas con el
+    movimiento de un rango— con más o menos detalle colgando de cada auxiliar.
+
+        balance_prueba            nada
+        balance_prueba_contacto   una fila TERCERO por contacto
+        auxiliar_cuenta           una fila MOVIMIENTO por asiento del rango
+        auxiliar_contacto         cada TERCERO seguido de sus MOVIMIENTO
+        auxiliar_general          los TERCERO y después todos los MOVIMIENTO,
+                                  con comprobante, número y fecha
+
+    Los otros cuatro son planos: no recorren el plan de cuentas sino lo que pasó
+    en el rango, así que no tienen jerarquía, subtotales ni `solo_con_saldo`.
+
+        bases                     los asientos sobre cuentas que exigen base
+        certificado_retencion     lo retenido a cada tercero, por cuenta
+        estado_resultados         las cuentas de resultado que movieron
+        estado_situacion_financiera  lo mismo sin acotar la clase
 
     El informe se elige con el parámetro `informe` (body o query string) y el
     corte con `fecha_desde` / `fecha_hasta`, ambos obligatorios.
 
         POST /lista/     { "informe": "...", "fecha_desde": "...", "fecha_hasta": "...", "filtros": [...] }
         POST /excel/     idem
-        POST /totales/   idem → totales de cuadre, sin paginar
+        POST /totales/   idem → totales del informe completo, sin paginar
 
-    Los `filtros` se aplican antes de agrupar, así que acotan por igual el saldo
-    anterior y el movimiento del rango.
+    Cada auxiliar del plan viene precedido por las filas de subtotal de su clase,
+    grupo y cuenta, y el campo `tipo` dice qué es cada fila. `totales/` suma solo
+    las de tipo `AUXILIAR`: tanto los subtotales como el detalle están hechos de
+    ellas, así que sumarlo todo multiplicaría el balance.
 
-    `solo_con_saldo` (por defecto `true`) omite las cuentas que no movieron en el
-    rango y llegan con saldo anterior en cero.
+    Los `filtros` se aplican antes de agrupar y sobre las dos consultas, así que
+    acotan por igual el saldo anterior, el movimiento del rango y el detalle.
+
+    Los asientos de cierre entran al saldo anterior pero no a las columnas del
+    rango ni al detalle: cancelan las cuentas de resultado contra el ejercicio, y
+    contarlos como movimiento del periodo duplicaría el resultado del año en la
+    columna de diciembre. Los cuatro informes planos sí los traen.
+
+    `solo_con_saldo` (por defecto `false`) omite las cuentas que quedan en ceros,
+    con su detalle. En los informes planos no aplica y se ignora.
 
     El informe sale siempre ordenado por código de cuenta y no acepta
-    `ordenamientos`: sobre un queryset agrupado, ordenar por un campo que no
-    está en el GROUP BY cambia el agrupado en silencio, y el informe devolvería
-    una fila por movimiento sin que nadie lo note.
+    `ordenamientos`: dentro de una cuenta el orden lo fija el informe —los
+    terceros por contacto, los movimientos por fecha y número— y reordenar por
+    encima despegaría el detalle de su cuenta.
     """
 
     def _informe(self):
@@ -131,7 +252,7 @@ class ConMovimientoInformeViewSet(
     def _solo_con_saldo(self):
         valor = self._parametro('solo_con_saldo')
         if valor is None or valor == '':
-            return True
+            return False
         try:
             return serializers.BooleanField().to_internal_value(valor)
         except ValidationError as error:
@@ -150,41 +271,87 @@ class ConMovimientoInformeViewSet(
     def get_serializer_class(self):
         return self._informe()['serializer']
 
-    def get_serializer_exportar(self):
-        return self._informe()['exportar']()
-
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
             return ConMovimiento.objects.none()
-        return self._informe()['queryset'](*self._rango(), self._solo_con_saldo())
+        return self._informe()['agrupar'](*self._rango())
+
+    def _filas(self, request):
+        """
+        Filas jerarquizadas del informe. Es lo que sirven las tres acciones, para
+        que ninguna pueda entregar un número distinto de las otras.
+        """
+        self._rechazar_ordenamientos(request)
+        informe = self._informe()
+        filtros = request.data.get('filtros') or []
+        campos_filtrables = self._config_lista('campos_filtrables', set())
+
+        agrupado = aplicar_filtros(self.get_queryset_lista(), filtros, campos_filtrables)
+
+        detalle = informe['detalle']
+        if detalle is None:
+            return informe['filas'](agrupado)
+
+        # Los mismos filtros van a las dos consultas: si solo acotaran el
+        # agregado, el auxiliar mostraría un total filtrado con un detalle que no
+        # lo explica.
+        movimiento = ()
+        if informe['movimiento'] is not None:
+            movimiento = aplicar_filtros(
+                informe['movimiento'](*self._rango()), filtros, campos_filtrables,
+            )
+        return balance.jerarquizar(agrupado, movimiento, detalle, self._solo_con_saldo())
 
     @extend_schema(request=_InformeRequest)
     @action(detail=False, methods=['post'])
     def lista(self, request):
-        self._rechazar_ordenamientos(request)
-        return super().lista(request)
-
-    @extend_schema(request=_InformeRequest)
-    @action(detail=False, methods=['post'])
-    def excel(self, request):
-        self._rechazar_ordenamientos(request)
-        return super().excel(request)
+        filas = self._filas(request)
+        pagina = self.paginate_queryset(filas)
+        return self.get_paginated_response(self.get_serializer(pagina, many=True).data)
 
     @extend_schema(
-        summary='Totales de cuadre',
+        summary='Exportar a Excel',
+        request=_InformeRequest,
+        responses={
+            (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): (
+                OpenApiTypes.BINARY
+            ),
+        },
+    )
+    @action(detail=False, methods=['post'])
+    def excel(self, request):
+        filas = self._filas(request)
+        desde, hasta = self._rango()
+        contenido, nombre = balance_excel.excel(
+            self._informe()['excel'], filas, self._empresa(), desde, hasta,
+        )
+        response = HttpResponse(
+            contenido,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="{nombre}"'
+        return response
+
+    @extend_schema(
+        summary='Totales del informe',
         description=(
             'Devuelve los totales del informe completo (sin paginar), sumando las '
-            'mismas columnas que entrega `lista`. En un balance cuadrado, el total '
-            'de débito iguala al de crédito en las tres parejas.'
+            'filas de tipo `AUXILIAR`. En un balance cuadrado el total de débitos '
+            'iguala al de créditos y los dos saldos dan cero.'
         ),
         request=_InformeRequest,
         responses=ConMovimientoInformeBalanceTotalesSerializer,
     )
     @action(detail=False, methods=['post'])
     def totales(self, request):
-        campos_filtrables = self._config_lista('campos_filtrables', set())
-        qs = aplicar_filtros(
-            self.get_queryset_lista(), request.data.get('filtros') or [], campos_filtrables,
+        serializer = self._informe()['totales']
+        totales = balance.totalizar(
+            self._filas(request), serializer.tipo_fila, serializer.columnas,
         )
-        totales = totalizar(qs.iterator(chunk_size=2000))
-        return Response(ConMovimientoInformeBalanceTotalesSerializer(totales).data)
+        return Response(serializer(totales).data)
+
+    @staticmethod
+    def _empresa():
+        """Razón social para el encabezado del Excel; vacía si el tenant no la configuró."""
+        configuracion = GenConfiguracion.objects.first()
+        return configuracion.gen_empresa_razon_social if configuracion else ''

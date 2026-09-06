@@ -24,9 +24,18 @@ from .cuenta_subcuenta import ConCuentaSubcuentaSeleccionarSerializer
 from .metodo_depreciacion import ConMetodoDepreciacionSeleccionarSerializer
 from .movimiento import ConMovimientoSerializer
 from .movimiento_informe import (
-    ConMovimientoInformeBalanceExportarSerializer,
+    ConMovimientoInformeAuxiliarContactoSerializer,
+    ConMovimientoInformeAuxiliarCuentaSerializer,
+    ConMovimientoInformeAuxiliarGeneralSerializer,
+    ConMovimientoInformeBalanceContactoSerializer,
     ConMovimientoInformeBalanceSerializer,
     ConMovimientoInformeBalanceTotalesSerializer,
+    ConMovimientoInformeBasesSerializer,
+    ConMovimientoInformeBasesTotalesSerializer,
+    ConMovimientoInformeCertificadoSerializer,
+    ConMovimientoInformeCertificadoTotalesSerializer,
+    ConMovimientoInformeEstadoSerializer,
+    ConMovimientoInformeEstadoTotalesSerializer,
 )
 from .movimiento_exportar import ConMovimientoExportarSerializer
 from .movimiento_importar import ConMovimientoImportarSerializer

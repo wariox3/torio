@@ -1,7 +1,9 @@
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 
 from django_tenants.test.cases import TenantTestCase
+from openpyxl import load_workbook
 from rest_framework import permissions
 from rest_framework.test import APIRequestFactory
 
@@ -11,6 +13,9 @@ from contabilidad.models import (
     ConCentroCosto,
     ConComprobante,
     ConCuenta,
+    ConCuentaClase,
+    ConCuentaCuenta,
+    ConCuentaGrupo,
     ConMovimiento,
     ConPeriodo,
 )
@@ -19,14 +24,21 @@ from contabilidad.views.comprobante import ConComprobanteViewSet
 from contabilidad.views.cuenta import ConCuentaViewSet
 from contabilidad.views.movimiento_informe import ConMovimientoInformeViewSet
 from general.models import (
+    GenCiudad,
+    GenConfiguracion,
+    GenContacto,
     GenCuentaBanco,
     GenCuentaBancoTipo,
     GenDocumento,
     GenDocumentoDetalle,
     GenDocumentoPago,
     GenDocumentoTipo,
+    GenEstado,
+    GenIdentificacion,
     GenItem,
+    GenPais,
     GenSede,
+    GenTipoPersona,
 )
 
 
@@ -218,14 +230,17 @@ class _MovimientoInformeViewSinPermisos(ConMovimientoInformeViewSet):
     throttle_classes = []
 
 
-class BalancePruebaTests(TenantTestCase):
+class _InformeBase(TenantTestCase):
     """
-    El balance parte el histórico de `con_movimiento` en dos por la fecha de
-    corte: lo anterior al rango llega neteado como saldo anterior y lo que cae
-    dentro como débito y crédito del periodo. Ningún saldo está guardado — todo
-    sale de sumar los movimientos — así que estas pruebas son la única red que
-    detecta un corte mal puesto.
+    Montaje común de los informes de contabilidad: dos cuentas del plan con su
+    clase, su grupo y su cuenta, un comprobante y dos periodos.
+
+    Las pruebas van por la API y no por el servicio, porque lo que hay que fijar
+    es el contrato que ve el front: el mismo `POST /lista/` cambia de informe con
+    un parámetro.
     """
+
+    informe = None
 
     @classmethod
     def setup_tenant(cls, tenant):
@@ -237,29 +252,63 @@ class BalancePruebaTests(TenantTestCase):
         self.comprobante = ConComprobante.objects.create(id=1, nombre='Comprobante')
         self.periodo = ConPeriodo.objects.create(anio=2026, mes=1)
         self.anterior = ConPeriodo.objects.create(anio=2025, mes=12)
-        self.caja = self._cuenta('1105')
-        self.banco = self._cuenta('1110')
+        self.clase = ConCuentaClase.objects.create(id=1, nombre='Activo')
+        self.grupo = ConCuentaGrupo.objects.create(id=11, nombre='Disponible')
+        self.grupo_caja = ConCuentaCuenta.objects.create(id=1105, nombre='Caja')
+        self.grupo_banco = ConCuentaCuenta.objects.create(id=1110, nombre='Bancos')
+        self.caja = self._cuenta('11050505', self.grupo_caja)
+        self.banco = self._cuenta('11100505', self.grupo_banco)
         self.centro = ConCentroCosto.objects.create(nombre='Norte', codigo='N')
 
-    def _cuenta(self, codigo):
+    def _cuenta(self, codigo, cuenta_cuenta, exige_base=False, cuenta_clase=None,
+                cuenta_grupo=None):
         return ConCuenta.objects.create(
             codigo=codigo, nombre=f'Cuenta {codigo}', permite_movimiento=True,
+            exige_base=exige_base,
+            cuenta_clase=cuenta_clase or self.clase,
+            cuenta_grupo=cuenta_grupo or self.grupo,
+            cuenta_cuenta=cuenta_cuenta,
         )
 
-    def _movimiento(self, cuenta, fecha, debito=0, credito=0, centro_costo=None):
+    def _contacto(self, numero_identificacion):
+        """El tenant de pruebas no carga fixtures: la cadena ciudad -> estado -> país va acá."""
+        pais, _ = GenPais.objects.get_or_create(id=250, nombre='Colombia', codigo='CO')
+        estado, _ = GenEstado.objects.get_or_create(
+            id=1, nombre='Antioquia', codigo='05', pais=pais,
+        )
+        ciudad, _ = GenCiudad.objects.get_or_create(
+            id=1, nombre='Medellín', codigo='05001', estado=estado,
+        )
+        identificacion, _ = GenIdentificacion.objects.get_or_create(
+            id=6, nombre='Número de identificación tributaria', codigo='31',
+        )
+        tipo_persona, _ = GenTipoPersona.objects.get_or_create(id=1, nombre='Jurídica')
+        return GenContacto.objects.create(
+            numero_identificacion=numero_identificacion,
+            nombre_corto=f'Contacto {numero_identificacion}',
+            ciudad=ciudad, identificacion=identificacion, tipo_persona=tipo_persona,
+            direccion='calle 1', telefono='1', correo='t@t.com',
+        )
+
+    def _movimiento(self, cuenta, fecha, debito=0, credito=0, centro_costo=None, contacto=None,
+                    base=0, detalle=None, cierre=False):
         return ConMovimiento.objects.create(
             fecha=fecha,
+            cierre=cierre,
             debito=Decimal(debito),
             credito=Decimal(credito),
+            base=Decimal(base),
+            detalle=detalle,
             naturaleza='D' if debito else 'C',
             comprobante=self.comprobante,
             periodo=self.anterior if fecha.year == 2025 else self.periodo,
             cuenta=cuenta,
             centro_costo=centro_costo,
+            contacto=contacto,
         )
 
     def _post(self, accion, **payload):
-        payload.setdefault('informe', 'balance_prueba')
+        payload.setdefault('informe', self.informe)
         payload.setdefault('fecha_desde', '2026-01-01')
         payload.setdefault('fecha_hasta', '2026-01-31')
         request = APIRequestFactory().post(
@@ -272,24 +321,52 @@ class BalancePruebaTests(TenantTestCase):
         self.assertEqual(response.status_code, 200)
         return response.data['results']
 
+    def _auxiliares(self, **payload):
+        return [fila for fila in self._lista(**payload) if fila['tipo'] == 'AUXILIAR']
+
+    def _jerarquia(self, **payload):
+        """Las filas del balance, sin el detalle que agregan los auxiliares."""
+        return [
+            fila for fila in self._lista(**payload)
+            if fila['tipo'] not in ('TERCERO', 'MOVIMIENTO')
+        ]
+
     def _totales(self, **payload):
         response = self._post('totales', **payload)
         self.assertEqual(response.status_code, 200)
         return {clave: Decimal(valor) for clave, valor in response.data.items()}
 
     def _fila(self, filas, codigo):
-        return next(fila for fila in filas if fila['cuenta_codigo'] == codigo)
+        return next(fila for fila in filas if fila['codigo'] == codigo)
+
+
+class BalancePruebaTests(_InformeBase):
+    """
+    El balance recorre el plan de cuentas y le pega el movimiento de un rango:
+    lo anterior al corte llega neteado como saldo anterior y lo que cae dentro
+    como débito y crédito del periodo. Ningún saldo está guardado —todo sale de
+    sumar `con_movimiento`—, así que estas pruebas son la única red que detecta
+    un corte mal puesto o un subtotal que no cuadra con sus hojas.
+    """
+
+    informe = 'balance_prueba'
+    archivo_excel = 'balance_prueba.xlsx'
+    titulo_excel = 'Balance de prueba'
+    encabezados_excel = [
+        'Tipo', 'Cuenta', 'Nombre de cuenta',
+        'Saldo anterior ($)', 'Debitos ($)', 'Creditos ($)', 'Saldo actual ($)',
+    ]
 
     def test_lo_anterior_al_rango_llega_como_saldo_anterior(self):
         self._movimiento(self.caja, date(2025, 12, 31), debito=100)
         self._movimiento(self.caja, date(2026, 1, 15), debito=40)
 
-        fila = self._fila(self._lista(), '1105')
+        fila = self._fila(self._auxiliares(), '11050505')
 
-        self.assertEqual(Decimal(fila['saldo_anterior_debito']), Decimal(100))
+        self.assertEqual(Decimal(fila['saldo_anterior']), Decimal(100))
         self.assertEqual(Decimal(fila['debito']), Decimal(40))
         self.assertEqual(Decimal(fila['credito']), Decimal(0))
-        self.assertEqual(Decimal(fila['saldo_final_debito']), Decimal(140))
+        self.assertEqual(Decimal(fila['saldo_final']), Decimal(140))
 
     def test_la_cuenta_sin_movimiento_en_el_rango_aparece_con_su_saldo(self):
         """
@@ -299,45 +376,112 @@ class BalancePruebaTests(TenantTestCase):
         """
         self._movimiento(self.banco, date(2025, 6, 30), debito=70)
 
-        fila = self._fila(self._lista(), '1110')
+        fila = self._fila(self._auxiliares(), '11100505')
 
-        self.assertEqual(Decimal(fila['saldo_anterior_debito']), Decimal(70))
+        self.assertEqual(Decimal(fila['saldo_anterior']), Decimal(70))
         self.assertEqual(Decimal(fila['debito']), Decimal(0))
-        self.assertEqual(Decimal(fila['saldo_final_debito']), Decimal(70))
+        self.assertEqual(Decimal(fila['saldo_final']), Decimal(70))
+
+    def test_la_cuenta_que_nunca_movio_sale_en_ceros(self):
+        """
+        El recorrido lo manda el plan de cuentas, no los movimientos: el informe
+        se lee contra el plan completo, y una cuenta sin un solo movimiento en su
+        historia también es una fila del balance.
+        """
+        self._movimiento(self.caja, date(2026, 1, 10), debito=25)
+
+        fila = self._fila(self._auxiliares(), '11100505')
+
+        self.assertEqual(Decimal(fila['saldo_anterior']), Decimal(0))
+        self.assertEqual(Decimal(fila['debito']), Decimal(0))
+        self.assertEqual(Decimal(fila['saldo_final']), Decimal(0))
 
     def test_lo_posterior_al_rango_no_entra(self):
         self._movimiento(self.caja, date(2026, 1, 10), debito=30)
         self._movimiento(self.caja, date(2026, 2, 5), debito=999)
 
-        fila = self._fila(self._lista(), '1105')
+        fila = self._fila(self._auxiliares(), '11050505')
 
         self.assertEqual(Decimal(fila['debito']), Decimal(30))
-        self.assertEqual(Decimal(fila['saldo_final_debito']), Decimal(30))
+        self.assertEqual(Decimal(fila['saldo_final']), Decimal(30))
 
-    def test_el_saldo_neto_negativo_va_en_la_columna_de_credito(self):
+    def test_el_saldo_neto_acreedor_sale_negativo(self):
+        """
+        El saldo va con signo en una sola columna, no partido en débito y
+        crédito: es lo que deja sumar los subtotales sin volver a interpretarlo.
+        """
         self._movimiento(self.caja, date(2025, 12, 1), credito=80)
         self._movimiento(self.caja, date(2026, 1, 20), credito=20)
 
-        fila = self._fila(self._lista(), '1105')
+        fila = self._fila(self._auxiliares(), '11050505')
 
-        self.assertEqual(Decimal(fila['saldo_anterior_debito']), Decimal(0))
-        self.assertEqual(Decimal(fila['saldo_anterior_credito']), Decimal(80))
-        self.assertEqual(Decimal(fila['saldo_final_credito']), Decimal(100))
+        self.assertEqual(Decimal(fila['saldo_anterior']), Decimal(-80))
+        self.assertEqual(Decimal(fila['credito']), Decimal(20))
         self.assertEqual(Decimal(fila['saldo_final']), Decimal(-100))
 
     def test_una_fila_por_cuenta(self):
         """
         `ConMovimiento.Meta.ordering` es `['-id']`, y sobre un queryset agrupado
-        Django mete el campo de ordenamiento en el GROUP BY: sin el `order_by`
-        explícito del servicio, esto devolvería tres filas de la misma cuenta.
+        Django mete el campo de ordenamiento en el GROUP BY: sin vaciarlo en el
+        servicio, la cuenta llegaría partida en tres agregados.
         """
         for dia in (5, 10, 15):
             self._movimiento(self.caja, date(2026, 1, dia), debito=10)
 
-        filas = self._lista()
+        filas = [f for f in self._auxiliares() if f['codigo'] == '11050505']
 
         self.assertEqual(len(filas), 1)
         self.assertEqual(Decimal(filas[0]['debito']), Decimal(30))
+
+    def test_cada_auxiliar_viene_precedido_por_su_jerarquia(self):
+        self._movimiento(self.caja, date(2026, 1, 5), debito=10)
+
+        filas = self._jerarquia()
+
+        self.assertEqual(
+            [(fila['tipo'], fila['codigo']) for fila in filas],
+            [
+                ('CLASE', '1'),
+                ('GRUPO', '11'),
+                ('CUENTA', '1105'),
+                ('AUXILIAR', '11050505'),
+                ('CUENTA', '1110'),
+                ('AUXILIAR', '11100505'),
+            ],
+        )
+
+    def test_el_subtotal_suma_sus_hojas(self):
+        self._movimiento(self.caja, date(2025, 12, 1), debito=100)
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30)
+        self._movimiento(self.banco, date(2026, 1, 5), credito=12)
+
+        filas = self._jerarquia()
+        clase = self._fila(filas, '1')
+        grupo = self._fila(filas, '11')
+
+        self.assertEqual(Decimal(clase['saldo_anterior']), Decimal(100))
+        self.assertEqual(Decimal(clase['debito']), Decimal(30))
+        self.assertEqual(Decimal(clase['credito']), Decimal(12))
+        self.assertEqual(Decimal(clase['saldo_final']), Decimal(118))
+        self.assertEqual(clase['cuenta_id'], None)
+        self.assertEqual(
+            [Decimal(grupo[columna]) for columna in ('saldo_anterior', 'debito', 'credito')],
+            [Decimal(100), Decimal(30), Decimal(12)],
+        )
+
+    def test_el_subtotal_de_cuenta_no_arrastra_al_de_la_cuenta_siguiente(self):
+        """
+        Los subtotales se emiten por cambio de nivel sobre las hojas ordenadas.
+        Si el acumulado no se llevara por cuenta sino corrido, el subtotal de
+        `1110` traería adentro lo de `1105`.
+        """
+        self._movimiento(self.caja, date(2026, 1, 5), debito=40)
+        self._movimiento(self.banco, date(2026, 1, 5), debito=7)
+
+        filas = self._jerarquia()
+
+        self.assertEqual(Decimal(self._fila(filas, '1105')['debito']), Decimal(40))
+        self.assertEqual(Decimal(self._fila(filas, '1110')['debito']), Decimal(7))
 
     def test_los_totales_cuadran(self):
         self._movimiento(self.caja, date(2025, 12, 31), debito=200)
@@ -347,11 +491,46 @@ class BalancePruebaTests(TenantTestCase):
 
         totales = self._totales()
 
-        self.assertEqual(totales['saldo_anterior_debito'], totales['saldo_anterior_credito'])
+        self.assertEqual(totales['saldo_anterior'], Decimal(0))
+        self.assertEqual(totales['saldo_final'], Decimal(0))
         self.assertEqual(totales['debito'], totales['credito'])
-        self.assertEqual(totales['saldo_final_debito'], totales['saldo_final_credito'])
         self.assertEqual(totales['debito'], Decimal(50))
-        self.assertEqual(totales['saldo_final_debito'], Decimal(250))
+
+    def test_los_totales_no_cuentan_los_subtotales(self):
+        """
+        Cada importe está en su hoja y otra vez en las tres filas de subtotal que
+        cuelgan de ella. Sumar el informe entero lo contaría cuatro veces.
+        """
+        self._movimiento(self.caja, date(2026, 1, 15), debito=50)
+
+        self.assertEqual(self._totales()['debito'], Decimal(50))
+
+    def test_el_asiento_de_cierre_no_es_movimiento_del_periodo(self):
+        """
+        El cierre cancela las cuentas de resultado contra el ejercicio. Si contara
+        como movimiento del rango, la columna de débito de diciembre traería el
+        resultado del año entero además de lo que se movió en el mes.
+        """
+        self._movimiento(self.caja, date(2026, 1, 10), debito=25)
+        self._movimiento(self.caja, date(2026, 1, 31), credito=25, cierre=True)
+
+        fila = self._fila(self._auxiliares(), '11050505')
+
+        self.assertEqual(Decimal(fila['debito']), Decimal(25))
+        self.assertEqual(Decimal(fila['credito']), Decimal(0))
+
+    def test_el_asiento_de_cierre_anterior_si_cuenta_en_el_saldo(self):
+        """
+        La otra mitad de la regla: el saldo con el que la cuenta llega al rango es
+        el que quedó *después* del cierre. Excluirlo de las dos mitades dejaría el
+        saldo anterior con el resultado del año anterior sin cancelar.
+        """
+        self._movimiento(self.caja, date(2025, 12, 1), debito=100)
+        self._movimiento(self.caja, date(2025, 12, 31), credito=40, cierre=True)
+
+        fila = self._fila(self._auxiliares(), '11050505')
+
+        self.assertEqual(Decimal(fila['saldo_anterior']), Decimal(60))
 
     def test_el_filtro_acota_tambien_el_saldo_anterior(self):
         """
@@ -366,18 +545,20 @@ class BalancePruebaTests(TenantTestCase):
         filas = self._lista(filtros=[
             {'propiedad': 'centro_costo_id', 'operador': '=', 'valor': self.centro.id},
         ])
-        fila = self._fila(filas, '1105')
+        fila = self._fila(filas, '11050505')
 
-        self.assertEqual(Decimal(fila['saldo_anterior_debito']), Decimal(100))
+        self.assertEqual(Decimal(fila['saldo_anterior']), Decimal(100))
         self.assertEqual(Decimal(fila['debito']), Decimal(10))
 
     def test_las_cuentas_salen_por_codigo(self):
         self._movimiento(self.banco, date(2026, 1, 5), debito=10)
         self._movimiento(self.caja, date(2026, 1, 5), debito=10)
 
-        self.assertEqual([fila['cuenta_codigo'] for fila in self._lista()], ['1105', '1110'])
+        self.assertEqual(
+            [fila['codigo'] for fila in self._auxiliares()], ['11050505', '11100505'],
+        )
 
-    def test_omite_la_cuenta_en_ceros(self):
+    def test_con_solo_con_saldo_se_omite_la_cuenta_en_ceros(self):
         """
         La cuenta movió alguna vez, se canceló y no volvió a moverse: llega al
         rango con saldo cero y sin movimiento, así que es una fila de puros ceros
@@ -387,21 +568,17 @@ class BalancePruebaTests(TenantTestCase):
         self._movimiento(self.banco, date(2025, 4, 1), credito=90)
         self._movimiento(self.caja, date(2026, 1, 10), debito=25)
 
-        codigos = [fila['cuenta_codigo'] for fila in self._lista()]
+        codigos = [fila['codigo'] for fila in self._auxiliares(solo_con_saldo=True)]
 
-        self.assertEqual(codigos, ['1105'])
+        self.assertEqual(codigos, ['11050505'])
 
-    def test_con_solo_con_saldo_false_sale_la_cuenta_en_ceros(self):
-        self._movimiento(self.banco, date(2025, 3, 1), debito=90)
-        self._movimiento(self.banco, date(2025, 4, 1), credito=90)
+    def test_el_subtotal_sin_hojas_no_se_emite(self):
+        """Podadas sus cuentas, el subtotal de la cuenta contable no tiene qué decir."""
         self._movimiento(self.caja, date(2026, 1, 10), debito=25)
 
-        filas = self._lista(solo_con_saldo=False)
-        fila = self._fila(filas, '1110')
+        codigos = [fila['codigo'] for fila in self._jerarquia(solo_con_saldo=True)]
 
-        self.assertEqual([f['cuenta_codigo'] for f in filas], ['1105', '1110'])
-        self.assertEqual(Decimal(fila['saldo_anterior']), Decimal(0))
-        self.assertEqual(Decimal(fila['saldo_final']), Decimal(0))
+        self.assertEqual(codigos, ['1', '11', '1105', '11050505'])
 
     def test_la_cuenta_que_movio_en_el_rango_y_quedo_en_cero_si_sale(self):
         """
@@ -411,19 +588,19 @@ class BalancePruebaTests(TenantTestCase):
         self._movimiento(self.banco, date(2026, 1, 5), debito=60)
         self._movimiento(self.banco, date(2026, 1, 20), credito=60)
 
-        fila = self._fila(self._lista(), '1110')
+        fila = self._fila(self._auxiliares(solo_con_saldo=True), '11100505')
 
         self.assertEqual(Decimal(fila['debito']), Decimal(60))
         self.assertEqual(Decimal(fila['credito']), Decimal(60))
         self.assertEqual(Decimal(fila['saldo_final']), Decimal(0))
 
     def test_omitir_ceros_no_cambia_los_totales(self):
-        """Una fila en ceros aporta cero a las seis columnas, con o sin la bandera."""
+        """Una fila en ceros aporta cero a las cuatro columnas, con o sin la bandera."""
         self._movimiento(self.banco, date(2025, 3, 1), debito=90)
         self._movimiento(self.banco, date(2025, 4, 1), credito=90)
         self._movimiento(self.caja, date(2026, 1, 10), debito=25)
 
-        self.assertEqual(self._totales(), self._totales(solo_con_saldo=False))
+        self.assertEqual(self._totales(), self._totales(solo_con_saldo=True))
 
     def test_no_acepta_ordenamientos(self):
         self._movimiento(self.caja, date(2026, 1, 5), debito=10)
@@ -451,9 +628,11 @@ class BalancePruebaTests(TenantTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('informe', response.data)
 
-    def test_el_excel_trae_una_fila_por_cuenta(self):
+    def test_el_excel_trae_el_encabezado_y_las_filas_del_informe(self):
+        GenConfiguracion.objects.update_or_create(
+            id=1, defaults={'gen_empresa_razon_social': 'Semantica Digital S.A.S'},
+        )
         self._movimiento(self.caja, date(2026, 1, 5), debito=10)
-        self._movimiento(self.caja, date(2026, 1, 6), debito=10)
 
         response = self._post('excel')
 
@@ -462,7 +641,691 @@ class BalancePruebaTests(TenantTestCase):
             response['Content-Type'],
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         )
-        self.assertIn('balance_prueba.xlsx', response['Content-Disposition'])
+        self.assertIn(self.archivo_excel, response['Content-Disposition'])
+
+        hoja = load_workbook(BytesIO(response.content)).active
+        self.assertEqual(hoja['A1'].value, self.titulo_excel)
+        self.assertEqual(hoja['A2'].value, 'Semantica Digital S.A.S')
+        self.assertEqual(hoja['A4'].value, 'Fecha desde: 2026-01-01')
+        self.assertEqual(hoja['A5'].value, 'Fecha hasta: 2026-01-31')
+        self.assertEqual([celda.value for celda in hoja[7]], self.encabezados_excel)
+        self.assertEqual([celda.value for celda in hoja[8]][:3], ['CLASE', '1', 'Activo'])
+        self.assertEqual(hoja.cell(row=11, column=1).value, 'AUXILIAR')
+
+
+class BalancePruebaContactoTests(BalancePruebaTests):
+    """
+    El balance por contacto es el mismo informe con las cuentas abiertas por
+    tercero, así que hereda entera la batería del balance: el auxiliar tiene que
+    seguir siendo el total de la cuenta y los subtotales tienen que seguir
+    saliendo de los auxiliares, esté o no el detalle debajo. Lo que se agrega acá
+    es lo que el detalle trae de nuevo.
+    """
+
+    informe = 'balance_prueba_contacto'
+    archivo_excel = 'balance_prueba_contacto.xlsx'
+    titulo_excel = 'Balance de prueba por contacto'
+    encabezados_excel = [
+        'Tipo', 'Cuenta', 'Nombre Cuenta', 'Identificación', 'Contacto',
+        'Saldo anterior ($)', 'Debitos ($)', 'Creditos ($)', 'Saldo actual ($)',
+    ]
+
+    def setUp(self):
+        super().setUp()
+        self.uno = self._contacto('900000001')
+        self.dos = self._contacto('900000002')
+
+    def _terceros(self, filas, codigo):
+        return [
+            fila for fila in filas
+            if fila['tipo'] == 'TERCERO' and fila['codigo'] == codigo
+        ]
+
+    def test_el_detalle_cuelga_del_auxiliar_ordenado_por_contacto(self):
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.dos)
+        self._movimiento(self.caja, date(2026, 1, 6), debito=10, contacto=self.uno)
+
+        filas = [fila for fila in self._lista() if fila['tipo'] != 'MOVIMIENTO']
+        posicion = [fila['tipo'] for fila in filas].index('AUXILIAR')
+
+        self.assertEqual(
+            [(fila['tipo'], fila['identificacion']) for fila in filas[posicion:posicion + 3]],
+            [('AUXILIAR', None), ('TERCERO', '900000001'), ('TERCERO', '900000002')],
+        )
+
+    def test_el_detalle_suma_su_auxiliar(self):
+        self._movimiento(self.caja, date(2025, 12, 1), debito=100, contacto=self.uno)
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.uno)
+        self._movimiento(self.caja, date(2026, 1, 5), credito=12, contacto=self.dos)
+
+        filas = self._lista()
+        auxiliar = self._fila(self._auxiliares(), '11050505')
+        terceros = self._terceros(filas, '11050505')
+
+        self.assertEqual(
+            [Decimal(auxiliar[columna]) for columna in ('saldo_anterior', 'debito', 'credito')],
+            [Decimal(100), Decimal(30), Decimal(12)],
+        )
+        for columna in ('saldo_anterior', 'debito', 'credito', 'saldo_final'):
+            self.assertEqual(
+                sum(Decimal(tercero[columna]) for tercero in terceros),
+                Decimal(auxiliar[columna]),
+                columna,
+            )
+
+    def test_el_tercero_que_no_movio_en_el_rango_sale_con_su_saldo(self):
+        """
+        El detalle se lee contra los contactos que movieron la cuenta alguna vez,
+        no contra los del rango: si no, el saldo anterior de la cuenta quedaría
+        repartido entre menos terceros de los que lo formaron.
+        """
+        self._movimiento(self.caja, date(2025, 12, 1), debito=100, contacto=self.uno)
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.dos)
+
+        tercero = self._fila(self._terceros(self._lista(), '11050505'), '11050505')
+
+        self.assertEqual(tercero['identificacion'], '900000001')
+        self.assertEqual(Decimal(tercero['saldo_anterior']), Decimal(100))
+        self.assertEqual(Decimal(tercero['debito']), Decimal(0))
+        self.assertEqual(Decimal(tercero['saldo_final']), Decimal(100))
+
+    def test_el_movimiento_sin_contacto_entra_al_auxiliar_pero_no_al_detalle(self):
+        """
+        Que una cuenta mezcle movimientos con y sin tercero es un error de datos.
+        Cuando pasa, el auxiliar sigue siendo el total de la cuenta —el informe no
+        pierde plata— y el detalle solo muestra lo que tiene tercero.
+        """
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.uno)
+        self._movimiento(self.caja, date(2026, 1, 6), debito=70)
+
+        filas = self._lista()
+        auxiliar = self._fila(self._auxiliares(), '11050505')
+        terceros = self._terceros(filas, '11050505')
+
+        self.assertEqual(Decimal(auxiliar['debito']), Decimal(100))
+        self.assertEqual([Decimal(t['debito']) for t in terceros], [Decimal(30)])
+
+    def test_el_detalle_no_entra_en_los_subtotales_ni_en_los_totales(self):
+        """
+        Cada importe está en su tercero, en su auxiliar y en las tres filas de
+        subtotal. Contarlos todos multiplicaría el balance por cinco.
+        """
+        self._movimiento(self.caja, date(2026, 1, 5), debito=50, contacto=self.uno)
+
+        self.assertEqual(Decimal(self._fila(self._lista(), '1')['debito']), Decimal(50))
+        self.assertEqual(self._totales()['debito'], Decimal(50))
+
+    def test_las_columnas_de_contacto_van_vacias_fuera_del_detalle(self):
+        self._movimiento(self.caja, date(2026, 1, 5), debito=50, contacto=self.uno)
+
+        for fila in self._lista():
+            if fila['tipo'] in ('TERCERO', 'MOVIMIENTO'):
+                continue
+            self.assertEqual(
+                (fila['contacto_id'], fila['identificacion'], fila['contacto']),
+                (None, None, None),
+                fila['codigo'],
+            )
+
+    def test_con_solo_con_saldo_se_poda_el_tercero_en_ceros(self):
+        self._movimiento(self.caja, date(2025, 3, 1), debito=90, contacto=self.uno)
+        self._movimiento(self.caja, date(2025, 4, 1), credito=90, contacto=self.uno)
+        self._movimiento(self.caja, date(2026, 1, 5), debito=50, contacto=self.dos)
+
+        terceros = self._terceros(self._lista(solo_con_saldo=True), '11050505')
+
+        self.assertEqual([t['identificacion'] for t in terceros], ['900000002'])
+
+    def test_el_excel_trae_la_fila_del_tercero(self):
+        self._movimiento(self.caja, date(2026, 1, 5), debito=10, contacto=self.uno)
+
+        response = self._post('excel')
+        hoja = load_workbook(BytesIO(response.content)).active
+
+        debito = self.encabezados_excel.index('Debitos ($)') + 1
+
+        self.assertEqual(
+            [celda.value for celda in hoja[12]][:5],
+            ['TERCERO', '11050505', 'Cuenta 11050505', '900000001', 'Contacto 900000001'],
+        )
+        self.assertEqual(hoja.cell(row=12, column=debito).value, 10)
+
+class _AuxiliarMixin:
+    """Helpers comunes a los tres auxiliares."""
+
+    def _movimientos(self, filas, codigo=None):
+        return [
+            fila for fila in filas
+            if fila['tipo'] == 'MOVIMIENTO' and (codigo is None or fila['codigo'] == codigo)
+        ]
+
+    def test_el_movimiento_no_lleva_saldo(self):
+        """
+        Un movimiento no tiene saldo, tiene débito o crédito. Si trajera el neto
+        del asiento —o peor, un acumulado corrido— dejaría de cuadrar con el
+        auxiliar de arriba.
+        """
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.contacto)
+
+        fila = self._movimientos(self._lista())[0]
+
+        self.assertEqual(Decimal(fila['saldo_anterior']), Decimal(0))
+        self.assertEqual(Decimal(fila['saldo_final']), Decimal(0))
+        self.assertEqual(Decimal(fila['debito']), Decimal(30))
+
+    def test_el_movimiento_anterior_al_rango_no_baja_al_detalle(self):
+        """
+        El saldo anterior es un acumulado, no una lista: entra al auxiliar y al
+        tercero, nunca al detalle. Si bajara, el auxiliar mostraría movimientos
+        que no explican su columna de débito.
+        """
+        self._movimiento(self.caja, date(2025, 12, 1), debito=100, contacto=self.contacto)
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.contacto)
+
+        filas = self._lista()
+
+        auxiliar = self._fila(self._auxiliares(), '11050505')
+
+        self.assertEqual(Decimal(auxiliar['saldo_anterior']), Decimal(100))
+        self.assertEqual(
+            [Decimal(fila['debito']) for fila in self._movimientos(filas, '11050505')],
+            [Decimal(30)],
+        )
+
+    def test_los_movimientos_salen_por_fecha_y_numero(self):
+        """
+        Cronológico y, dentro del día, por número de asiento. El importe hace de
+        etiqueta porque el número solo lo expone `auxiliar_general`.
+        """
+        asientos = (
+            (date(2026, 1, 20), 1, 3),
+            (date(2026, 1, 5), 9, 2),
+            (date(2026, 1, 5), 2, 1),
+        )
+        for fecha, numero, debito in asientos:
+            movimiento = self._movimiento(self.caja, fecha, debito=debito, contacto=self.contacto)
+            ConMovimiento.objects.filter(id=movimiento.id).update(numero=numero)
+
+        filas = self._movimientos(self._lista(), '11050505')
+
+        self.assertEqual(
+            [Decimal(fila['debito']) for fila in filas], [Decimal(1), Decimal(2), Decimal(3)],
+        )
+
+    def test_el_asiento_de_cierre_no_baja_al_detalle(self):
+        """
+        El detalle explica las columnas de débito y crédito del auxiliar, y el
+        cierre no está en ellas: si bajara, el auxiliar no cuadraría con su lista.
+        """
+        self._movimiento(self.caja, date(2026, 1, 10), debito=25, contacto=self.contacto)
+        self._movimiento(self.caja, date(2026, 1, 31), credito=25, cierre=True,
+                         contacto=self.contacto)
+
+        filas = self._movimientos(self._lista(), '11050505')
+
+        self.assertEqual([Decimal(fila['debito']) for fila in filas], [Decimal(25)])
+
+    def test_el_detalle_no_entra_en_los_totales(self):
+        self._movimiento(self.caja, date(2026, 1, 5), debito=50, contacto=self.contacto)
+
+        self.assertEqual(self._totales()['debito'], Decimal(50))
+        self.assertEqual(Decimal(self._fila(self._jerarquia(), '1')['debito']), Decimal(50))
+
+
+class AuxiliarCuentaTests(_AuxiliarMixin, BalancePruebaTests):
+    """
+    El auxiliar por cuenta es el balance con los asientos del rango debajo de
+    cada auxiliar, así que hereda entera la batería del balance: agregarle el
+    detalle no puede haber movido un solo importe de la mitad de arriba.
+    """
+
+    informe = 'auxiliar_cuenta'
+    archivo_excel = 'auxiliar_cuenta.xlsx'
+    titulo_excel = 'Auxiliar cuenta'
+
+    def setUp(self):
+        super().setUp()
+        self.contacto = None
+
+    def test_el_movimiento_cuelga_de_su_auxiliar(self):
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30)
+        self._movimiento(self.banco, date(2026, 1, 6), credito=7)
+
+        filas = self._lista()
+
+        self.assertEqual(
+            [(fila['tipo'], fila['codigo']) for fila in filas],
+            [
+                ('CLASE', '1'),
+                ('GRUPO', '11'),
+                ('CUENTA', '1105'),
+                ('AUXILIAR', '11050505'),
+                ('MOVIMIENTO', '11050505'),
+                ('CUENTA', '1110'),
+                ('AUXILIAR', '11100505'),
+                ('MOVIMIENTO', '11100505'),
+            ],
+        )
+
+    def test_el_movimiento_fuera_del_rango_no_baja_al_detalle(self):
+        self._movimiento(self.caja, date(2026, 1, 10), debito=30)
+        self._movimiento(self.caja, date(2026, 2, 5), debito=999)
+
+        self.assertEqual(
+            [Decimal(fila['debito']) for fila in self._movimientos(self._lista())],
+            [Decimal(30)],
+        )
+
+    def test_el_movimiento_sin_contacto_baja_igual(self):
+        """El informe es por cuenta: que el asiento no tenga tercero no lo excluye."""
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30)
+
+        self.assertEqual(len(self._movimientos(self._lista())), 1)
+
+
+class AuxiliarContactoTests(_AuxiliarMixin, BalancePruebaContactoTests):
+    """El auxiliar por contacto: cada tercero seguido de sus propios asientos."""
+
+    informe = 'auxiliar_contacto'
+    archivo_excel = 'auxiliar_contacto.xlsx'
+    titulo_excel = 'Auxiliar por contacto'
+
+    def setUp(self):
+        super().setUp()
+        self.contacto = self.uno
+
+    def test_cada_movimiento_va_bajo_su_tercero(self):
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.dos)
+        self._movimiento(self.caja, date(2026, 1, 6), debito=10, contacto=self.uno)
+
+        filas = self._lista()
+        posicion = [fila['tipo'] for fila in filas].index('AUXILIAR')
+
+        self.assertEqual(
+            [(fila['tipo'], fila['identificacion']) for fila in filas[posicion:posicion + 5]],
+            [
+                ('AUXILIAR', None),
+                ('TERCERO', '900000001'),
+                ('MOVIMIENTO', '900000001'),
+                ('TERCERO', '900000002'),
+                ('MOVIMIENTO', '900000002'),
+            ],
+        )
+
+    def test_el_movimiento_sin_contacto_no_baja_al_detalle(self):
+        """
+        No cuelga de ningún tercero, y este informe es por tercero. El importe no
+        se pierde: sigue dentro del total del auxiliar.
+        """
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.uno)
+        self._movimiento(self.caja, date(2026, 1, 6), debito=70)
+
+        filas = self._lista()
+        auxiliar = self._fila(self._auxiliares(), '11050505')
+
+        self.assertEqual(Decimal(auxiliar['debito']), Decimal(100))
+        self.assertEqual(
+            [Decimal(fila['debito']) for fila in self._movimientos(filas, '11050505')],
+            [Decimal(30)],
+        )
+
+
+class AuxiliarGeneralTests(_AuxiliarMixin, BalancePruebaContactoTests):
+    """El auxiliar general: los terceros de la cuenta y después todos sus asientos."""
+
+    informe = 'auxiliar_general'
+    archivo_excel = 'auxiliar_general.xlsx'
+    titulo_excel = 'Auxiliar general'
+    encabezados_excel = [
+        'Tipo', 'Cuenta', 'Nombre Cuenta', 'Identificación', 'Contacto',
+        'Comprobante', 'Numero', 'Fecha',
+        'Saldo anterior ($)', 'Debitos ($)', 'Creditos ($)', 'Saldo actual ($)',
+    ]
+
+    def setUp(self):
+        super().setUp()
+        self.contacto = self.uno
+
+    def test_los_movimientos_van_despues_de_todos_los_terceros(self):
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.dos)
+        self._movimiento(self.caja, date(2026, 1, 6), debito=10, contacto=self.uno)
+
+        filas = self._lista()
+        posicion = [fila['tipo'] for fila in filas].index('AUXILIAR')
+
+        self.assertEqual(
+            [(fila['tipo'], fila['identificacion']) for fila in filas[posicion:posicion + 5]],
+            [
+                ('AUXILIAR', None),
+                ('TERCERO', '900000001'),
+                ('TERCERO', '900000002'),
+                ('MOVIMIENTO', '900000002'),
+                ('MOVIMIENTO', '900000001'),
+            ],
+        )
+
+    def test_el_movimiento_trae_su_asiento(self):
+        movimiento = self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.uno)
+        ConMovimiento.objects.filter(id=movimiento.id).update(numero=77)
+
+        fila = self._movimientos(self._lista())[0]
+
+        self.assertEqual(fila['comprobante'], 'Comprobante')
+        self.assertEqual(fila['numero'], 77)
+        self.assertEqual(fila['fecha'], '2026-01-05')
+        self.assertEqual(fila['movimiento_id'], movimiento.id)
+
+    def test_el_movimiento_sin_contacto_baja_igual(self):
+        """A diferencia del auxiliar por contacto, acá el detalle es de la cuenta entera."""
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.uno)
+        self._movimiento(self.caja, date(2026, 1, 6), debito=70)
+
+        filas = self._movimientos(self._lista(), '11050505')
+
+        self.assertEqual([fila['identificacion'] for fila in filas], ['900000001', None])
+
+
+
+class _InformePlanoMixin:
+    """
+    Lo común a los cuatro informes planos: no recorren el plan de cuentas sino lo
+    que pasó en el rango, así que no tienen jerarquía ni subtotales que probar.
+    """
+
+    def test_el_excel_trae_el_encabezado_y_las_columnas_del_informe(self):
+        GenConfiguracion.objects.update_or_create(
+            id=1, defaults={'gen_empresa_razon_social': 'Semantica Digital S.A.S'},
+        )
+        self._poblar()
+
+        response = self._post('excel')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(self.archivo_excel, response['Content-Disposition'])
+
+        hoja = load_workbook(BytesIO(response.content)).active
+        self.assertEqual(hoja['A1'].value, self.titulo_excel)
+        self.assertEqual(hoja['A2'].value, 'Semantica Digital S.A.S')
+        self.assertEqual(hoja['A4'].value, 'Fecha desde: 2026-01-01')
+        self.assertEqual([celda.value for celda in hoja[7]], self.encabezados_excel)
+
+    def test_no_hay_jerarquia_que_armar(self):
+        """
+        Un informe plano no tiene subtotales: si los tuviera, `totales/` los
+        contaría dos veces, porque suma todas sus filas sin descontar nada.
+        """
+        self._poblar()
+
+        tipos = {fila['tipo'] for fila in self._lista()}
+
+        self.assertNotIn('CLASE', tipos)
+        self.assertNotIn('AUXILIAR', tipos)
+
+
+class BasesTests(_InformePlanoMixin, _InformeBase):
+    """
+    El informe de bases lista los asientos de las cuentas que exigen base. Lo que
+    decide qué entra es la cuenta, no el importe: es la única forma de ver que a
+    un asiento le falta la base.
+    """
+
+    informe = 'bases'
+    archivo_excel = 'bases.xlsx'
+    titulo_excel = 'Informe de bases'
+    encabezados_excel = [
+        'Cuenta', 'Nombre Cuenta', 'Identificación', 'Contacto', 'Comprobante',
+        'Numero', 'Fecha', 'Detalle', 'Debitos ($)', 'Creditos ($)', 'Base ($)',
+    ]
+
+    def setUp(self):
+        super().setUp()
+        self.retencion = self._cuenta('13551505', self.grupo_caja, exige_base=True)
+        self.uno = self._contacto('900000001')
+
+    def _poblar(self):
+        self._movimiento(
+            self.retencion, date(2026, 1, 5), debito=40, base=1000,
+            contacto=self.uno, detalle='IMPUESTO',
+        )
+
+    def test_solo_entran_las_cuentas_que_exigen_base(self):
+        self._poblar()
+        self._movimiento(self.caja, date(2026, 1, 5), debito=99, base=5000)
+
+        self.assertEqual([fila['codigo'] for fila in self._lista()], ['13551505'])
+
+    def test_el_asiento_sin_base_sale_en_cero(self):
+        """
+        Es el punto del informe: la cuenta exige base y el asiento no la trae, así
+        que tiene que verse. Filtrar por `base != 0` lo escondería.
+        """
+        self._movimiento(self.retencion, date(2026, 1, 5), debito=40, contacto=self.uno)
+
+        fila = self._lista()[0]
+
+        self.assertEqual(Decimal(fila['base']), Decimal(0))
+        self.assertEqual(Decimal(fila['debito']), Decimal(40))
+
+    def test_la_fila_trae_el_asiento_completo(self):
+        self._poblar()
+
+        fila = self._lista()[0]
+
+        self.assertEqual(fila['nombre'], 'Cuenta 13551505')
+        self.assertEqual(fila['identificacion'], '900000001')
+        self.assertEqual(fila['comprobante'], 'Comprobante')
+        self.assertEqual(fila['fecha'], '2026-01-05')
+        self.assertEqual(fila['detalle'], 'IMPUESTO')
+        self.assertEqual(Decimal(fila['base']), Decimal(1000))
+
+    def test_lo_de_fuera_del_rango_no_entra(self):
+        self._poblar()
+        self._movimiento(self.retencion, date(2026, 2, 5), debito=99, base=9999)
+
+        self.assertEqual([Decimal(f['base']) for f in self._lista()], [Decimal(1000)])
+
+    def test_las_filas_salen_por_cuenta_fecha_y_numero(self):
+        otra = self._cuenta('13551510', self.grupo_caja, exige_base=True)
+        asientos = (
+            (otra, date(2026, 1, 5), 1, 4),
+            (self.retencion, date(2026, 1, 20), 1, 3),
+            (self.retencion, date(2026, 1, 5), 9, 2),
+            (self.retencion, date(2026, 1, 5), 2, 1),
+        )
+        for cuenta, fecha, numero, base in asientos:
+            movimiento = self._movimiento(cuenta, fecha, debito=1, base=base)
+            ConMovimiento.objects.filter(id=movimiento.id).update(numero=numero)
+
+        self.assertEqual(
+            [Decimal(fila['base']) for fila in self._lista()],
+            [Decimal(1), Decimal(2), Decimal(3), Decimal(4)],
+        )
+
+    def test_el_asiento_de_cierre_entra_igual(self):
+        """
+        Los informes planos no son un corte del periodo sino la lista de lo que
+        pasó, así que acá el cierre no se descuenta.
+        """
+        self._poblar()
+        self._movimiento(self.retencion, date(2026, 1, 31), credito=40, base=1000, cierre=True)
+
+        self.assertEqual(len(self._lista()), 2)
+
+    def test_los_totales_suman_las_tres_columnas(self):
+        self._poblar()
+        self._movimiento(self.retencion, date(2026, 1, 6), credito=15, base=500)
+
+        totales = self._totales()
+
+        self.assertEqual(totales['debito'], Decimal(40))
+        self.assertEqual(totales['credito'], Decimal(15))
+        self.assertEqual(totales['base'], Decimal(1500))
+
+
+class CertificadoRetencionTests(_InformePlanoMixin, _InformeBase):
+    """
+    El certificado agrupa por cuenta y tercero lo retenido y la base que lo
+    causó. No filtra por cuenta: quien lo emite acota con los filtros del
+    informe, igual que hacía itrio con su rango de códigos.
+    """
+
+    informe = 'certificado_retencion'
+    archivo_excel = 'certificado_retencion.xlsx'
+    titulo_excel = 'Certificado retenciones'
+    encabezados_excel = [
+        'Identificación', 'Contacto', 'Cuenta', 'Nombre cuenta',
+        'Monto del pago sujeto a retención ($)', 'Retenido y consignado ($)',
+    ]
+
+    def setUp(self):
+        super().setUp()
+        self.uno = self._contacto('900000001')
+        self.dos = self._contacto('900000002')
+
+    def _poblar(self):
+        self._movimiento(self.caja, date(2026, 1, 5), debito=40, base=1000, contacto=self.uno)
+
+    def test_agrupa_por_cuenta_y_tercero(self):
+        self._movimiento(self.caja, date(2026, 1, 5), debito=40, base=1000, contacto=self.uno)
+        self._movimiento(self.caja, date(2026, 1, 6), debito=20, base=500, contacto=self.uno)
+        self._movimiento(self.caja, date(2026, 1, 6), debito=8, base=200, contacto=self.dos)
+
+        filas = self._lista()
+
+        self.assertEqual([fila['identificacion'] for fila in filas], ['900000001', '900000002'])
+        self.assertEqual(Decimal(filas[0]['retenido']), Decimal(60))
+        self.assertEqual(Decimal(filas[0]['base_retenido']), Decimal(1500))
+
+    def test_el_credito_resta_su_base(self):
+        """
+        La base siempre es positiva: lo que dice si suma o resta es el signo del
+        movimiento. Un reverso de retención tiene que descontar su base, no
+        sumarla.
+        """
+        self._movimiento(self.caja, date(2026, 1, 5), debito=40, base=1000, contacto=self.uno)
+        self._movimiento(self.caja, date(2026, 1, 6), credito=12, base=300, contacto=self.uno)
+
+        fila = self._lista()[0]
+
+        self.assertEqual(Decimal(fila['retenido']), Decimal(28))
+        self.assertEqual(Decimal(fila['base_retenido']), Decimal(700))
+
+    def test_los_totales_suman_lo_retenido(self):
+        self._movimiento(self.caja, date(2026, 1, 5), debito=40, base=1000, contacto=self.uno)
+        self._movimiento(self.caja, date(2026, 1, 6), debito=8, base=200, contacto=self.dos)
+
+        totales = self._totales()
+
+        self.assertEqual(totales['retenido'], Decimal(48))
+        self.assertEqual(totales['base_retenido'], Decimal(1200))
+
+
+class EstadoResultadosTests(_InformePlanoMixin, _InformeBase):
+    """
+    El estado de resultados es el movimiento del periodo de las cuentas de
+    resultado, con el saldo invertido para que el ingreso se lea positivo.
+    """
+
+    informe = 'estado_resultados'
+    archivo_excel = 'estado_resultados.xlsx'
+    titulo_excel = 'Estado de resultados'
+    encabezados_excel = ['Clase', 'Grupo', 'Codigo cuenta', 'Nombre cuenta', 'Saldo ($)']
+
+    def setUp(self):
+        super().setUp()
+        self.clase_ingreso = ConCuentaClase.objects.create(id=4, nombre='Ingresos')
+        self.grupo_ingreso = ConCuentaGrupo.objects.create(id=41, nombre='Operacionales')
+        self.cuenta_ingreso = ConCuentaCuenta.objects.create(id=4135, nombre='Comercio')
+        self.venta = self._cuenta(
+            '41350505', self.cuenta_ingreso,
+            cuenta_clase=self.clase_ingreso, cuenta_grupo=self.grupo_ingreso,
+        )
+
+    def _poblar(self):
+        self._movimiento(self.venta, date(2026, 1, 5), credito=100)
+
+    def test_el_ingreso_se_lee_positivo(self):
+        """
+        El saldo va `crédito − débito`, al revés que en el balance. Las dos cosas
+        son correctas: son convenciones de presentación distintas del mismo neto.
+        """
+        self._poblar()
+
+        fila = self._lista()[0]
+
+        self.assertEqual(Decimal(fila['saldo']), Decimal(100))
+        self.assertEqual(fila['clase'], 'Ingresos')
+        self.assertEqual(fila['grupo'], 'Operacionales')
+
+    def test_las_cuentas_de_balance_no_entran(self):
+        self._poblar()
+        self._movimiento(self.caja, date(2026, 1, 5), debito=100)
+
+        self.assertEqual([fila['codigo'] for fila in self._lista()], ['41350505'])
+
+    def test_la_cuenta_que_no_movio_no_es_una_linea(self):
+        """
+        A diferencia del balance, este informe no se lee contra el plan: una
+        cuenta de resultado sin movimiento en el periodo no tiene nada que decir.
+        """
+        otra = self._cuenta(
+            '41350510', self.cuenta_ingreso,
+            cuenta_clase=self.clase_ingreso, cuenta_grupo=self.grupo_ingreso,
+        )
+        self._poblar()
+
+        self.assertNotIn(otra.codigo, [fila['codigo'] for fila in self._lista()])
+
+    def test_no_arrastra_saldo_anterior(self):
+        """El resultado es del periodo, no acumulado desde el principio."""
+        self._movimiento(self.venta, date(2025, 12, 1), credito=900)
+        self._poblar()
+
+        self.assertEqual(Decimal(self._lista()[0]['saldo']), Decimal(100))
+
+
+class EstadoSituacionFinancieraTests(_InformePlanoMixin, _InformeBase):
+    """
+    Es la consulta del estado de resultados sin el piso de clase, tal como sale
+    de itrio: trae todas las cuentas que movieron, también las de resultado.
+    """
+
+    informe = 'estado_situacion_financiera'
+    archivo_excel = 'estado_situacion_financiera.xlsx'
+    titulo_excel = 'Estado situacion financiera'
+    encabezados_excel = ['Clase', 'Grupo', 'Codigo cuenta', 'Nombre cuenta', 'Saldo ($)']
+
+    def setUp(self):
+        super().setUp()
+        self.clase_ingreso = ConCuentaClase.objects.create(id=4, nombre='Ingresos')
+        self.grupo_ingreso = ConCuentaGrupo.objects.create(id=41, nombre='Operacionales')
+        self.cuenta_ingreso = ConCuentaCuenta.objects.create(id=4135, nombre='Comercio')
+        self.venta = self._cuenta(
+            '41350505', self.cuenta_ingreso,
+            cuenta_clase=self.clase_ingreso, cuenta_grupo=self.grupo_ingreso,
+        )
+
+    def _poblar(self):
+        self._movimiento(self.caja, date(2026, 1, 5), debito=100)
+
+    def test_trae_las_cuentas_de_balance_y_tambien_las_de_resultado(self):
+        self._poblar()
+        self._movimiento(self.venta, date(2026, 1, 5), credito=100)
+
+        self.assertEqual(
+            [fila['codigo'] for fila in self._lista()], ['11050505', '41350505'],
+        )
+
+    def test_el_activo_se_lee_negativo(self):
+        """
+        Consecuencia de compartir la fórmula con el estado de resultados: el
+        signo está pensado para ingresos y gastos, no para las cuentas de
+        balance. Sale así en itrio y así se replica.
+        """
+        self._poblar()
+
+        self.assertEqual(Decimal(self._lista()[0]['saldo']), Decimal(-100))
+
 
 
 class _ContabilizarBase(TenantTestCase):
