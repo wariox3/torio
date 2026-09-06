@@ -1,0 +1,6 @@
+{
+  "model": "inventario.InvAlmacen",
+  "data": [
+    { "id": 1, "nombre": "General" }
+  ]
+}
