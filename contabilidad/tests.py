@@ -22,6 +22,7 @@ from contabilidad.models import (
 from contabilidad.servicios import contabilizar
 from contabilidad.views.comprobante import ConComprobanteViewSet
 from contabilidad.views.cuenta import ConCuentaViewSet
+from contabilidad.views.movimiento import ConMovimientoViewSet
 from contabilidad.views.movimiento_informe import ConMovimientoInformeViewSet
 from general.models import (
     GenCiudad,
@@ -1665,3 +1666,337 @@ class DescontabilizarTests(_ContabilizarBase):
 
         documento.refresh_from_db()
         self.assertFalse(documento.estado_contabilizado)
+
+
+class _MovimientoViewSinPermisos(ConMovimientoViewSet):
+    """Variante de la vista sin auth/permiso/throttle para probar el action aislado."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class InconsistenciasMovimientoTests(TenantTestCase):
+    """
+    Es el mismo análisis que corre `periodo/bloquear`, servido desde movimientos:
+    el front lo consulta mientras corrige los asientos, así que tiene que devolver
+    el detalle completo sin tocar el estado del periodo —si lo marcara como
+    inconsistente, consultar sería un efecto secundario.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.comprobante = ConComprobante.objects.create(id=1, nombre='Comprobante')
+        self.periodo = ConPeriodo.objects.create(anio=2026, mes=1)
+        self.otro = ConPeriodo.objects.create(anio=2026, mes=2)
+        self.clase = ConCuentaClase.objects.create(id=1, nombre='Activo')
+        self.grupo = ConCuentaGrupo.objects.create(id=11, nombre='Disponible')
+        self.cuenta_cuenta = ConCuentaCuenta.objects.create(id=1105, nombre='Caja')
+        # `caja` no exige nada: es la contrapartida que cuadra el asiento sin
+        # aportar inconsistencias propias.
+        self.caja = self._cuenta('11050505')
+        self.gasto = self._cuenta('51050505', exige_centro_costo=True)
+
+    def _cuenta(self, codigo, **configuracion):
+        configuracion.setdefault('permite_movimiento', True)
+        return ConCuenta.objects.create(
+            codigo=codigo, nombre=f'Cuenta {codigo}',
+            cuenta_clase=self.clase, cuenta_grupo=self.grupo,
+            cuenta_cuenta=self.cuenta_cuenta,
+            **configuracion,
+        )
+
+    def _centro_costo(self):
+        return ConCentroCosto.objects.create(nombre='Norte', codigo='N')
+
+    def _contacto(self):
+        """El tenant de pruebas no carga fixtures: la cadena ciudad -> estado -> país va acá."""
+        pais, _ = GenPais.objects.get_or_create(id=250, nombre='Colombia', codigo='CO')
+        estado, _ = GenEstado.objects.get_or_create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        ciudad, _ = GenCiudad.objects.get_or_create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        identificacion, _ = GenIdentificacion.objects.get_or_create(id=6, nombre='NIT', codigo='31')
+        tipo_persona, _ = GenTipoPersona.objects.get_or_create(id=1, nombre='Jurídica')
+        return GenContacto.objects.create(
+            numero_identificacion='900', nombre_corto='Contacto',
+            ciudad=ciudad, identificacion=identificacion, tipo_persona=tipo_persona,
+            direccion='calle 1', telefono='1', correo='t@t.com',
+        )
+
+    def _movimiento(self, cuenta=None, periodo=None, debito=0, credito=0, numero=1,
+                    centro_costo=None, contacto=None, base=0):
+        return ConMovimiento.objects.create(
+            fecha=date(2026, 1, 15),
+            numero=numero,
+            debito=Decimal(debito),
+            credito=Decimal(credito),
+            base=Decimal(base),
+            naturaleza='D' if debito else 'C',
+            comprobante=self.comprobante,
+            periodo=periodo or self.periodo,
+            cuenta=cuenta or self.caja,
+            centro_costo=centro_costo,
+            contacto=contacto,
+        )
+
+    def _inconsistencias(self):
+        return [i['inconsistencia'] for i in self._get({'periodo': self.periodo.id})['inconsistencias']]
+
+    def _get(self, params=None, esperado=200):
+        request = APIRequestFactory().get('/contabilidad/movimiento/inconsistencias/', params or {})
+        response = _MovimientoViewSinPermisos.as_view({'get': 'inconsistencias'})(request)
+        self.assertEqual(response.status_code, esperado)
+        return response.data
+
+    def test_periodo_cuadrado_no_reporta_nada(self):
+        self._movimiento(debito=1000)
+        self._movimiento(credito=1000)
+        self.assertEqual(self._get({'periodo': self.periodo.id}), {'inconsistencias': []})
+
+    def test_reporta_el_comprobante_descuadrado(self):
+        self._movimiento(debito=1000)
+        self._movimiento(credito=900)
+        inconsistencias = self._get({'periodo': self.periodo.id})['inconsistencias']
+        self.assertEqual(len(inconsistencias), 1)
+        self.assertEqual(inconsistencias[0]['comprobante_id'], self.comprobante.id)
+        self.assertEqual(inconsistencias[0]['comprobante_nombre'], 'Comprobante')
+        self.assertEqual(inconsistencias[0]['inconsistencia'], 'El total de débito y crédito no coinciden')
+
+    def test_reporta_tambien_las_reglas_de_la_cuenta(self):
+        """No es solo el descuadre: sale el análisis entero del servicio."""
+        self._movimiento(cuenta=self.gasto, debito=1000)
+        self._movimiento(credito=1000)
+        inconsistencias = self._get({'periodo': self.periodo.id})['inconsistencias']
+        self.assertEqual(
+            [i['inconsistencia'] for i in inconsistencias],
+            ['La cuenta 51050505 exige centro de costo y no tiene centro de costo'],
+        )
+
+    def test_solo_mira_el_periodo_pedido(self):
+        self._movimiento(periodo=self.otro, debito=1000)
+        self.assertEqual(self._get({'periodo': self.periodo.id}), {'inconsistencias': []})
+        self.assertEqual(len(self._get({'periodo': self.otro.id})['inconsistencias']), 1)
+
+    def test_no_modifica_el_estado_del_periodo(self):
+        """A diferencia de `bloquear`, consultar no marca el periodo como inconsistente."""
+        self._movimiento(debito=1000)
+        self._get({'periodo': self.periodo.id})
+        self.periodo.refresh_from_db()
+        self.assertFalse(self.periodo.estado_inconsistencia)
+
+    def test_sin_periodo_revisa_toda_la_contabilidad(self):
+        """El parámetro acota; omitirlo no es un error, revisa todos los periodos."""
+        self._movimiento(periodo=self.otro, debito=1000, numero=7)
+        inconsistencias = self._get()['inconsistencias']
+        self.assertEqual([i['numero'] for i in inconsistencias], [7])
+
+    def test_sin_periodo_no_reporta_lo_que_cuadra(self):
+        self._movimiento(debito=1000)
+        self._movimiento(credito=1000)
+        self._movimiento(periodo=self.otro, debito=500, numero=7)
+        self._movimiento(periodo=self.otro, credito=500, numero=7)
+        self.assertEqual(self._get(), {'inconsistencias': []})
+
+    def test_periodo_que_no_existe_es_400(self):
+        self.assertIn('periodo', self._get({'periodo': self.periodo.id + 50}, esperado=400))
+
+    def test_periodo_que_no_es_numero_es_400(self):
+        self.assertIn('periodo', self._get({'periodo': 'enero'}, esperado=400))
+
+    def test_reporta_la_cuenta_que_no_permite_movimiento(self):
+        cuenta = self._cuenta('11050510', permite_movimiento=False)
+        self._movimiento(cuenta=cuenta, debito=1000)
+        self._movimiento(credito=1000)
+        self.assertEqual(
+            self._inconsistencias(),
+            ['La cuenta 11050510 no permite movimientos y tiene movimientos en el periodo'],
+        )
+
+    def test_reporta_el_centro_de_costo_que_la_cuenta_no_exige(self):
+        """La exigencia se revisa en los dos sentidos: lo que no se exige tampoco puede estar."""
+        self._movimiento(debito=1000, centro_costo=self._centro_costo())
+        self._movimiento(credito=1000)
+        self.assertEqual(
+            self._inconsistencias(),
+            ['La cuenta 11050505 no exige centro de costo y tiene centro de costo'],
+        )
+
+    def test_reporta_el_contacto_que_la_cuenta_no_exige(self):
+        self._movimiento(debito=1000, contacto=self._contacto())
+        self._movimiento(credito=1000)
+        self.assertEqual(
+            self._inconsistencias(),
+            ['La cuenta 11050505 no exige contacto y tiene contacto'],
+        )
+
+    def test_reporta_la_base_que_la_cuenta_no_exige(self):
+        self._movimiento(debito=1000, base=500)
+        self._movimiento(credito=1000)
+        self.assertEqual(
+            self._inconsistencias(),
+            ['La cuenta 11050505 no exige base y tiene base'],
+        )
+
+    def test_no_reporta_lo_que_la_cuenta_si_exige(self):
+        cuenta = self._cuenta(
+            '52050505', exige_centro_costo=True, exige_contacto=True, exige_base=True,
+        )
+        self._movimiento(
+            cuenta=cuenta, debito=1000,
+            centro_costo=self._centro_costo(), contacto=self._contacto(), base=500,
+        )
+        self._movimiento(credito=1000)
+        self.assertEqual(self._inconsistencias(), [])
+
+    def test_reporta_las_tres_exigencias_que_faltan(self):
+        cuenta = self._cuenta(
+            '52050505', exige_centro_costo=True, exige_contacto=True, exige_base=True,
+        )
+        self._movimiento(cuenta=cuenta, debito=1000)
+        self._movimiento(credito=1000)
+        self.assertEqual(
+            self._inconsistencias(),
+            [
+                'La cuenta 52050505 exige centro de costo y no tiene centro de costo',
+                'La cuenta 52050505 exige contacto y no tiene contacto',
+                'La cuenta 52050505 exige base y no tiene base',
+            ],
+        )
+
+    def test_reporta_las_tres_que_sobran(self):
+        self._movimiento(
+            debito=1000,
+            centro_costo=self._centro_costo(), contacto=self._contacto(), base=500,
+        )
+        self._movimiento(credito=1000)
+        self.assertEqual(
+            self._inconsistencias(),
+            [
+                'La cuenta 11050505 no exige centro de costo y tiene centro de costo',
+                'La cuenta 11050505 no exige contacto y tiene contacto',
+                'La cuenta 11050505 no exige base y tiene base',
+            ],
+        )
+
+    def _documento(self, numero=1, fecha=None, contabilizado=False, contabilidad=True):
+        tipo, _ = GenDocumentoTipo.objects.get_or_create(
+            pk=901 if contabilidad else 902,
+            defaults={
+                'nombre': 'FACTURA' if contabilidad else 'COTIZACION',
+                'contabilidad': contabilidad,
+                'comprobante': self.comprobante,
+            },
+        )
+        return GenDocumento.objects.create(
+            documento_tipo=tipo,
+            numero=numero,
+            fecha=fecha or date(2026, 1, 15),
+            estado_contabilizado=contabilizado,
+        )
+
+    def test_reporta_cada_documento_sin_contabilizar(self):
+        """Uno por documento y no un resumen por tipo: hay que poder abrir el que falta."""
+        primero = self._documento(numero=1)
+        segundo = self._documento(numero=2)
+        inconsistencias = self._get({'periodo': self.periodo.id})['inconsistencias']
+        self.assertEqual(
+            [(i['documento_id'], i['numero'], i['documento_tipo_nombre']) for i in inconsistencias],
+            [(primero.id, 1, 'FACTURA'), (segundo.id, 2, 'FACTURA')],
+        )
+        self.assertEqual(
+            inconsistencias[0]['inconsistencia'],
+            'El documento de tipo FACTURA número 1 no está contabilizado',
+        )
+
+    def test_el_comprobante_del_movimiento_va_con_su_nombre(self):
+        """Las inconsistencias de movimiento nombran el comprobante, no solo su id."""
+        self._movimiento(debito=1000, base=500)
+        self._movimiento(credito=1000)
+        inconsistencia = self._get({'periodo': self.periodo.id})['inconsistencias'][0]
+        self.assertEqual(inconsistencia['comprobante_id'], self.comprobante.id)
+        self.assertEqual(inconsistencia['comprobante_nombre'], 'Comprobante')
+
+    def test_el_documento_sin_contabilizar_no_tiene_comprobante(self):
+        """Sin asiento no hay comprobante que nombrar: las dos claves van en nulo."""
+        self._documento()
+        inconsistencia = self._get({'periodo': self.periodo.id})['inconsistencias'][0]
+        self.assertIsNone(inconsistencia['comprobante_id'])
+        self.assertIsNone(inconsistencia['comprobante_nombre'])
+
+    def test_documento_sin_numero_se_identifica_por_id(self):
+        documento = self._documento(numero=None)
+        inconsistencias = self._get({'periodo': self.periodo.id})['inconsistencias']
+        self.assertEqual(
+            [i['inconsistencia'] for i in inconsistencias],
+            [f'El documento de tipo FACTURA id {documento.id} no está contabilizado'],
+        )
+
+    def test_no_reporta_el_documento_ya_contabilizado(self):
+        self._documento(contabilizado=True)
+        self.assertEqual(self._get({'periodo': self.periodo.id}), {'inconsistencias': []})
+
+    def test_no_reporta_el_documento_de_un_tipo_que_no_es_contable(self):
+        self._documento(contabilidad=False)
+        self.assertEqual(self._get({'periodo': self.periodo.id}), {'inconsistencias': []})
+
+    def test_el_periodo_acota_los_documentos(self):
+        self._documento(fecha=date(2026, 2, 15))
+        self.assertEqual(self._get({'periodo': self.periodo.id}), {'inconsistencias': []})
+        self.assertEqual(len(self._get()['inconsistencias']), 1)
+
+    def _excel(self, params=None):
+        request = APIRequestFactory().get(
+            '/contabilidad/movimiento/inconsistencias/', {**(params or {}), 'excel': 'true'},
+        )
+        response = _MovimientoViewSinPermisos.as_view({'get': 'inconsistencias'})(request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        self.assertEqual(response['Content-Disposition'], 'attachment; filename="inconsistencias.xlsx"')
+        hoja = load_workbook(BytesIO(response.content)).active
+        return [[celda.value for celda in fila] for fila in hoja.rows]
+
+    def test_excel_lleva_encabezados_y_una_fila_por_inconsistencia(self):
+        self._movimiento(debito=1000)
+        self._movimiento(credito=900)
+        filas = self._excel({'periodo': self.periodo.id})
+        self.assertEqual(
+            filas[0],
+            [
+                'Comprobante', 'Nombre comprobante', 'Numero', 'Cuenta', 'Documento',
+                'Tipo de documento', 'Inconsistencia',
+            ],
+        )
+        self.assertEqual(
+            filas[1],
+            [
+                self.comprobante.id, 'Comprobante', 1, None, None, None,
+                'El total de débito y crédito no coinciden',
+            ],
+        )
+        self.assertEqual(len(filas), 2)
+
+    def test_excel_sin_inconsistencias_solo_lleva_encabezados(self):
+        self._movimiento(debito=1000)
+        self._movimiento(credito=1000)
+        self.assertEqual(len(self._excel({'periodo': self.periodo.id})), 1)
+
+    def test_excel_revisa_lo_mismo_que_el_json(self):
+        """El parámetro cambia el formato, no lo que se revisa."""
+        self._movimiento(cuenta=self.gasto, debito=1000)
+        self._movimiento(credito=1000)
+        json = self._get({'periodo': self.periodo.id})['inconsistencias']
+        filas = self._excel({'periodo': self.periodo.id})[1:]
+        self.assertEqual([f[-1] for f in filas], [i['inconsistencia'] for i in json])
+
+    def test_sin_el_parametro_sigue_devolviendo_json(self):
+        self._movimiento(debito=1000)
+        request = APIRequestFactory().get('/contabilidad/movimiento/inconsistencias/')
+        response = _MovimientoViewSinPermisos.as_view({'get': 'inconsistencias'})(request)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('inconsistencias', response.data)

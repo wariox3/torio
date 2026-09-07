@@ -27,7 +27,7 @@ class ConPeriodoAccionRequestSerializer(serializers.Serializer):
     id = serializers.PrimaryKeyRelatedField(queryset=ConPeriodo.objects.all())
 
 
-_InconsistenciasResponse = inline_serializer(
+InconsistenciasResponse = inline_serializer(
     name='PeriodoInconsistenciasResponse',
     fields={
         'inconsistencias': inline_serializer(
@@ -35,6 +35,7 @@ _InconsistenciasResponse = inline_serializer(
             many=True,
             fields={
                 'comprobante_id': serializers.IntegerField(allow_null=True),
+                'comprobante_nombre': serializers.CharField(allow_null=True),
                 'numero': serializers.IntegerField(allow_null=True),
                 'cuenta_id': serializers.IntegerField(allow_null=True),
                 'documento_id': serializers.IntegerField(allow_null=True),
@@ -153,7 +154,7 @@ class ConPeriodoViewSet(
             'bloquearlo ni modificar su estado. Una lista vacía significa que el '
             'periodo se puede bloquear.'
         ),
-        responses=_InconsistenciasResponse,
+        responses=InconsistenciasResponse,
     )
     @action(detail=True, methods=['get'])
     def inconsistencias(self, request, pk=None):
