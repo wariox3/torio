@@ -251,6 +251,19 @@ def _movimiento(comun, cuenta, signo, valor, detalle, etiqueta,
     if signo == 0:
         raise ValidationError(f'{etiqueta}: no se puede determinar débito o crédito.')
 
+    # Las tres exigencias de la cuenta se respetan en los dos sentidos, que es lo
+    # mismo que revisa `movimiento.analizar_inconsistencias`: lo que la cuenta
+    # exige tiene que venir —y si no viene, el documento no se contabiliza a
+    # medias, falla acá con el dato que falta—, y lo que no exige no se guarda,
+    # para que el mayor no se llene de contexto que nadie pidió. Sin esta segunda
+    # mitad el asiento nacería marcado como inconsistente y el periodo no cerraría.
+    if cuenta.exige_centro_costo and centro_costo_id is None:
+        raise ValidationError(f'{etiqueta}: la cuenta {cuenta.codigo} exige centro de costo.')
+    if cuenta.exige_contacto and contacto_id is None:
+        raise ValidationError(f'{etiqueta}: la cuenta {cuenta.codigo} exige contacto.')
+    if cuenta.exige_base and not base:
+        raise ValidationError(f'{etiqueta}: la cuenta {cuenta.codigo} exige base.')
+
     debita = signo > 0
     return ConMovimiento(
         documento_id=comun['documento_id'],
@@ -262,14 +275,11 @@ def _movimiento(comun, cuenta, signo, valor, detalle, etiqueta,
         naturaleza=DEBITO if debita else CREDITO,
         debito=valor if debita else CERO,
         credito=CERO if debita else valor,
-        base=base or CERO,
+        base=(base or CERO) if cuenta.exige_base else CERO,
         detalle=detalle,
         cierre=cierre,
-        contacto_id=contacto_id,
+        contacto_id=contacto_id if cuenta.exige_contacto else None,
         usuario_id=comun['usuario_id'],
-        # El centro de costo solo se guarda si la cuenta lo exige; así el mayor no
-        # se llena de centros de costo que nadie pidió y `analizar_inconsistencias`
-        # sigue midiendo lo mismo.
         centro_costo_id=centro_costo_id if cuenta.exige_centro_costo else None,
     )
 
@@ -485,7 +495,7 @@ def _movimientos_cuenta(documento, detalle, comun):
     return [_movimiento(
         comun, cuenta, 1 if detalle.naturaleza == DEBITO else -1,
         detalle.precio, detalle.detalle, f'Detalle {detalle.pk}',
-        contacto_id=detalle.contacto_id if cuenta.exige_contacto else None,
+        contacto_id=detalle.contacto_id,
         centro_costo_id=detalle.centro_costo_id,
         base=detalle.base,
         cierre=documento.documento_tipo_id == DOCUMENTO_TIPO_CIERRE,

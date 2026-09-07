@@ -20,6 +20,7 @@ from contabilidad.models import (
     ConPeriodo,
 )
 from contabilidad.servicios import contabilizar
+from contabilidad.servicios.movimiento import analizar_inconsistencias
 from contabilidad.views.comprobante import ConComprobanteViewSet
 from contabilidad.views.cuenta import ConCuentaViewSet
 from contabilidad.views.movimiento import ConMovimientoViewSet
@@ -1400,6 +1401,24 @@ class _ContabilizarBase(TenantTestCase):
             nombre='Item', cuenta_venta=self.cuenta_venta, cuenta_compra=self.cuenta_gasto,
         )
 
+    def _crear_contacto(self):
+        """El tenant de pruebas no carga fixtures: la cadena ciudad -> estado -> país va acá."""
+        pais, _ = GenPais.objects.get_or_create(id=250, nombre='Colombia', codigo='CO')
+        estado, _ = GenEstado.objects.get_or_create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        ciudad, _ = GenCiudad.objects.get_or_create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        identificacion, _ = GenIdentificacion.objects.get_or_create(id=6, nombre='NIT', codigo='31')
+        tipo_persona, _ = GenTipoPersona.objects.get_or_create(id=1, nombre='Jurídica')
+        return GenContacto.objects.create(
+            numero_identificacion='900', nombre_corto='Contacto',
+            ciudad=ciudad, identificacion=identificacion, tipo_persona=tipo_persona,
+            direccion='calle 1', telefono='1', correo='t@t.com',
+        )
+
+    def _exigir(self, cuenta, **exigencias):
+        for campo, valor in exigencias.items():
+            setattr(cuenta, campo, valor)
+        cuenta.save(update_fields=list(exigencias))
+
     def _movimientos(self, documento):
         return list(ConMovimiento.objects.filter(documento=documento).order_by('id'))
 
@@ -1581,6 +1600,72 @@ class ContabilizarTests(_ContabilizarBase):
 
         with self.assertRaises(ValidationError):
             contabilizar.contabilizar([documento.pk])
+
+    # --------------------------------------------- exigencias de la cuenta ----
+
+    def test_rechaza_la_cuenta_que_exige_centro_de_costo_y_no_lo_recibe(self):
+        """
+        Las tres exigencias se respetan en los dos sentidos, igual que las revisa
+        `analizar_inconsistencias`: sin el dato el asiento no se escribe a medias.
+        """
+        self._exigir(self.cuenta_venta, exige_centro_costo=True)
+        documento = self._crear_documento(self.factura_tipo)
+        self._crear_detalle_item(documento, self._crear_item())
+
+        with self.assertRaises(ValidationError):
+            contabilizar.contabilizar([documento.pk])
+
+    def test_rechaza_la_cuenta_que_exige_contacto_y_no_lo_recibe(self):
+        self._exigir(self.cuenta_venta, exige_contacto=True)
+        documento = self._crear_documento(self.factura_tipo)
+        self._crear_detalle_item(documento, self._crear_item())
+
+        with self.assertRaises(ValidationError):
+            contabilizar.contabilizar([documento.pk])
+
+    def test_rechaza_la_cuenta_que_exige_base_y_no_la_recibe(self):
+        self._exigir(self.cuenta_venta, exige_base=True)
+        documento = self._crear_documento(self.factura_tipo)
+        self._crear_detalle_item(documento, self._crear_item())
+
+        with self.assertRaises(ValidationError):
+            contabilizar.contabilizar([documento.pk])
+
+    def test_no_guarda_el_contacto_en_la_cuenta_que_no_lo_exige(self):
+        """El documento trae contacto, pero la cuenta que no lo exige no lo lleva."""
+        documento = self._crear_documento(self.factura_tipo, contacto=self._crear_contacto())
+        self._crear_detalle_item(documento, self._crear_item())
+
+        contabilizar.contabilizar([documento.pk])
+
+        self.assertEqual(
+            {m.contacto_id for m in self._movimientos(documento)}, {None},
+        )
+
+    def test_guarda_el_contacto_solo_en_la_cuenta_que_lo_exige(self):
+        contacto = self._crear_contacto()
+        self._exigir(self.cuenta_cobrar, exige_contacto=True)
+        documento = self._crear_documento(self.factura_tipo, contacto=contacto)
+        self._crear_detalle_item(documento, self._crear_item())
+
+        contabilizar.contabilizar([documento.pk])
+
+        por_cuenta = {m.cuenta_id: m for m in self._movimientos(documento)}
+        self.assertEqual(por_cuenta[self.cuenta_cobrar.pk].contacto_id, contacto.pk)
+        self.assertIsNone(por_cuenta[self.cuenta_venta.pk].contacto_id)
+
+    def test_el_asiento_generado_no_tiene_inconsistencias(self):
+        """
+        Lo que produce `contabilizar` tiene que pasar la revisión que bloquea el
+        periodo; si no, el asiento nacería marcado y el periodo no cerraría nunca.
+        """
+        self._exigir(self.cuenta_cobrar, exige_contacto=True)
+        documento = self._crear_documento(self.factura_tipo, contacto=self._crear_contacto())
+        self._crear_detalle_item(documento, self._crear_item())
+
+        contabilizar.contabilizar([documento.pk])
+
+        self.assertEqual(analizar_inconsistencias(self.periodo), [])
 
     # ------------------------------------------------------------- el lote ----
 
