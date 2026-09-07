@@ -29,6 +29,7 @@ from general.models import (
     GenDocumentoDetalle,
     GenImpuesto,
     GenItem,
+    GenModalidad,
 )
 from general.servicios.documento_detalle import crear_detalle
 
@@ -320,8 +321,15 @@ class _PerfilComercial(_Perfil):
             'detalle': _texto_o_none(datos.get('detalle')),
             'impuestos_ids': problemas.intentar(lambda: self._impuestos(datos, mapas), []),
         }
+        # Lo propio del perfil entra acá y no después de `levantar`: si no, su
+        # error saldría en un intento aparte del resto de los de la misma fila.
+        campos.update(self._campos_propios(datos, mapas, problemas))
         problemas.levantar()
         return campos
+
+    def _campos_propios(self, datos, mapas, problemas):
+        """Columnas que solo tiene una de las dos familias comerciales."""
+        return {}
 
     def _impuestos(self, datos, mapas):
         impuestos = []
@@ -340,8 +348,44 @@ class _PerfilComercial(_Perfil):
 
 
 class _PerfilVenta(_PerfilComercial):
+    """
+    Venta, y lo único que la separa de la compra fuera de los impuestos: la
+    modalidad. Es un dato del servicio que se vende —con el sector del documento
+    sale la tarifa mínima de vigilancia, ver `LiquidadorSupervigilancia`—, así que
+    en una compra sería una columna que nadie llena.
+
+    Va por código y no por id, como las llaves naturales del perfil contable: el
+    catálogo son tres filas fijas (CAN, CAR, SAR) que quien llena el archivo se
+    sabe, y los ids no.
+    """
+
     nombre = 'venta'
     campo_impuesto = 'venta'
+
+    campos_excel = (
+        ('item.id', 'Item'),
+        ('cantidad', 'Cantidad'),
+        ('precio', 'Precio'),
+        ('porcentaje_descuento', 'Porcentaje descuento'),
+        ('modalidad.codigo', 'Modalidad'),
+        ('centro_costo.id', 'Centro de costo'),
+        ('detalle', 'Detalle'),
+        ('impuestos', 'Impuestos separados por coma'),
+    )
+    valores_ejemplo = {**_PerfilComercial.valores_ejemplo, 'modalidad.codigo': ('SAR', '')}
+
+    def precargar(self, filas_validas):
+        mapas = super().precargar(filas_validas)
+        mapas['modalidad'] = _indice(
+            filas_validas, 'modalidad.codigo', GenModalidad, 'codigo', 'código',
+        )
+        return mapas
+
+    def _campos_propios(self, datos, mapas, problemas):
+        return {
+            'modalidad': problemas.intentar(
+                lambda: mapas['modalidad'].opcional(datos.get('modalidad.codigo'), 'Modalidad')),
+        }
 
 
 class _PerfilCompra(_PerfilComercial):

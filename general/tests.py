@@ -39,6 +39,7 @@ from general.models import (
     GenEstado,
     GenIdentificacion,
     GenItem,
+    GenModalidad,
     GenModelo,
     GenPais,
     GenParametro,
@@ -1822,6 +1823,7 @@ class ImportarDetallePlantillaTests(_ImportarDetalleBaseTests):
             'Cantidad *',
             'Precio *',
             'Porcentaje descuento',
+            'Modalidad (Código)',
             'Centro de costo (ID)',
             'Detalle',
             'Impuestos separados por coma',
@@ -1830,7 +1832,7 @@ class ImportarDetallePlantillaTests(_ImportarDetalleBaseTests):
     def test_el_ejemplo_de_impuestos_muestra_la_lista(self):
         _, ws = self._encabezados(self.documento)
 
-        self.assertEqual(ws.cell(row=2, column=7).value, '1,2')
+        self.assertEqual(ws.cell(row=2, column=8).value, '1,2')
 
 
 class ImportarDetalleComercialTests(_ImportarDetalleBaseTests):
@@ -1840,8 +1842,8 @@ class ImportarDetalleComercialTests(_ImportarDetalleBaseTests):
         encabezado con los totales viejos.
         """
         response = self._importar([
-            [self.item.id, 2, 100, None, None, 'Primera', None],
-            [self.item.id, 1, 50, 10, None, None, None],
+            [self.item.id, 2, 100, None, None, None, 'Primera', None],
+            [self.item.id, 1, 50, 10, None, None, None, None],
         ])
 
         self.assertEqual(response.status_code, 200, response.data)
@@ -1858,8 +1860,8 @@ class ImportarDetalleComercialTests(_ImportarDetalleBaseTests):
 
     def test_una_fila_mala_no_deja_nada(self):
         response = self._importar([
-            [self.item.id, 2, 100, None, None, None, None],
-            [999999, 1, 50, None, None, None, None],
+            [self.item.id, 2, 100, None, None, None, None, None],
+            [999999, 1, 50, None, None, None, None, None],
         ])
 
         self.assertEqual(response.status_code, 400)
@@ -1871,7 +1873,7 @@ class ImportarDetalleComercialTests(_ImportarDetalleBaseTests):
         self.assertEqual(self.documento.total, Decimal('0'))
 
     def test_falta_un_requerido_y_se_reporta_como_estructural(self):
-        response = self._importar([[self.item.id, None, 100, None, None, None, None]])
+        response = self._importar([[self.item.id, None, 100, None, None, None, None, None]])
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data['fase'], 'estructural')
@@ -1883,7 +1885,7 @@ class ImportarDetalleComercialTests(_ImportarDetalleBaseTests):
             nombre='IVA', nombre_extendido='IVA 19%', porcentaje=19, venta=True, compra=True,
         )
 
-        response = self._importar([[self.item.id, 1, 100, None, None, None, str(iva.id)]])
+        response = self._importar([[self.item.id, 1, 100, None, None, None, None, str(iva.id)]])
 
         self.assertEqual(response.status_code, 200, response.data)
         detalle = GenDocumentoDetalle.objects.get()
@@ -1900,7 +1902,7 @@ class ImportarDetalleComercialTests(_ImportarDetalleBaseTests):
             venta=False, compra=True,
         )
 
-        response = self._importar([[self.item.id, 1, 100, None, None, None, str(solo_compra.id)]])
+        response = self._importar([[self.item.id, 1, 100, None, None, None, None, str(solo_compra.id)]])
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('no aplica a documentos de venta', response.data['errores'][0]['mensaje'])
@@ -1921,8 +1923,64 @@ class ImportarDetalleComercialTests(_ImportarDetalleBaseTests):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(GenDocumentoDetalle.objects.get().impuesto_retencion, Decimal('0'))
 
+    # ------------------------------------------------------------ modalidad ----
+
+    def test_importa_la_modalidad_por_codigo(self):
+        """
+        La modalidad va por código y no por id: el catálogo son tres filas fijas
+        que quien llena el archivo se sabe de memoria.
+        """
+        modalidad = GenModalidad.objects.create(id=3, nombre='SIN ARMA', codigo='SAR')
+
+        response = self._importar([[self.item.id, 1, 100, None, 'SAR', None, None, None]])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(GenDocumentoDetalle.objects.get().modalidad_id, modalidad.id)
+
+    def test_la_modalidad_es_opcional(self):
+        response = self._importar([[self.item.id, 1, 100, None, None, None, None, None]])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertIsNone(GenDocumentoDetalle.objects.get().modalidad_id)
+
+    def test_modalidad_que_no_existe_da_error(self):
+        response = self._importar([[self.item.id, 1, 100, None, 'XXX', None, None, None]])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Modalidad con código "XXX" no existe', response.data['errores'][0]['mensaje'])
+        self.assertFalse(GenDocumentoDetalle.objects.exists())
+
+    def test_un_codigo_de_modalidad_repetido_se_rechaza_como_ambiguo(self):
+        """`GenModalidad.codigo` no es único en el modelo: elegir una sería inventar."""
+        GenModalidad.objects.create(id=1, nombre='CANINO', codigo='SAR')
+        GenModalidad.objects.create(id=3, nombre='SIN ARMA', codigo='SAR')
+
+        response = self._importar([[self.item.id, 1, 100, None, 'SAR', None, None, None]])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('está repetido', response.data['errores'][0]['mensaje'])
+
+    def test_la_compra_no_tiene_columna_de_modalidad(self):
+        """Es un dato del servicio que se vende: en una compra nadie la llena."""
+        compra = self._documento(self.tipo_compra)
+        serializer = GenDocumentoDetalleImportarSerializer(compra)
+
+        self.assertNotIn(
+            'modalidad.codigo', [campo for campo, _ in serializer.campos_excel],
+        )
+
+    def test_el_error_de_modalidad_sale_junto_con_los_demas_de_la_fila(self):
+        """Un solo intento tiene que mostrar todo lo que hay que arreglar en la línea."""
+        response = self._importar([[999999, 1, 100, None, 'XXX', None, None, None]])
+
+        self.assertEqual(response.status_code, 400)
+        mensajes = [e['mensaje'] for e in response.data['errores']]
+        self.assertEqual(len(mensajes), 2, mensajes)
+        self.assertTrue(any('Item' in m for m in mensajes), mensajes)
+        self.assertTrue(any('Modalidad' in m for m in mensajes), mensajes)
+
     def test_impuesto_inexistente_da_error(self):
-        response = self._importar([[self.item.id, 1, 100, None, None, None, '999999']])
+        response = self._importar([[self.item.id, 1, 100, None, None, None, None, '999999']])
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('Impuesto con id=999999 no existe', response.data['errores'][0]['mensaje'])
@@ -2027,7 +2085,7 @@ class ImportarDetalleContableTests(_ImportarDetalleContableBaseTests):
 
     def test_la_linea_comercial_si_calcula(self):
         """El corte es por `tipo_registro`, no por el importador: una venta no cambia."""
-        response = self._importar([[self.item.id, 2, 100, None, None, None, None]])
+        response = self._importar([[self.item.id, 2, 100, None, None, None, None, None]])
 
         self.assertEqual(response.status_code, 200, response.data)
         detalle = GenDocumentoDetalle.objects.get()
@@ -2424,7 +2482,7 @@ class DocumentoDetalleRespuestaTests(_ImportarDetalleContableBaseTests):
     def test_una_linea_sin_cuenta_ni_contacto_los_trae_en_null(self):
         """El detalle de una venta no tiene cuenta: las claves siguen estando."""
         self.assertEqual(
-            self._importar([[self.item.id, 1, 100, None, None, None, None]]).status_code, 200,
+            self._importar([[self.item.id, 1, 100, None, None, None, None, None]]).status_code, 200,
         )
 
         request = APIRequestFactory().get(
