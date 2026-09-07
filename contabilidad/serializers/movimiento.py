@@ -17,7 +17,7 @@ class ConMovimientoSerializer(serializers.ModelSerializer):
     cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, default=None)
     cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, default=None)
     centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
-    contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
+    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
 
     class Meta:
         model = ConMovimiento
@@ -41,7 +41,7 @@ class ConMovimientoSerializer(serializers.ModelSerializer):
             'centro_costo_nombre',
             'periodo',
             'contacto',
-            'contacto_nombre',
+            'contacto_nombre_corto',
             'documento',
         ]
         read_only_fields = ['id']
