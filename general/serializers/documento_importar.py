@@ -7,7 +7,6 @@ from general.models import (
     GenDocumento,
     GenDocumentoTipo,
     GenFormaPago,
-    GenModalidad,
     GenPlazoPago,
     GenSector,
 )
@@ -44,7 +43,6 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         ('forma_pago.id', 'Forma pago'),
         ('asesor.id', 'Asesor'),
         ('sector.id', 'Sector'),
-        ('modalidad.id', 'Modalidad'),
         ('centro_costo.id', 'Centro de costo'),
     )
     campos_requeridos = {'documento_tipo.id', 'fecha'}
@@ -72,7 +70,6 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         ids_forma_pago = self._ids_int(filas_validas, 'forma_pago.id')
         ids_asesor = self._ids_int(filas_validas, 'asesor.id')
         ids_sector = self._ids_int(filas_validas, 'sector.id')
-        ids_modalidad = self._ids_int(filas_validas, 'modalidad.id')
         ids_centro_costo = self._ids_int(filas_validas, 'centro_costo.id')
 
         mapa_documento_tipo = {o.id: o for o in GenDocumentoTipo.objects.filter(id__in=ids_documento_tipo)}
@@ -81,7 +78,6 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         mapa_forma_pago = {o.id: o for o in GenFormaPago.objects.filter(id__in=ids_forma_pago)}
         mapa_asesor = {o.id: o for o in GenAsesor.objects.filter(id__in=ids_asesor)}
         mapa_sector = {o.id: o for o in GenSector.objects.filter(id__in=ids_sector)}
-        mapa_modalidad = {o.id: o for o in GenModalidad.objects.filter(id__in=ids_modalidad)}
         mapa_centro_costo = {o.id: o for o in ConCentroCosto.objects.filter(id__in=ids_centro_costo)}
 
         # 2) Construir instancias en memoria, recolectar errores
@@ -100,7 +96,6 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
                 forma_pago = self._fk_opcional(datos.get('forma_pago.id'), mapa_forma_pago, 'Forma pago')
                 asesor = self._fk_opcional(datos.get('asesor.id'), mapa_asesor, 'Asesor')
                 sector = self._fk_opcional(datos.get('sector.id'), mapa_sector, 'Sector')
-                modalidad = self._fk_opcional(datos.get('modalidad.id'), mapa_modalidad, 'Modalidad')
                 centro_costo = self._fk_opcional(
                     datos.get('centro_costo.id'), mapa_centro_costo, 'Centro de costo')
 
@@ -123,7 +118,6 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
                     forma_pago=forma_pago,
                     asesor=asesor,
                     sector=sector,
-                    modalidad=modalidad,
                     centro_costo=centro_costo,
                 ))
             except Exception as e:
