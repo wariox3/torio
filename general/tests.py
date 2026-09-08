@@ -2,7 +2,7 @@ import io
 import json
 import uuid as uuid_lib
 import zipfile
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal
 from unittest import mock
 
@@ -18,7 +18,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django_tenants.test.cases import TenantTestCase
 from rest_framework import permissions
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from contabilidad.models import ConCentroCosto, ConComprobante, ConCuenta
@@ -30,6 +30,7 @@ from general.models import (
     GenDocumento,
     GenDocumentoClase,
     GenDocumentoDetalle,
+    GenDocumentoImpuesto,
     GenDocumentoTipo,
     GenFestivo,
     GenFormaPago,
@@ -43,6 +44,7 @@ from general.models import (
     GenModelo,
     GenPais,
     GenParametro,
+    GenPlazoPago,
     GenPrecio,
     GenPrecioDetalle,
     GenResolucion,
@@ -55,6 +57,7 @@ from general.serializers import (
     GenAsesorImportarSerializer,
     GenDocumentoCrearSerializer,
     GenDocumentoDetalleSerializer,
+    GenDocumentoGenerarRecurrenteSerializer,
     GenDocumentoImportarSerializer,
     GenDocumentoSerializer,
     GenDocumentoDetalleImportarSerializer,
@@ -102,8 +105,12 @@ class GenerarDocumentoTests(TenantTestCase):
         tenant.correo = 'test@test.com'
 
     def setUp(self):
-        self.tipo_origen = GenDocumentoTipo.objects.create(nombre='Contrato')
-        self.tipo_destino = GenDocumentoTipo.objects.create(nombre='Programación')
+        # El origen tiene que ser un contrato de servicio: es el tipo por el que
+        # `generar_recurrente` toma el camino de acotar al periodo y recalcular horas.
+        self.tipo_origen = GenDocumentoTipo.objects.create(
+            id=documento_servicio.DOCUMENTO_TIPO_CONTRATO_SERVICIO, nombre='Contrato',
+        )
+        self.tipo_destino = GenDocumentoTipo.objects.create(id=900, nombre='Programación')
         self.documento = GenDocumento.objects.create(
             documento_tipo=self.tipo_origen, fecha=date(2026, 1, 1),
         )
@@ -123,8 +130,12 @@ class GenerarDocumentoTests(TenantTestCase):
         return GenDocumentoDetalle.objects.create(**datos)
 
     def _generar(self, anio=2026, mes=6):
-        return documento_servicio.generar(
-            documento_tipo_origen=self.tipo_origen,
+        return documento_servicio.generar_recurrente(
+            documento_ids=list(
+                GenDocumento.objects
+                .filter(documento_tipo=self.tipo_origen)
+                .values_list('id', flat=True)
+            ),
             documento_tipo_destino_id=self.tipo_destino.id,
             anio=anio,
             mes=mes,
@@ -281,6 +292,345 @@ class GenerarDocumentoTests(TenantTestCase):
         detalle = generados[0].documentos_detalles_documento_rel.get()
         # 4 lunes ordinarios + el 15 festivo (festivo=True) = 5.
         self.assertEqual(detalle.dias, 5)
+
+
+class GenerarRecurrenteTests(TenantTestCase):
+    """
+    `generar_recurrente` por el camino de la factura recurrente (tipos 16 y 32):
+    la plantilla se copia entera y no se toca. El camino del contrato de servicio
+    (tipo 34), que recorta al periodo y recalcula horas, lo cubre
+    `GenerarDocumentoTests`.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test recurrente'
+        tenant.celular = '0'
+        tenant.correo = 'recurrente@test.com'
+
+    def setUp(self):
+        self.plazo = GenPlazoPago.objects.create(id=1, nombre='8 días', dias=8)
+        self.resolucion = GenResolucion.objects.create(
+            numero='18760000001', consecutivo_desde=1, consecutivo_hasta=1000,
+            fecha_desde=date(2020, 1, 1), fecha_hasta=date(2030, 12, 31),
+        )
+        # Todos los tipos de esta clase llevan id explícito. Mezclar ids a mano con
+        # ids de la secuencia termina en colisión: la secuencia no se revierte con
+        # el rollback de cada test, así que sube hasta chocar con el 16 fijo.
+        self.tipo_destino = GenDocumentoTipo.objects.create(
+            id=900, nombre='Factura', resolucion=self.resolucion,
+        )
+        self.impuesto = GenImpuesto.objects.create(
+            nombre='IVA', nombre_extendido='IVA 19%', porcentaje=Decimal('19'),
+        )
+        self.tipo_venta = GenDocumentoTipo.objects.create(id=16, nombre='Venta recurrente')
+        self.plantilla = self._plantilla(self.tipo_venta)
+
+    # ------------------------------------------------------------- helpers ----
+
+    def _plantilla(self, tipo, **overrides):
+        """Plantilla ya usada: numerada, aprobada y contabilizada."""
+        datos = {
+            'documento_tipo': tipo,
+            'plazo_pago': self.plazo,
+            'fecha': date(2020, 1, 1),
+            'fecha_contable': date(2020, 1, 1),
+            'fecha_vence': date(2020, 1, 31),
+            'numero': 999,
+            'estado_aprobado': True,
+            'estado_contabilizado': True,
+        }
+        datos.update(overrides)
+        documento = GenDocumento.objects.create(**datos)
+        for cantidad, precio in [(2, 100), (3, 50)]:
+            detalle = GenDocumentoDetalle.objects.create(
+                documento=documento, cantidad=cantidad, precio=precio,
+                subtotal=Decimal(cantidad * precio), total=Decimal(cantidad * precio),
+            )
+            GenDocumentoImpuesto.objects.create(
+                documento_detalle=detalle, impuesto=self.impuesto,
+                base=Decimal(cantidad * precio), porcentaje=Decimal('19'),
+                total=Decimal(cantidad * precio) * Decimal('0.19'),
+            )
+        documento.recalcular_totales()
+        documento.save()
+        return documento
+
+    def _generar(self, documentos=None, tipo_origen=None, anio=2026, mes=9):
+        if documentos is None and tipo_origen is None:
+            documentos = [self.plantilla]
+        return documento_servicio.generar_recurrente(
+            documento_tipo_destino_id=self.tipo_destino.id,
+            anio=anio,
+            mes=mes,
+            documento_ids=[d.id for d in documentos] if documentos else None,
+            documento_tipo_origen_id=tipo_origen.id if tipo_origen else None,
+        )
+
+    # --------------------------------------------------------------- copia ----
+
+    def test_copia_los_detalles_y_sus_impuestos(self):
+        nuevo = self._generar()[0]
+
+        detalles = list(nuevo.documentos_detalles_documento_rel.order_by('id'))
+        self.assertEqual([d.cantidad for d in detalles], [Decimal(2), Decimal(3)])
+        self.assertEqual([d.precio for d in detalles], [Decimal(100), Decimal(50)])
+        self.assertEqual(
+            GenDocumentoImpuesto.objects.filter(documento_detalle__in=detalles).count(), 2,
+        )
+        self.assertEqual(nuevo.total, self.plantilla.total)
+
+    def test_conserva_el_orden_de_los_detalles(self):
+        """
+        `GenDocumentoDetalle.Meta.ordering` es `-id`: sin ordenar explícitamente,
+        el documento nuevo saldría con las líneas al revés que la plantilla.
+        """
+        nuevo = self._generar()[0]
+
+        origen = [d.cantidad for d in self.plantilla.documentos_detalles_documento_rel.order_by('id')]
+        copia = [d.cantidad for d in nuevo.documentos_detalles_documento_rel.order_by('id')]
+        self.assertEqual(copia, origen)
+
+    def test_el_clon_nace_sin_numerar_ni_aprobar(self):
+        """
+        Lo que separa esto de un `__dict__.copy()`: el consecutivo y los estados
+        son del documento que ya se emitió, no de la copia.
+        """
+        nuevo = self._generar()[0]
+
+        self.assertIsNone(nuevo.numero)
+        self.assertFalse(nuevo.estado_aprobado)
+        self.assertFalse(nuevo.estado_contabilizado)
+        self.assertFalse(nuevo.estado_anulado)
+
+    def test_apunta_al_documento_que_lo_origino(self):
+        nuevo = self._generar()[0]
+
+        self.assertEqual(nuevo.documento_referencia_id, self.plantilla.id)
+
+    def test_la_resolucion_sale_del_tipo_destino(self):
+        """La del origen es de otro tipo y numeraría contra el rango equivocado."""
+        otra = GenResolucion.objects.create(
+            numero='OTRA', consecutivo_desde=1, consecutivo_hasta=10,
+            fecha_desde=date(2020, 1, 1), fecha_hasta=date(2030, 12, 31),
+        )
+        self.plantilla.resolucion = otra
+        self.plantilla.save(update_fields=['resolucion'])
+
+        nuevo = self._generar()[0]
+
+        self.assertEqual(nuevo.resolucion_id, self.resolucion.id)
+
+    def test_la_plantilla_queda_intacta(self):
+        """Se vuelve a usar el periodo que viene: nada de lo suyo puede moverse."""
+        self._generar()
+
+        self.plantilla.refresh_from_db()
+        self.assertEqual(self.plantilla.fecha, date(2020, 1, 1))
+        self.assertEqual(self.plantilla.numero, 999)
+        self.assertTrue(self.plantilla.estado_aprobado)
+        self.assertEqual(self.plantilla.documentos_detalles_documento_rel.count(), 2)
+
+    def test_la_factura_de_compra_recurrente_tambien_se_copia(self):
+        tipo_compra = GenDocumentoTipo.objects.create(id=32, nombre='Compra recurrente')
+        plantilla = self._plantilla(tipo_compra)
+
+        generados = self._generar([plantilla])
+
+        self.assertEqual(len(generados), 1)
+        self.assertEqual(generados[0].documento_tipo_id, self.tipo_destino.id)
+
+    # -------------------------------------------------------------- fechas ----
+
+    def test_se_emite_hoy_y_vence_a_los_dias_del_plazo(self):
+        """
+        La factura recurrente no se fecha al cierre del periodo como el contrato:
+        es una factura de verdad y lleva la fecha del día en que se saca.
+        """
+        hoy = timezone.localdate()
+
+        nuevo = self._generar()[0]
+
+        self.assertEqual(nuevo.fecha, hoy)
+        self.assertEqual(nuevo.fecha_contable, hoy)
+        self.assertEqual(nuevo.fecha_vence, hoy + timedelta(days=8))
+
+    def test_sin_plazo_de_pago_vence_el_mismo_dia(self):
+        """`plazo_pago` es opcional: sin él no se puede leer `.dias`."""
+        self.plantilla.plazo_pago = None
+        self.plantilla.save(update_fields=['plazo_pago'])
+
+        nuevo = self._generar()[0]
+
+        self.assertEqual(nuevo.fecha_vence, timezone.localdate())
+
+    def test_el_periodo_no_mueve_la_fecha_de_la_factura(self):
+        """`anio`/`mes` solo acotan el camino del contrato."""
+        nuevo = self._generar(anio=2026, mes=1)[0]
+
+        self.assertEqual(nuevo.fecha, timezone.localdate())
+
+    # --------------------------------------------------------- validación ----
+
+    def test_un_tipo_no_recurrente_se_rechaza(self):
+        ajeno = GenDocumento.objects.create(
+            documento_tipo=self.tipo_destino, fecha=date(2026, 1, 1),
+        )
+
+        with self.assertRaises(ValidationError) as caso:
+            self._generar([self.plantilla, ajeno])
+
+        self.assertIn(str(ajeno.id), str(caso.exception))
+        # No quedó nada: la validación corre antes de crear.
+        self.assertFalse(
+            GenDocumento.objects.filter(documento_referencia=self.plantilla).exists(),
+        )
+
+    def test_un_id_inexistente_da_404(self):
+        with self.assertRaises(NotFound):
+            documento_servicio.generar_recurrente(
+                documento_ids=[self.plantilla.id, 999999],
+                documento_tipo_destino_id=self.tipo_destino.id,
+                anio=2026, mes=9,
+            )
+
+        self.assertFalse(
+            GenDocumento.objects.filter(documento_referencia=self.plantilla).exists(),
+        )
+
+    # ----------------------------------------------- los dos caminos juntos ----
+
+    def test_una_llamada_atiende_factura_y_contrato_por_su_camino(self):
+        contrato = self._contrato()
+
+        generados = self._generar([self.plantilla, contrato])
+
+        por_origen = {g.documento_referencia_id: g for g in generados}
+        self.assertEqual(len(generados), 2)
+        # La factura se emite hoy; el contrato cierra el periodo.
+        self.assertEqual(por_origen[self.plantilla.id].fecha, timezone.localdate())
+        self.assertEqual(por_origen[contrato.id].fecha, date(2026, 9, 30))
+        # Solo el contrato recalcula horas y avanza su propia fecha.
+        detalle = por_origen[contrato.id].documentos_detalles_documento_rel.get()
+        self.assertEqual(detalle.fecha_desde, date(2026, 9, 1))
+        self.assertEqual(detalle.fecha_hasta, date(2026, 9, 30))
+        self.assertGreater(detalle.horas, 0)
+        contrato.refresh_from_db()
+        self.assertEqual(contrato.fecha, date(2026, 10, 1))
+
+    def test_si_el_contrato_aborta_tampoco_queda_la_factura_copiada(self):
+        """
+        `generar_recurrente` es una sola transacción, y las copias se hacen antes
+        de llegar al contrato: si este falla, las de arriba tienen que irse con él.
+        """
+        contrato = self._contrato()
+        # Un detalle sin fechas aborta el camino del contrato.
+        GenDocumentoDetalle.objects.create(documento=contrato, fecha_desde=None, fecha_hasta=None)
+
+        with self.assertRaises(ValidationError):
+            self._generar([self.plantilla, contrato])
+
+        self.assertFalse(
+            GenDocumento.objects.filter(documento_referencia=self.plantilla).exists(),
+        )
+        contrato.refresh_from_db()
+        self.assertEqual(contrato.fecha, date(2026, 1, 1))
+
+    # --------------------------------------------------- selección por tipo ----
+
+    def test_con_el_tipo_origen_toma_todas_sus_plantillas(self):
+        """Sin ids: el tipo basta y se generan todas sus plantillas."""
+        otra = self._plantilla(self.tipo_venta)
+
+        generados = self._generar(tipo_origen=self.tipo_venta)
+
+        self.assertEqual(
+            sorted(g.documento_referencia_id for g in generados),
+            sorted([self.plantilla.id, otra.id]),
+        )
+
+    def test_los_ids_acotan_la_seleccion_del_tipo(self):
+        """Mandando los dos, los ids recortan lo que el tipo trajo."""
+        self._plantilla(self.tipo_venta)
+
+        generados = self._generar(
+            documentos=[self.plantilla], tipo_origen=self.tipo_venta,
+        )
+
+        self.assertEqual(len(generados), 1)
+        self.assertEqual(generados[0].documento_referencia_id, self.plantilla.id)
+
+    def test_un_id_de_otro_tipo_no_entra_por_el_filtro(self):
+        """
+        El id queda fuera del queryset por el tipo, así que no llega a la
+        validación de recurrencia: el 404 es lo que avisa que no se generó.
+        """
+        compra = self._plantilla(GenDocumentoTipo.objects.create(id=32, nombre='Compra'))
+
+        with self.assertRaises(NotFound) as caso:
+            self._generar(documentos=[compra], tipo_origen=self.tipo_venta)
+
+        self.assertIn(str(compra.id), str(caso.exception))
+
+    def test_un_tipo_origen_no_recurrente_se_rechaza(self):
+        with self.assertRaises(ValidationError) as caso:
+            self._generar(tipo_origen=self.tipo_destino)
+
+        self.assertIn(str(self.tipo_destino.id), str(caso.exception))
+
+    def test_un_tipo_sin_plantillas_se_rechaza(self):
+        vacio = GenDocumentoTipo.objects.create(id=32, nombre='Compra recurrente')
+
+        with self.assertRaises(ValidationError) as caso:
+            self._generar(tipo_origen=vacio)
+
+        self.assertIn('No hay documentos para generar', str(caso.exception))
+
+    def test_una_lista_de_ids_vacia_junto_al_tipo_no_estorba(self):
+        """
+        El front que manda siempre las dos claves envía `documento_ids: []` cuando
+        elige por tipo. Eso es "sin ids", no un error.
+        """
+        serializador = GenDocumentoGenerarRecurrenteSerializer(data={
+            'documento_tipo_origen': self.tipo_venta.id,
+            'documento_ids': [],
+            'documento_tipo_destino': self.tipo_destino.id,
+            'anio': 2026, 'mes': 9,
+        })
+
+        self.assertTrue(serializador.is_valid(), serializador.errors)
+
+    def test_sin_tipo_ni_ids_se_rechaza_en_el_serializer(self):
+        """Con la lista vacía y sin tipo no queda de dónde sacar las plantillas."""
+        serializador = GenDocumentoGenerarRecurrenteSerializer(data={
+            'documento_ids': [],
+            'documento_tipo_destino': self.tipo_destino.id,
+            'anio': 2026, 'mes': 9,
+        })
+
+        self.assertFalse(serializador.is_valid())
+
+    def test_sin_tipo_ni_ids_se_rechaza(self):
+        with self.assertRaises(ValidationError):
+            documento_servicio.generar_recurrente(
+                documento_tipo_destino_id=self.tipo_destino.id, anio=2026, mes=9,
+            )
+
+    def _contrato(self):
+        tipo = GenDocumentoTipo.objects.create(
+            id=documento_servicio.DOCUMENTO_TIPO_CONTRATO_SERVICIO, nombre='Contrato',
+        )
+        contrato = GenDocumento.objects.create(
+            documento_tipo=tipo, fecha=date(2026, 1, 1), fecha_contable=date(2026, 1, 1),
+        )
+        GenDocumentoDetalle.objects.create(
+            documento=contrato,
+            fecha_desde=date(2026, 1, 1), fecha_hasta=date(2026, 12, 31),
+            hora_desde=time(6, 0), hora_hasta=time(14, 0),
+            lunes=True, martes=True, miercoles=True, jueves=True,
+            viernes=True, sabado=True, domingo=True,
+        )
+        return contrato
 
 
 class ModeloPermisoTests(TenantTestCase):
@@ -3347,11 +3697,13 @@ class FechaContableTests(TenantTestCase):
 
     def test_el_documento_generado_no_hereda_la_fecha_contable_del_origen(self):
         """
-        `generar` clona el origen: sin excluir `fecha_contable`, el documento de
+        `generar_recurrente` clona el origen: sin excluir `fecha_contable`, el documento de
         junio se quedaría con el periodo contable del contrato del que salió.
         """
-        tipo_origen = GenDocumentoTipo.objects.create(nombre='Contrato')
-        tipo_destino = GenDocumentoTipo.objects.create(nombre='Programación')
+        tipo_origen = GenDocumentoTipo.objects.create(
+            id=documento_servicio.DOCUMENTO_TIPO_CONTRATO_SERVICIO, nombre='Contrato',
+        )
+        tipo_destino = GenDocumentoTipo.objects.create(id=900, nombre='Programación')
         origen = GenDocumento.objects.create(
             documento_tipo=tipo_origen,
             fecha=date(2026, 1, 1),
@@ -3365,8 +3717,8 @@ class FechaContableTests(TenantTestCase):
             viernes=True, sabado=True, domingo=True,
         )
 
-        generados = documento_servicio.generar(
-            documento_tipo_origen=tipo_origen,
+        generados = documento_servicio.generar_recurrente(
+            documento_ids=[origen.id],
             documento_tipo_destino_id=tipo_destino.id,
             anio=2026, mes=6,
         )

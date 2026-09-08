@@ -3,7 +3,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Prefetch, Sum
+from django.utils import timezone
 from rest_framework.exceptions import NotFound, ValidationError
 
 from general.models import (
@@ -67,6 +68,18 @@ DOCUMENTO_TIPOS_NOTA_CREDITO = (
 DOCUMENTO_CLASES_CON_CARTERA = (
     100, 101, 102, 104, 105,
     300, 301, 302, 303, 304,
+)
+
+# El contrato de servicio no se copia tal cual: sus detalles se acotan al periodo
+# y se le recalculan las horas contra el calendario real. Es el caso de `generar`.
+DOCUMENTO_TIPO_CONTRATO_SERVICIO = 34
+
+# Tipos que son plantilla de un documento que se repite cada periodo: de ellos
+# sale un documento nuevo con `generar_recurrente`. No se facturan ellos mismos.
+DOCUMENTO_TIPOS_RECURRENTES = (
+    16,  # FACTURA VENTA RECURRENTE
+    32,  # FACTURA COMPRA RECURRENTE
+    DOCUMENTO_TIPO_CONTRATO_SERVICIO,
 )
 
 # Tipos cuya contrapartida contable la define la forma de pago y no el tipo.
@@ -643,7 +656,69 @@ def _quitar_cartera(documento):
     return ['pendiente']
 
 
-def generar(documento_tipo_origen, documento_tipo_destino_id, anio, mes, documento_ids=None):
+# ------------------------------------------------------------------ clonar ----
+
+# Qué NO se copia al clonar un documento. Son los campos que identifican al
+# documento (`numero`, `fecha_validacion`), los que describen su ciclo de vida
+# (`estado_*`) y los de la factura electrónica (`cue`, `qr`, `evento_*`): el
+# clon nace sin numerar, sin aprobar y sin nada de la DIAN. `fecha` y
+# `fecha_contable` se excluyen y las fija quien clona, porque el periodo del
+# documento nuevo no es el del que salió.
+_EXCLUIR_DOCUMENTO = {
+    'id', 'numero', 'fecha', 'fecha_contable', 'fecha_validacion',
+    'documento_tipo', 'documento_referencia',
+    'cue', 'qr', 'referencia_cue', 'referencia_numero', 'referencia_prefijo',
+    'electronico_id',
+    'evento_documento', 'evento_recepcion', 'evento_aceptacion',
+    'estado_aprobado', 'estado_anulado', 'estado_contabilizado',
+    'estado_electronico', 'estado_electronico_enviado',
+    'estado_electronico_notificado', 'estado_electronico_evento',
+    'estado_electronico_descartado',
+}
+_EXCLUIR_DETALLE = {'id', 'documento', 'documento_detalle_afectado'}
+_EXCLUIR_IMPUESTO = {'id', 'documento_detalle'}
+
+
+def _clonar(instancia, excluir, overrides):
+    """Construye una copia sin guardar, omitiendo `excluir` y aplicando `overrides`."""
+    datos = {
+        campo.attname: getattr(instancia, campo.attname)
+        for campo in instancia._meta.concrete_fields
+        if not campo.primary_key and campo.name not in excluir
+    }
+    datos.update(overrides)
+    return type(instancia)(**datos)
+
+
+def generar_recurrente(
+    documento_tipo_destino_id, anio, mes,
+    documento_ids=None, documento_tipo_origen_id=None,
+):
+    """
+    Saca un documento nuevo de cada plantilla recurrente, con el tipo de destino
+    que se pida, para el periodo `anio`/`mes`.
+
+    Las plantillas se eligen por `documento_tipo_origen_id`, por `documento_ids`, o
+    por los dos: con el tipo se toman todas las de ese tipo, y los ids acotan esa
+    selección. Uno de los dos tiene que venir.
+
+    Hay dos caminos según el tipo de la plantilla:
+
+    - **Contrato de servicio (34)**: no se copia tal cual. Sus detalles se recortan
+      a la ventana del periodo y se les recalculan horas, diurnas, nocturnas y días
+      contando el calendario real con sus festivos. Un contrato sin ningún detalle
+      vigente en el periodo se salta, y el que sí genera avanza su propia fecha al
+      mes siguiente, que es lo que lo deja listo para la próxima corrida.
+    - **Factura recurrente (16 y 32)**: se copia entera —mismas cantidades, mismos
+      precios, mismos impuestos— y solo se mueven las fechas. La plantilla queda
+      intacta.
+
+    El documento nuevo nace sin numerar y sin aprobar. La fecha difiere según el
+    camino: el contrato genera al cierre del periodo (último día de `anio`/`mes`)
+    y la factura recurrente se emite hoy, con su vencimiento a los días del plazo
+    de pago del origen. Todo va en una transacción: si un documento falla, no se
+    crea ninguno.
+    """
     # Ventana del periodo: los detalles generados viven dentro de este mes.
     primer_dia = date(anio, mes, 1)
     fecha = date(anio, mes, calendar.monthrange(anio, mes)[1])
@@ -723,87 +798,148 @@ def generar(documento_tipo_origen, documento_tipo_destino_id, anio, mes, documen
             'horas_nocturnas': horas_nocturnas,
         }
 
-    def clonar(instancia, excluir, overrides):
-        """Construye una copia sin guardar, omitiendo `excluir` y aplicando `overrides`."""
-        datos = {
-            campo.attname: getattr(instancia, campo.attname)
-            for campo in instancia._meta.concrete_fields
-            if not campo.primary_key and campo.name not in excluir
-        }
-        datos.update(overrides)
-        return type(instancia)(**datos)
+    if not documento_ids and not documento_tipo_origen_id:
+        raise ValidationError(
+            {'detail': 'Debe enviar documento_tipo_origen o documento_ids.'}
+        )
 
-    excluir_documento = {
-        # `fecha_contable` se excluye y se fija abajo: clonarla del origen le
-        # dejaría al documento generado el periodo contable del contrato del que
-        # salió, que es de otro mes.
-        'id', 'numero', 'fecha', 'fecha_contable', 'fecha_validacion',
-        'documento_tipo', 'documento_referencia',
-        'cue', 'qr', 'referencia_cue', 'referencia_numero', 'referencia_prefijo',
-        'electronico_id',
-        'evento_documento', 'evento_recepcion', 'evento_aceptacion',
-        'estado_aprobado', 'estado_anulado', 'estado_contabilizado',
-        'estado_electronico', 'estado_electronico_enviado',
-        'estado_electronico_notificado', 'estado_electronico_evento',
-        'estado_electronico_descartado',
-    }
-    excluir_detalle = {'id', 'documento', 'documento_detalle_afectado'}
-    excluir_impuesto = {'id', 'documento_detalle'}
+    # Pedir un tipo que no es recurrente no devolvería nada y el error saldría más
+    # abajo hablando de documentos, no del tipo: se ataja acá.
+    if (
+        documento_tipo_origen_id is not None
+        and documento_tipo_origen_id not in DOCUMENTO_TIPOS_RECURRENTES
+    ):
+        raise ValidationError({
+            'documento_tipo_origen': (
+                f'El tipo {documento_tipo_origen_id} no es recurrente. '
+                f'Solo se generan desde los tipos {DOCUMENTO_TIPOS_RECURRENTES}.'
+            ),
+        })
 
-    qs = GenDocumento.objects.filter(
-        documento_tipo=documento_tipo_origen,
-        fecha__lte=fecha,
-    )
+    qs = GenDocumento.objects.all()
+    if documento_tipo_origen_id is not None:
+        qs = qs.filter(documento_tipo_id=documento_tipo_origen_id)
     if documento_ids:
         qs = qs.filter(id__in=documento_ids)
-    qs = qs.prefetch_related(
-        'documentos_detalles_documento_rel__documentos_impuestos_documento_detalle_rel',
+
+    documentos = list(
+        qs
+        .select_related('plazo_pago')
+        .prefetch_related(
+            # El orden de los detalles es el de la factura impresa, así que se
+            # clonan ascendente. `GenDocumentoDetalle.Meta.ordering` es `-id`, que
+            # dejaría el documento nuevo con las líneas al revés.
+            Prefetch(
+                'documentos_detalles_documento_rel',
+                queryset=GenDocumentoDetalle.objects.order_by('id').prefetch_related(
+                    Prefetch(
+                        'documentos_impuestos_documento_detalle_rel',
+                        queryset=GenDocumentoImpuesto.objects.order_by('id'),
+                    ),
+                ),
+            ),
+        )
+        .order_by('id')
     )
-    documentos = list(qs)
+
+    if documento_ids:
+        encontrados = {documento.id for documento in documentos}
+        faltantes = [str(id_) for id_ in documento_ids if id_ not in encontrados]
+        if faltantes:
+            raise NotFound(f'No existen los documentos: {", ".join(faltantes)}.')
 
     if not documentos:
         raise ValidationError({'detail': 'No hay documentos para generar.'})
 
+    no_recurrentes = [
+        str(documento.id)
+        for documento in documentos
+        if documento.documento_tipo_id not in DOCUMENTO_TIPOS_RECURRENTES
+    ]
+    if no_recurrentes:
+        raise ValidationError({
+            'documento_ids': (
+                f'Los documentos {", ".join(no_recurrentes)} no son recurrentes. '
+                f'Solo se generan desde los tipos {DOCUMENTO_TIPOS_RECURRENTES}.'
+            ),
+        })
+
+    tipo_destino = GenDocumentoTipo.objects.get(pk=documento_tipo_destino_id)
+
     generados = []
     with transaction.atomic():
         for origen in documentos:
-            # Solo los detalles cuyo rango se solapa con el periodo, ya acotados a él.
-            detalles = []
-            for detalle in origen.documentos_detalles_documento_rel.all():
-                rango = acotar_al_periodo(detalle)
-                if rango is not None:
-                    detalles.append((detalle, rango))
+            if origen.documento_tipo_id == DOCUMENTO_TIPO_CONTRATO_SERVICIO:
+                # Un contrato ya fechado después del periodo es uno que otra corrida
+                # ya avanzó: no se vuelve a generar.
+                if origen.fecha > fecha:
+                    continue
 
-            # Sin detalles vigentes en el periodo no se genera el documento.
-            if not detalles:
-                continue
+                # Solo los detalles cuyo rango se solapa con el periodo, ya acotados a él.
+                detalles = []
+                for detalle in origen.documentos_detalles_documento_rel.all():
+                    rango = acotar_al_periodo(detalle)
+                    if rango is not None:
+                        detalles.append((detalle, rango))
 
-            nuevo = clonar(origen, excluir_documento, {
-                'documento_tipo_id': documento_tipo_destino_id,
-                'fecha': fecha,
-                'fecha_contable': fecha,
-                'documento_referencia_id': origen.id,
-            })
-            nuevo.save()
-            for detalle, (fecha_desde, fecha_hasta) in detalles:
-                nuevo_detalle = clonar(detalle, excluir_detalle, {
-                    'documento_id': nuevo.id,
-                    'documento_detalle_afectado_id': detalle.id,
-                    'fecha_desde': fecha_desde,
-                    'fecha_hasta': fecha_hasta,
-                    **calcular_horas(detalle, fecha_desde, fecha_hasta),
+                # Sin detalles vigentes en el periodo no se genera el documento.
+                if not detalles:
+                    continue
+
+                nuevo = _clonar(origen, _EXCLUIR_DOCUMENTO, {
+                    'documento_tipo_id': documento_tipo_destino_id,
+                    'fecha': fecha,
+                    'fecha_contable': fecha,
+                    'documento_referencia_id': origen.id,
                 })
-                nuevo_detalle.save()
-                for impuesto in detalle.documentos_impuestos_documento_detalle_rel.all():
-                    clonar(impuesto, excluir_impuesto, {
-                        'documento_detalle_id': nuevo_detalle.id,
-                    }).save()
+                nuevo.save()
+                for detalle, (fecha_desde, fecha_hasta) in detalles:
+                    nuevo_detalle = _clonar(detalle, _EXCLUIR_DETALLE, {
+                        'documento_id': nuevo.id,
+                        'documento_detalle_afectado_id': detalle.id,
+                        'fecha_desde': fecha_desde,
+                        'fecha_hasta': fecha_hasta,
+                        **calcular_horas(detalle, fecha_desde, fecha_hasta),
+                    })
+                    nuevo_detalle.save()
+                    for impuesto in detalle.documentos_impuestos_documento_detalle_rel.all():
+                        _clonar(impuesto, _EXCLUIR_IMPUESTO, {
+                            'documento_detalle_id': nuevo_detalle.id,
+                        }).save()
+
+                # El contrato avanza al mes siguiente: queda listo para la próxima corrida.
+                origen.fecha = fecha_origen
+                origen.save(update_fields=['fecha'])
+            else:
+                # La factura recurrente se emite hoy, no al cierre del periodo: es
+                # una factura de verdad y su fecha es la del día en que se saca.
+                # `anio`/`mes` solo acotan el camino del contrato.
+                hoy = timezone.localdate()
+                # El plazo es opcional en el documento; sin él el clon vence el mismo día.
+                dias_plazo = origen.plazo_pago.dias if origen.plazo_pago_id else 0
+                nuevo = _clonar(origen, _EXCLUIR_DOCUMENTO, {
+                    'documento_tipo_id': documento_tipo_destino_id,
+                    # La resolución la manda el tipo de destino: la del origen es de
+                    # otro tipo y numeraría el documento nuevo contra el rango equivocado.
+                    'resolucion_id': tipo_destino.resolucion_id,
+                    'fecha': hoy,
+                    'fecha_contable': hoy,
+                    'fecha_vence': hoy + timedelta(days=dias_plazo),
+                    'documento_referencia_id': origen.id,
+                })
+                nuevo.save()
+                for detalle in origen.documentos_detalles_documento_rel.all():
+                    nuevo_detalle = _clonar(detalle, _EXCLUIR_DETALLE, {
+                        'documento_id': nuevo.id,
+                    })
+                    nuevo_detalle.save()
+                    for impuesto in detalle.documentos_impuestos_documento_detalle_rel.all():
+                        _clonar(impuesto, _EXCLUIR_IMPUESTO, {
+                            'documento_detalle_id': nuevo_detalle.id,
+                        }).save()
+
             nuevo.recalcular_totales()
             nuevo.save()
-
-            origen.fecha = fecha_origen
-            origen.save(update_fields=['fecha'])
-
             generados.append(nuevo)
 
     if not generados:

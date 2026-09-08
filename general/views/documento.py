@@ -16,7 +16,7 @@ from general.models import GenDocumento
 from general.serializers import (
     GenDocumentoCrearSerializer,
     GenDocumentoExportarSerializer,
-    GenDocumentoGenerarSerializer,
+    GenDocumentoGenerarRecurrenteSerializer,
     GenDocumentoImportarSerializer,
     GenDocumentoSerializer,
 )
@@ -103,26 +103,61 @@ class GenDocumentoViewSet(
             )
         return qs
 
-    @extend_schema(request=GenDocumentoGenerarSerializer, responses=GenDocumentoSerializer(many=True))
+    @extend_schema(
+        summary='Obsoleto: use documento/generar-recurrente/',
+        description=(
+            'Reemplazado por `documento/generar-recurrente/`, que recibe los ids y '
+            'resuelve solo qué hacer con cada uno según su tipo. La generación de '
+            'contratos de servicio (tipo 34) vive ahora ahí.'
+        ),
+        request=None,
+        responses={400: OpenApiTypes.OBJECT},
+        deprecated=True,
+    )
     @action(detail=False, methods=['post'])
     def generar(self, request):
-        serializer = GenDocumentoGenerarSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        datos = serializer.validated_data
-        generados = documento_servicio.generar(
-            documento_tipo_origen=datos['documento_tipo_id'],
-            documento_tipo_destino_id=datos['documento_tipo_id_destino'].pk,
-            anio=datos['anio'],
-            mes=datos['mes'],
-            documento_ids=datos.get('documento_ids'),
-        )
-        salida = GenDocumentoSerializer(generados, many=True)
-        return Response(
-            {'generados': len(generados), 'documentos': salida.data},
-            status=status.HTTP_201_CREATED,
+        raise ValidationError(
+            {'detail': 'Endpoint retirado. Use documento/generar-recurrente/.'}
         )
 
     @extend_schema(request=DocumentoAccionRequestSerializer, responses=GenDocumentoSerializer)
+    @extend_schema(
+        summary='Generar documentos desde plantillas recurrentes',
+        description=(
+            'Genera un documento nuevo del `documento_tipo_destino` indicado desde cada '
+            'plantilla recurrente, para el periodo `anio`/`mes`.\n\n'
+            'Las plantillas se eligen con `documento_tipo_origen` (todas las de ese '
+            'tipo), con `documento_ids`, o con los dos a la vez, donde los ids acotan '
+            'la selección del tipo. Hay que mandar al menos uno de los dos.\n\n'
+            '- **16 y 32** (factura de venta y de compra recurrente): se copian enteras '
+            'con sus detalles e impuestos. Se emiten **con fecha de hoy** y vencen a los '
+            'días del plazo de pago del origen; la plantilla queda intacta. No usan '
+            '`anio`/`mes`.\n'
+            '- **34** (contrato de servicio): los detalles se recortan a la ventana del '
+            'periodo y se les recalculan horas, diurnas, nocturnas y días contra el '
+            'calendario real con sus festivos; el contrato origen avanza al mes siguiente.\n\n'
+            'El documento nuevo nace sin numerar y sin aprobar. Es una sola transacción: '
+            'si un documento falla, no se crea ninguno.\n\n'
+            'Responde `{"generados": <n>}` con la cantidad creada.'
+        ),
+        request=GenDocumentoGenerarRecurrenteSerializer,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['post'], url_path='generar-recurrente')
+    def generar_recurrente(self, request):
+        serializer = GenDocumentoGenerarRecurrenteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = serializer.validated_data
+        tipo_origen = datos.get('documento_tipo_origen')
+        generados = documento_servicio.generar_recurrente(
+            documento_tipo_destino_id=datos['documento_tipo_destino'].pk,
+            anio=datos['anio'],
+            mes=datos['mes'],
+            documento_ids=datos.get('documento_ids'),
+            documento_tipo_origen_id=tipo_origen.pk if tipo_origen else None,
+        )
+        return Response({'generados': len(generados)}, status=status.HTTP_201_CREATED)
+
     @action(detail=False, methods=['post'])
     def aprobar(self, request):
         serializer = DocumentoAccionRequestSerializer(data=request.data)
