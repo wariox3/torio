@@ -13,7 +13,7 @@ class ConConciliacionDetalleSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('-id',)
 
     cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, default=None)
-    contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
+    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
 
     class Meta:
         model = ConConciliacionDetalle
@@ -28,7 +28,7 @@ class ConConciliacionDetalleSerializer(serializers.ModelSerializer):
             'cuenta',
             'cuenta_nombre',
             'contacto',
-            'contacto_nombre',
+            'contacto_nombre_corto',
             'documento',
         ]
         read_only_fields = ['id']

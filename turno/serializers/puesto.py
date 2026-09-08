@@ -15,7 +15,7 @@ class TurPuestoSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('nombre',)
 
     celular = CampoTelefono(required=False, allow_null=True, max_length=50)
-    contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
+    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
     programador_nombre = serializers.CharField(source='programador.nombre', read_only=True, default=None)
     ciudad_nombre = serializers.CharField(source='ciudad.nombre', read_only=True, default=None)
     centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
@@ -32,7 +32,7 @@ class TurPuestoSerializer(serializers.ModelSerializer):
             'comentario',
             'estado_inactivo',
             'contacto',
-            'contacto_nombre',
+            'contacto_nombre_corto',
             'programador',
             'programador_nombre',
             'ciudad',

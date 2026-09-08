@@ -41,7 +41,7 @@ class GenDocumentoDetalleInformeSerializer(serializers.ModelSerializer):
         source='documento.documento_tipo.nombre', read_only=True, default=None,
     )
     contacto_id = serializers.IntegerField(source='documento.contacto_id', read_only=True)
-    contacto_nombre = serializers.CharField(
+    contacto_nombre_corto = serializers.CharField(
         source='documento.contacto.nombre_corto', read_only=True, default=None,
     )
     item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
@@ -59,7 +59,7 @@ class GenDocumentoDetalleInformeSerializer(serializers.ModelSerializer):
             'documento_tipo_id',
             'documento_tipo_nombre',
             'contacto_id',
-            'contacto_nombre',
+            'contacto_nombre_corto',
             'item_id',
             'item_nombre',
             'puesto_id',

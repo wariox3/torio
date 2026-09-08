@@ -38,7 +38,7 @@ class GenDocumentoInformeSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
-    contacto_nombre = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
+    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
     contacto_numero_identificacion = serializers.CharField(
         source='contacto.numero_identificacion', read_only=True, default=None,
     )
@@ -58,7 +58,7 @@ class GenDocumentoInformeSerializer(serializers.ModelSerializer):
             'documento_tipo_id',
             'documento_tipo_nombre',
             'contacto_id',
-            'contacto_nombre',
+            'contacto_nombre_corto',
             'contacto_numero_identificacion',
             'sector_id',
             'sector_nombre',

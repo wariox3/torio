@@ -1,12 +1,9 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import mixins, viewsets
+from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from general.models import GenMetodoPago
-from general.serializers import (
-    GenMetodoPagoSeleccionarSerializer,
-    GenMetodoPagoSerializer,
-)
+from general.serializers import GenMetodoPagoSeleccionarSerializer
 from utilidades.paginacion import SeleccionarPaginacion
 
 _SELECCIONAR_PARAMS = [
@@ -15,18 +12,8 @@ _SELECCIONAR_PARAMS = [
 
 
 @extend_schema(tags=['MetodoPago'])
-class GenMetodoPagoViewSet(
-    mixins.ListModelMixin,
-    mixins.CreateModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.DestroyModelMixin,
-    viewsets.GenericViewSet,
-):
-    serializer_class = GenMetodoPagoSerializer
-
-    def get_queryset(self):
-        return GenMetodoPago.objects.order_by('nombre')
+class GenMetodoPagoViewSet(viewsets.GenericViewSet):
+    serializer_class = GenMetodoPagoSeleccionarSerializer
 
     @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=GenMetodoPagoSeleccionarSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)

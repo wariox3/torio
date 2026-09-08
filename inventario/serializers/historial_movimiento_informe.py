@@ -60,7 +60,7 @@ class InvHistorialMovimientoInformeSerializer(serializers.ModelSerializer):
     documento_tipo_nombre = serializers.CharField(
         source='documento.documento_tipo.nombre', read_only=True,
     )
-    contacto_nombre = serializers.CharField(
+    contacto_nombre_corto = serializers.CharField(
         source='documento.contacto.nombre_corto', read_only=True, default=None,
     )
     item_codigo = serializers.CharField(source='item.codigo', read_only=True, default=None)
@@ -76,7 +76,7 @@ class InvHistorialMovimientoInformeSerializer(serializers.ModelSerializer):
             'documento_fecha',
             'documento_tipo_id',
             'documento_tipo_nombre',
-            'contacto_nombre',
+            'contacto_nombre_corto',
             'item_id',
             'item_codigo',
             'item_nombre',

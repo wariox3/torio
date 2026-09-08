@@ -30,7 +30,7 @@ class GenDocumentoDetallePendienteSerializer(serializers.ModelSerializer):
     documento_numero = serializers.IntegerField(source='documento.numero', read_only=True)
     documento_fecha = serializers.DateField(source='documento.fecha', read_only=True)
     contacto_id = serializers.IntegerField(source='documento.contacto_id', read_only=True)
-    contacto_nombre = serializers.CharField(
+    contacto_nombre_corto = serializers.CharField(
         source='documento.contacto.nombre_corto', read_only=True, default=None,
     )
     item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
@@ -52,7 +52,7 @@ class GenDocumentoDetallePendienteSerializer(serializers.ModelSerializer):
             'documento_numero',
             'documento_fecha',
             'contacto_id',
-            'contacto_nombre',
+            'contacto_nombre_corto',
             'item_id',
             'item_nombre',
             'cantidad',
