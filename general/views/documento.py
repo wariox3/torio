@@ -6,7 +6,7 @@ from django.db.models import Sum
 from django.db.models.functions import TruncMonth
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
@@ -29,15 +29,19 @@ from utilidades.mixins.filtros import BusquedaRequest
 from seguridad.permissions import TienePermisoModelo
 
 
-_IdsRequest = inline_serializer(
-    name='DocumentoIdsRequest',
-    fields={
-        'ids': serializers.ListField(
-            child=serializers.IntegerField(),
-            help_text='Ids de los documentos a procesar.',
-        ),
-    },
-)
+class DocumentoAccionRequestSerializer(serializers.Serializer):
+    """Un documento sobre el que actuar. El id va crudo al servicio, que es quien
+    resuelve la fila con `select_for_update` y responde 404 si no existe."""
+
+    id = serializers.IntegerField(min_value=1, help_text='Id del documento.')
+
+
+class DocumentoIdsRequestSerializer(serializers.Serializer):
+    ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        allow_empty=False,
+        help_text='Ids de los documentos a procesar.',
+    )
 
 
 @extend_schema(tags=['Documento'])
@@ -84,6 +88,21 @@ class GenDocumentoViewSet(
             documento.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    def _queryset_imprimir(self, request):
+        filtros = request.data.get('filtros') or []
+        if not filtros:
+            raise ValidationError('Debe enviar al menos un filtro para imprimir.')
+        campos_filtrables = self._config_lista('campos_filtrables', set())
+        qs = self.get_queryset().select_related('documento_tipo', 'contacto').prefetch_related(
+            'documentos_detalles_documento_rel__item'
+        )
+        qs = aplicar_filtros(qs, filtros, campos_filtrables)
+        if qs.count() > 50:
+            raise ValidationError(
+                'No se pueden imprimir más de 50 documentos a la vez. Afine los filtros.'
+            )
+        return qs
+
     @extend_schema(request=GenDocumentoGenerarSerializer, responses=GenDocumentoSerializer(many=True))
     @action(detail=False, methods=['post'])
     def generar(self, request):
@@ -103,31 +122,23 @@ class GenDocumentoViewSet(
             status=status.HTTP_201_CREATED,
         )
 
+    @extend_schema(request=DocumentoAccionRequestSerializer, responses=GenDocumentoSerializer)
     @action(detail=False, methods=['post'])
     def aprobar(self, request):
-        documento_id = request.data.get('id')
-        if not documento_id:
-            raise ValidationError({'id': 'Este campo es requerido.'})
-        documento = documento_servicio.aprobar(documento_id)
+        serializer = DocumentoAccionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        documento = documento_servicio.aprobar(serializer.validated_data['id'])
         salida = GenDocumentoSerializer(documento)
         return Response(salida.data, status=status.HTTP_200_OK)
 
+    @extend_schema(request=DocumentoAccionRequestSerializer, responses=GenDocumentoSerializer)
     @action(detail=False, methods=['post'])
     def desaprobar(self, request):
-        documento_id = request.data.get('id')
-        if not documento_id:
-            raise ValidationError({'id': 'Este campo es requerido.'})
-        documento = documento_servicio.desaprobar(documento_id)
+        serializer = DocumentoAccionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        documento = documento_servicio.desaprobar(serializer.validated_data['id'])
         salida = GenDocumentoSerializer(documento)
         return Response(salida.data, status=status.HTTP_200_OK)
-
-    def _ids_del_request(self, request):
-        ids = request.data.get('ids')
-        if not ids:
-            raise ValidationError({'ids': 'Este campo es requerido.'})
-        if not isinstance(ids, list):
-            raise ValidationError({'ids': 'Debe ser una lista de ids de documento.'})
-        return ids
 
     @extend_schema(
         summary='Contabilizar documentos',
@@ -136,12 +147,14 @@ class GenDocumentoViewSet(
             'como contabilizado. El lote va en una sola transacción: si un documento '
             'falla, no queda ninguno contabilizado.'
         ),
-        request=_IdsRequest,
+        request=DocumentoIdsRequestSerializer,
         responses=OpenApiTypes.OBJECT,
     )
     @action(detail=False, methods=['post'])
     def contabilizar(self, request):
-        cantidad = contabilizar_servicio.contabilizar(self._ids_del_request(request))
+        serializer = DocumentoIdsRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cantidad = contabilizar_servicio.contabilizar(serializer.validated_data['ids'])
         return Response({'contabilizados': cantidad}, status=status.HTTP_200_OK)
 
     @extend_schema(
@@ -150,28 +163,15 @@ class GenDocumentoViewSet(
             'Borra los movimientos contables de cada documento y le quita el '
             'contabilizado. Mismo criterio de transacción que `contabilizar`.'
         ),
-        request=_IdsRequest,
+        request=DocumentoIdsRequestSerializer,
         responses=OpenApiTypes.OBJECT,
     )
     @action(detail=False, methods=['post'])
     def descontabilizar(self, request):
-        cantidad = contabilizar_servicio.descontabilizar(self._ids_del_request(request))
+        serializer = DocumentoIdsRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cantidad = contabilizar_servicio.descontabilizar(serializer.validated_data['ids'])
         return Response({'descontabilizados': cantidad}, status=status.HTTP_200_OK)
-
-    def _queryset_imprimir(self, request):
-        filtros = request.data.get('filtros') or []
-        if not filtros:
-            raise ValidationError('Debe enviar al menos un filtro para imprimir.')
-        campos_filtrables = self._config_lista('campos_filtrables', set())
-        qs = self.get_queryset().select_related('documento_tipo', 'contacto').prefetch_related(
-            'documentos_detalles_documento_rel__item'
-        )
-        qs = aplicar_filtros(qs, filtros, campos_filtrables)
-        if qs.count() > 50:
-            raise ValidationError(
-                'No se pueden imprimir más de 50 documentos a la vez. Afine los filtros.'
-            )
-        return qs
 
     @extend_schema(request=BusquedaRequest, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=False, methods=['post'])
