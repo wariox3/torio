@@ -34,7 +34,11 @@ from .documento_informe import (
     GenDocumentoInformeExportarSerializer,
     GenDocumentoInformeSerializer,
 )
-from .documento_tipo import GenDocumentoTipoSeleccionarSerializer
+from .documento_tipo import (
+    GenDocumentoTipoActualizarSerializer,
+    GenDocumentoTipoSeleccionarSerializer,
+    GenDocumentoTipoSerializer,
+)
 from .estado import GenEstadoSeleccionarSerializer
 from .festivo import GenFestivoSeleccionarSerializer
 from .forma_pago import GenFormaPagoSerializer
