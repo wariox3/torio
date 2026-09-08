@@ -10,7 +10,15 @@ from general.servicios import crear_detalle
 
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
-    campos_filtrables = {'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion', 'centro_costo_id', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado'}
+    campos_filtrables = {
+        'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id',
+        'contacto__nombre_corto', 'contacto__numero_identificacion',
+        'centro_costo_id', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado',
+        # Banderas del tipo: permiten acotar por naturaleza del documento sin
+        # tener que enumerar los ids de tipo que caen de cada lado.
+        'documento_tipo__pagar', 'documento_tipo__cobrar',
+        'documento_tipo__venta', 'documento_tipo__compra',
+    }
     select_related_lista = ('documento_tipo', 'contacto', 'contacto__precio', 'sector', 'sede', 'centro_costo', 'plazo_pago', 'metodo_pago', 'forma_pago', 'comprobante')
     ordenamiento_default_lista = ('-fecha', '-numero')
 
