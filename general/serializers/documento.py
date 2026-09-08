@@ -11,9 +11,10 @@ from general.servicios import crear_detalle
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
     campos_filtrables = {
-        'id', 'numero', 'fecha', 'documento_tipo_id', 'contacto_id',
+        'id', 'numero', 'fecha', 'fecha_vence', 'documento_tipo_id', 'contacto_id',
         'contacto__nombre_corto', 'contacto__numero_identificacion',
         'centro_costo_id', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado',
+        'afectado', 'pendiente',
         # Banderas del tipo: permiten acotar por naturaleza del documento sin
         # tener que enumerar los ids de tipo que caen de cada lado.
         'documento_tipo__pagar', 'documento_tipo__cobrar',
@@ -87,6 +88,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'impuesto',
             'impuesto_retencion',
             'total',
+            'afectado',
+            'pendiente',
             'salario',
             'horas',
             'horas_diurnas',
@@ -107,6 +110,10 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'impuesto',
             'impuesto_retencion',
             'total',
+            # Saldo de cartera: lo fija `aprobar` y lo mueven las afectaciones y
+            # los pagos. Escribible sería dejar que el cliente se invente el saldo.
+            'afectado',
+            'pendiente',
             'estado_aprobado',
             'estado_anulado',
             'estado_contabilizado',
