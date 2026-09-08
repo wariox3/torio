@@ -19,7 +19,7 @@ _SELECCIONAR_PARAMS = [
 
 
 @extend_schema(tags=['Ciudad'])
-class CtnCiudadViewSet(viewsets.ModelViewSet):
+class CtnCiudadViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CtnCiudadSerializer
     permission_classes = [IsAuthenticated]
 

@@ -19,7 +19,7 @@ _SELECCIONAR_PARAMS = [
 
 
 @extend_schema(tags=['Estado'])
-class CtnEstadoViewSet(viewsets.ModelViewSet):
+class CtnEstadoViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CtnEstadoSerializer
     permission_classes = [IsAuthenticated]
 

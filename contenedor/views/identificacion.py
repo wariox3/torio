@@ -19,7 +19,7 @@ _SELECCIONAR_PARAMS = [
 
 
 @extend_schema(tags=['Identificacion'])
-class CtnIdentificacionViewSet(viewsets.ModelViewSet):
+class CtnIdentificacionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CtnIdentificacionSerializer
     permission_classes = [IsAuthenticated]
 

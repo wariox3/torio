@@ -15,7 +15,7 @@ _LIST_PARAMS = [
 
 
 @extend_schema(tags=['SuscripcionTipo'])
-class CtnSuscripcionTipoViewSet(viewsets.ModelViewSet):
+class CtnSuscripcionTipoViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CtnSuscripcionTipoSerializer
     permission_classes = [IsAuthenticated]
 

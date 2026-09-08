@@ -17,7 +17,7 @@ _SELECCIONAR_PARAMS = [
 
 
 @extend_schema(tags=['Pais'])
-class CtnPaisViewSet(viewsets.ModelViewSet):
+class CtnPaisViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CtnPaisSerializer
     permission_classes = [IsAuthenticated]
 
