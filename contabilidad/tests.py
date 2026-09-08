@@ -918,54 +918,6 @@ class AuxiliarCuentaTests(_AuxiliarMixin, BalancePruebaTests):
             [Decimal(30)],
         )
 
-    # ------------------------------------------------------------- filtros ----
-
-    def test_filtra_por_numero(self):
-        """El auxiliar general identifica cada asiento, así que se puede acotar a uno."""
-        uno = self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.uno)
-        dos = self._movimiento(self.caja, date(2026, 1, 6), debito=70, contacto=self.uno)
-        ConMovimiento.objects.filter(id=uno.id).update(numero=77)
-        ConMovimiento.objects.filter(id=dos.id).update(numero=88)
-
-        filas = self._lista(filtros=[
-            {'propiedad': 'numero', 'operador': '=', 'valor': 77},
-        ])
-
-        self.assertEqual([f['numero'] for f in self._movimientos(filas)], [77])
-        self.assertEqual(Decimal(self._fila(self._auxiliares(filtros=[
-            {'propiedad': 'numero', 'operador': '=', 'valor': 77},
-        ]), '11050505')['debito']), Decimal(30))
-
-    def test_filtra_por_contacto(self):
-        self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.uno)
-        self._movimiento(self.caja, date(2026, 1, 6), debito=70, contacto=self.dos)
-
-        filas = self._lista(filtros=[
-            {'propiedad': 'contacto_id', 'operador': '=', 'valor': self.uno.id},
-        ])
-
-        self.assertEqual(
-            [f['identificacion'] for f in self._movimientos(filas)], ['900000001'],
-        )
-        self.assertEqual(Decimal(self._fila(self._auxiliares(filtros=[
-            {'propiedad': 'contacto_id', 'operador': '=', 'valor': self.uno.id},
-        ]), '11050505')['debito']), Decimal(30))
-
-    def test_filtra_por_comprobante(self):
-        otro = ConComprobante.objects.create(id=2, nombre='Otro comprobante')
-        uno = self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.uno)
-        dos = self._movimiento(self.caja, date(2026, 1, 6), debito=70, contacto=self.uno)
-        ConMovimiento.objects.filter(id=dos.id).update(comprobante=otro)
-
-        filas = self._lista(filtros=[
-            {'propiedad': 'comprobante_id', 'operador': '=', 'valor': otro.id},
-        ])
-        movimientos = self._movimientos(filas)
-
-        self.assertEqual([f['comprobante'] for f in movimientos], ['Otro comprobante'])
-        self.assertEqual([f['movimiento_id'] for f in movimientos], [dos.id])
-        self.assertNotIn(uno.id, [f['movimiento_id'] for f in movimientos])
-
     def test_el_movimiento_sin_contacto_baja_igual(self):
         """El informe es por cuenta: que el asiento no tenga tercero no lo excluye."""
         self._movimiento(self.caja, date(2026, 1, 5), debito=30)
@@ -1075,6 +1027,53 @@ class AuxiliarGeneralTests(_AuxiliarMixin, BalancePruebaContactoTests):
         self.assertEqual([fila['identificacion'] for fila in filas], ['900000001', None])
 
 
+    # ------------------------------------------------------------- filtros ----
+
+    def test_filtra_por_numero(self):
+        """El auxiliar general identifica cada asiento, así que se puede acotar a uno."""
+        uno = self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.uno)
+        dos = self._movimiento(self.caja, date(2026, 1, 6), debito=70, contacto=self.uno)
+        ConMovimiento.objects.filter(id=uno.id).update(numero=77)
+        ConMovimiento.objects.filter(id=dos.id).update(numero=88)
+
+        filas = self._lista(filtros=[
+            {'propiedad': 'numero', 'operador': '=', 'valor': 77},
+        ])
+
+        self.assertEqual([f['numero'] for f in self._movimientos(filas)], [77])
+        self.assertEqual(Decimal(self._fila(self._auxiliares(filtros=[
+            {'propiedad': 'numero', 'operador': '=', 'valor': 77},
+        ]), '11050505')['debito']), Decimal(30))
+
+    def test_filtra_por_contacto(self):
+        self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.uno)
+        self._movimiento(self.caja, date(2026, 1, 6), debito=70, contacto=self.dos)
+
+        filas = self._lista(filtros=[
+            {'propiedad': 'contacto_id', 'operador': '=', 'valor': self.uno.id},
+        ])
+
+        self.assertEqual(
+            [f['identificacion'] for f in self._movimientos(filas)], ['900000001'],
+        )
+        self.assertEqual(Decimal(self._fila(self._auxiliares(filtros=[
+            {'propiedad': 'contacto_id', 'operador': '=', 'valor': self.uno.id},
+        ]), '11050505')['debito']), Decimal(30))
+
+    def test_filtra_por_comprobante(self):
+        otro = ConComprobante.objects.create(id=2, nombre='Otro comprobante')
+        uno = self._movimiento(self.caja, date(2026, 1, 5), debito=30, contacto=self.uno)
+        dos = self._movimiento(self.caja, date(2026, 1, 6), debito=70, contacto=self.uno)
+        ConMovimiento.objects.filter(id=dos.id).update(comprobante=otro)
+
+        filas = self._lista(filtros=[
+            {'propiedad': 'comprobante_id', 'operador': '=', 'valor': otro.id},
+        ])
+        movimientos = self._movimientos(filas)
+
+        self.assertEqual([f['comprobante'] for f in movimientos], ['Otro comprobante'])
+        self.assertEqual([f['movimiento_id'] for f in movimientos], [dos.id])
+        self.assertNotIn(uno.id, [f['movimiento_id'] for f in movimientos])
 
 class _InformePlanoMixin:
     """
