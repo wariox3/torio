@@ -27,8 +27,8 @@ class GenDocumentoDetallePendienteSerializer(serializers.ModelSerializer):
     prefetch_related_lista = ('item__items_impuestos_item_rel__impuesto',)
     ordenamiento_default_lista = ('-documento__fecha', '-id')
 
-    numero = serializers.IntegerField(source='documento.numero', read_only=True)
-    fecha = serializers.DateField(source='documento.fecha', read_only=True)
+    documento_numero = serializers.IntegerField(source='documento.numero', read_only=True)
+    documento_fecha = serializers.DateField(source='documento.fecha', read_only=True)
     contacto_id = serializers.IntegerField(source='documento.contacto_id', read_only=True)
     contacto_nombre = serializers.CharField(
         source='documento.contacto.nombre_corto', read_only=True, default=None,
@@ -49,8 +49,8 @@ class GenDocumentoDetallePendienteSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'documento',
-            'numero',
-            'fecha',
+            'documento_numero',
+            'documento_fecha',
             'contacto_id',
             'contacto_nombre',
             'item_id',

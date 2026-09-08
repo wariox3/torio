@@ -8,7 +8,7 @@ from seguridad.models import CAMPOS_ACCESO
 class CtnInvitacionSerializer(serializers.ModelSerializer):
     cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True)
     usuario_nombre_corto = serializers.CharField(source='usuario.nombre_corto', read_only=True)
-    usuario_correo = serializers.CharField(source='usuario.email', read_only=True)
+    usuario_email = serializers.CharField(source='usuario.email', read_only=True)
     grupos_nombres = serializers.SlugRelatedField(
         source='grupos', slug_field='name', many=True, read_only=True,
     )
@@ -17,12 +17,12 @@ class CtnInvitacionSerializer(serializers.ModelSerializer):
         model = CtnInvitacion
         fields = [
             'id', 'cliente', 'cliente_nombre',
-            'usuario', 'usuario_nombre_corto', 'usuario_correo',
+            'usuario', 'usuario_nombre_corto', 'usuario_email',
             'usuario_invitado',
             'grupos', 'grupos_nombres', 'estado', 'fecha',
             *CAMPOS_ACCESO,
         ]
-        read_only_fields = ['id', 'cliente', 'cliente_nombre', 'usuario', 'usuario_nombre_corto', 'usuario_correo', 'usuario_invitado', 'grupos', 'estado', 'fecha', *CAMPOS_ACCESO]
+        read_only_fields = ['id', 'cliente', 'cliente_nombre', 'usuario', 'usuario_nombre_corto', 'usuario_email', 'usuario_invitado', 'grupos', 'estado', 'fecha', *CAMPOS_ACCESO]
 
 
 class CtnInvitacionClienteSerializer(serializers.ModelSerializer):

@@ -9,7 +9,7 @@ class GenLog(models.Model):
     objeto_id = models.CharField(max_length=50, db_index=True)
     datos = models.JSONField(null=True, encoder=DjangoJSONEncoder)
     usuario_id = models.BigIntegerField(null=True, db_index=True)
-    usuario_correo = models.CharField(max_length=255, null=True)
+    usuario_email = models.CharField(max_length=255, null=True)
 
     class Meta:
         db_table = 'gen_log'

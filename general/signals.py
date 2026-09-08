@@ -86,14 +86,14 @@ def _crear_log(*, accion_codigo: str, instance, datos=None):
     modelo_id = _id_modelo(type(instance))
     if accion_id is None or modelo_id is None:
         return
-    usuario_id, usuario_correo = _datos_usuario()
+    usuario_id, usuario_email = _datos_usuario()
     GenLog.objects.create(
         accion_id=accion_id,
         modelo_id=modelo_id,
         objeto_id=str(instance.pk),
         datos=datos,
         usuario_id=usuario_id,
-        usuario_correo=usuario_correo,
+        usuario_email=usuario_email,
     )
 
 

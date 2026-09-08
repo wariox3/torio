@@ -33,7 +33,7 @@ class CtnClienteActualizarSerializer(serializers.ModelSerializer):
 class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
     cliente_id = serializers.IntegerField(source='cliente.id', read_only=True)
     schema_name = serializers.CharField(source='cliente.schema_name', read_only=True)
-    nombre = serializers.CharField(source='cliente.nombre', read_only=True)
+    cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True)
     activo = serializers.BooleanField(source='cliente.activo', read_only=True)
     dominio = serializers.SerializerMethodField()
     suscripcion_id = serializers.IntegerField(source='cliente.suscripcion.id', read_only=True)
@@ -46,7 +46,7 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = SegUsuarioCliente
         fields = [
-            'cliente_id', 'schema_name', 'nombre', 'activo', 'dominio',
+            'cliente_id', 'schema_name', 'cliente_nombre', 'activo', 'dominio',
             'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
             'suscripcion_suscripcion_tipo_nombre',
             'propietario',

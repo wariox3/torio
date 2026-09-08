@@ -25,5 +25,5 @@ class GenLogSerializer(serializers.ModelSerializer):
             'objeto_id',
             'datos',
             'usuario_id',
-            'usuario_correo',
+            'usuario_email',
         ]
