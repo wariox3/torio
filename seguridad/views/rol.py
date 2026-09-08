@@ -5,5 +5,5 @@ from seguridad.serializers import SegRolSerializer
 
 
 class SegRolViewSet(viewsets.ModelViewSet):
-    queryset = SegRol.objects.all().prefetch_related('permisos')
+    queryset = SegRol.objects.all()
     serializer_class = SegRolSerializer
