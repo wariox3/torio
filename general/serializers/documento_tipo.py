@@ -21,6 +21,7 @@ class GenDocumentoTipoSerializer(serializers.ModelSerializer):
     select_related_lista = ('documento_clase', 'resolucion', 'cuenta_cobrar', 'cuenta_pagar', 'comprobante')
 
     documento_clase_nombre = serializers.CharField(source='documento_clase.nombre', read_only=True, default=None)
+    resolucion_prefijo = serializers.CharField(source='resolucion.prefijo', read_only=True, default=None)
     resolucion_numero = serializers.CharField(source='resolucion.numero', read_only=True, default=None)
     cuenta_cobrar_codigo = serializers.CharField(source='cuenta_cobrar.codigo', read_only=True, default=None)
     cuenta_cobrar_nombre = serializers.CharField(source='cuenta_cobrar.nombre', read_only=True, default=None)
@@ -50,6 +51,7 @@ class GenDocumentoTipoSerializer(serializers.ModelSerializer):
             'documento_clase',
             'documento_clase_nombre',
             'resolucion',
+            'resolucion_prefijo',
             'resolucion_numero',
             'cuenta_cobrar',
             'cuenta_cobrar_codigo',
