@@ -24,6 +24,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
+    documento_tipo_operacion = serializers.IntegerField(source='documento_tipo.operacion', read_only=True)
     documento_tipo_cuenta_cobrar_id = serializers.IntegerField(source='documento_tipo.cuenta_cobrar_id', read_only=True, default=None)
     documento_tipo_cuenta_cobrar_codigo = serializers.CharField(source='documento_tipo.cuenta_cobrar.codigo', read_only=True, default=None)
     documento_tipo_cuenta_cobrar_nombre = serializers.CharField(source='documento_tipo.cuenta_cobrar.nombre', read_only=True, default=None)
@@ -60,6 +61,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'comentario',
             'documento_tipo',
             'documento_tipo_nombre',
+            'documento_tipo_operacion',
             'documento_tipo_cuenta_cobrar_id',
             'documento_tipo_cuenta_cobrar_codigo',
             'documento_tipo_cuenta_cobrar_nombre',
