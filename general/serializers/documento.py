@@ -24,8 +24,10 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
+    documento_tipo_cuenta_cobrar_id = serializers.IntegerField(source='documento_tipo.cuenta_cobrar_id', read_only=True, default=None)
     documento_tipo_cuenta_cobrar_codigo = serializers.CharField(source='documento_tipo.cuenta_cobrar.codigo', read_only=True, default=None)
     documento_tipo_cuenta_cobrar_nombre = serializers.CharField(source='documento_tipo.cuenta_cobrar.nombre', read_only=True, default=None)
+    documento_tipo_cuenta_pagar_id = serializers.IntegerField(source='documento_tipo.cuenta_pagar_id', read_only=True, default=None)
     documento_tipo_cuenta_pagar_codigo = serializers.CharField(source='documento_tipo.cuenta_pagar.codigo', read_only=True, default=None)
     documento_tipo_cuenta_pagar_nombre = serializers.CharField(source='documento_tipo.cuenta_pagar.nombre', read_only=True, default=None)
     contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
@@ -58,8 +60,10 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'comentario',
             'documento_tipo',
             'documento_tipo_nombre',
+            'documento_tipo_cuenta_cobrar_id',
             'documento_tipo_cuenta_cobrar_codigo',
             'documento_tipo_cuenta_cobrar_nombre',
+            'documento_tipo_cuenta_pagar_id',
             'documento_tipo_cuenta_pagar_codigo',
             'documento_tipo_cuenta_pagar_nombre',
             'contacto',
