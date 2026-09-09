@@ -20,10 +20,14 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         'documento_tipo__pagar', 'documento_tipo__cobrar',
         'documento_tipo__venta', 'documento_tipo__compra',
     }
-    select_related_lista = ('documento_tipo', 'contacto', 'contacto__precio', 'sector', 'sede', 'centro_costo', 'plazo_pago', 'metodo_pago', 'forma_pago', 'comprobante')
+    select_related_lista = ('documento_tipo', 'documento_tipo__cuenta_cobrar', 'documento_tipo__cuenta_pagar', 'contacto', 'contacto__precio', 'sector', 'sede', 'centro_costo', 'plazo_pago', 'metodo_pago', 'forma_pago', 'comprobante')
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
+    documento_tipo_cuenta_cobrar_codigo = serializers.CharField(source='documento_tipo.cuenta_cobrar.codigo', read_only=True, default=None)
+    documento_tipo_cuenta_cobrar_nombre = serializers.CharField(source='documento_tipo.cuenta_cobrar.nombre', read_only=True, default=None)
+    documento_tipo_cuenta_pagar_codigo = serializers.CharField(source='documento_tipo.cuenta_pagar.codigo', read_only=True, default=None)
+    documento_tipo_cuenta_pagar_nombre = serializers.CharField(source='documento_tipo.cuenta_pagar.nombre', read_only=True, default=None)
     contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
     contacto_numero_identificacion = serializers.CharField(source='contacto.numero_identificacion', read_only=True, default=None)
     contacto_precio_id = serializers.IntegerField(source='contacto.precio_id', read_only=True, default=None)
@@ -54,6 +58,10 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'comentario',
             'documento_tipo',
             'documento_tipo_nombre',
+            'documento_tipo_cuenta_cobrar_codigo',
+            'documento_tipo_cuenta_cobrar_nombre',
+            'documento_tipo_cuenta_pagar_codigo',
+            'documento_tipo_cuenta_pagar_nombre',
             'contacto',
             'contacto_nombre_corto',
             'contacto_numero_identificacion',
