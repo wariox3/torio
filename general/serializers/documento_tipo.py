@@ -12,6 +12,12 @@ class GenDocumentoTipoSeleccionarSerializer(serializers.ModelSerializer):
 class GenDocumentoTipoSerializer(serializers.ModelSerializer):
     """Lectura del tipo completo, para la pantalla que edita su configuración."""
 
+    # Config consumida por FiltrosDinamicosMixin
+    campos_filtrables = {
+        'id', 'nombre', 'consecutivo', 'documento_clase',
+        'venta', 'compra', 'cobrar', 'pagar',
+    }
+    ordenamiento_default_lista = ('nombre',)
     select_related_lista = ('documento_clase', 'resolucion', 'cuenta_cobrar', 'cuenta_pagar', 'comprobante')
 
     documento_clase_nombre = serializers.CharField(source='documento_clase.nombre', read_only=True, default=None)

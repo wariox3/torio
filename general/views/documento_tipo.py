@@ -8,6 +8,7 @@ from general.serializers import (
     GenDocumentoTipoSeleccionarSerializer,
     GenDocumentoTipoSerializer,
 )
+from utilidades.mixins import FiltrosDinamicosMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
 _LIST_PARAMS = [
@@ -21,6 +22,7 @@ _SELECCIONAR_PARAMS = [
 
 @extend_schema(tags=['Documento tipo'])
 class GenDocumentoTipoViewSet(
+    FiltrosDinamicosMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
