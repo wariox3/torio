@@ -14,7 +14,7 @@ class GenDocumentoTipoSerializer(serializers.ModelSerializer):
 
     # Config consumida por FiltrosDinamicosMixin
     campos_filtrables = {
-        'id', 'nombre', 'consecutivo', 'documento_clase',
+        'id', 'nombre', 'consecutivo', 'documento_clase', 'resolucion',
         'venta', 'compra', 'cobrar', 'pagar',
     }
     ordenamiento_default_lista = ('nombre',)
@@ -60,7 +60,7 @@ class GenDocumentoTipoSerializer(serializers.ModelSerializer):
             'comprobante',
             'comprobante_nombre',
         ]
-        # Solo se editan los tres de `GenDocumentoTipoActualizarSerializer`; el
+        # Solo se editan los cuatro de `GenDocumentoTipoActualizarSerializer`; el
         # resto describe la naturaleza del tipo y viene del fixture.
         read_only_fields = fields
 
@@ -68,7 +68,8 @@ class GenDocumentoTipoSerializer(serializers.ModelSerializer):
 class GenDocumentoTipoActualizarSerializer(serializers.ModelSerializer):
     """
     Lo único configurable por tenant de un catálogo que por lo demás es normativo:
-    su numeración y las contrapartidas de cartera de su plan de cuentas.
+    su numeración, la resolución contra la que se numera y las contrapartidas de
+    cartera de su plan de cuentas.
 
     Los demás campos no son escribibles porque no están acá, no por una regla
     aparte: lo que no se declara, DRF lo ignora.
@@ -78,5 +79,5 @@ class GenDocumentoTipoActualizarSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = GenDocumentoTipo
-        fields = ['id', 'consecutivo', 'cuenta_cobrar', 'cuenta_pagar']
+        fields = ['id', 'consecutivo', 'resolucion', 'cuenta_cobrar', 'cuenta_pagar']
         read_only_fields = ['id']
