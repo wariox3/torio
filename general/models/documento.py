@@ -2,7 +2,13 @@ from decimal import Decimal
 
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.db.models import Sum
+from django.db.models import Q, Sum
+
+
+# El egreso no tiene líneas comerciales de las que derivar un total: sus detalles
+# son apuntes contables. Mismo id que `contabilizar.DOCUMENTO_TIPO_EGRESO`, que es
+# quien lo lleva al banco.
+DOCUMENTO_TIPO_EGRESO = 8
 
 
 class GenDocumento(models.Model):
@@ -212,3 +218,21 @@ class GenDocumento(models.Model):
         self.horas_programadas = agregados['horas_programadas'] or cero
         self.horas_diurnas_programadas = agregados['horas_diurnas_programadas'] or cero
         self.horas_nocturnas_programadas = agregados['horas_nocturnas_programadas'] or cero
+
+        if self.documento_tipo_id == DOCUMENTO_TIPO_EGRESO:
+            # Los detalles del egreso son apuntes contables, y `calcular()` no
+            # corre sobre ellos: su `total` queda en cero y la suma de arriba
+            # dejaría el egreso en cero también. Lo que vale es el neto del
+            # asiento, así que sale de `precio` agrupado por `naturaleza` —lo
+            # mismo que suma `documento._validar_partida_doble`—, y no de los
+            # derivados del detalle.
+            #
+            # Va en su propia consulta y no en el `aggregate` de arriba: ahí
+            # `total` ya es el alias de `Sum('total')`, y un `Sum(..., filter=)`
+            # en la misma llamada se resolvería contra el alias y no contra el
+            # campo.
+            por_lado = self.documentos_detalles_documento_rel.aggregate(
+                debito=Sum('precio', filter=Q(naturaleza='D')),
+                credito=Sum('precio', filter=Q(naturaleza='C')),
+            )
+            self.total = (por_lado['debito'] or cero) - (por_lado['credito'] or cero)
