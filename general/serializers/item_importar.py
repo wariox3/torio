@@ -39,7 +39,7 @@ class GenItemImportarSerializer(serializers.Serializer):
         ('cuenta_compra.id', 'Cuenta compra'),
         ('cuenta_costo_venta.id', 'Cuenta costo venta'),
         ('cuenta_inventario.id', 'Cuenta inventario'),
-        ('impuestos', 'Impuestos'),
+        ('impuestos', 'Impuestos (IDs)'),
     )
     campos_requeridos = {'nombre'}
 

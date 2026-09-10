@@ -34,7 +34,7 @@ class GenItemExportarSerializer(serializers.Serializer):
         ('cuenta_compra.nombre', 'Cuenta compra'),
         ('cuenta_costo_venta.nombre', 'Cuenta costo venta'),
         ('cuenta_inventario.nombre', 'Cuenta inventario'),
-        ('impuestos', 'Impuestos'),
+        ('impuestos', 'Impuestos (IDs)'),
     )
 
     @staticmethod
