@@ -1803,16 +1803,25 @@ class DescontabilizarTests(_ContabilizarBase):
             documento_tipo=cierre_tipo, fecha=date(2026, 1, 15),
             fecha_contable=date(2026, 1, 15), numero=1, estado_aprobado=True,
         )
+        # El asiento va con su contrapartida: `_verificar_cuadre` no contabiliza
+        # un documento descuadrado, y lo que se prueba acá es el periodo y la
+        # marca de cierre, no el cuadre.
         GenDocumentoDetalle.objects.create(
             documento=documento, tipo_registro='C', cuenta=self.cuenta_venta,
             naturaleza='D', precio=Decimal('50'),
         )
+        GenDocumentoDetalle.objects.create(
+            documento=documento, tipo_registro='C', cuenta=self.cuenta_pagar,
+            naturaleza='C', precio=Decimal('50'),
+        )
 
         contabilizar.contabilizar([documento.pk])
 
-        movimiento = ConMovimiento.objects.filter(documento=documento).first()
-        self.assertEqual(movimiento.periodo_id, self.periodo.pk)
-        self.assertTrue(movimiento.cierre)
+        movimientos = ConMovimiento.objects.filter(documento=documento)
+        self.assertEqual(movimientos.count(), 2)
+        for movimiento in movimientos:
+            self.assertEqual(movimiento.periodo_id, self.periodo.pk)
+            self.assertTrue(movimiento.cierre)
 
 
 class _MovimientoViewSinPermisos(ConMovimientoViewSet):

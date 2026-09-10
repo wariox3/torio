@@ -21,6 +21,7 @@ from contabilidad.serializers import (
     ConMovimientoInformeEstadoSerializer,
     ConMovimientoInformeEstadoTotalesSerializer,
 )
+from contabilidad.formatos import FormatoCertificadoRetencion
 from contabilidad.servicios import balance, balance_excel
 from general.models import GenConfiguracion
 from utilidades.filtros import aplicar_filtros
@@ -104,6 +105,10 @@ INFORMES = {
         'serializer': ConMovimientoInformeCertificadoSerializer,
         'totales': ConMovimientoInformeCertificadoTotalesSerializer,
         'excel': balance_excel.CERTIFICADO_RETENCION,
+        # Único informe con salida en PDF: el certificado es un documento que se
+        # entrega al tercero, no una tabla que se consulta. Los demás informes no
+        # declaran `pdf` y la acción los rechaza.
+        'pdf': FormatoCertificadoRetencion,
     },
     'estado_resultados': {
         'agrupar': balance.estado_resultados,
@@ -333,6 +338,30 @@ class ConMovimientoInformeViewSet(FiltrosDinamicosMixin, viewsets.GenericViewSet
         return response
 
     @extend_schema(
+        summary='Exportar a PDF',
+        description=(
+            'Solo `certificado_retencion`: devuelve un PDF con una hoja por '
+            'tercero. Los demás informes responden 400.'
+        ),
+        request=_InformeRequest,
+        responses={(200, 'application/pdf'): OpenApiTypes.BINARY},
+    )
+    @action(detail=False, methods=['post'])
+    def pdf(self, request):
+        formato = self._informe().get('pdf')
+        if formato is None:
+            raise ValidationError({
+                'informe': 'Este informe no tiene salida en PDF.',
+            })
+        desde, hasta = self._rango()
+        contenido, nombre = formato(
+            self._filas(request), self._configuracion(), desde, hasta,
+        ).pdf()
+        response = HttpResponse(contenido, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{nombre}"'
+        return response
+
+    @extend_schema(
         summary='Totales del informe',
         description=(
             'Devuelve los totales del informe completo (sin paginar), sumando las '
@@ -349,6 +378,15 @@ class ConMovimientoInformeViewSet(FiltrosDinamicosMixin, viewsets.GenericViewSet
             self._filas(request), serializer.tipo_fila, serializer.columnas,
         )
         return Response(serializer(totales).data)
+
+    @staticmethod
+    def _configuracion():
+        """La configuración del tenant, de donde salen los datos del agente retenedor."""
+        return (
+            GenConfiguracion.objects
+            .select_related('gen_empresa_ciudad__estado')
+            .first()
+        )
 
     @staticmethod
     def _empresa():
