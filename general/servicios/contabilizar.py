@@ -12,6 +12,7 @@ from django.db import transaction
 from rest_framework.exceptions import NotFound, ValidationError
 
 from contabilidad.models import ConMovimiento, ConPeriodo
+from contabilidad.servicios.movimiento import TOLERANCIA_DESCUADRE
 from general.models import GenDocumento, GenDocumentoImpuesto
 from seguridad.contexto import obtener_usuario_actual
 from humano.models import (
@@ -47,12 +48,8 @@ DOCUMENTO_TIPO_PAGO = 4
 DOCUMENTO_TIPO_EGRESO = 8
 DOCUMENTO_TIPO_ASIENTO = 13
 DOCUMENTO_TIPO_NOMINA = 14
-DOCUMENTO_TIPO_PRIMA = 20
 DOCUMENTO_TIPO_SEGURIDAD_SOCIAL = 22
 DOCUMENTO_TIPO_CIERRE = 25
-
-# Mes 13: el periodo de ajustes y cierre (ver `ConPeriodo.mes`).
-MES_CIERRE = 13
 
 # Conceptos de nómina cuyo movimiento se detalla con el empleado en vez del
 # nombre del concepto.
@@ -64,20 +61,6 @@ PROVISIONES = (
     ('provision_interes', 'INTERES'),
     ('provision_prima', 'PRIMA'),
     ('provision_vacacion', 'VACACION'),
-)
-
-# Cuánto se precarga para armar el asiento sin una query por línea.
-_RELACIONES_DOCUMENTO = (
-    'documento_tipo', 'documento_tipo__cuenta_cobrar', 'documento_tipo__cuenta_pagar',
-    'contacto', 'sede', 'forma_pago__cuenta', 'cuenta_banco__cuenta', 'contrato',
-)
-_RELACIONES_DETALLE = (
-    'cuenta', 'concepto', 'contrato',
-    'item__cuenta_venta', 'item__cuenta_compra',
-    'item__cuenta_costo_venta', 'item__cuenta_inventario',
-    'activo__cuenta_gasto', 'activo__cuenta_depreciacion', 'activo__centro_costo',
-    'documento_detalle_afectado__documento__documento_tipo',
-    'documento_detalle_afectado__documento__cuenta',
 )
 
 
@@ -133,6 +116,7 @@ def _contabilizar_documento(documento_id):
     # periodo no se podría cerrar nunca.
     if not documento.estado_anulado:
         movimientos, campos_actualizar = _movimientos(documento, periodo, campos_actualizar)
+        _verificar_cuadre(documento, movimientos)
         ConMovimiento.objects.bulk_create(movimientos)
 
     documento.estado_contabilizado = True
@@ -146,9 +130,8 @@ def _descontabilizar_documento(documento_id):
         raise ValidationError(f'El documento {documento_id} no está contabilizado.')
 
     # El periodo sale de los propios movimientos y no de recalcularlo desde la
-    # fecha: un cierre se contabiliza en el periodo 13 y una prima en el de
-    # `fecha_hasta`, así que recalcular buscaría un periodo distinto del que
-    # realmente se afectó.
+    # fecha: `fecha_contable` pudo cambiar después de contabilizar, y entonces
+    # recalcular revisaría un periodo distinto del que realmente se afectó.
     periodo_ids = set(
         ConMovimiento.objects.filter(documento_id=documento_id)
         .values_list('periodo_id', flat=True)
@@ -173,7 +156,11 @@ def _documento_bloqueado(documento_id):
         # select_related, PostgreSQL no permite un FOR UPDATE sobre los LEFT JOIN
         # que generan las FK nulables.
         GenDocumento.objects.select_for_update(of=('self',))
-        .select_related(*_RELACIONES_DOCUMENTO)
+        # Se precarga todo lo que lee el asiento, para no hacer una query por FK.
+        .select_related(
+            'documento_tipo', 'documento_tipo__cuenta_cobrar', 'documento_tipo__cuenta_pagar',
+            'contacto', 'sede', 'forma_pago__cuenta', 'cuenta_banco__cuenta', 'contrato',
+        )
         .filter(pk=documento_id)
         .first()
     )
@@ -184,59 +171,43 @@ def _documento_bloqueado(documento_id):
 
 # ---------------------------------------------------------------- periodo ----
 
-def _periodo_id(documento):
-    if documento.documento_tipo_id == DOCUMENTO_TIPO_CIERRE:
-        # El cierre no cae en su mes: va al periodo 13, el de ajustes del año.
-        fecha = _fecha_exigida(documento, 'fecha', documento.fecha)
-        return ConPeriodo.calcular_id(fecha.year, MES_CIERRE)
-
-    if documento.documento_tipo_id == DOCUMENTO_TIPO_PRIMA:
-        fecha = _fecha_exigida(documento, 'fecha_hasta', documento.fecha_hasta)
-    else:
-        fecha = _fecha_exigida(documento, 'fecha_contable', documento.fecha_contable)
-    return ConPeriodo.calcular_id(fecha.year, fecha.month)
-
-
-def _fecha_exigida(documento, nombre, valor):
-    # Las tres fechas son nullables y de ellas sale el periodo: sin fecha no hay
-    # periodo que afectar, y conviene decirlo en vez de fallar al derivarlo.
-    if valor is None:
-        raise ValidationError(
-            f'El documento {documento.pk} no tiene `{nombre}` y no se puede '
-            f'determinar el periodo contable.'
-        )
-    return valor
-
-
 def _periodo(documento):
-    periodo_id = _periodo_id(documento)
+    """El periodo es siempre el de `fecha_contable`, sin excepciones por tipo."""
+    fecha = documento.fecha_contable
+    # `fecha_contable` es nullable y de ella sale el periodo: sin fecha no hay
+    # periodo que afectar, y conviene decirlo en vez de fallar al derivarlo.
+    if fecha is None:
+        raise ValidationError(f'El documento {documento.pk} no tiene `fecha_contable` y no se puede determinar el periodo contable.')
+
+    periodo_id = ConPeriodo.calcular_id(fecha.year, fecha.month)
     periodo = ConPeriodo.objects.filter(pk=periodo_id).first()
     if periodo is None:
         raise ValidationError(f'El periodo contable {periodo_id} no existe.')
     if periodo.estado_bloqueado:
-        raise ValidationError(
-            f'El periodo {periodo_id} está bloqueado y no es posible contabilizar '
-            f'el documento {documento.pk}.'
-        )
+        raise ValidationError(f'El periodo {periodo_id} está bloqueado y no es posible contabilizar el documento {documento.pk}.')
     return periodo
 
 
-def _comprobante_id(documento):
-    # El asiento lleva el comprobante que eligió el usuario; los demás tipos, el
-    # de su tipo de documento.
-    if documento.documento_tipo_id == DOCUMENTO_TIPO_ASIENTO:
-        comprobante_id = documento.comprobante_id
-    else:
-        comprobante_id = documento.documento_tipo.comprobante_id
-    if comprobante_id is None:
-        raise ValidationError(
-            f'El documento {documento.pk} no tiene comprobante: ni el documento ni '
-            f'su tipo «{documento.documento_tipo.nombre}» lo tienen establecido.'
-        )
-    return comprobante_id
-
-
 # ------------------------------------------------------------ movimientos ----
+
+def _verificar_cuadre(documento, movimientos):
+    """
+    Un asiento descuadrado no se contabiliza.
+
+    Sin esta comprobación el documento quedaría contabilizado y el descuadre solo
+    aparecería después en `movimiento.analizar_inconsistencias`, impidiendo cerrar
+    el periodo con el asiento ya guardado. Se usa la tolerancia de ese mismo
+    análisis para que no se pueda contabilizar algo que él vaya a marcar.
+    """
+    debito = sum((movimiento.debito for movimiento in movimientos), CERO)
+    credito = sum((movimiento.credito for movimiento in movimientos), CERO)
+    diferencia = debito - credito
+    if abs(diferencia) > TOLERANCIA_DESCUADRE:
+        raise ValidationError(
+            f'El documento {documento.pk} queda descuadrado: débito {debito} '
+            f'contra crédito {credito} (diferencia {diferencia}).'
+        )
+
 
 def _movimiento(comun, cuenta, signo, valor, detalle, etiqueta,
                 contacto_id=None, centro_costo_id=None, base=CERO, cierre=False):
@@ -291,21 +262,17 @@ def _usuario_actual_id():
 
 def _movimientos(documento, periodo, campos_actualizar):
     """Devuelve (movimientos, campos del documento a guardar)."""
-    tipo = documento.documento_tipo
-    if (tipo.cobrar or tipo.pagar or tipo.venta or tipo.compra) and tipo.operacion not in (1, -1):
-        # De `operacion` sale la naturaleza de casi todo el asiento; en 0 saldría
-        # todo acreditado sin que nadie lo note.
-        raise ValidationError(
-            f'El tipo de documento «{tipo.nombre}» debe tener operación 1 o -1 '
-            f'para poder contabilizarse.'
-        )
+
+    comprobante_id = documento.documento_tipo.comprobante_id
+    if comprobante_id is None:
+        raise ValidationError(f'El documento {documento.pk} no tiene comprobante')
 
     comun = {
         'documento_id': documento.pk,
         'periodo_id': periodo.pk,
         'numero': documento.numero,
         'fecha': documento.fecha_contable,
-        'comprobante_id': _comprobante_id(documento),
+        'comprobante_id': comprobante_id,
         # Quién contabiliza. Fuera de un request (un comando, el shell) queda en
         # null, igual que en `gen_log`.
         'usuario_id': _usuario_actual_id(),
@@ -383,8 +350,15 @@ def _movimientos_cartera(documento, comun, campos_actualizar):
 
 def _movimientos_detalles(documento, comun):
     movimientos = []
-    detalles = (documento.documentos_detalles_documento_rel
-                .select_related(*_RELACIONES_DETALLE))
+    # Se precarga todo lo que leen las ramas de abajo, para no hacer una query por línea.
+    detalles = documento.documentos_detalles_documento_rel.select_related(
+        'cuenta', 'concepto', 'contrato',
+        'item__cuenta_venta', 'item__cuenta_compra',
+        'item__cuenta_costo_venta', 'item__cuenta_inventario',
+        'activo__cuenta_gasto', 'activo__cuenta_depreciacion', 'activo__centro_costo',
+        'documento_detalle_afectado__documento__documento_tipo',
+        'documento_detalle_afectado__documento__cuenta',
+    )
     for detalle in detalles:
         if detalle.documento_detalle_afectado_id is not None:
             movimientos += _movimientos_afectado(documento, detalle, comun)

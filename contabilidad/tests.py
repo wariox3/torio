@@ -1771,11 +1771,30 @@ class DescontabilizarTests(_ContabilizarBase):
 
     def test_el_periodo_sale_de_los_movimientos_y_no_de_la_fecha(self):
         """
-        Un cierre se contabiliza en el periodo 13, no en el de su mes. Si el
-        periodo se recalculara desde la fecha, se buscaría uno que no es el que se
-        afectó y el documento no se podría descontabilizar.
+        El periodo se guarda en el movimiento y de ahí se lee al descontabilizar.
+        Si se recalculara desde la fecha, un documento cuya `fecha_contable`
+        cambió después de contabilizarse se revisaría contra un periodo que no es
+        el que realmente se afectó —acá uno que ni existe— y no se podría
+        descontabilizar.
         """
-        periodo_ajustes = ConPeriodo.objects.create(anio=2026, mes=13)
+        documento = self._crear_documento(self.factura_tipo)
+        self._crear_detalle_item(documento, self._crear_item())
+        contabilizar.contabilizar([documento.pk])
+        GenDocumento.objects.filter(pk=documento.pk).update(
+            fecha_contable=date(2030, 6, 1))
+
+        contabilizar.descontabilizar([documento.pk])
+
+        documento.refresh_from_db()
+        self.assertFalse(documento.estado_contabilizado)
+        self.assertEqual(self._movimientos(documento), [])
+
+    def test_el_cierre_se_contabiliza_en_el_periodo_de_su_fecha_contable(self):
+        """
+        El cierre no tiene periodo propio: cae en el de su `fecha_contable` como
+        cualquier otro documento. Lo único particular es que sus movimientos
+        quedan marcados con `cierre`, para que los informes los puedan excluir.
+        """
         cierre_tipo = GenDocumentoTipo.objects.create(
             pk=contabilizar.DOCUMENTO_TIPO_CIERRE, nombre='CIERRE CONTABLE',
             operacion=1, comprobante=self.comprobante,
@@ -1790,14 +1809,10 @@ class DescontabilizarTests(_ContabilizarBase):
         )
 
         contabilizar.contabilizar([documento.pk])
+
         movimiento = ConMovimiento.objects.filter(documento=documento).first()
-        self.assertEqual(movimiento.periodo_id, periodo_ajustes.pk)
+        self.assertEqual(movimiento.periodo_id, self.periodo.pk)
         self.assertTrue(movimiento.cierre)
-
-        contabilizar.descontabilizar([documento.pk])
-
-        documento.refresh_from_db()
-        self.assertFalse(documento.estado_contabilizado)
 
 
 class _MovimientoViewSinPermisos(ConMovimientoViewSet):
