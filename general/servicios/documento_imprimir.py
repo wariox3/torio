@@ -6,24 +6,32 @@ import zipfile
 from reportlab.platypus import PageBreak
 from rest_framework.exceptions import ValidationError
 
-from general.formatos import FormatoDocumentoGenerico
+from general.formatos import FormatoDocumentoEgreso, FormatoDocumentoGenerico
 from utilidades.formatos.pagina import documento_pdf
 
-# Registro de formatos por su valor en GenDocumentoTipo.formato. Para sumar uno nuevo:
-# 1) agregar el valor a GenDocumentoTipo.FORMATO_CHOICES, 2) crear su clase en formatos/,
-# 3) registrarla aquí.
+# Qué formato imprime cada tipo de documento. Está quemado a propósito y no sale
+# de `GenDocumentoTipo.formato`: mientras haya un solo tipo con formato propio,
+# una columna configurable obliga a sembrarla en cada tenant y a mantenerla en el
+# fixture para que el egreso salga bien, y basta que alguien la edite para que un
+# comprobante se imprima con el formato equivocado.
+#
+# El día que sean varios, esto pasa a ser un mapa por tipo o vuelve a la columna;
+# el punto de entrada —`_clase_formato`— no cambia.
+DOCUMENTO_TIPO_EGRESO = 8  # mismo id que `contabilizar.DOCUMENTO_TIPO_EGRESO`
+
 FORMATOS = {
-    'generico': FormatoDocumentoGenerico,
+    DOCUMENTO_TIPO_EGRESO: FormatoDocumentoEgreso,
 }
+
+
+def _clase_formato(documento):
+    """La clase de formato del documento. El genérico sirve para cualquiera."""
+    return FORMATOS.get(documento.documento_tipo_id, FormatoDocumentoGenerico)
 
 
 def _construir(documento):
     """Elige la clase de formato según el tipo y devuelve los elementos del documento."""
-    formato = documento.documento_tipo.formato
-    clase = FORMATOS.get(formato)
-    if clase is None:
-        raise ValidationError(f'No hay un formato de impresión configurado para «{formato}».')
-    return clase(documento).construir()
+    return _clase_formato(documento)(documento).construir()
 
 
 def _nombre_archivo(documento, sufijo=''):
