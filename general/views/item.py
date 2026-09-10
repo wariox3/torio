@@ -53,7 +53,9 @@ class GenItemViewSet(
     def get_queryset(self):
         qs = GenItem.objects.select_related(
             'cuenta_venta', 'cuenta_compra', 'cuenta_costo_venta', 'cuenta_inventario',
-        ).order_by('nombre')
+        # La exportación escribe los impuestos de cada item; sin esto sería una
+        # consulta por fila del archivo.
+        ).prefetch_related('items_impuestos_item_rel').order_by('nombre')
 
         search = self.request.query_params.get('search', '').strip()
         if search:

@@ -34,11 +34,21 @@ class GenItemExportarSerializer(serializers.Serializer):
         ('cuenta_compra.nombre', 'Cuenta compra'),
         ('cuenta_costo_venta.nombre', 'Cuenta costo venta'),
         ('cuenta_inventario.nombre', 'Cuenta inventario'),
+        ('impuestos', 'Impuestos'),
     )
 
     @staticmethod
     def valor_excel(obj, campo):
         """Devuelve el valor a escribir en la celda para `obj` y `campo`."""
+        if campo == 'impuestos':
+            # Ids y no nombres: es la única columna del archivo que el importador
+            # puede volver a leer, y lo que él espera son ids. Con nombres el
+            # ciclo exportar -> editar -> importar se cortaría acá.
+            return ','.join(
+                str(relacion.impuesto_id)
+                for relacion in obj.items_impuestos_item_rel.all()
+            )
+
         valor = obj
         for parte in campo.split('.'):
             if valor is None:

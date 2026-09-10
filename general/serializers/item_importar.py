@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from contabilidad.models import ConCuenta
-from general.models import GenItem
+from general.models import GenImpuesto, GenItem, GenItemImpuesto
 
 
 class GenItemImportarSerializer(serializers.Serializer):
@@ -39,8 +39,14 @@ class GenItemImportarSerializer(serializers.Serializer):
         ('cuenta_compra.id', 'Cuenta compra'),
         ('cuenta_costo_venta.id', 'Cuenta costo venta'),
         ('cuenta_inventario.id', 'Cuenta inventario'),
+        ('impuestos', 'Impuestos'),
     )
     campos_requeridos = {'nombre'}
+
+    # `impuestos` no es un campo del modelo sino una lista de ids, así que el
+    # valor derivado de la plantilla saldría como «ejemplo 1» y no orientaría a
+    # nadie. La segunda fila va vacía a propósito: la columna es opcional.
+    valores_ejemplo = {'impuestos': ('1,3', '')}
 
     LIMITE_ERRORES = 100
     BATCH_BULK_CREATE = 500
@@ -68,6 +74,13 @@ class GenItemImportarSerializer(serializers.Serializer):
         )
         mapa_cuenta = {o.id: o for o in ConCuenta.objects.filter(id__in=ids_cuenta)}
 
+        ids_impuesto = set()
+        for _, datos in filas_validas:
+            ids_impuesto |= set(self._ids_lista(datos.get('impuestos')))
+        impuestos_existentes = set(
+            GenImpuesto.objects.filter(id__in=ids_impuesto).values_list('id', flat=True)
+        )
+
         # 2) Pre-cargar códigos existentes en BD para detectar duplicados
         codigos = {
             self._texto(datos.get('codigo'))
@@ -83,6 +96,9 @@ class GenItemImportarSerializer(serializers.Serializer):
         # 3) Construir instancias en memoria, recolectar errores
         errores = []
         nuevos = []
+        # Los impuestos de cada item, en el mismo orden que `nuevos`: la relación
+        # necesita el id del item, que no existe hasta después del bulk_create.
+        impuestos_por_item = []
         vistos = set()  # códigos duplicados intra-archivo
 
         for idx, datos in filas_validas:
@@ -96,6 +112,8 @@ class GenItemImportarSerializer(serializers.Serializer):
                     datos.get('cuenta_inventario.id'), mapa_cuenta, 'Cuenta inventario',
                 )
 
+                impuestos = self._impuestos(datos.get('impuestos'), impuestos_existentes)
+
                 codigo = self._texto_o_none(datos.get('codigo'))
 
                 if codigo is not None:
@@ -105,6 +123,7 @@ class GenItemImportarSerializer(serializers.Serializer):
                     if codigo in ya_existen:
                         raise ValueError(f'Ya existe un item con código {codigo}')
 
+                impuestos_por_item.append(impuestos)
                 nuevos.append(GenItem(
                     nombre=self._texto(datos.get('nombre')),
                     codigo=codigo,
@@ -134,7 +153,26 @@ class GenItemImportarSerializer(serializers.Serializer):
 
         if nuevos:
             GenItem.objects.bulk_create(nuevos, batch_size=self.BATCH_BULK_CREATE)
+            self._crear_impuestos(nuevos, impuestos_por_item)
         return len(nuevos), []
+
+    def _crear_impuestos(self, items, impuestos_por_item):
+        """
+        Crea la relación item-impuesto de todo el lote en una sola consulta.
+
+        Va después del `bulk_create` de items porque la relación necesita el id
+        del item, que en PostgreSQL queda asignado en las instancias del propio
+        `bulk_create`; no hace falta releerlas.
+        """
+        relaciones = [
+            GenItemImpuesto(item=item, impuesto_id=impuesto_id)
+            for item, impuestos in zip(items, impuestos_por_item)
+            for impuesto_id in impuestos
+        ]
+        if relaciones:
+            GenItemImpuesto.objects.bulk_create(
+                relaciones, batch_size=self.BATCH_BULK_CREATE,
+            )
 
     # ---- helpers ----
 
@@ -150,6 +188,59 @@ class GenItemImportarSerializer(serializers.Serializer):
                 ids.add(int(valor))
             except (TypeError, ValueError):
                 pass  # tipos inválidos ya fueron filtrados en la fase 1
+        return ids
+
+    @staticmethod
+    def _ids_lista(valor):
+        """
+        Los ids de una celda con varios separados por coma: `1,5` -> [1, 5].
+
+        Sin validar nada: sirve para precargar. Lo que no sea un número se
+        ignora acá y lo reporta `_impuestos`, que es quien valida la fila.
+        """
+        if valor in (None, ''):
+            return []
+        ids = []
+        for parte in str(valor).replace(';', ',').split(','):
+            parte = parte.strip()
+            if not parte:
+                continue
+            try:
+                ids.append(int(float(parte)))
+            except (TypeError, ValueError):
+                continue
+        return ids
+
+    @staticmethod
+    def _impuestos(valor, existentes):
+        """
+        Los ids de impuesto de una celda, validados y sin repetir.
+
+        La celda es opcional: un item sin impuestos es válido. Se deduplica
+        porque `GenItemImpuesto` tiene `unique_together (item, impuesto)` y un
+        «1,1» distraído haría fallar el lote entero con un error de base que no
+        dice en qué fila estaba.
+        """
+        if valor in (None, ''):
+            return []
+
+        crudos = str(valor).replace(';', ',').split(',')
+        ids = []
+        for parte in crudos:
+            parte = parte.strip()
+            if not parte:
+                continue
+            try:
+                impuesto_id = int(float(parte))
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f'Impuestos debe ser una lista de ids separados por coma, '
+                    f'recibido: "{parte}"'
+                )
+            if impuesto_id not in existentes:
+                raise ValueError(f'Impuesto con id={impuesto_id} no existe')
+            if impuesto_id not in ids:
+                ids.append(impuesto_id)
         return ids
 
     @staticmethod
