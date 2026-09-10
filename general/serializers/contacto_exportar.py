@@ -28,6 +28,7 @@ class GenContactoExportarSerializer(serializers.Serializer):
         ('direccion', 'Dirección'),
         ('ciudad.nombre', 'Ciudad'),
         ('tipo_persona.nombre', 'Tipo persona'),
+        ('responsabilidad.nombre', 'Responsabilidad'),
         ('telefono', 'Teléfono'),
         ('celular', 'Celular'),
         ('correo', 'Correo'),

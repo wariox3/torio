@@ -7,6 +7,7 @@ from general.models import (
     GenCuentaBancoClase,
     GenIdentificacion,
     GenPlazoPago,
+    GenResponsabilidad,
     GenTipoPersona,
 )
 from utilidades.telefono import normalizar_para_importar
@@ -42,6 +43,7 @@ class GenContactoImportarSerializer(serializers.Serializer):
         ('direccion', 'Dirección'),
         ('ciudad.id', 'Ciudad'),
         ('tipo_persona.id', 'Tipo persona'),
+        ('responsabilidad.id', 'Responsabilidad'),
         ('telefono', 'Teléfono'),
         ('celular', 'Celular'),
         ('correo', 'Correo'),
@@ -58,7 +60,7 @@ class GenContactoImportarSerializer(serializers.Serializer):
     )
     campos_requeridos = {
         'identificacion.id', 'numero_identificacion', 'nombre_corto',
-        'ciudad.id', 'tipo_persona.id', 'correo',
+        'ciudad.id', 'tipo_persona.id', 'responsabilidad.id', 'correo',
     }
 
     LIMITE_ERRORES = 100
@@ -82,6 +84,7 @@ class GenContactoImportarSerializer(serializers.Serializer):
         ids_identificacion = self._ids_int(filas_validas, 'identificacion.id')
         ids_ciudad = self._ids_int(filas_validas, 'ciudad.id')
         ids_tipo_persona = self._ids_int(filas_validas, 'tipo_persona.id')
+        ids_responsabilidad = self._ids_int(filas_validas, 'responsabilidad.id')
         ids_plazo_pago = (
             self._ids_int(filas_validas, 'plazo_pago.id')
             | self._ids_int(filas_validas, 'plazo_pago_proveedor.id')
@@ -95,6 +98,9 @@ class GenContactoImportarSerializer(serializers.Serializer):
         mapa_ciudad = {o.id: o for o in GenCiudad.objects.filter(id__in=ids_ciudad)}
         mapa_tipo_persona = {
             o.id: o for o in GenTipoPersona.objects.filter(id__in=ids_tipo_persona)
+        }
+        mapa_responsabilidad = {
+            o.id: o for o in GenResponsabilidad.objects.filter(id__in=ids_responsabilidad)
         }
         mapa_plazo_pago = {
             o.id: o for o in GenPlazoPago.objects.filter(id__in=ids_plazo_pago)
@@ -133,6 +139,11 @@ class GenContactoImportarSerializer(serializers.Serializer):
                 if tipo_persona is None:
                     raise ValueError(f'Tipo de persona con id={tp_id} no existe')
 
+                resp_id = int(datos['responsabilidad.id'])
+                responsabilidad = mapa_responsabilidad.get(resp_id)
+                if responsabilidad is None:
+                    raise ValueError(f'Responsabilidad con id={resp_id} no existe')
+
                 plazo_pago = self._fk_opcional(datos.get('plazo_pago.id'), mapa_plazo_pago, 'Plazo pago')
                 plazo_pago_proveedor = self._fk_opcional(
                     datos.get('plazo_pago_proveedor.id'), mapa_plazo_pago, 'Plazo pago proveedor',
@@ -161,6 +172,7 @@ class GenContactoImportarSerializer(serializers.Serializer):
                     identificacion=identificacion,
                     ciudad=ciudad,
                     tipo_persona=tipo_persona,
+                    responsabilidad=responsabilidad,
                     numero_identificacion=numero,
                     digito_verificacion=self._texto_o_none(datos.get('digito_verificacion')),
                     nombre_corto=self._texto(datos.get('nombre_corto')),
