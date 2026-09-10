@@ -1,17 +1,19 @@
 import io
+import re
+import unicodedata
 import zipfile
 
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import PageBreak, SimpleDocTemplate
+from reportlab.platypus import PageBreak
 from rest_framework.exceptions import ValidationError
 
-from general.servicios.formatos import FormatoGenerico
+from general.formatos import FormatoDocumentoGenerico
+from utilidades.formatos.pagina import documento_pdf
 
 # Registro de formatos por su valor en GenDocumentoTipo.formato. Para sumar uno nuevo:
 # 1) agregar el valor a GenDocumentoTipo.FORMATO_CHOICES, 2) crear su clase en formatos/,
 # 3) registrarla aquí.
 FORMATOS = {
-    'generico': FormatoGenerico,
+    'generico': FormatoDocumentoGenerico,
 }
 
 
@@ -22,6 +24,33 @@ def _construir(documento):
     if clase is None:
         raise ValidationError(f'No hay un formato de impresión configurado para «{formato}».')
     return clase(documento).construir()
+
+
+def _nombre_archivo(documento, sufijo=''):
+    """
+    El nombre del PDF: el tipo de documento en minúsculas, seguido del número.
+
+    Sin tildes, sin espacios y sin mayúsculas —«FACTURA ELECTRÓNICA DE VENTA»
+    N° 2799 queda como `factura_electronica_de_venta2799.pdf`—. No es cosmética:
+    el nombre viaja en la cabecera `Content-Disposition`, y los acentos y los
+    espacios obligan a codificarlo o quedan a merced de cómo lo interprete cada
+    navegador y cada sistema de archivos.
+
+    Un documento sin numerar cae en su id, para que el archivo siga siendo
+    distinguible.
+    """
+    numero = documento.numero if documento.numero is not None else documento.id
+    return f'{_normalizar(documento.documento_tipo.nombre)}{numero}{sufijo}.pdf'
+
+
+def _normalizar(texto):
+    """Minúsculas, sin tildes y con guion bajo en lugar de lo que no sea alfanumérico."""
+    sin_tildes = ''.join(
+        caracter for caracter in unicodedata.normalize('NFKD', texto or '')
+        if not unicodedata.combining(caracter)
+    )
+    limpio = re.sub(r'[^a-zA-Z0-9]+', '_', sin_tildes).strip('_')
+    return limpio.lower()
 
 
 def _listar(documentos):
@@ -35,7 +64,9 @@ def _listar(documentos):
 def _pdf(elementos):
     """Construye un PDF a partir de una lista de flowables y devuelve sus bytes."""
     buffer = io.BytesIO()
-    SimpleDocTemplate(buffer, pagesize=letter).build(elementos)
+    # La misma caja que el resto de los formatos impresos: los márgenes de los
+    # que sale `ANCHO_CONTENIDO`, contra el que cada formato calcula sus anchos.
+    documento_pdf(buffer).build(elementos)
     return buffer.getvalue()
 
 
@@ -50,8 +81,7 @@ def imprimir(documentos):
         elementos.extend(_construir(documento))
 
     if len(documentos) == 1:
-        unico = documentos[0]
-        nombre = f'{unico.documento_tipo.nombre}-{unico.numero or unico.id}.pdf'
+        nombre = _nombre_archivo(documentos[0])
     else:
         nombre = 'documentos.pdf'
     return _pdf(elementos), nombre
@@ -64,7 +94,8 @@ def imprimir_zip(documentos):
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as comprimido:
         for documento in documentos:
-            # El id garantiza nombres únicos aunque coincidan tipo y número.
-            nombre_pdf = f'{documento.documento_tipo.nombre}-{documento.numero or "SN"}-{documento.id}.pdf'
+            # El id va de sufijo: garantiza nombres únicos dentro del zip aunque
+            # dos documentos compartan tipo y número.
+            nombre_pdf = _nombre_archivo(documento, sufijo=f'_{documento.id}')
             comprimido.writestr(nombre_pdf, _pdf(_construir(documento)))
     return buffer.getvalue(), 'documentos.zip'
