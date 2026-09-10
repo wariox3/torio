@@ -20,7 +20,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         'documento_tipo__pagar', 'documento_tipo__cobrar',
         'documento_tipo__venta', 'documento_tipo__compra',
     }
-    select_related_lista = ('documento_tipo', 'documento_tipo__cuenta_cobrar', 'documento_tipo__cuenta_pagar', 'contacto', 'contacto__precio', 'sector', 'sede', 'centro_costo', 'plazo_pago', 'metodo_pago', 'forma_pago', 'comprobante', 'cuenta_banco')
+    select_related_lista = ('documento_tipo', 'documento_tipo__cuenta_cobrar', 'documento_tipo__cuenta_pagar', 'contacto', 'contacto__precio', 'sector', 'sede', 'centro_costo', 'plazo_pago', 'metodo_pago', 'forma_pago', 'comprobante', 'cuenta_banco',
+                             'almacen')
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
@@ -42,6 +43,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
     cuenta_banco_nombre = serializers.CharField(
         source='cuenta_banco.nombre', read_only=True, default=None,
     )
+    almacen_nombre = serializers.CharField(source='almacen.nombre', read_only=True, default=None)
     sede_nombre = serializers.CharField(source='sede.nombre', read_only=True, default=None)
     centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
     centro_costo_codigo = serializers.CharField(source='centro_costo.codigo', read_only=True, default=None)
@@ -97,6 +99,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'sector_nombre',
             'sede',
             'sede_nombre',
+            'almacen',
+            'almacen_nombre',
             'estrato',
             'documento_referencia',
             'subtotal',

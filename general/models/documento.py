@@ -88,6 +88,12 @@ class GenDocumento(models.Model):
         on_delete=models.PROTECT,
         related_name='gen_documentos',
     )
+    almacen = models.ForeignKey(
+        'inventario.InvAlmacen',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_almacen_rel',
+    )
     documento_referencia = models.ForeignKey(
         'self',
         null=True,
