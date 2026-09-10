@@ -22,8 +22,9 @@ falta queda en blanco, a la vista de quien tenga que ir a completarlo.
 """
 import io
 
+from django.utils import timezone
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.lib.utils import ImageReader
@@ -32,12 +33,17 @@ from reportlab.platypus import Image, Paragraph, Spacer, Table, TableStyle
 from utilidades.formatos.pagina import ANCHO_CONTENIDO
 
 GRIS_TITULO = colors.HexColor('#d9d9d9')
+GRIS_PIE = colors.HexColor('#767676')
+
+# Quién generó la hoja. Va arriba de todo, en letra mínima: sirve para saber de
+# dónde salió un papel que alguien trae impreso, sin competir con el contenido.
+ORIGEN = 'RedDoc | ERP'
 
 # El recuadro del logotipo. El espacio se reserva siempre, haya imagen o no: si
 # el bloque se corriera a la izquierda cuando falta el logo, dos impresiones del
 # mismo formato saldrían con distinta caja.
 LADO_LOGO = 2.4 * cm
-_SEPARACION_LOGO = 0.5 * cm
+SEPARACION_LOGO = 0.5 * cm
 
 # Las líneas del bloque, en orden. La etiqueta va delante del valor; la razón
 # social no lleva porque es el nombre, no un dato más.
@@ -155,6 +161,11 @@ class EncabezadoEmpresa:
                 fontName='Helvetica-Bold', fontSize=10,
                 alignment=TA_CENTER, leading=13,
             ),
+            'origen': ParagraphStyle(
+                'encabezado_origen', parent=base['Normal'],
+                fontSize=5.5, alignment=TA_RIGHT, leading=7,
+                textColor=GRIS_PIE,
+            ),
             'razon_social': ParagraphStyle(
                 'encabezado_razon_social', parent=base['Normal'],
                 fontName='Helvetica-Bold', fontSize=10, leading=13,
@@ -167,22 +178,43 @@ class EncabezadoEmpresa:
 
     def construir(self):
         """Los flowables del bloque."""
-        elementos = []
+        elementos = [self._origen()]
         if self.titulo:
             elementos.append(self._barra_titulo())
             elementos.append(Spacer(1, 0.55 * cm))
         elementos.append(self._logo_y_datos())
         return elementos
 
+    def _origen(self):
+        """
+        Cuándo se imprimió y desde dónde, arriba a la derecha.
+
+        La fecha va en hora local del servidor: es un dato para el que sostiene
+        el papel —«¿esta copia es la última?»—, no para una máquina.
+        """
+        marca = timezone.localtime().strftime('%Y-%m-%d %H:%M:%S')
+        return Paragraph(f'{marca} [{ORIGEN}]', self.estilos['origen'])
+
     def _barra_titulo(self):
+        """
+        La barra gris, alineada con los datos de la empresa y no con el margen.
+
+        El espacio del logotipo queda libre a su izquierda: la barra arranca
+        donde arranca la razón social, así que el bloque entero —título, nombre,
+        NIT, dirección— forma una sola columna al lado del logo en vez de dos
+        alineaciones distintas encimadas.
+        """
+        sangria = LADO_LOGO + SEPARACION_LOGO
         tabla = Table(
-            [[Paragraph(self.titulo, self.estilos['titulo'])]],
-            colWidths=[self.ancho],
+            [['', Paragraph(self.titulo, self.estilos['titulo'])]],
+            colWidths=[sangria, self.ancho - sangria],
         )
         tabla.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), GRIS_TITULO),
+            ('BACKGROUND', (1, 0), (1, 0), GRIS_TITULO),
             ('TOPPADDING', (0, 0), (-1, -1), 5),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('LEFTPADDING', (0, 0), (0, 0), 0),
+            ('RIGHTPADDING', (0, 0), (0, 0), 0),
         ]))
         return tabla
 
@@ -198,7 +230,7 @@ class EncabezadoEmpresa:
             ('RIGHTPADDING', (0, 0), (0, 0), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 0),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-            ('LEFTPADDING', (1, 0), (1, 0), _SEPARACION_LOGO),
+            ('LEFTPADDING', (1, 0), (1, 0), SEPARACION_LOGO),
         ]))
         return tabla
 

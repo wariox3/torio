@@ -81,7 +81,7 @@ from general.servicios import archivo as archivo_servicio
 from inventario.models import InvAlmacen, InvExistencia
 from utilidades import backblaze, mime
 from utilidades.formatos import EncabezadoEmpresa, datos_empresa
-from utilidades.formatos.empresa import LADO_LOGO
+from utilidades.formatos.empresa import LADO_LOGO, SEPARACION_LOGO
 from utilidades.formatos.pagina import ANCHO_CONTENIDO
 from utilidades.mixins import ImportarExcelMixin
 
@@ -4110,9 +4110,13 @@ class EncabezadoEmpresaTests(TenantTestCase):
         Cuando cada uno elegía el suyo, la tabla del certificado terminó midiendo
         17,40 cm dentro de un marco de 17,19.
         """
-        barra = EncabezadoEmpresa(self._configuracion(), titulo='UN FORMATO').construir()[0]
+        elementos = EncabezadoEmpresa(self._configuracion(), titulo='UN FORMATO').construir()
+        # [0] es la marca de origen; la barra del título va después.
+        barra = elementos[1]
 
-        self.assertEqual(barra._argW[0], ANCHO_CONTENIDO)
+        # La barra es sangría + banda: juntas llegan al borde derecho del marco.
+        self.assertEqual(sum(barra._argW), ANCHO_CONTENIDO)
+        self.assertEqual(barra._argW[0], LADO_LOGO + SEPARACION_LOGO)
 
     def test_el_logotipo_se_escala_sin_deformarse(self):
         configuracion = self._configuracion()

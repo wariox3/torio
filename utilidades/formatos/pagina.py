@@ -16,7 +16,11 @@ from reportlab.platypus import SimpleDocTemplate
 
 PAGINA = letter
 MARGEN_HORIZONTAL = 1.1 * cm
-MARGEN_VERTICAL = 2 * cm
+# Arriba y abajo no son simétricos: el encabezado ya trae su propio aire —la
+# marca de origen y la barra del título— y un margen alto lo empujaba media hoja
+# hacia abajo. Abajo se conserva, que es donde caen las firmas.
+MARGEN_SUPERIOR = 1 * cm
+MARGEN_INFERIOR = 2 * cm
 
 # Lo que queda para el contenido. Es el ancho contra el que se calcula cualquier
 # tabla o bloque a lo ancho de la hoja.
@@ -46,7 +50,7 @@ def documento_pdf(buffer, titulo=None):
         pagesize=PAGINA,
         leftMargin=MARGEN_HORIZONTAL,
         rightMargin=MARGEN_HORIZONTAL,
-        topMargin=MARGEN_VERTICAL,
-        bottomMargin=MARGEN_VERTICAL,
+        topMargin=MARGEN_SUPERIOR,
+        bottomMargin=MARGEN_INFERIOR,
         title=titulo or '',
     )
