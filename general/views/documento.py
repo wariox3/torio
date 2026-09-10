@@ -20,7 +20,7 @@ from general.serializers import (
     GenDocumentoImportarSerializer,
     GenDocumentoSerializer,
 )
-from contabilidad.servicios import contabilizar as contabilizar_servicio
+from general.servicios import contabilizar as contabilizar_servicio
 from general.servicios import documento as documento_servicio
 from general.servicios import documento_imprimir
 from utilidades.filtros import aplicar_filtros

@@ -19,7 +19,7 @@ from contabilidad.models import (
     ConMovimiento,
     ConPeriodo,
 )
-from contabilidad.servicios import contabilizar
+from general.servicios import contabilizar
 from contabilidad.servicios.movimiento import analizar_inconsistencias
 from contabilidad.views.comprobante import ConComprobanteViewSet
 from contabilidad.views.cuenta import ConCuentaViewSet
