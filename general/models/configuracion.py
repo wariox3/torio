@@ -27,6 +27,14 @@ class GenConfiguracion(models.Model):
     gen_empresa_telefono = models.CharField(max_length=50, null=True)
     gen_empresa_correo = models.EmailField(max_length=255, default='', db_default='')
     gen_empresa_imagen = models.TextField(null=True)
+    # El logotipo va en la fila y no en B2 a propósito: es un singleton por
+    # tenant, de decenas de KB, que se escribe casi nunca y se lee en cada
+    # formato impreso. En B2 —que en este proyecto no es un bucket público—
+    # cada impresión costaría una descarga autenticada, sin `CACHES` donde
+    # memoizarla, y una caída de B2 dejaría sin imprimir a todo el sistema.
+    # Guarda el PNG en base64 *sin* el prefijo `data:`; lo escribe únicamente
+    # `servicios/logotipo.py`, que es quien garantiza el formato.
+    gen_empresa_logotipo = models.TextField(null=True)
     gen_empresa_identificacion = models.ForeignKey(
         'general.GenIdentificacion', null=True, on_delete=models.PROTECT,
         related_name='configuraciones_empresa_identificacion_rel',

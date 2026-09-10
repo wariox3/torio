@@ -31,4 +31,8 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
             'gen_empresa_tipo_persona',
             'gen_emitir_automaticamente',
         ]
-        read_only_fields = ['id']
+        # `gen_empresa_logotipo` no está en `fields` a propósito. Es un PNG en base64
+    # de decenas de KB —hoy pesa 70 veces más que todos los demás campos juntos—
+    # y esta configuración la leen pantallas que solo quieren el UVT o el salario
+    # mínimo. Se lee por `GET logotipo/` y se escribe por `cargar-logotipo/`.
+    read_only_fields = ['id']

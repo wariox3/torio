@@ -13,6 +13,23 @@ from PIL import Image, ImageOps
 from utilidades import mime
 
 FORMATOS_PERMITIDOS = {'image/jpeg', 'image/png', 'image/webp'}
+
+# Tipos que el cliente escribe mal para un JPEG. `image/jpg` no es un tipo MIME
+# válido —el correcto es `image/jpeg`— pero lo mandan Windows, varias librerías
+# de subida que lo derivan de la extensión `.jpg`, y algún navegador viejo con
+# `image/pjpeg`. Rechazar un JPEG legítimo por cómo lo nombró el cliente no
+# protege de nada: el contenido se verifica igual contra los bytes reales, más
+# abajo, así que un archivo que miente sobre lo que es sigue cayendo.
+ALIAS_FORMATOS = {
+    'image/jpg': 'image/jpeg',
+    'image/pjpeg': 'image/jpeg',
+}
+
+# Tipos que en realidad no dicen nada. Un cliente que sube el archivo sin
+# declarar su tipo —curl sin `;type=`, algunos clientes HTTP, un `Blob` sin
+# `type` en el navegador— manda esto o nada. No es un formato distinto: es la
+# ausencia de dato, y ahí manda el contenido.
+TIPOS_SIN_DECLARAR = {'', 'application/octet-stream', 'binary/octet-stream'}
 TAMANO_MAXIMO = 5 * 1024 * 1024  # 5 MB
 
 # Un PNG de 0.42 MB puede declarar 12000x12000 y ocupar 412 MB de RAM al
@@ -23,25 +40,52 @@ MAX_PIXELES = 40_000_000  # 40 MP ≈ una foto de 7750x5160
 
 LADO_MAXIMO_ORIGINAL = 1024
 LADO_THUMBNAIL = 320
+# El logotipo se imprime en un recuadro de ~2,4 cm; 400 px sobran para 300 ppp.
+LADO_MAXIMO_LOGOTIPO = 400
 CALIDAD_ORIGINAL = 85
 CALIDAD_THUMBNAIL = 82
 
 
+def tipo_declarado(archivo) -> str:
+    """El content-type del archivo, con los alias de JPEG ya resueltos."""
+    tipo = (getattr(archivo, 'content_type', '') or '').strip().lower()
+    return ALIAS_FORMATOS.get(tipo, tipo)
+
+
 def validar_archivo_imagen(archivo) -> None:
     """
-    Valida formato, tamaño y que el contenido sea lo que dice ser.
+    Valida tamaño, formato y que el contenido sea lo que dice ser.
+
+    Quien decide el formato es el contenido, no el cliente. El content-type que
+    llega sirve para una sola cosa: si el cliente declaró un tipo, tiene que
+    coincidir con los bytes —un archivo que miente sobre lo que es se rechaza—;
+    si no declaró nada, se toma el que digan los bytes. Rechazar un JPEG legítimo
+    porque el que lo subió no supo nombrarlo no protege de nada.
+
+    El tamaño se revisa primero: es lo único que se puede saber sin leer.
 
     Lanza ValueError si no cumple. Deja el puntero al inicio.
     """
-    if archivo.content_type not in FORMATOS_PERMITIDOS:
-        raise ValueError('Formato no permitido. Usa JPEG, PNG o WEBP.')
     if archivo.size > TAMANO_MAXIMO:
         raise ValueError('El archivo supera el límite de 5 MB.')
 
     archivo.seek(0)
     posibles = mime.tipos_posibles(archivo.read())
     archivo.seek(0)
-    if archivo.content_type not in posibles:
+
+    tipo = tipo_declarado(archivo)
+    if tipo in TIPOS_SIN_DECLARAR:
+        if not posibles & FORMATOS_PERMITIDOS:
+            raise ValueError(
+                'El archivo no es una imagen JPG, PNG ni WEBP.'
+            )
+        return
+
+    if tipo not in FORMATOS_PERMITIDOS:
+        # El tipo recibido va en el mensaje: sin él, quien sube un JPG lee
+        # «usa JPG» y no tiene con qué darse cuenta de qué está mal.
+        raise ValueError(f'Formato no permitido ({tipo}). Usa JPG, PNG o WEBP.')
+    if tipo not in posibles:
         raise ValueError('El contenido del archivo no corresponde a una imagen válida.')
 
 
@@ -107,6 +151,19 @@ def recortar_cuadrado(imagen: Image.Image, lado: int) -> Image.Image:
 def a_bytes_jpeg(imagen: Image.Image, calidad: int = 85) -> bytes:
     buffer = io.BytesIO()
     imagen.save(buffer, format='JPEG', quality=calidad, optimize=True)
+    return buffer.getvalue()
+
+
+def a_bytes_png(imagen: Image.Image) -> bytes:
+    """
+    PNG sin pérdida.
+
+    Para un logotipo —línea y color plano— y no para una foto: JPEG y WEBP con
+    pérdida dejan halos alrededor de los bordes duros y del texto, que es
+    justamente de lo que está hecho un logo.
+    """
+    buffer = io.BytesIO()
+    imagen.save(buffer, format='PNG', optimize=True)
     return buffer.getvalue()
 
 

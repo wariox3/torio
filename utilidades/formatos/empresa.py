@@ -20,20 +20,22 @@ dato desaparecieran, dos impresiones del mismo formato en dos tenants quedarían
 con el cuerpo a distinta altura. Así que las etiquetas se imprimen igual y lo que
 falta queda en blanco, a la vista de quien tenga que ir a completarlo.
 """
+import io
+
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
-from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.utils import ImageReader
+from reportlab.platypus import Image, Paragraph, Spacer, Table, TableStyle
 
 from utilidades.formatos.pagina import ANCHO_CONTENIDO
 
 GRIS_TITULO = colors.HexColor('#d9d9d9')
-GRIS_MARCO = colors.HexColor('#bdbdbd')
 
-# El recuadro del logo. Todavía no está definido de dónde sale la imagen, así que
-# por ahora se reserva el espacio: el día que se resuelva, el logo entra acá sin
-# recorrer los formatos moviendo el resto del encabezado.
+# El recuadro del logotipo. El espacio se reserva siempre, haya imagen o no: si
+# el bloque se corriera a la izquierda cuando falta el logo, dos impresiones del
+# mismo formato saldrían con distinta caja.
 LADO_LOGO = 2.4 * cm
 _SEPARACION_LOGO = 0.5 * cm
 
@@ -119,7 +121,9 @@ class EncabezadoEmpresa:
     El bloque de encabezado de un formato impreso.
 
     Tres partes, en este orden: la barra gris con el título del formato, el
-    recuadro del logo a la izquierda y los datos del emisor a su derecha.
+    logotipo a la izquierda y los datos del emisor a su derecha. El logotipo sale
+    de `GenConfiguracion.gen_empresa_logotipo`; si el tenant no cargó ninguno,
+    su espacio queda en blanco.
 
     Sale completo aunque el tenant no haya cargado nada: las etiquetas se
     imprimen igual con el valor en blanco, para que el alto del bloque no dependa
@@ -136,6 +140,7 @@ class EncabezadoEmpresa:
         # El ancho no lo decide cada formato: la barra del título tiene que
         # cruzar la hoja, y con `None` reportlab la encogería al texto.
         ancho = ANCHO_CONTENIDO if ancho is None else ancho
+        self.configuracion = configuracion
         self.datos = datos_empresa(configuracion)
         self.titulo = titulo
         self.ancho = ancho
@@ -182,14 +187,12 @@ class EncabezadoEmpresa:
         return tabla
 
     def _logo_y_datos(self):
-        """El recuadro del logo y, al lado, los datos del emisor."""
+        """El logotipo y, al lado, los datos del emisor."""
         tabla = Table(
-            [[Spacer(LADO_LOGO, LADO_LOGO), self._datos()]],
+            [[self._logotipo(), self._datos()]],
             colWidths=[LADO_LOGO, self.ancho - LADO_LOGO],
         )
         tabla.setStyle(TableStyle([
-            # El marco marca el espacio reservado del logo mientras no haya imagen.
-            ('BOX', (0, 0), (0, 0), 0.6, GRIS_MARCO),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('LEFTPADDING', (0, 0), (0, 0), 0),
             ('RIGHTPADDING', (0, 0), (0, 0), 0),
@@ -198,6 +201,46 @@ class EncabezadoEmpresa:
             ('LEFTPADDING', (1, 0), (1, 0), _SEPARACION_LOGO),
         ]))
         return tabla
+
+    def _logotipo(self):
+        """
+        El logotipo escalado dentro de su cuadro, o el cuadro vacío.
+
+        Se escala a lo que entre sin deformarlo, y debajo se rellena hasta
+        completar `LADO_LOGO` de alto: así la celda mide igual con logo ancho,
+        con logo alto o sin logo, y el encabezado no cambia de tamaño entre un
+        tenant y otro.
+
+        Un logotipo ilegible se trata como si no estuviera. Que alguien haya
+        guardado bytes rotos no es motivo para que no salga el documento.
+        """
+        datos = self._bytes_logotipo()
+        if datos is None:
+            return Spacer(LADO_LOGO, LADO_LOGO)
+
+        try:
+            ancho_px, alto_px = ImageReader(io.BytesIO(datos)).getSize()
+            escala = min(LADO_LOGO / ancho_px, LADO_LOGO / alto_px)
+            alto = alto_px * escala
+            imagen = Image(io.BytesIO(datos), width=ancho_px * escala, height=alto)
+        except Exception:
+            return Spacer(LADO_LOGO, LADO_LOGO)
+
+        imagen.hAlign = 'LEFT'
+        if alto >= LADO_LOGO:
+            return imagen
+        return [imagen, Spacer(1, LADO_LOGO - alto)]
+
+    def _bytes_logotipo(self):
+        """
+        Los bytes del logotipo, de la misma configuración que ya se leyó.
+
+        El import va adentro por lo mismo que en `configuracion_actual`:
+        `utilidades` no depende de una app en tiempo de carga.
+        """
+        from general.servicios import logotipo
+
+        return logotipo.bytes_logotipo(self.configuracion)
 
     def _datos(self):
         """

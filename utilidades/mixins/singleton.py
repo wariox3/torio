@@ -2,9 +2,19 @@
 Mixin para modelos de fila única (singleton) por tenant.
 
 `GenConfiguracion` y `GenParametro` son la misma forma: una sola fila con
-`id=1` en el schema del tenant, que se lee entera (`obtener`) o por un
-subconjunto de columnas (`campos`). Lo que cambia entre ellos es si además
-se puede escribir, y eso lo agrega cada ViewSet por su cuenta.
+`id=1` en el schema del tenant. Lo que cambia entre ellos es si además se puede
+escribir, y eso lo agrega cada ViewSet por su cuenta.
+
+**No hay lectura completa.** `campos` es la única forma de leer, y exige decir
+qué se quiere. La razón es que un singleton de configuración solo crece: nace con
+cinco columnas y termina con cincuenta, y entre ellas aparece alguna grande —el
+logotipo de la empresa llegó a pesar 70 veces más que todos los demás campos
+juntos—. Con una lectura completa disponible, toda pantalla la usa, y a nadie le
+consta cuánto está trayendo ni cuándo empezó a doler.
+
+Quien de verdad necesite todo lo pide entero y explícito
+(`?campos=a,b,c,...`): sigue siendo posible, pero es una decisión visible en el
+llamado y no el camino de menor resistencia.
 """
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
@@ -25,16 +35,15 @@ class SingletonMixin:
         instancia, _ = self.modelo_singleton.objects.get_or_create(id=self.id_singleton)
         return instancia
 
-    @action(detail=False, methods=['get'])
-    def obtener(self, request):
-        serializer = self.get_serializer(self._obtener_instancia())
-        return Response(serializer.data)
-
     @extend_schema(
         parameters=[
             OpenApiParameter(
                 'campos', str,
-                description='Campos separados por coma, ej: gen_uvt,hum_salario_minimo',
+                description=(
+                    'Campos separados por coma, ej: gen_uvt,hum_salario_minimo. '
+                    'Obligatorio: no hay lectura completa, y pedir todo exige '
+                    'nombrarlo todo.'
+                ),
             ),
         ],
     )

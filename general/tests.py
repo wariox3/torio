@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 import uuid as uuid_lib
@@ -7,6 +8,8 @@ from decimal import Decimal
 from unittest import mock
 
 import httpx
+from PIL import Image, ImageDraw
+from reportlab.platypus import Spacer
 from botocore.exceptions import ClientError, ConnectionClosedError
 from django.apps import apps
 from django.conf import settings
@@ -55,6 +58,7 @@ from general.servicios import factura_electronica
 from general.servicios import rededoc as rededoc_servicio
 from general.serializers import (
     GenAsesorImportarSerializer,
+    GenConfiguracionSerializer,
     GenDocumentoCrearSerializer,
     GenDocumentoDetalleSerializer,
     GenDocumentoGenerarRecurrenteSerializer,
@@ -64,6 +68,7 @@ from general.serializers import (
     GenParametroSerializer,
     GenPrecioDetalleImportarSerializer,
 )
+from general.servicios import logotipo
 from general.views.archivo import GenArchivoViewSet
 from general.views.configuracion import GenConfiguracionViewSet
 from general.views.documento_detalle import GenDocumentoDetalleViewSet
@@ -75,6 +80,9 @@ from seguridad.models import SegUsuario
 from general.servicios import archivo as archivo_servicio
 from inventario.models import InvAlmacen, InvExistencia
 from utilidades import backblaze, mime
+from utilidades.formatos import EncabezadoEmpresa, datos_empresa
+from utilidades.formatos.empresa import LADO_LOGO
+from utilidades.formatos.pagina import ANCHO_CONTENIDO
 from utilidades.mixins import ImportarExcelMixin
 
 
@@ -1239,7 +1247,7 @@ class _ConfiguracionViewSinPermisos(GenConfiguracionViewSet):
 
 class GenParametroViewTests(TenantTestCase):
     """
-    La vista de `GenParametro`: se lee entera o por campos, y no se escribe.
+    La vista de `GenParametro`: se lee por campos, y no se escribe.
     """
 
     def setUp(self):
@@ -1252,22 +1260,22 @@ class GenParametroViewTests(TenantTestCase):
         force_authenticate(peticion, user=SegUsuario(id=1))
         return vista(peticion)
 
-    def test_obtener_crea_la_fila_si_el_tenant_todavia_no_la_tiene(self):
-        respuesta = self._llamar('obtener')
+    def test_leer_crea_la_fila_si_el_tenant_todavia_no_la_tiene(self):
+        respuesta = self._llamar('campos', campos='id,gen_factura_electronica_activa')
 
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(respuesta.data['id'], 1)
         self.assertIs(respuesta.data['gen_factura_electronica_activa'], False)
         self.assertEqual(GenParametro.objects.count(), 1)
 
-    def test_obtener_dos_veces_no_duplica_la_fila(self):
-        self._llamar('obtener')
-        self._llamar('obtener')
+    def test_leer_dos_veces_no_duplica_la_fila(self):
+        self._llamar('campos', campos='id')
+        self._llamar('campos', campos='id')
         self.assertEqual(GenParametro.objects.count(), 1)
 
-    def test_obtener_devuelve_el_valor_guardado(self):
+    def test_devuelve_el_valor_guardado(self):
         GenParametro.objects.create(id=1, gen_factura_electronica_activa=True)
-        respuesta = self._llamar('obtener')
+        respuesta = self._llamar('campos', campos='gen_factura_electronica_activa')
         self.assertIs(respuesta.data['gen_factura_electronica_activa'], True)
 
     def test_campos_devuelve_solo_lo_pedido(self):
@@ -1303,7 +1311,8 @@ class GenParametroViewTests(TenantTestCase):
             nombre for nombre in dir(GenParametroViewSet)
             if getattr(getattr(GenParametroViewSet, nombre, None), 'mapping', None)
         }
-        self.assertEqual(acciones, {'obtener', 'campos'})
+        # `campos` es la única: el mixin ya no ofrece lectura completa.
+        self.assertEqual(acciones, {'campos'})
 
         metodos = set()
         for nombre in acciones:
@@ -1328,18 +1337,30 @@ class GenConfiguracionViewTests(TenantTestCase):
     def setUp(self):
         self.factory = APIRequestFactory()
 
-    def test_obtener_y_campos_siguen_funcionando(self):
-        vista = _ConfiguracionViewSinPermisos.as_view({'get': 'obtener'})
-        peticion = self.factory.get('/general/configuracion/obtener/')
-        force_authenticate(peticion, user=SegUsuario(id=1))
-        self.assertEqual(vista(peticion).status_code, 200)
-
+    def test_campos_lee_lo_que_se_le_pide(self):
         vista = _ConfiguracionViewSinPermisos.as_view({'get': 'campos'})
         peticion = self.factory.get('/general/configuracion/campos/', {'campos': 'gen_uvt'})
         force_authenticate(peticion, user=SegUsuario(id=1))
         respuesta = vista(peticion)
         self.assertEqual(respuesta.status_code, 200)
         self.assertIn('gen_uvt', respuesta.data)
+        # Solo lo pedido: `campos` existe justamente para no traer el resto.
+        self.assertEqual(set(respuesta.data), {'gen_uvt'})
+
+    def test_campos_sin_parametro_no_devuelve_la_fila(self):
+        """
+        Sin `campos` no hay lectura, y no hay otra que la reemplace.
+
+        El mixin no expone una lectura completa a propósito: si la tuviera, toda
+        pantalla la usaría y nadie sabría cuánto está trayendo (ver el docstring
+        de `SingletonMixin`). Esta prueba fija esa decisión.
+        """
+        vista = _ConfiguracionViewSinPermisos.as_view({'get': 'campos'})
+        peticion = self.factory.get('/general/configuracion/campos/')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        self.assertEqual(vista(peticion).status_code, 400)
+
+        self.assertFalse(hasattr(_ConfiguracionViewSinPermisos, 'obtener'))
 
     def test_actualizar_sigue_escribiendo(self):
         vista = _ConfiguracionViewSinPermisos.as_view({'patch': 'actualizar'})
@@ -3746,3 +3767,405 @@ class FechaContableTests(TenantTestCase):
         documento = self._importar(fecha_contable=date(2026, 1, 31))
 
         self.assertEqual(documento.fecha_contable, date(2026, 1, 31))
+
+
+# --------------------------------------------------------------- logotipo ----
+
+def _imagen(ancho=900, alto=400, formato='PNG'):
+    """Una imagen sintética con borde duro: la forma de un logo, no de una foto."""
+    imagen = Image.new('RGB', (ancho, alto), (0, 90, 170))
+    ImageDraw.Draw(imagen).rectangle(
+        [ancho // 8, alto // 8, ancho // 2, alto - alto // 8], fill=(255, 255, 255),
+    )
+    buffer = io.BytesIO()
+    imagen.save(buffer, format=formato)
+    return buffer.getvalue()
+
+
+def _subida(datos, content_type, nombre='logo.png'):
+    return SimpleUploadedFile(nombre, datos, content_type=content_type)
+
+
+class LogotipoServicioTests(SimpleTestCase):
+    """
+    `general.servicios.logotipo` es el único que escribe `gen_empresa_logotipo`,
+    así que es el único lugar donde hay que garantizar qué queda guardado.
+
+    No toca la base: `procesar` es una función pura sobre el archivo.
+    """
+
+    def _procesar(self, datos, content_type):
+        return base64.b64decode(logotipo.procesar(_subida(datos, content_type)))
+
+    def test_normaliza_a_png_de_400_px_sin_deformar(self):
+        salida = Image.open(io.BytesIO(self._procesar(_imagen(900, 400), 'image/png')))
+
+        self.assertEqual(salida.format, 'PNG')
+        # 900x400 entra en 400x400 por el lado largo, conservando la proporción.
+        self.assertEqual(salida.size, (400, 178))
+
+    def test_un_jpeg_tambien_se_guarda_como_png(self):
+        """
+        Entran tres formatos y sale uno solo.
+
+        Que la salida sea siempre PNG es lo que le permite a `EncabezadoEmpresa`
+        dibujar el logo sin preguntarse qué subió el usuario.
+        """
+        salida = Image.open(
+            io.BytesIO(self._procesar(_imagen(formato='JPEG'), 'image/jpeg'))
+        )
+        self.assertEqual(salida.format, 'PNG')
+
+    def test_acepta_un_archivo_sin_content_type_declarado(self):
+        """
+        `application/octet-stream` es la ausencia del dato, no un formato.
+
+        Lo mandan curl sin `;type=`, varios clientes HTTP y un `Blob` sin `type`.
+        Rechazar un JPEG legítimo porque el cliente no supo nombrarlo no protege
+        de nada: el contenido se verifica igual contra los bytes.
+        """
+        for content_type in ('application/octet-stream', ''):
+            with self.subTest(content_type=content_type):
+                salida = Image.open(io.BytesIO(self._procesar(_imagen(), content_type)))
+                self.assertEqual(salida.format, 'PNG')
+
+    def test_acepta_image_jpg_como_alias_de_image_jpeg(self):
+        """`image/jpg` no es un tipo MIME válido, pero es el que manda Windows."""
+        salida = Image.open(
+            io.BytesIO(self._procesar(_imagen(formato='JPEG'), 'image/jpg'))
+        )
+        self.assertEqual(salida.format, 'PNG')
+
+    def test_rechaza_un_archivo_que_miente_sobre_su_tipo(self):
+        """El alias y el fallback no relajan esto: manda el contenido real."""
+        with self.assertRaises(ValueError):
+            logotipo.procesar(_subida(_imagen(formato='JPEG'), 'image/png'))
+
+    def test_rechaza_lo_que_no_es_imagen_aunque_no_declare_tipo(self):
+        with self.assertRaises(ValueError):
+            logotipo.procesar(_subida(b'%PDF-1.4\n', 'application/octet-stream'))
+
+    def test_rechaza_un_formato_no_permitido_nombrandolo(self):
+        """
+        El mensaje dice qué tipo llegó.
+
+        Sin eso, quien sube un JPG lee «usa JPG» y no tiene con qué darse cuenta
+        de qué está mal — que fue exactamente lo que pasó en producción.
+        """
+        with self.assertRaises(ValueError) as caso:
+            logotipo.procesar(_subida(_imagen(formato='GIF'), 'image/gif', 'l.gif'))
+
+        self.assertIn('image/gif', str(caso.exception))
+
+    def test_un_base64_corrupto_se_lee_como_ausencia(self):
+        """Un logo ilegible no puede impedir que salga un documento."""
+        self.assertIsNone(
+            logotipo.bytes_logotipo(GenConfiguracion(gen_empresa_logotipo='no es base64!!'))
+        )
+        self.assertIsNone(logotipo.bytes_logotipo(GenConfiguracion()))
+        self.assertIsNone(logotipo.bytes_logotipo(None))
+
+
+class LogotipoEndpointTests(TenantTestCase):
+    """Los tres endpoints del logotipo, que son los que consume la pantalla."""
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+    def _llamar(self, metodo, accion, **kwargs):
+        vista = _ConfiguracionViewSinPermisos.as_view({metodo: accion.replace('-', '_')})
+        peticion = getattr(self.factory, metodo)(
+            f'/general/configuracion/{accion}/', **kwargs
+        )
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return vista(peticion)
+
+    def _cargar(self, datos=None, content_type='image/png'):
+        return self._llamar(
+            'post', 'cargar-logotipo',
+            data={'logotipo': _subida(datos or _imagen(), content_type)},
+            format='multipart',
+        )
+
+    def test_cargar_guarda_el_logotipo_y_lo_devuelve(self):
+        respuesta = self._cargar()
+
+        self.assertEqual(respuesta.status_code, 200)
+        # La respuesta trae el logo ya convertido: el front refresca sin una
+        # segunda llamada. Y solo eso, no la configuración entera.
+        self.assertEqual(set(respuesta.data), {'logotipo'})
+        self.assertTrue(respuesta.data['logotipo'])
+        self.assertEqual(
+            GenConfiguracion.objects.get(id=1).gen_empresa_logotipo,
+            respuesta.data['logotipo'],
+        )
+
+    def test_cargar_sin_archivo_devuelve_400(self):
+        respuesta = self._llamar('post', 'cargar-logotipo', data={}, format='multipart')
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('logotipo', respuesta.data)
+
+    def test_cargar_un_archivo_invalido_devuelve_400_y_no_toca_lo_guardado(self):
+        self._cargar()
+        anterior = GenConfiguracion.objects.get(id=1).gen_empresa_logotipo
+
+        respuesta = self._cargar(b'no soy una imagen', 'image/png')
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(GenConfiguracion.objects.get(id=1).gen_empresa_logotipo, anterior)
+
+    def test_cargar_reemplaza_al_anterior(self):
+        primero = self._cargar(_imagen(900, 400)).data['logotipo']
+        segundo = self._cargar(_imagen(400, 900)).data['logotipo']
+
+        self.assertNotEqual(primero, segundo)
+        self.assertEqual(GenConfiguracion.objects.get(id=1).gen_empresa_logotipo, segundo)
+
+    def test_leer_el_logotipo_cuando_no_hay_devuelve_null(self):
+        respuesta = self._llamar('get', 'logotipo')
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, {'logotipo': None})
+
+    def test_leer_el_logotipo_devuelve_lo_guardado(self):
+        guardado = self._cargar().data['logotipo']
+
+        respuesta = self._llamar('get', 'logotipo')
+
+        self.assertEqual(respuesta.data, {'logotipo': guardado})
+
+    def test_quitar_deja_el_campo_en_null_y_es_idempotente(self):
+        self._cargar()
+
+        primera = self._llamar('delete', 'quitar-logotipo')
+        segunda = self._llamar('delete', 'quitar-logotipo')
+
+        self.assertEqual(primera.status_code, 200)
+        self.assertEqual(primera.data, {'logotipo': None})
+        # Un botón que se toca dos veces no debería fallar la segunda.
+        self.assertEqual(segunda.status_code, 200)
+        self.assertEqual(segunda.data, {'logotipo': None})
+        self.assertIsNone(GenConfiguracion.objects.get(id=1).gen_empresa_logotipo)
+
+    def test_la_configuracion_no_arrastra_el_logotipo(self):
+        """
+        El logotipo pesa decenas de KB y la configuración la leen pantallas que
+        solo quieren el UVT. Si volviera al serializer, toda lectura pagaría eso
+        sin que nadie lo note: llegó a ser el 98,6 % del payload.
+        """
+        self._cargar()
+
+        self.assertNotIn('gen_empresa_logotipo', GenConfiguracionSerializer().fields)
+
+        respuesta = self._llamar(
+            'get', 'campos', data={'campos': 'gen_uvt,gen_empresa_razon_social'},
+        )
+        self.assertEqual(set(respuesta.data), {'gen_uvt', 'gen_empresa_razon_social'})
+
+    def test_se_puede_pedir_el_logotipo_por_campos_si_se_nombra(self):
+        """La restricción es que haya que pedirlo, no que esté prohibido."""
+        guardado = self._cargar().data['logotipo']
+
+        respuesta = self._llamar('get', 'campos', data={'campos': 'gen_empresa_logotipo'})
+
+        self.assertEqual(respuesta.data, {'gen_empresa_logotipo': guardado})
+
+
+# -------------------------------------------------------------- encabezado ----
+
+class DatosEmpresaTests(TenantTestCase):
+    """
+    `datos_empresa` normaliza la configuración para cualquier salida —PDF, Excel
+    o XML—, así que su contrato son las claves y no el dibujo.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    CLAVES = {'razon_social', 'nombre_corto', 'nit', 'direccion',
+              'telefono', 'correo', 'ciudad'}
+
+    def _ciudad(self):
+        pais, _ = GenPais.objects.get_or_create(id=250, nombre='Colombia', codigo='CO')
+        estado, _ = GenEstado.objects.get_or_create(
+            id=1, nombre='Antioquia', codigo='05', pais=pais,
+        )
+        ciudad, _ = GenCiudad.objects.get_or_create(
+            id=1, nombre='Medellín', codigo='05001', estado=estado,
+        )
+        return ciudad
+
+    def test_sin_configuracion_devuelve_las_mismas_claves_vacias(self):
+        """
+        Un tenant a medio crear no puede romper una impresión.
+
+        Devolver siempre las mismas claves es lo que le permite a quien imprime
+        no preguntar si hay configuración.
+        """
+        datos = datos_empresa(None)
+
+        self.assertEqual(set(datos), self.CLAVES)
+        self.assertEqual(set(datos.values()), {''})
+
+    def test_una_configuracion_vacia_tampoco_devuelve_none(self):
+        datos = datos_empresa(GenConfiguracion.objects.create(id=1))
+
+        self.assertEqual(set(datos), self.CLAVES)
+        self.assertEqual(set(datos.values()), {''})
+
+    def test_el_nit_lleva_el_digito_de_verificacion(self):
+        configuracion = GenConfiguracion.objects.create(
+            id=1, gen_empresa_numero_identificacion='901192048',
+            gen_empresa_digito_verificacion='1',
+        )
+
+        self.assertEqual(datos_empresa(configuracion)['nit'], '901192048-1')
+
+    def test_sin_digito_el_nit_es_solo_el_numero(self):
+        configuracion = GenConfiguracion.objects.create(
+            id=1, gen_empresa_numero_identificacion='901192048',
+        )
+
+        self.assertEqual(datos_empresa(configuracion)['nit'], '901192048')
+
+    def test_la_ciudad_incluye_el_departamento_en_mayusculas(self):
+        """Es el texto que va en la declaración del certificado de retención."""
+        configuracion = GenConfiguracion.objects.create(
+            id=1, gen_empresa_ciudad=self._ciudad(),
+        )
+
+        self.assertEqual(
+            datos_empresa(configuracion)['ciudad'], 'MEDELLÍN - ANTIOQUIA',
+        )
+
+
+class EncabezadoEmpresaTests(TenantTestCase):
+    """
+    El encabezado es común a todos los formatos impresos, así que lo que se fija
+    acá es su invariante: sale siempre y mide siempre lo mismo.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def _configuracion(self, **campos):
+        return GenConfiguracion.objects.create(id=1, **campos)
+
+    def _alto(self, encabezado):
+        """El alto real del bloque de logo y datos, ya distribuido."""
+        tabla = encabezado.construir()[-1]
+        return tabla.wrap(ANCHO_CONTENIDO, 10_000)[1]
+
+    def test_sale_completo_aunque_no_haya_ningun_dato(self):
+        """
+        Las etiquetas se imprimen igual con el valor en blanco.
+
+        Si las líneas sin dato desaparecieran, el cuerpo del formato arrancaría a
+        distinta altura en cada tenant según qué tan llena esté su configuración.
+        """
+        encabezado = EncabezadoEmpresa(self._configuracion(), titulo='UN FORMATO')
+        textos = [
+            elemento.text for elemento in encabezado._datos()
+        ]
+
+        self.assertEqual(len(textos), 5)  # razón social + NIT, DIRECCIÓN, TEL, CORREO
+        for etiqueta in ('NIT:', 'DIRECCIÓN:', 'TEL:', 'CORREO:'):
+            self.assertTrue(
+                any(texto.startswith(etiqueta) for texto in textos),
+                f'falta la línea {etiqueta}',
+            )
+
+    def test_el_bloque_mide_igual_con_datos_y_sin_datos(self):
+        vacia = EncabezadoEmpresa(self._configuracion(), titulo='X')
+        llena = EncabezadoEmpresa(
+            GenConfiguracion(
+                id=1, gen_empresa_razon_social='SEMANTICA DIGITAL SAS',
+                gen_empresa_numero_identificacion='901192048',
+                gen_empresa_digito_verificacion='1',
+                gen_empresa_direccion='CL 9 SUR # 50 FF 165',
+                gen_empresa_telefono='3044769718',
+            ),
+            titulo='X',
+        )
+
+        self.assertEqual(self._alto(vacia), self._alto(llena))
+
+    def test_la_barra_del_titulo_cruza_el_ancho_util(self):
+        """
+        Regresión: el ancho lo fija la página, no cada formato.
+
+        Cuando cada uno elegía el suyo, la tabla del certificado terminó midiendo
+        17,40 cm dentro de un marco de 17,19.
+        """
+        barra = EncabezadoEmpresa(self._configuracion(), titulo='UN FORMATO').construir()[0]
+
+        self.assertEqual(barra._argW[0], ANCHO_CONTENIDO)
+
+    def test_el_logotipo_se_escala_sin_deformarse(self):
+        configuracion = self._configuracion()
+        configuracion.gen_empresa_logotipo = logotipo.procesar(
+            _subida(_imagen(900, 400), 'image/png')
+        )
+
+        imagen = EncabezadoEmpresa(configuracion, titulo='X')._logotipo()[0]
+
+        self.assertAlmostEqual(imagen.drawWidth / imagen.drawHeight, 900 / 400, places=2)
+        self.assertLessEqual(imagen.drawWidth, LADO_LOGO)
+        self.assertLessEqual(imagen.drawHeight, LADO_LOGO)
+
+    def test_el_bloque_mide_igual_con_logotipo_y_sin_el(self):
+        """
+        El espacio del logo se reserva siempre.
+
+        Sin esto el encabezado cambiaría de alto según la forma del logo de cada
+        tenant, que es el mismo problema de las líneas vacías.
+        """
+        sin_logo = self._configuracion()
+        alto_sin = self._alto(EncabezadoEmpresa(sin_logo, titulo='X'))
+
+        for ancho, alto in ((900, 400), (400, 900), (600, 600)):
+            with self.subTest(logo=f'{ancho}x{alto}'):
+                configuracion = GenConfiguracion(
+                    id=1,
+                    gen_empresa_logotipo=logotipo.procesar(
+                        _subida(_imagen(ancho, alto), 'image/png')
+                    ),
+                )
+                self.assertEqual(
+                    self._alto(EncabezadoEmpresa(configuracion, titulo='X')), alto_sin,
+                )
+
+    def test_un_logotipo_ilegible_se_dibuja_como_espacio_en_blanco(self):
+        configuracion = self._configuracion()
+        configuracion.gen_empresa_logotipo = 'bytes rotos!!'
+
+        celda = EncabezadoEmpresa(configuracion, titulo='X')._logotipo()
+
+        self.assertIsInstance(celda, Spacer)
+
+    def test_no_consulta_la_configuracion_si_ya_se_la_pasaron(self):
+        """
+        El logotipo viaja en la misma lectura que el NIT y la dirección.
+
+        Ese es el argumento entero para guardarlo en la fila: una impresión, una
+        query. Si el encabezado fuera a buscarlo por su cuenta, se perdería.
+        """
+        configuracion = self._configuracion()
+
+        with CaptureQueriesContext(connection) as consultas:
+            EncabezadoEmpresa(configuracion, titulo='X').construir()
+
+        self.assertEqual(len(consultas), 0)

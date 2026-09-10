@@ -3,6 +3,7 @@ from decimal import Decimal
 from io import BytesIO
 
 from django_tenants.test.cases import TenantTestCase
+from reportlab.platypus import PageBreak, Table
 from openpyxl import load_workbook
 from rest_framework import permissions
 from rest_framework.test import APIRequestFactory
@@ -20,11 +21,15 @@ from contabilidad.models import (
     ConPeriodo,
 )
 from general.servicios import contabilizar
+from contabilidad.formatos import FormatoCertificadoRetencion
+from contabilidad.servicios import balance
+from utilidades.filtros import aplicar_filtros
 from contabilidad.servicios.movimiento import analizar_inconsistencias
 from contabilidad.views.comprobante import ConComprobanteViewSet
 from contabilidad.views.cuenta import ConCuentaViewSet
 from contabilidad.views.movimiento import ConMovimientoViewSet
 from contabilidad.views.movimiento_informe import ConMovimientoInformeViewSet
+from utilidades.formatos.pagina import ANCHO_CONTENIDO
 from general.models import (
     GenCiudad,
     GenConfiguracion,
@@ -2156,3 +2161,177 @@ class InconsistenciasMovimientoTests(TenantTestCase):
         response = _MovimientoViewSinPermisos.as_view({'get': 'inconsistencias'})(request)
         self.assertEqual(response.status_code, 200)
         self.assertIn('inconsistencias', response.data)
+
+
+class CertificadoRetencionPdfTests(_InformeBase):
+    """
+    El PDF del certificado.
+
+    A diferencia de `lista/` y `excel/`, que sirven la tabla del informe tal
+    cual, el PDF es un documento por tercero: reagrupa las mismas filas al revés
+    —por contacto, y dentro de él una línea por cuenta— porque eso es lo que se
+    entrega y se firma.
+    """
+
+    informe = 'certificado_retencion'
+
+    def setUp(self):
+        super().setUp()
+        self.retencion = self._cuenta('13551505', self.grupo_caja, exige_base=True)
+        self.uno = self._contacto('900000001')
+        self.dos = self._contacto('900000002')
+
+    def _filas(self, filtros=None):
+        """
+        Las filas tal como las recibe el formato: las del servicio, no las de
+        `lista/`.
+
+        No es lo mismo: `lista/` pasa por el serializer, que convierte los
+        decimales a texto. El endpoint `pdf/` arma el documento con la salida
+        cruda de `filas_certificado`, y con esa hay que probarlo.
+        """
+        agrupado = balance.certificado_retencion(date(2026, 1, 1), date(2026, 1, 31))
+        if filtros:
+            agrupado = aplicar_filtros(agrupado, filtros, balance.CAMPOS_FILTRABLES)
+        return balance.filas_certificado(agrupado)
+
+    def _formato(self, filas=None, configuracion=None):
+        return FormatoCertificadoRetencion(
+            filas if filas is not None else self._filas(),
+            configuracion,
+            date(2026, 1, 1),
+            date(2026, 1, 31),
+        )
+
+    @staticmethod
+    def _tablas(elementos):
+        return [e for e in elementos if isinstance(e, Table)]
+
+    def test_una_hoja_por_tercero(self):
+        """El informe sale ordenado por cuenta; el certificado, por tercero."""
+        self._movimiento(self.retencion, date(2026, 1, 5), debito=40, base=1000,
+                         contacto=self.uno)
+        self._movimiento(self.retencion, date(2026, 1, 6), debito=8, base=200,
+                         contacto=self.dos)
+
+        elementos = self._formato().construir()
+
+        # Dos terceros, un salto de página entre ellos: dos hojas.
+        self.assertEqual(sum(1 for e in elementos if isinstance(e, PageBreak)), 1)
+
+    def test_un_tercero_con_varias_cuentas_va_en_una_sola_hoja(self):
+        otra = self._cuenta('13551510', self.grupo_caja, exige_base=True)
+        self._movimiento(self.retencion, date(2026, 1, 5), debito=40, base=1000,
+                         contacto=self.uno)
+        self._movimiento(otra, date(2026, 1, 6), debito=10, base=250, contacto=self.uno)
+
+        elementos = self._formato().construir()
+
+        self.assertEqual(sum(1 for e in elementos if isinstance(e, PageBreak)), 0)
+
+    def test_descarta_los_movimientos_sin_tercero(self):
+        """
+        En el informe son una fila legítima —una retención cuya cuenta no exige
+        contacto—, pero un certificado se expide *a alguien*. Sin este corte
+        saldría una hoja dirigida a nadie.
+        """
+        self._movimiento(self.retencion, date(2026, 1, 5), debito=40, base=1000,
+                         contacto=self.uno)
+        self._movimiento(self.caja, date(2026, 1, 6), debito=8, base=200)
+
+        filas = self._filas()
+        self.assertEqual(len(filas), 2)  # el informe sí las trae
+        self.assertIsNone([f for f in filas if f['contacto_id'] is None][0]['contacto'])
+
+        elementos = self._formato(filas).construir()
+        self.assertEqual(sum(1 for e in elementos if isinstance(e, PageBreak)), 0)
+
+    def test_sin_ningun_tercero_no_se_emite_un_pdf_vacio(self):
+        self._movimiento(self.caja, date(2026, 1, 6), debito=8, base=200)
+
+        with self.assertRaises(ValidationError) as caso:
+            self._formato().construir()
+
+        self.assertIn('tercero', str(caso.exception))
+
+    def test_el_pie_totaliza_las_lineas_del_tercero(self):
+        otra = self._cuenta('13551510', self.grupo_caja, exige_base=True)
+        self._movimiento(self.retencion, date(2026, 1, 5), debito=40, base=1000,
+                         contacto=self.uno)
+        self._movimiento(otra, date(2026, 1, 6), debito=10, base=250, contacto=self.uno)
+
+        # La última tabla de la hoja es la de conceptos; su última fila, el total.
+        tabla = self._tablas(self._formato().construir())[-1]
+        total_base, total_retenido = tabla._cellvalues[-1][1:]
+
+        self.assertEqual(total_base, '$1,250.00')
+        self.assertEqual(total_retenido, '$50.00')
+
+    def test_un_valor_negativo_lleva_el_signo_delante_del_peso(self):
+        """`$-40.00` se lee como si el signo fuera parte del importe."""
+        self._movimiento(self.retencion, date(2026, 1, 5), credito=40, base=1000,
+                         contacto=self.uno)
+
+        tabla = self._tablas(self._formato().construir())[-1]
+
+        self.assertEqual(tabla._cellvalues[-1][2], '-$40.00')
+
+    def test_la_tabla_cabe_en_el_ancho_util(self):
+        """
+        Regresión de dos milímetros.
+
+        Con los anchos puestos a mano en centímetros, la tabla medía 17,40 cm
+        dentro de un marco de 17,19 y se desbordaba sin que nada avisara.
+        """
+        self._movimiento(self.retencion, date(2026, 1, 5), debito=40, base=1000,
+                         contacto=self.uno)
+
+        for tabla in self._tablas(self._formato().construir()):
+            self.assertLessEqual(sum(tabla._argW), ANCHO_CONTENIDO)
+
+    def test_el_pdf_se_arma_sin_configuracion_de_empresa(self):
+        """
+        Un tenant sin configuración tiene que poder imprimir igual.
+
+        El encabezado sale con los datos en blanco; lo que no puede es reventar.
+        """
+        self._movimiento(self.retencion, date(2026, 1, 5), debito=40, base=1000,
+                         contacto=self.uno)
+
+        contenido, nombre = self._formato(configuracion=None).pdf()
+
+        self.assertTrue(contenido.startswith(b'%PDF'))
+        self.assertEqual(nombre, 'certificado_retencion2026-01-01.pdf')
+
+    def test_el_endpoint_devuelve_un_pdf(self):
+        self._movimiento(self.retencion, date(2026, 1, 5), debito=40, base=1000,
+                         contacto=self.uno)
+
+        respuesta = self._post('pdf')
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta['Content-Type'], 'application/pdf')
+        self.assertIn('certificado_retencion', respuesta['Content-Disposition'])
+        self.assertTrue(respuesta.content.startswith(b'%PDF'))
+
+    def test_el_filtro_por_contacto_deja_un_solo_certificado(self):
+        """Es lo que consume la ficha del tercero: su certificado y no los 177."""
+        self._movimiento(self.retencion, date(2026, 1, 5), debito=40, base=1000,
+                         contacto=self.uno)
+        self._movimiento(self.retencion, date(2026, 1, 6), debito=8, base=200,
+                         contacto=self.dos)
+
+        filas = self._filas(filtros=[
+            {'propiedad': 'contacto_id', 'operador': '=', 'valor': self.uno.id},
+        ])
+
+        self.assertEqual({fila['contacto_id'] for fila in filas}, {self.uno.id})
+        self.assertEqual(
+            sum(1 for e in self._formato(filas).construir() if isinstance(e, PageBreak)), 0,
+        )
+
+    def test_un_informe_sin_pdf_lo_dice(self):
+        respuesta = self._post('pdf', informe='balance_prueba')
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('PDF', str(respuesta.data['informe']))
