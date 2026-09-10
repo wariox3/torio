@@ -134,6 +134,12 @@ class GenDocumentoDetalle(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_detalles_contrato_rel',
     )
+    credito = models.ForeignKey(
+        'humano.HumCredito',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_detalles_credito_rel',
+    )
     concepto = models.ForeignKey(
         'humano.HumConcepto',
         null=True,
