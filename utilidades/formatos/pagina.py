@@ -15,7 +15,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate
 
 PAGINA = letter
-MARGEN_HORIZONTAL = 2.2 * cm
+MARGEN_HORIZONTAL = 1.1 * cm
 MARGEN_VERTICAL = 2 * cm
 
 # Lo que queda para el contenido. Es el ancho contra el que se calcula cualquier

@@ -33,8 +33,9 @@ _GRIS_LINEA = colors.HexColor('#9e9e9e')
 # Etiqueta y valor, dos veces: los datos del egreso caben en cuatro columnas.
 _ANCHO_DATOS = anchos(0.19, 0.31, 0.19, 0.31)
 
-# Cuenta, nombre de la cuenta, tercero, identificación, débito, crédito.
-_ANCHO_ASIENTO = anchos(0.12, 0.29, 0.23, 0.14, 0.11, 0.11)
+# Número del documento afectado, cuenta, contacto, valor y naturaleza. La última
+# es una sola letra: no necesita más que el ancho de su encabezado.
+_ANCHO_ASIENTO = anchos(0.14, 0.16, 0.45, 0.21, 0.04)
 
 
 class FormatoDocumentoEgreso(FormatoBase):
@@ -45,7 +46,12 @@ class FormatoDocumentoEgreso(FormatoBase):
         estilos = self._estilos()
 
         return [
-            *EncabezadoEmpresa(titulo='COMPROBANTE DE EGRESO').construir(),
+            # El título es el nombre del tipo, igual que en el genérico: el
+            # documento se llama como lo llama el sistema, no como lo llame
+            # este formato.
+            *EncabezadoEmpresa(
+                titulo=documento.documento_tipo.nombre.upper(),
+            ).construir(),
             Spacer(1, 0.7 * cm),
             self._datos(documento, estilos),
             Spacer(1, 0.5 * cm),
@@ -73,6 +79,10 @@ class FormatoDocumentoEgreso(FormatoBase):
                 fontSize=7.5, alignment=TA_CENTER, leading=10,
             ),
             'celda': ParagraphStyle('celda', parent=base['Normal'], fontSize=7.5, leading=10),
+            'naturaleza': ParagraphStyle(
+                'naturaleza', parent=base['Normal'], fontSize=7.5,
+                alignment=TA_CENTER, leading=10,
+            ),
             'letras': ParagraphStyle('letras', parent=base['Normal'], fontSize=8.5, leading=12),
             'firma': ParagraphStyle(
                 'firma', parent=base['Normal'], fontSize=9,
@@ -160,60 +170,74 @@ class FormatoDocumentoEgreso(FormatoBase):
         for detalle in documento.documentos_detalles_documento_rel.all():
             debita = detalle.naturaleza != 'C'
             lineas.append({
+                # El documento que cruza esta línea: en un egreso es la factura
+                # que se está pagando, y es el dato por el que se busca el
+                # comprobante cuando alguien reclama un pago.
+                'numero': self._texto(
+                    detalle.documento_afectado and detalle.documento_afectado.numero
+                ),
                 'codigo': detalle.cuenta.codigo if detalle.cuenta_id else '',
-                'nombre': detalle.cuenta.nombre if detalle.cuenta_id else
-                          self._texto(detalle.detalle),
-                'tercero': detalle.contacto.nombre_corto if detalle.contacto_id else '',
-                'identificacion': (detalle.contacto.numero_identificacion
-                                   if detalle.contacto_id else ''),
-                'debito': detalle.precio if debita else CERO,
-                'credito': CERO if debita else detalle.precio,
+                'contacto': detalle.contacto.nombre_corto if detalle.contacto_id else '',
+                'valor': detalle.precio,
+                'naturaleza': 'D' if debita else 'C',
             })
 
         if documento.total:
             banco = documento.cuenta_banco
             cuenta_banco = banco.cuenta if banco and banco.cuenta_id else None
             lineas.append({
+                'numero': '',
                 'codigo': cuenta_banco.codigo if cuenta_banco else '',
-                'nombre': self._texto(banco and banco.nombre),
-                'tercero': '',
-                'identificacion': '',
-                'debito': CERO,
-                'credito': documento.total,
+                'contacto': self._texto(banco and banco.nombre),
+                'valor': documento.total,
+                'naturaleza': 'C',
             })
         return lineas
 
     def _asiento(self, documento, estilos):
-        encabezados = ('CUENTA', 'NOMBRE', 'TERCERO', 'IDENTIFICACIÓN', 'DÉBITO', 'CRÉDITO')
+        """
+        El asiento en una sola columna de valor, con la naturaleza al lado.
+
+        Dos columnas de débito y crédito dejan media tabla en ceros: cada línea
+        cae de un lado solo. Con `VALOR` y una `N` de una letra se ve lo mismo en
+        la mitad del ancho, y lo que sobra se lo lleva el nombre de la cuenta,
+        que es lo que se estaba partiendo en dos renglones.
+
+        El pie suma solo los débitos: en un asiento cuadrado esa es la plata que
+        se giró, y sumar la columna entera daría débitos más créditos, que es el
+        doble del comprobante y no significa nada.
+        """
+        encabezados = ('NÚMERO', 'CUENTA', 'CONTACTO', 'VALOR', 'N')
         filas = [[Paragraph(texto, estilos['columna']) for texto in encabezados]]
 
-        total_debito = total_credito = CERO
+        total = CERO
         for linea in self._lineas_asiento(documento):
-            total_debito += linea['debito']
-            total_credito += linea['credito']
+            if linea['naturaleza'] == 'D':
+                total += linea['valor']
             filas.append([
+                Paragraph(linea['numero'], estilos['celda']),
                 Paragraph(linea['codigo'], estilos['celda']),
-                Paragraph(linea['nombre'], estilos['celda']),
-                Paragraph(linea['tercero'], estilos['celda']),
-                Paragraph(linea['identificacion'], estilos['celda']),
-                self._moneda(linea['debito']),
-                self._moneda(linea['credito']),
+                Paragraph(linea['contacto'], estilos['celda']),
+                self._moneda(linea['valor']),
+                Paragraph(linea['naturaleza'], estilos['naturaleza']),
             ])
-        filas.append(['', '', '', '', self._moneda(total_debito), self._moneda(total_credito)])
 
-        ultima = len(filas) - 1
+        ultimo_renglon = len(filas) - 1
+        filas.append(['', '', 'TOTAL', self._moneda(total), ''])
+
         tabla = Table(filas, colWidths=_ANCHO_ASIENTO, repeatRows=1)
         tabla.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
             ('FONTSIZE', (0, 0), (-1, -1), 7.5),
             ('BACKGROUND', (0, 0), (-1, 0), _GRIS_ETIQUETA),
-            ('GRID', (0, 0), (-1, ultima - 1), 0.5, _GRIS_LINEA),
-            ('ALIGN', (4, 0), (-1, -1), 'RIGHT'),
+            ('GRID', (0, 0), (-1, ultimo_renglon), 0.5, _GRIS_LINEA),
+            ('ALIGN', (3, 0), (3, -1), 'RIGHT'),
+            ('ALIGN', (2, -1), (2, -1), 'RIGHT'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 0), (-1, -1), 3),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-            ('FONTNAME', (0, ultima), (-1, ultima), 'Helvetica-Bold'),
-            ('LINEABOVE', (4, ultima), (-1, ultima), 0.6, _GRIS_LINEA),
+            ('FONTNAME', (2, -1), (3, -1), 'Helvetica-Bold'),
+            ('LINEABOVE', (2, -1), (3, -1), 0.6, _GRIS_LINEA),
         ]))
         return tabla
 

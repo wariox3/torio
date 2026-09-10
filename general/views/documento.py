@@ -93,8 +93,15 @@ class GenDocumentoViewSet(
         if not filtros:
             raise ValidationError('Debe enviar al menos un filtro para imprimir.')
         campos_filtrables = self._config_lista('campos_filtrables', set())
-        qs = self.get_queryset().select_related('documento_tipo', 'contacto').prefetch_related(
-            'documentos_detalles_documento_rel__item'
+        qs = self.get_queryset().select_related(
+            # `cuenta_banco__cuenta` y el documento afectado los lee el formato
+            # del egreso; sin esto serían una consulta por línea impresa.
+            'documento_tipo', 'contacto', 'cuenta_banco__cuenta',
+        ).prefetch_related(
+            'documentos_detalles_documento_rel__item',
+            'documentos_detalles_documento_rel__cuenta',
+            'documentos_detalles_documento_rel__contacto',
+            'documentos_detalles_documento_rel__documento_afectado',
         )
         qs = aplicar_filtros(qs, filtros, campos_filtrables)
         if qs.count() > 50:
