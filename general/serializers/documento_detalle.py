@@ -23,9 +23,9 @@ class GenDocumentoImpuestoSerializer(serializers.ModelSerializer):
 
 
 class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
-    campos_filtrables = {'id', 'documento_id', 'documento_detalle_afectado_id', 'item_id', 'tipo_registro', 'naturaleza', 'cuenta_id', 'centro_costo_id', 'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion', 'modalidad_id', 'almacen_id', 'afectado', 'pendiente'}
+    campos_filtrables = {'id', 'documento_id', 'documento_detalle_afectado_id', 'documento_afectado_id', 'item_id', 'tipo_registro', 'naturaleza', 'cuenta_id', 'centro_costo_id', 'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion', 'modalidad_id', 'almacen_id', 'afectado', 'pendiente'}
     select_related_lista = ('item', 'modalidad', 'cuenta', 'centro_costo', 'contacto', 'puesto', 'almacen',
-                            'documento_detalle_afectado__documento__documento_tipo')
+                            'documento_afectado__documento_tipo')
     ordenamiento_default_lista = ('-id',)
 
     documento = serializers.PrimaryKeyRelatedField(
@@ -36,17 +36,18 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
-    # El documento al que cruza esta línea, no el detalle: el front lista
-    # afectaciones y muestra contra qué documento quedó cada una.
-    documento_afectado = serializers.IntegerField(
-        source='documento_detalle_afectado.documento_id', read_only=True, default=None,
+    documento_afectado = serializers.PrimaryKeyRelatedField(
+        queryset=GenDocumento.objects.all(),
+        required=False,
+        allow_null=True,
     )
+    # Datos del documento que cruza esta línea, para que el front liste las
+    # afectaciones sin ir a buscarlos documento por documento.
     documento_afectado_numero = serializers.IntegerField(
-        source='documento_detalle_afectado.documento.numero', read_only=True, default=None,
+        source='documento_afectado.numero', read_only=True, default=None,
     )
     documento_afectado_documento_tipo_nombre = serializers.CharField(
-        source='documento_detalle_afectado.documento.documento_tipo.nombre',
-        read_only=True, default=None,
+        source='documento_afectado.documento_tipo.nombre', read_only=True, default=None,
     )
     item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
     modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
