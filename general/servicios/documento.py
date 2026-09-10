@@ -433,6 +433,18 @@ def aprobar(documento_id):
         # que es lo que mira una remisión para saber cuánto le queda por despachar.
         _aplicar_afectacion(afectados, totales_a_afectar, cantidades_a_afectar, signo=1)
 
+        # Lo mismo un nivel más arriba, para las líneas que cruzan un documento
+        # entero en vez de un detalle.
+        documentos_afectados, totales_documento = _agrupar_documentos_afectados(documento)
+        for afectado_id, total_a_afectar in totales_documento.items():
+            afectado = documentos_afectados[afectado_id]
+            if total_a_afectar > afectado.pendiente:
+                raise ValidationError(
+                    f'El documento {afectado_id} solo tiene {afectado.pendiente} '
+                    f'pendiente por afectar y se intentan afectar {total_a_afectar}.'
+                )
+        _aplicar_afectacion_documento(documentos_afectados, totales_documento, signo=1)
+
         _afectar_inventario(documento, signo=1)
 
         campos_actualizar += _asignar_cartera(documento)
@@ -472,6 +484,61 @@ def _agrupar_afectados(documento):
     return afectados, totales, cantidades
 
 
+def _agrupar_documentos_afectados(documento):
+    """
+    Agrupa por documento afectado la plata que este documento le aplica.
+
+    Es el equivalente de `_agrupar_afectados` un nivel más arriba: una línea
+    puede cruzar un detalle concreto (`documento_detalle_afectado`) o un
+    documento entero (`documento_afectado`), y son casos distintos —no uno
+    derivado del otro—. Acá se resuelve el segundo.
+
+    El monto sale de `precio` y no de `total`, igual que en el sistema anterior.
+    No es un detalle de estilo: estas líneas son apuntes contables
+    (`tipo_registro='C'`), y en un apunte `calcular()` no corre y `total` queda
+    en cero —el valor vive en `precio`—. Sumar `total` acá afectaría cada
+    documento en cero sin que nada avisara.
+
+    No se agrupan cantidades: `GenDocumento` no lleva unidades afectadas, eso
+    vive en el detalle.
+    """
+    afectados = {}
+    totales = {}
+    for detalle in documento.documentos_detalles_documento_rel.all():
+        afectado_id = detalle.documento_afectado_id
+        if afectado_id is None:
+            continue
+        if afectado_id == documento.pk:
+            raise ValidationError(
+                f'El detalle {detalle.pk} afecta al documento {documento.pk}, '
+                f'que es el documento al que pertenece.'
+            )
+        if afectado_id not in afectados:
+            # Se bloquea por lo mismo que el detalle afectado: su pendiente lo
+            # pueden estar moviendo otro documento o un pago al mismo tiempo.
+            afectados[afectado_id] = GenDocumento.objects.select_for_update().get(
+                pk=afectado_id
+            )
+            totales[afectado_id] = Decimal('0')
+        totales[afectado_id] += detalle.precio
+    return afectados, totales
+
+
+def _aplicar_afectacion_documento(afectados, totales, signo):
+    """
+    Aplica (signo=1) o revierte (signo=-1) la afectación sobre los documentos.
+
+    `pendiente` se recalcula con la misma fórmula de
+    `_afectar_documento_referencia`, que es el otro punto que mueve el saldo de
+    un documento afectado: si divergieran, el mismo documento quedaría con un
+    pendiente distinto según quién lo tocó último.
+    """
+    for afectado_id, afectado in afectados.items():
+        afectado.afectado += totales[afectado_id] * signo
+        afectado.pendiente = afectado.total - (afectado.afectado + afectado.pago)
+        afectado.save(update_fields=['afectado', 'pendiente'])
+
+
 def _aplicar_afectacion(afectados, totales, cantidades, signo):
     """Aplica (signo=1) o revierte (signo=-1) la afectación sobre los detalles."""
     for afectado_id, afectado in afectados.items():
@@ -508,6 +575,10 @@ def desaprobar(documento_id):
         # documento arrastra cartera o unidades afectadas que ya no corresponden.
         afectados, totales_a_afectar, cantidades_a_afectar = _agrupar_afectados(documento)
         _aplicar_afectacion(afectados, totales_a_afectar, cantidades_a_afectar, signo=-1)
+
+        documentos_afectados, totales_documento = _agrupar_documentos_afectados(documento)
+        _aplicar_afectacion_documento(documentos_afectados, totales_documento, signo=-1)
+
         _afectar_inventario(documento, signo=-1)
 
         campos_actualizar = ['estado_aprobado']
