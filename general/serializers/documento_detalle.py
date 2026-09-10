@@ -24,7 +24,8 @@ class GenDocumentoImpuestoSerializer(serializers.ModelSerializer):
 
 class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
     campos_filtrables = {'id', 'documento_id', 'documento_detalle_afectado_id', 'item_id', 'tipo_registro', 'naturaleza', 'cuenta_id', 'centro_costo_id', 'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion', 'modalidad_id', 'almacen_id', 'afectado', 'pendiente'}
-    select_related_lista = ('item', 'modalidad', 'cuenta', 'centro_costo', 'contacto', 'puesto', 'almacen')
+    select_related_lista = ('item', 'modalidad', 'cuenta', 'centro_costo', 'contacto', 'puesto', 'almacen',
+                            'documento_detalle_afectado__documento__documento_tipo')
     ordenamiento_default_lista = ('-id',)
 
     documento = serializers.PrimaryKeyRelatedField(
@@ -34,6 +35,18 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
         queryset=GenDocumentoDetalle.objects.all(),
         required=False,
         allow_null=True,
+    )
+    # El documento al que cruza esta línea, no el detalle: el front lista
+    # afectaciones y muestra contra qué documento quedó cada una.
+    documento_afectado = serializers.IntegerField(
+        source='documento_detalle_afectado.documento_id', read_only=True, default=None,
+    )
+    documento_afectado_numero = serializers.IntegerField(
+        source='documento_detalle_afectado.documento.numero', read_only=True, default=None,
+    )
+    documento_afectado_documento_tipo_nombre = serializers.CharField(
+        source='documento_detalle_afectado.documento.documento_tipo.nombre',
+        read_only=True, default=None,
     )
     item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
     modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
@@ -78,6 +91,9 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'id',
             'documento',
             'documento_detalle_afectado',
+            'documento_afectado',
+            'documento_afectado_numero',
+            'documento_afectado_documento_tipo_nombre',
             'tipo_registro',
             # Lado del apunte contable (D/C). El valor va en `precio`; ver
             # `GenDocumentoDetalle.calcular`, que no deriva totales para estas líneas.
