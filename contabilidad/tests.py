@@ -8,21 +8,26 @@ from openpyxl import load_workbook
 from rest_framework import permissions
 from rest_framework.test import APIRequestFactory
 
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 
 from contabilidad.models import (
+    ConActivo,
+    ConActivoGrupo,
     ConCentroCosto,
     ConComprobante,
     ConCuenta,
     ConCuentaClase,
     ConCuentaCuenta,
     ConCuentaGrupo,
+    ConMetodoDepreciacion,
     ConMovimiento,
     ConPeriodo,
 )
+from general.serializers import GenDocumentoDetalleSerializer
 from general.servicios import contabilizar
 from contabilidad.formatos import FormatoCertificadoRetencion
-from contabilidad.servicios import balance
+from contabilidad.serializers import ConActivoImportarSerializer, ConActivoSerializer
+from contabilidad.servicios import balance, depreciacion
 from utilidades.filtros import aplicar_filtros
 from contabilidad.servicios.movimiento import analizar_inconsistencias
 from contabilidad.views.comprobante import ConComprobanteViewSet
@@ -2335,3 +2340,480 @@ class CertificadoRetencionPdfTests(_InformeBase):
 
         self.assertEqual(respuesta.status_code, 400)
         self.assertIn('PDF', str(respuesta.data['informe']))
+
+
+class CargarActivoTests(TenantTestCase):
+    """
+    El cargue de depreciación arma el documento del periodo: una línea por activo
+    con saldo, prorrateada por los días que el activo estuvo vivo en el mes.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.cuenta_gasto = ConCuenta.objects.create(
+            codigo='5160', nombre='Gasto depreciación', permite_movimiento=True,
+        )
+        self.cuenta_depreciacion = ConCuenta.objects.create(
+            codigo='1592', nombre='Depreciación acumulada', permite_movimiento=True,
+        )
+        self.centro_costo = ConCentroCosto.objects.create(nombre='Administración')
+        self.activo_grupo = ConActivoGrupo.objects.create(id=1, nombre='Muebles')
+        self.metodo = ConMetodoDepreciacion.objects.create(id=1, nombre='Línea recta')
+        self.depreciacion_tipo = GenDocumentoTipo.objects.create(
+            pk=depreciacion.DOCUMENTO_TIPO_DEPRECIACION, nombre='DEPRECIACION',
+        )
+        self.otro_tipo = GenDocumentoTipo.objects.create(pk=901, nombre='FACTURA')
+
+    def _crear_activo(self, fecha_activacion, periodo='3000', saldo='30000',
+                      fecha_baja=None, codigo='1'):
+        return ConActivo.objects.create(
+            codigo=codigo, nombre=f'Activo {codigo}',
+            fecha_compra=fecha_activacion, fecha_activacion=fecha_activacion,
+            fecha_baja=fecha_baja,
+            depreciacion_periodo=Decimal(periodo), depreciacion_saldo=Decimal(saldo),
+            activo_grupo=self.activo_grupo, metodo_depreciacion=self.metodo,
+            cuenta_gasto=self.cuenta_gasto, cuenta_depreciacion=self.cuenta_depreciacion,
+            centro_costo=self.centro_costo,
+        )
+
+    def _crear_documento(self, fecha=date(2026, 1, 15), documento_tipo=None, **extra):
+        return GenDocumento.objects.create(
+            documento_tipo=documento_tipo or self.depreciacion_tipo, fecha=fecha, **extra,
+        )
+
+    def _detalles(self, documento):
+        return list(documento.documentos_detalles_documento_rel.order_by('activo_id'))
+
+    # ----------------------------------------------------------- el cargue ----
+
+    def test_carga_una_linea_por_activo_y_deja_el_total_en_el_documento(self):
+        uno = self._crear_activo(date(2025, 6, 1), codigo='1')
+        dos = self._crear_activo(date(2025, 6, 1), periodo='1500', codigo='2')
+        documento = self._crear_documento()
+
+        depreciacion.cargar_activos(documento.pk)
+
+        detalles = self._detalles(documento)
+        self.assertEqual([d.activo_id for d in detalles], [uno.pk, dos.pk])
+        self.assertEqual([d.precio for d in detalles], [Decimal('3000'), Decimal('1500')])
+        documento.refresh_from_db()
+        self.assertEqual(documento.total, Decimal('4500'))
+
+    def test_la_linea_es_un_apunte_contable_del_activo(self):
+        activo = self._crear_activo(date(2025, 6, 1))
+        documento = self._crear_documento()
+
+        depreciacion.cargar_activos(documento.pk)
+
+        detalle = self._detalles(documento)[0]
+        # 'D' es lo que después lleva `contabilizar` a la cuenta de gasto y a la
+        # de depreciación acumulada del activo.
+        self.assertEqual(detalle.tipo_registro, 'D')
+        self.assertEqual(detalle.activo_id, activo.pk)
+        self.assertEqual(detalle.dias, 30)
+        # Un apunte contable no deriva totales de cantidad x precio.
+        self.assertEqual(detalle.total, Decimal('0'))
+
+    def test_la_linea_expone_el_activo_para_el_front(self):
+        activo = self._crear_activo(date(2025, 6, 1))
+        documento = self._crear_documento()
+        depreciacion.cargar_activos(documento.pk)
+
+        datos = GenDocumentoDetalleSerializer(self._detalles(documento)[0]).data
+
+        self.assertEqual(datos['activo'], activo.pk)
+        self.assertEqual(datos['activo_codigo'], activo.codigo)
+        self.assertEqual(datos['activo_nombre'], activo.nombre)
+
+    def test_una_linea_sin_activo_lo_expone_en_nulo(self):
+        documento = self._crear_documento()
+        detalle = GenDocumentoDetalle.objects.create(documento=documento, tipo_registro='C')
+
+        datos = GenDocumentoDetalleSerializer(detalle).data
+
+        self.assertIsNone(datos['activo'])
+        self.assertIsNone(datos['activo_codigo'])
+        self.assertIsNone(datos['activo_nombre'])
+
+    def test_el_contacto_del_documento_baja_a_la_linea(self):
+        self._crear_activo(date(2025, 6, 1))
+        # El tenant de pruebas no carga fixtures: la cadena ciudad -> estado -> país va acá.
+        pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
+        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        identificacion = GenIdentificacion.objects.create(id=6, nombre='NIT', codigo='31')
+        tipo_persona = GenTipoPersona.objects.create(id=1, nombre='Jurídica')
+        contacto = GenContacto.objects.create(
+            numero_identificacion='900', nombre_corto='Contacto', ciudad=ciudad,
+            identificacion=identificacion, tipo_persona=tipo_persona,
+            direccion='calle 1', telefono='1', correo='t@t.com',
+        )
+        documento = self._crear_documento(contacto=contacto)
+
+        depreciacion.cargar_activos(documento.pk)
+
+        self.assertEqual(self._detalles(documento)[0].contacto_id, contacto.pk)
+
+    def test_el_centro_costo_del_documento_baja_a_la_linea(self):
+        self._crear_activo(date(2025, 6, 1))
+        otro = ConCentroCosto.objects.create(nombre='Operaciones')
+        documento = self._crear_documento(centro_costo=otro)
+
+        depreciacion.cargar_activos(documento.pk)
+
+        self.assertEqual(self._detalles(documento)[0].centro_costo_id, otro.pk)
+
+    def test_no_toca_el_saldo_del_activo(self):
+        """El documento es la constancia; el saldo del activo no lo mueve el cargue."""
+        activo = self._crear_activo(date(2025, 6, 1))
+        documento = self._crear_documento()
+
+        depreciacion.cargar_activos(documento.pk)
+
+        activo.refresh_from_db()
+        self.assertEqual(activo.depreciacion_saldo, Decimal('30000'))
+        self.assertEqual(activo.depreciacion_acumulada, Decimal('0'))
+
+    # --------------------------------------------------- qué activo entra ----
+
+    def test_el_activo_sin_saldo_no_entra(self):
+        self._crear_activo(date(2025, 6, 1), saldo='0')
+        documento = self._crear_documento()
+
+        depreciacion.cargar_activos(documento.pk)
+
+        self.assertEqual(self._detalles(documento), [])
+
+    def test_el_activo_que_se_activa_despues_del_mes_no_entra(self):
+        self._crear_activo(date(2026, 2, 1))
+        documento = self._crear_documento()
+
+        depreciacion.cargar_activos(documento.pk)
+
+        self.assertEqual(self._detalles(documento), [])
+
+    def test_el_activo_dado_de_baja_antes_del_mes_no_entra(self):
+        self._crear_activo(date(2025, 6, 1), fecha_baja=date(2025, 12, 31))
+        documento = self._crear_documento()
+
+        depreciacion.cargar_activos(documento.pk)
+
+        self.assertEqual(self._detalles(documento), [])
+
+    def test_el_activo_dado_de_baja_el_primer_dia_no_deja_linea(self):
+        """Cero días depreciados: la línea sería en cero y no aporta al asiento."""
+        self._crear_activo(date(2025, 6, 1), fecha_baja=date(2026, 1, 1))
+        documento = self._crear_documento()
+
+        depreciacion.cargar_activos(documento.pk)
+
+        self.assertEqual(self._detalles(documento), [])
+        documento.refresh_from_db()
+        self.assertEqual(documento.total, Decimal('0'))
+
+    # ------------------------------------------------------------ prorrateo ----
+
+    def test_el_activo_del_mes_completo_deprecia_la_cuota_entera(self):
+        self._crear_activo(date(2025, 6, 1))
+        documento = self._crear_documento()
+
+        depreciacion.cargar_activos(documento.pk)
+
+        self.assertEqual(self._detalles(documento)[0].precio, Decimal('3000'))
+
+    def test_el_activo_activado_dentro_del_mes_deprecia_por_dias(self):
+        self._crear_activo(date(2026, 1, 11))
+        documento = self._crear_documento()
+
+        depreciacion.cargar_activos(documento.pk)
+
+        detalle = self._detalles(documento)[0]
+        self.assertEqual(detalle.dias, 20)
+        self.assertEqual(detalle.precio, Decimal('2000'))
+
+    def test_el_activo_dado_de_baja_dentro_del_mes_pierde_los_dias_que_faltan(self):
+        self._crear_activo(date(2025, 6, 1), fecha_baja=date(2026, 1, 21))
+        documento = self._crear_documento()
+
+        depreciacion.cargar_activos(documento.pk)
+
+        detalle = self._detalles(documento)[0]
+        self.assertEqual(detalle.dias, 19)
+        self.assertEqual(detalle.precio, Decimal('1900'))
+
+    def test_febrero_completa_los_dias_que_le_faltan_al_mes_comercial(self):
+        """Activado el 1 de febrero: 27 días de calendario + 2 para llegar a 29."""
+        self._crear_activo(date(2026, 2, 1))
+        documento = self._crear_documento(fecha=date(2026, 2, 15))
+
+        depreciacion.cargar_activos(documento.pk)
+
+        detalle = self._detalles(documento)[0]
+        self.assertEqual(detalle.dias, 29)
+        self.assertEqual(detalle.precio, Decimal('2900'))
+
+    def test_el_activo_sin_cuota_deja_la_linea_en_cero(self):
+        """El corte es por días vividos en el mes, no por el valor de la cuota."""
+        self._crear_activo(date(2025, 6, 1), periodo='0')
+        documento = self._crear_documento()
+
+        depreciacion.cargar_activos(documento.pk)
+
+        detalle = self._detalles(documento)[0]
+        self.assertEqual(detalle.dias, 30)
+        self.assertEqual(detalle.precio, Decimal('0'))
+
+    def test_nunca_deprecia_mas_que_el_saldo_pendiente(self):
+        self._crear_activo(date(2025, 6, 1), periodo='3000', saldo='1000')
+        documento = self._crear_documento()
+
+        depreciacion.cargar_activos(documento.pk)
+
+        self.assertEqual(self._detalles(documento)[0].precio, Decimal('1000'))
+
+    # --------------------------------------------------------- validaciones ----
+
+    def test_un_documento_que_no_es_de_depreciacion_se_rechaza(self):
+        self._crear_activo(date(2025, 6, 1))
+        documento = self._crear_documento(documento_tipo=self.otro_tipo)
+
+        with self.assertRaises(ValidationError):
+            depreciacion.cargar_activos(documento.pk)
+
+        self.assertEqual(self._detalles(documento), [])
+
+    def test_un_documento_ya_cargado_se_rechaza(self):
+        """No descuenta saldo, así que recargar depreciaría el mismo mes dos veces."""
+        self._crear_activo(date(2025, 6, 1))
+        documento = self._crear_documento()
+        depreciacion.cargar_activos(documento.pk)
+
+        with self.assertRaises(ValidationError):
+            depreciacion.cargar_activos(documento.pk)
+
+        self.assertEqual(len(self._detalles(documento)), 1)
+
+    def test_un_documento_aprobado_se_rechaza(self):
+        self._crear_activo(date(2025, 6, 1))
+        documento = self._crear_documento(estado_aprobado=True)
+
+        with self.assertRaises(ValidationError):
+            depreciacion.cargar_activos(documento.pk)
+
+    def test_un_documento_sin_fecha_se_rechaza(self):
+        self._crear_activo(date(2025, 6, 1))
+        documento = self._crear_documento(fecha=None)
+
+        with self.assertRaises(ValidationError):
+            depreciacion.cargar_activos(documento.pk)
+
+    def test_un_documento_que_no_existe_se_rechaza(self):
+        with self.assertRaises(NotFound):
+            depreciacion.cargar_activos(999999)
+
+
+class ActivoDepreciacionTests(TenantTestCase):
+    """
+    La cuota y el saldo del activo no se capturan: se derivan del valor de compra
+    y la duración, y sin ellos el activo nunca entra al cargue de depreciación.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.cuenta_gasto = ConCuenta.objects.create(
+            codigo='5160', nombre='Gasto depreciación', permite_movimiento=True,
+        )
+        self.cuenta_depreciacion = ConCuenta.objects.create(
+            codigo='1592', nombre='Depreciación acumulada', permite_movimiento=True,
+        )
+        self.centro_costo = ConCentroCosto.objects.create(nombre='Administración')
+        self.activo_grupo = ConActivoGrupo.objects.create(id=1, nombre='Vehículos')
+        self.metodo = ConMetodoDepreciacion.objects.create(id=1, nombre='Línea recta')
+
+    def _datos(self, **overrides):
+        datos = {
+            'codigo': '1',
+            'nombre': 'MOTOCARRO',
+            'fecha_compra': '2025-05-10',
+            'fecha_activacion': '2025-05-10',
+            'duracion': 360,
+            'valor_compra': '15000000',
+            'depreciacion_inicial': '0',
+            'activo_grupo': self.activo_grupo.pk,
+            'metodo_depreciacion': self.metodo.pk,
+            'cuenta_gasto': self.cuenta_gasto.pk,
+            'cuenta_depreciacion': self.cuenta_depreciacion.pk,
+            'centro_costo': self.centro_costo.pk,
+        }
+        datos.update(overrides)
+        return datos
+
+    def _fila(self, **overrides):
+        fila = {
+            'codigo': '1',
+            'nombre': 'MOTOCARRO',
+            'fecha_compra': '2025-05-10',
+            'fecha_activacion': '2025-05-10',
+            'duracion': '360',
+            'valor_compra': '15000000',
+            'depreciacion_inicial': '0',
+            'activo_grupo.id': self.activo_grupo.pk,
+            'metodo_depreciacion.id': self.metodo.pk,
+            'cuenta_gasto.id': self.cuenta_gasto.pk,
+            'cuenta_depreciacion.id': self.cuenta_depreciacion.pk,
+            'centro_costo.id': self.centro_costo.pk,
+        }
+        fila.update(overrides)
+        return fila
+
+    # --------------------------------------------------------- el cálculo ----
+
+    def test_la_cuota_es_el_valor_de_compra_repartido_en_los_meses(self):
+        activo = ConActivo(valor_compra=Decimal('2499000'), duracion=60)
+
+        activo.calcular_depreciacion()
+
+        self.assertEqual(activo.depreciacion_periodo, Decimal('41650.000000'))
+
+    def test_el_saldo_descuenta_lo_que_ya_venia_depreciado(self):
+        activo = ConActivo(
+            valor_compra=Decimal('3764168'), duracion=60,
+            depreciacion_inicial=Decimal('2896318'),
+        )
+
+        activo.calcular_depreciacion()
+
+        self.assertEqual(activo.depreciacion_saldo, Decimal('867850'))
+
+    def test_el_saldo_no_le_devuelve_al_activo_lo_ya_depreciado(self):
+        """Editar un activo no puede resucitarle el saldo que ya se gastó."""
+        activo = ConActivo(
+            valor_compra=Decimal('1000000'), duracion=10,
+            depreciacion_inicial=Decimal('100000'),
+            depreciacion_acumulada=Decimal('300000'),
+        )
+
+        activo.calcular_depreciacion()
+
+        self.assertEqual(activo.depreciacion_saldo, Decimal('600000'))
+
+    def test_un_activo_sin_duracion_no_deprecia(self):
+        for duracion in (None, 0):
+            with self.subTest(duracion=duracion):
+                activo = ConActivo(valor_compra=Decimal('15000000'), duracion=duracion)
+
+                activo.calcular_depreciacion()
+
+                self.assertEqual(activo.depreciacion_periodo, Decimal('0'))
+
+    # ------------------------------------------------------ POST y PATCH ----
+
+    def test_al_crear_el_activo_queda_con_cuota_y_saldo(self):
+        serializer = ConActivoSerializer(data=self._datos())
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+        activo = serializer.save()
+
+        self.assertEqual(activo.depreciacion_periodo, Decimal('41666.666667'))
+        self.assertEqual(activo.depreciacion_saldo, Decimal('15000000'))
+
+    def test_al_editar_la_duracion_se_recalcula_la_cuota(self):
+        serializer = ConActivoSerializer(data=self._datos())
+        serializer.is_valid(raise_exception=True)
+        activo = serializer.save()
+
+        serializer = ConActivoSerializer(activo, data={'duracion': 60}, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        activo = serializer.save()
+
+        self.assertEqual(activo.depreciacion_periodo, Decimal('250000.000000'))
+
+    def test_una_edicion_que_no_toca_la_plata_deja_la_cuota_igual(self):
+        serializer = ConActivoSerializer(data=self._datos())
+        serializer.is_valid(raise_exception=True)
+        activo = serializer.save()
+
+        serializer = ConActivoSerializer(activo, data={'nombre': 'MOTOCARRO 2'}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        activo = serializer.save()
+
+        self.assertEqual(activo.nombre, 'MOTOCARRO 2')
+        self.assertEqual(activo.depreciacion_periodo, Decimal('41666.666667'))
+        self.assertEqual(activo.depreciacion_saldo, Decimal('15000000'))
+
+    def test_la_cuota_y_el_saldo_no_se_pueden_mandar_por_la_api(self):
+        """Son derivados: lo que mande el front se ignora."""
+        serializer = ConActivoSerializer(data=self._datos(
+            depreciacion_periodo='999', depreciacion_saldo='999',
+        ))
+        serializer.is_valid(raise_exception=True)
+
+        activo = serializer.save()
+
+        self.assertEqual(activo.depreciacion_periodo, Decimal('41666.666667'))
+        self.assertEqual(activo.depreciacion_saldo, Decimal('15000000'))
+
+    # ------------------------------------------------------- importación ----
+
+    def test_el_importador_calcula_la_cuota_y_el_saldo(self):
+        creados, errores = ConActivoImportarSerializer().procesar_lote([(2, self._fila(
+            duracion='60', valor_compra='3764168', depreciacion_inicial='2896318',
+        ))])
+
+        self.assertEqual(errores, [])
+        self.assertEqual(creados, 1)
+        activo = ConActivo.objects.get()
+        self.assertEqual(activo.depreciacion_periodo, Decimal('62736.133333'))
+        self.assertEqual(activo.depreciacion_saldo, Decimal('867850'))
+
+    def test_el_importador_trae_la_fecha_de_baja(self):
+        creados, errores = ConActivoImportarSerializer().procesar_lote([
+            (2, self._fila(fecha_baja='2026-03-31')),
+        ])
+
+        self.assertEqual(errores, [])
+        self.assertEqual(creados, 1)
+        self.assertEqual(ConActivo.objects.get().fecha_baja, date(2026, 3, 31))
+
+    def test_la_fecha_de_baja_es_opcional(self):
+        creados, errores = ConActivoImportarSerializer().procesar_lote([(2, self._fila())])
+
+        self.assertEqual(errores, [])
+        self.assertEqual(creados, 1)
+        self.assertIsNone(ConActivo.objects.get().fecha_baja)
+
+    def test_una_fecha_de_baja_con_formato_malo_da_error(self):
+        creados, errores = ConActivoImportarSerializer().procesar_lote([
+            (2, self._fila(fecha_baja='31 de marzo')),
+        ])
+
+        self.assertEqual(creados, 0)
+        self.assertEqual(errores[0]['fila'], 2)
+        self.assertIn('Fecha baja', errores[0]['mensaje'])
+
+    def test_el_activo_importado_entra_al_cargue_de_depreciacion(self):
+        """La prueba de punta a punta de lo que estaba fallando."""
+        ConActivoImportarSerializer().procesar_lote([(2, self._fila(duracion='60'))])
+        documento_tipo = GenDocumentoTipo.objects.create(
+            pk=depreciacion.DOCUMENTO_TIPO_DEPRECIACION, nombre='DEPRECIACION',
+        )
+        documento = GenDocumento.objects.create(
+            documento_tipo=documento_tipo, fecha=date(2026, 9, 1),
+        )
+
+        depreciacion.cargar_activos(documento.pk)
+
+        detalle = documento.documentos_detalles_documento_rel.get()
+        self.assertEqual(detalle.precio, Decimal('250000.000000'))
+        documento.refresh_from_db()
+        self.assertEqual(documento.total, Decimal('250000.000000'))

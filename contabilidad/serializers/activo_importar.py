@@ -32,6 +32,7 @@ class ConActivoImportarSerializer(serializers.Serializer):
         ('modelo', 'Modelo'),
         ('fecha_compra', 'Fecha compra'),
         ('fecha_activacion', 'Fecha activación'),
+        ('fecha_baja', 'Fecha baja'),
         ('duracion', 'Duración'),
         ('valor_compra', 'Valor compra'),
         ('depreciacion_inicial', 'Depreciación inicial'),
@@ -76,7 +77,7 @@ class ConActivoImportarSerializer(serializers.Serializer):
                     destino: self._fk_obligatorio(datos.get(campo), mapas[destino], etiqueta)
                     for destino, (campo, _, etiqueta) in self._FKS.items()
                 }
-                nuevos.append(ConActivo(
+                activo = ConActivo(
                     codigo=self._texto(datos.get('codigo')),
                     nombre=self._texto(datos.get('nombre')),
                     marca=self._texto_o_none(datos.get('marca')),
@@ -84,11 +85,17 @@ class ConActivoImportarSerializer(serializers.Serializer):
                     modelo=self._texto_o_none(datos.get('modelo')),
                     fecha_compra=self._fecha(datos.get('fecha_compra'), 'Fecha compra'),
                     fecha_activacion=self._fecha(datos.get('fecha_activacion'), 'Fecha activación'),
+                    fecha_baja=self._fecha_o_none(datos.get('fecha_baja'), 'Fecha baja'),
                     duracion=self._entero_o_none(datos.get('duracion'), 'Duración'),
                     valor_compra=self._decimal(datos.get('valor_compra'), 'Valor compra'),
                     depreciacion_inicial=self._decimal(datos.get('depreciacion_inicial'), 'Depreciación inicial'),
                     **valores,
-                ))
+                )
+                # El Excel trae lo que costó y en cuántos meses se deprecia; la
+                # cuota y el saldo salen de ahí. Sin esto el activo entra en ceros
+                # y nunca aparece en el cargue de depreciación.
+                activo.calcular_depreciacion()
+                nuevos.append(activo)
             except Exception as e:
                 errores.append({'fila': idx, 'mensaje': str(e)})
                 if len(errores) >= self.LIMITE_ERRORES:
@@ -170,6 +177,12 @@ class ConActivoImportarSerializer(serializers.Serializer):
             return Decimal(str(v).strip())
         except (InvalidOperation, ValueError):
             raise ValueError(f'{etiqueta} debe ser un número, recibido: "{v}"')
+
+    @classmethod
+    def _fecha_o_none(cls, v, etiqueta):
+        if v is None or str(v).strip() == '':
+            return None
+        return cls._fecha(v, etiqueta)
 
     @staticmethod
     def _fecha(v, etiqueta):

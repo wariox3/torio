@@ -52,3 +52,21 @@ class ConActivoSerializer(serializers.ModelSerializer):
             'depreciacion_acumulada',
             'depreciacion_saldo',
         ]
+
+    # La cuota y el saldo no se capturan: se derivan del valor de compra, la
+    # duración y lo ya depreciado (`ConActivo.calcular_depreciacion`). Por eso son
+    # read_only arriba y se recalculan acá, en el POST y en el PATCH, y no en el
+    # `save()` del modelo.
+
+    def create(self, validated_data):
+        activo = ConActivo(**validated_data)
+        activo.calcular_depreciacion()
+        activo.save()
+        return activo
+
+    def update(self, instance, validated_data):
+        for campo, valor in validated_data.items():
+            setattr(instance, campo, valor)
+        instance.calcular_depreciacion()
+        instance.save()
+        return instance

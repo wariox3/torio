@@ -12,6 +12,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
+from contabilidad.servicios import depreciacion as depreciacion_servicio
 from general.models import GenDocumento
 from general.serializers import (
     GenDocumentoCrearSerializer,
@@ -179,6 +180,32 @@ class GenDocumentoViewSet(
         serializer = DocumentoAccionRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         documento = documento_servicio.desaprobar(serializer.validated_data['id'])
+        salida = GenDocumentoSerializer(documento)
+        return Response(salida.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Cargar la depreciación del periodo',
+        description=(
+            'Carga en un documento de depreciación (tipo 23) una línea por cada activo '
+            'que todavía tenga saldo por depreciar en el mes de la fecha del documento.\n\n'
+            'El mes es comercial, de 30 días: el activo que estuvo el mes completo '
+            'deprecia su cuota entera, y el que se activó o se dio de baja dentro del mes '
+            'deprecia la parte proporcional a los días que estuvo. Ningún activo deprecia '
+            'más que el saldo que le queda.\n\n'
+            'El documento tiene que estar modificable y **sin detalles**: el cargue no '
+            'descuenta el saldo del activo, así que recargar sobre un documento ya cargado '
+            'depreciaría el mismo periodo dos veces. Para volver a cargar hay que borrar '
+            'primero los detalles.\n\n'
+            'Responde el documento con su `total` ya actualizado.'
+        ),
+        request=DocumentoAccionRequestSerializer,
+        responses=GenDocumentoSerializer,
+    )
+    @action(detail=False, methods=['post'], url_path='cargar-activo')
+    def cargar_activo(self, request):
+        serializer = DocumentoAccionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        documento = depreciacion_servicio.cargar_activos(serializer.validated_data['id'])
         salida = GenDocumentoSerializer(documento)
         return Response(salida.data, status=status.HTTP_200_OK)
 
