@@ -2504,6 +2504,15 @@ class CargarActivoTests(TenantTestCase):
         self.assertEqual(datos['activo_codigo'], activo.codigo)
         self.assertEqual(datos['activo_nombre'], activo.nombre)
 
+    def test_la_linea_expone_los_dias_depreciados(self):
+        self._crear_activo(date(2026, 1, 11))
+        documento = self._crear_documento()
+        depreciacion.cargar_activos(documento.pk)
+
+        datos = GenDocumentoDetalleSerializer(self._detalles(documento)[0]).data
+
+        self.assertEqual(datos['dias'], 20)
+
     def test_una_linea_sin_activo_lo_expone_en_nulo(self):
         documento = self._crear_documento()
         detalle = GenDocumentoDetalle.objects.create(documento=documento, tipo_registro='C')

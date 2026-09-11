@@ -110,6 +110,7 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'horas_programadas',
             'horas_diurnas_programadas',
             'horas_nocturnas_programadas',
+            'dias',
             'porcentaje_descuento',
             'detalle',
             'numero',
