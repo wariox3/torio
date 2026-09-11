@@ -1749,6 +1749,80 @@ class ContabilizarTests(_ContabilizarBase):
         self.assertEqual(self._movimientos(documento), [])
 
 
+class ComprobanteDelAsientoTests(_ContabilizarBase):
+    """
+    El comprobante sale del tipo del documento, menos en el asiento: ese lo
+    escoge el usuario documento por documento y sin él no se contabiliza.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.ajuste = ConComprobante.objects.create(
+            id=10, nombre='AJUSTE CONTABLE', codigo='AJU', permite_asiento=True,
+        )
+        # El ASIENTO es el único tipo contable sin comprobante propio, tal como
+        # queda con el fixture `general/fixtures/11_documento_tipo.json`.
+        self.asiento_tipo = GenDocumentoTipo.objects.create(
+            pk=contabilizar.DOCUMENTO_TIPO_ASIENTO, nombre='ASIENTO', operacion=1,
+        )
+
+    def _crear_asiento(self, **extra):
+        documento = GenDocumento.objects.create(
+            documento_tipo=self.asiento_tipo, fecha=date(2026, 1, 15),
+            fecha_contable=date(2026, 1, 15), numero=1, estado_aprobado=True, **extra,
+        )
+        # Partida doble: el asiento tiene que cuadrar para contabilizarse.
+        GenDocumentoDetalle.objects.create(
+            documento=documento, tipo_registro='C', cuenta=self.cuenta_venta,
+            naturaleza='D', precio=Decimal('50'),
+        )
+        GenDocumentoDetalle.objects.create(
+            documento=documento, tipo_registro='C', cuenta=self.cuenta_pagar,
+            naturaleza='C', precio=Decimal('50'),
+        )
+        return documento
+
+    def test_el_asiento_se_contabiliza_con_el_comprobante_del_documento(self):
+        documento = self._crear_asiento(comprobante=self.ajuste)
+
+        contabilizar.contabilizar([documento.pk])
+
+        movimientos = ConMovimiento.objects.filter(documento=documento)
+        self.assertEqual(movimientos.count(), 2)
+        for movimiento in movimientos:
+            self.assertEqual(movimiento.comprobante_id, self.ajuste.pk)
+
+    def test_un_asiento_sin_comprobante_no_se_contabiliza(self):
+        documento = self._crear_asiento()
+
+        with self.assertRaises(ValidationError) as contexto:
+            contabilizar.contabilizar([documento.pk])
+
+        self.assertIn('comprobante', str(contexto.exception))
+        self.assertEqual(ConMovimiento.objects.filter(documento=documento).count(), 0)
+
+    def test_el_comprobante_del_tipo_no_le_sirve_al_asiento(self):
+        """Aunque el tipo ASIENTO llegue a tener uno, el del documento es el que manda."""
+        self.asiento_tipo.comprobante = self.comprobante
+        self.asiento_tipo.save(update_fields=['comprobante'])
+        documento = self._crear_asiento(comprobante=self.ajuste)
+
+        contabilizar.contabilizar([documento.pk])
+
+        movimiento = ConMovimiento.objects.filter(documento=documento).first()
+        self.assertEqual(movimiento.comprobante_id, self.ajuste.pk)
+
+    def test_en_los_demas_tipos_sigue_mandando_el_comprobante_del_tipo(self):
+        """La factura no escoge comprobante: lo trae su tipo, aunque el documento traiga otro."""
+        documento = self._crear_documento(self.factura_tipo, comprobante=self.ajuste)
+        self._crear_detalle_item(documento, self._crear_item())
+
+        contabilizar.contabilizar([documento.pk])
+
+        movimiento = ConMovimiento.objects.filter(documento=documento).first()
+        self.assertEqual(movimiento.comprobante_id, self.comprobante.pk)
+
+
 class DescontabilizarTests(_ContabilizarBase):
     """Descontabilizar deshace exactamente lo que hizo contabilizar."""
 

@@ -260,12 +260,33 @@ def _usuario_actual_id():
     return usuario.pk if usuario is not None else None
 
 
-def _movimientos(documento, periodo, campos_actualizar):
-    """Devuelve (movimientos, campos del documento a guardar)."""
+def _comprobante_id(documento):
+    """
+    Con qué comprobante se contabiliza el documento.
+
+    Casi todos lo heredan de su tipo, que trae uno fijo. El asiento no: su tipo
+    es el único contable que no tiene comprobante, porque lo escoge el usuario
+    documento por documento entre los que están marcados con `permite_asiento`
+    (`GenDocumento.comprobante`, que sirve el selector de comprobantes). Ahí
+    manda el del documento, y un asiento sin comprobante no se contabiliza.
+    """
+    if documento.documento_tipo_id == DOCUMENTO_TIPO_ASIENTO:
+        if documento.comprobante_id is None:
+            raise ValidationError(
+                f'El asiento {documento.pk} no tiene comprobante: escoja uno antes de contabilizar'
+            )
+        return documento.comprobante_id
 
     comprobante_id = documento.documento_tipo.comprobante_id
     if comprobante_id is None:
         raise ValidationError(f'El documento {documento.pk} no tiene comprobante')
+    return comprobante_id
+
+
+def _movimientos(documento, periodo, campos_actualizar):
+    """Devuelve (movimientos, campos del documento a guardar)."""
+
+    comprobante_id = _comprobante_id(documento)
 
     comun = {
         'documento_id': documento.pk,
