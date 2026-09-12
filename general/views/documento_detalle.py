@@ -179,8 +179,15 @@ class GenDocumentoDetalleViewSet(
     # lo manda el front en `documento` y se valida antes de mirar el archivo. De ese
     # padre sale el `documento_tipo`, y del tipo salen las columnas de la plantilla.
 
-    def _documento_de_importacion(self):
-        """Resuelve y valida el padre que manda el front en `documento`."""
+    def _documento_de_importacion(self, *, exigir_mutable):
+        """
+        Resuelve y valida el padre que manda el front en `documento`.
+
+        `exigir_mutable` separa las dos acciones: bajar la plantilla es una
+        lectura que solo necesita el `documento_tipo`, y un documento aprobado
+        tiene tipo igual que uno en borrador. Exigirlo ahí le negaba al usuario
+        ver qué columnas lleva un documento que ya no puede editar.
+        """
         origen = (
             self.request.query_params
             if self.request.method == 'GET'
@@ -198,20 +205,26 @@ class GenDocumentoDetalleViewSet(
             documento = GenDocumento.objects.select_related('documento_tipo').get(pk=pk)
         except GenDocumento.DoesNotExist:
             raise NotFound('Documento no encontrado.')
-        if not documento.es_mutable():
+        if exigir_mutable and not documento.es_mutable():
             raise ValidationError('El documento no es modificable.')
         return documento
 
     def get_serializer_importar(self):
-        return GenDocumentoDetalleImportarSerializer(self._documento_de_importacion())
+        # Escribir exige un padre modificable; bajar la plantilla no. La puerta
+        # real igual está en `procesar_lote`, que relee el documento bloqueado.
+        return GenDocumentoDetalleImportarSerializer(
+            self._documento_de_importacion(exigir_mutable=self.action != 'importar_ejemplo')
+        )
 
     @extend_schema(
         summary='Descargar plantilla de importación de detalles',
         description=(
             'Devuelve un archivo .xlsx con las columnas que corresponden al tipo del '
-            'documento indicado en `documento`: no se llena igual una factura que un '
-            'asiento contable. Responde 404 si el documento no existe, y 400 si no es '
-            'modificable o si su tipo no admite importación de detalles.'
+            'documento indicado en `documento`. No exige que el documento sea '
+            'modificable —la plantilla solo depende de su tipo—; eso lo valida '
+            '`importar`. Responde 404 si el documento no existe, y 400 si su tipo no '
+            'tiene establecida una estructura de importación (hoy ASIENTO, ENTRADA '
+            'ALMACEN y SALIDA ALMACEN).'
         ),
         parameters=[_DOCUMENTO_PARAM],
     )

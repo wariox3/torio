@@ -8,9 +8,11 @@ De ahí las tres diferencias:
   * **El padre lo fija el front, nunca el Excel.** Tanto `importar-ejemplo` como
     `importar` reciben `documento=<id>`, y el padre se valida (existe, es
     modificable) antes de mirar el archivo.
-  * **Las columnas dependen del `documento_tipo` del padre.** No se llena igual
-    una factura que un asiento contable; `PERFIL_POR_TIPO` decide cuál aplica y
-    un tipo sin perfil se rechaza en vez de importar columnas que no le sirven.
+  * **Las columnas dependen del `documento_tipo` del padre.** `PERFIL_POR_TIPO`
+    decide qué perfil aplica, y un tipo sin perfil se rechaza en vez de importar
+    columnas que no le sirven. Hoy tienen estructura ASIENTO (13), ENTRADA
+    ALMACEN (9) y SALIDA ALMACEN (10); los demás dan 400 y se van agregando con
+    su propio perfil.
   * **No hay `bulk_create`.** Cada fila pasa por `crear_detalle()` —la misma
     puerta que usan el POST y el `masivo` del ViewSet— porque hay que sincronizar
     impuestos y llamar `calcular()` con el PK ya asignado. Al cierre se
@@ -23,14 +25,8 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
 from contabilidad.models import ConCentroCosto, ConCuenta
-from general.models import (
-    GenContacto,
-    GenDocumento,
-    GenDocumentoDetalle,
-    GenImpuesto,
-    GenItem,
-    GenModalidad,
-)
+from general.models import GenContacto, GenDocumento, GenDocumentoDetalle, GenItem
+from inventario.models import InvAlmacen
 from general.servicios.documento_detalle import crear_detalle
 
 
@@ -55,15 +51,6 @@ def _decimal_obligatorio(valor, etiqueta):
     if valor is None or str(valor).strip() == '':
         raise ValueError(f'{etiqueta} es obligatorio')
     return _decimal(valor, etiqueta)
-
-
-def _entero_o_none(valor, etiqueta):
-    if valor is None or str(valor).strip() == '':
-        return None
-    try:
-        return int(float(str(valor).strip()))
-    except (TypeError, ValueError):
-        raise ValueError(f'{etiqueta} debe ser un número entero (recibido: "{valor}")')
 
 
 def _ids_int(filas_validas, campo):
@@ -105,6 +92,15 @@ def _fk_obligatorio(valor, mapa, etiqueta):
     if obj is None:
         raise ValueError(f'{etiqueta} es obligatorio')
     return obj
+
+
+def _entero_o_none(valor, etiqueta):
+    if valor is None or str(valor).strip() == '':
+        return None
+    try:
+        return int(float(str(valor).strip()))
+    except (TypeError, ValueError):
+        raise ValueError(f'{etiqueta} debe ser un número entero (recibido: "{valor}")')
 
 
 def _texto_llave(valor):
@@ -177,27 +173,6 @@ def _indice(filas_validas, campo, modelo, llave, etiqueta_llave):
     return _Indice(modelo, llave, etiqueta_llave, valores)
 
 
-def _ids_impuestos(valor):
-    """
-    Parsea la columna de impuestos: ids separados por coma.
-
-    Excel devuelve un int cuando la celda trae un solo id ("3" se lee como 3),
-    así que se normaliza a texto antes de partir.
-    """
-    if valor in (None, ''):
-        return []
-    ids = []
-    for parte in str(valor).replace(';', ',').split(','):
-        parte = parte.strip()
-        if not parte:
-            continue
-        try:
-            ids.append(int(float(parte)))
-        except (TypeError, ValueError):
-            raise ValueError(f'Impuestos debe ser una lista de ids separados por coma (recibido: "{valor}")')
-    return ids
-
-
 class ErroresFila(ValueError):
     """
     Varios problemas de una misma fila. `procesar_lote` los reporta por separado,
@@ -251,7 +226,6 @@ class _Perfil:
     `ValueError` con el mensaje que verá el usuario si la fila no sirve.
     """
 
-    nombre = ''
     campos_excel = ()
     campos_requeridos = frozenset()
     valores_ejemplo = {}
@@ -261,136 +235,6 @@ class _Perfil:
 
     def construir(self, datos, mapas, documento):
         raise NotImplementedError
-
-
-class _PerfilComercial(_Perfil):
-    """
-    Venta y compra: la línea es un item con cantidad y precio. `calcular()` hace
-    el resto (subtotal, descuento, impuestos, total).
-
-    Venta y compra comparten columnas y solo difieren en qué impuestos admiten,
-    de ahí `campo_impuesto`.
-    """
-
-    campo_impuesto = None  # 'venta' | 'compra' — bandera exigida en GenImpuesto
-
-    campos_excel = (
-        ('item.id', 'Item'),
-        ('cantidad', 'Cantidad'),
-        ('precio', 'Precio'),
-        ('porcentaje_descuento', 'Porcentaje descuento'),
-        ('centro_costo.id', 'Centro de costo'),
-        ('detalle', 'Detalle'),
-        ('impuestos', 'Impuestos separados por coma'),
-    )
-    campos_requeridos = frozenset({'item.id', 'cantidad', 'precio'})
-    valores_ejemplo = {'impuestos': ('1,2', '')}
-
-    def precargar(self, filas_validas):
-        ids_impuesto = set()
-        for _, datos in filas_validas:
-            # Un valor mal formado se reporta después, fila por fila.
-            try:
-                ids_impuesto.update(_ids_impuestos(datos.get('impuestos')))
-            except ValueError:
-                continue
-        impuestos = GenImpuesto.objects.filter(id__in=ids_impuesto) if ids_impuesto else []
-        return {
-            'item': _mapa_fk(filas_validas, 'item.id', GenItem),
-            'centro_costo': _mapa_fk(filas_validas, 'centro_costo.id', ConCentroCosto),
-            'impuesto': {o.id: o for o in impuestos},
-        }
-
-    def construir(self, datos, mapas, documento):
-        problemas = _Problemas()
-        campos = {
-            # La línea apunta a un item; es el default del modelo, explícito acá
-            # porque el perfil contable guarda otro.
-            'tipo_registro': 'I',
-            'item': problemas.intentar(
-                lambda: _fk_obligatorio(datos.get('item.id'), mapas['item'], 'Item')),
-            'centro_costo': problemas.intentar(
-                lambda: _fk_opcional(
-                    datos.get('centro_costo.id'), mapas['centro_costo'], 'Centro de costo')),
-            'cantidad': problemas.intentar(
-                lambda: _decimal_obligatorio(datos.get('cantidad'), 'Cantidad')),
-            'precio': problemas.intentar(
-                lambda: _decimal_obligatorio(datos.get('precio'), 'Precio')),
-            'porcentaje_descuento': problemas.intentar(
-                lambda: _decimal(datos.get('porcentaje_descuento'), 'Porcentaje descuento')),
-            'detalle': _texto_o_none(datos.get('detalle')),
-            'impuestos_ids': problemas.intentar(lambda: self._impuestos(datos, mapas), []),
-        }
-        # Lo propio del perfil entra acá y no después de `levantar`: si no, su
-        # error saldría en un intento aparte del resto de los de la misma fila.
-        campos.update(self._campos_propios(datos, mapas, problemas))
-        problemas.levantar()
-        return campos
-
-    def _campos_propios(self, datos, mapas, problemas):
-        """Columnas que solo tiene una de las dos familias comerciales."""
-        return {}
-
-    def _impuestos(self, datos, mapas):
-        impuestos = []
-        for pk in _ids_impuestos(datos.get('impuestos')):
-            impuesto = mapas['impuesto'].get(pk)
-            if impuesto is None:
-                raise ValueError(f'Impuesto con id={pk} no existe')
-            # El impuesto de venta no aplica en un documento de compra y viceversa:
-            # dejarlo pasar arma un total que la DIAN después rechaza.
-            if not getattr(impuesto, self.campo_impuesto):
-                raise ValueError(
-                    f'El impuesto {impuesto.nombre} no aplica a documentos de {self.nombre}'
-                )
-            impuestos.append(impuesto)
-        return impuestos
-
-
-class _PerfilVenta(_PerfilComercial):
-    """
-    Venta, y lo único que la separa de la compra fuera de los impuestos: la
-    modalidad. Es un dato del servicio que se vende —con el sector del documento
-    sale la tarifa mínima de vigilancia, ver `LiquidadorSupervigilancia`—, así que
-    en una compra sería una columna que nadie llena.
-
-    Va por código y no por id, como las llaves naturales del perfil contable: el
-    catálogo son tres filas fijas (CAN, CAR, SAR) que quien llena el archivo se
-    sabe, y los ids no.
-    """
-
-    nombre = 'venta'
-    campo_impuesto = 'venta'
-
-    campos_excel = (
-        ('item.id', 'Item'),
-        ('cantidad', 'Cantidad'),
-        ('precio', 'Precio'),
-        ('porcentaje_descuento', 'Porcentaje descuento'),
-        ('modalidad.codigo', 'Modalidad'),
-        ('centro_costo.id', 'Centro de costo'),
-        ('detalle', 'Detalle'),
-        ('impuestos', 'Impuestos separados por coma'),
-    )
-    valores_ejemplo = {**_PerfilComercial.valores_ejemplo, 'modalidad.codigo': ('SAR', '')}
-
-    def precargar(self, filas_validas):
-        mapas = super().precargar(filas_validas)
-        mapas['modalidad'] = _indice(
-            filas_validas, 'modalidad.codigo', GenModalidad, 'codigo', 'código',
-        )
-        return mapas
-
-    def _campos_propios(self, datos, mapas, problemas):
-        return {
-            'modalidad': problemas.intentar(
-                lambda: mapas['modalidad'].opcional(datos.get('modalidad.codigo'), 'Modalidad')),
-        }
-
-
-class _PerfilCompra(_PerfilComercial):
-    nombre = 'compra'
-    campo_impuesto = 'compra'
 
 
 class _PerfilContable(_Perfil):
@@ -415,8 +259,6 @@ class _PerfilContable(_Perfil):
     eso es que el número de identificación no es único en el modelo, así que un
     NIT repetido se rechaza como ambiguo (ver `_Indice`).
     """
-
-    nombre = 'contable'
 
     # `tipo_registro` no lo decide el perfil sino el tipo del documento: los tres
     # tipos contables comparten columnas pero no marcan la línea igual. Ver la
@@ -570,45 +412,135 @@ class _PerfilContable(_Perfil):
         return ('D', debito) if debito else ('C', credito)
 
 
-PERFIL_VENTA = _PerfilVenta()
-PERFIL_COMPRA = _PerfilCompra()
+class _PerfilInventario(_Perfil):
+    """
+    Entrada y salida de almacén: la línea mueve la existencia de un item en un
+    almacén. No hay contacto ni impuestos —no es una compra ni una venta, es un
+    ajuste de saldo—, y el almacén es obligatorio porque el saldo vive en
+    `InvExistencia`, que es por (item, almacén).
+
+    Las dos columnas que el usuario no llena las deriva el perfil del tipo del
+    documento, y son las que hacen que el movimiento exista:
+
+      * `operacion_inventario` —+1 entra, -1 sale— es la bandera que mira
+        `_afectar_inventario`: con 0 la línea se saltea y aprobar no mueve nada.
+      * `cantidad_operada` es la cantidad CON signo, que es lo que se suma al
+        saldo. `cantidad` queda siempre positiva.
+
+    Ojo: el POST individual y el `masivo` del ViewSet no derivan ninguna de las
+    dos —no hay nada en el camino de escritura que las escriba—, así que un
+    detalle de almacén creado a mano hoy no mueve existencia. Acá se derivan
+    para que el import sirva; unificarlo en `crear_detalle()` es una decisión
+    aparte porque toca todos los que crean detalles.
+    """
+
+    # +1 entra, -1 sale. Coincide con `GenDocumentoTipo.operacion_inventario` del
+    # fixture, pero va explícito en el perfil: el fixture es editable por tenant y
+    # un signo invertido ahí movería el saldo al revés sin que nada lo note.
+    operacion = None
+    # La entrada exige precio porque con él se promedia el costo del item (ver
+    # `DOCUMENTO_TIPOS_QUE_PROMEDIAN_COSTO`): dejarlo vacío mete un cero al
+    # promedio ponderado y le hunde el costo a todo el stock. En la salida el
+    # costo sale del promedio que ya tiene el item, así que ahí no se pide.
+    exige_precio = False
+
+    campos_excel = (
+        ('item.id', 'Item'),
+        ('almacen.id', 'Almacén'),
+        ('cantidad', 'Cantidad'),
+        ('precio', 'Precio'),
+        ('centro_costo.id', 'Centro de costo'),
+        ('detalle', 'Detalle'),
+    )
+
+    @property
+    def campos_requeridos(self):
+        base = {'item.id', 'almacen.id', 'cantidad'}
+        if self.exige_precio:
+            base.add('precio')
+        return frozenset(base)
+
+    def precargar(self, filas_validas):
+        return {
+            'item': _mapa_fk(filas_validas, 'item.id', GenItem),
+            'almacen': _mapa_fk(filas_validas, 'almacen.id', InvAlmacen),
+            'centro_costo': _mapa_fk(filas_validas, 'centro_costo.id', ConCentroCosto),
+        }
+
+    def construir(self, datos, mapas, documento):
+        problemas = _Problemas()
+        cantidad = problemas.intentar(lambda: self._cantidad(datos), Decimal('0'))
+        precio = problemas.intentar(lambda: self._precio(datos), Decimal('0'))
+        campos = {
+            'tipo_registro': 'I',
+            'item': problemas.intentar(
+                lambda: _fk_obligatorio(datos.get('item.id'), mapas['item'], 'Item')),
+            'almacen': problemas.intentar(
+                lambda: _fk_obligatorio(datos.get('almacen.id'), mapas['almacen'], 'Almacén')),
+            'centro_costo': problemas.intentar(
+                lambda: _fk_opcional(
+                    datos.get('centro_costo.id'), mapas['centro_costo'], 'Centro de costo')),
+            'cantidad': cantidad,
+            'precio': precio,
+            'detalle': _texto_o_none(datos.get('detalle')),
+            'operacion_inventario': self.operacion,
+            'cantidad_operada': cantidad * self.operacion,
+        }
+        problemas.levantar()
+        return campos
+
+    @staticmethod
+    def _cantidad(datos):
+        """
+        La cantidad va siempre positiva: el sentido del movimiento lo pone el
+        tipo del documento, no el signo de la celda. Una cantidad negativa en una
+        salida invertiría el movimiento y metería mercancía en vez de sacarla.
+        """
+        cantidad = _decimal_obligatorio(datos.get('cantidad'), 'Cantidad')
+        if cantidad <= 0:
+            raise ValueError(f'Cantidad debe ser mayor que cero (recibido: {cantidad})')
+        return cantidad
+
+    def _precio(self, datos):
+        if self.exige_precio:
+            precio = _decimal_obligatorio(datos.get('precio'), 'Precio')
+        else:
+            precio = _decimal(datos.get('precio'), 'Precio')
+        if precio < 0:
+            raise ValueError(f'Precio no puede ser negativo (recibido: {precio})')
+        return precio
+
+
+class _PerfilInventarioEntrada(_PerfilInventario):
+    operacion = 1
+    exige_precio = True
+
+
+class _PerfilInventarioSalida(_PerfilInventario):
+    operacion = -1
+
+
 PERFIL_CONTABLE = _PerfilContable()
+PERFIL_INVENTARIO_ENTRADA = _PerfilInventarioEntrada()
+PERFIL_INVENTARIO_SALIDA = _PerfilInventarioSalida()
 
 # Mapa explícito documento_tipo -> perfil. Los ids son los de
 # `general/fixtures/11_documento_tipo.json`, que es lo que siembra cada tenant.
 #
-# Un tipo que no esté acá no se importa: es preferible un 400 explícito a
-# ofrecer una plantilla con columnas que no corresponden a ese documento. Los
-# que faltan tienen detalles con otra forma y se agregan cuando se definan:
-#   - PAGO / EGRESO / SALDO INICIAL CXC / CXP: la línea cruza cartera contra
-#     otro detalle (`documento_detalle_afectado`), no es un item ni un apunte.
-#   - ENTRADA / SALIDA / TRASLADO ALMACEN: mueven inventario y necesitan almacén.
-#   - NOMINA y familia (prima, cesantía, liquidación, seguridad social): las
-#     genera la liquidación de `humano`, no se cargan a mano.
+# Todo tipo que no esté acá se rechaza con 400: es preferible decir que la
+# estructura no está establecida a entregar una plantilla con columnas que no le
+# corresponden. TRASLADO ALMACEN (31) queda afuera a propósito: mueve dos
+# almacenes por línea (origen y destino) y `GenDocumentoDetalle` tiene un solo
+# `almacen`, así que necesita su propia forma.
+#
+# Cada tipo que se agregue necesita dos cosas: su perfil (qué columnas trae el
+# Excel y cómo se arma el detalle) y su entrada en
+# `_PerfilContable.TIPO_REGISTRO_POR_TIPO` si reutiliza el perfil contable,
+# porque los tipos contables comparten columnas pero no marcan la línea igual.
 PERFIL_POR_TIPO = {
-    1: PERFIL_VENTA,      # FACTURA ELECTRÓNICA DE VENTA
-    2: PERFIL_VENTA,      # NOTA CRÉDITO DE VENTA
-    3: PERFIL_VENTA,      # NOTA DÉBITO DE VENTA
-    16: PERFIL_VENTA,     # FACTURA VENTA RECURRENTE
-    17: PERFIL_VENTA,     # CUENTA COBRO
-    24: PERFIL_VENTA,     # FACTURA POS ELECTRONICO
-    26: PERFIL_VENTA,     # PEDIDO CLIENTE
-    27: PERFIL_VENTA,     # FACTURA POS
-    29: PERFIL_VENTA,     # REMISION
-    30: PERFIL_VENTA,     # DEVOLUCION REMISION
-    34: PERFIL_VENTA,     # CONTRATO SERVICIO
-    35: PERFIL_VENTA,     # PEDIDO SERVICIO
-
-    5: PERFIL_COMPRA,     # COMPRA
-    6: PERFIL_COMPRA,     # NOTA CREDITO COMPRA
-    7: PERFIL_COMPRA,     # NOTA DEBITO COMPRA
-    11: PERFIL_COMPRA,    # DOCUMENTO SOPORTE
-    12: PERFIL_COMPRA,    # NOTA AJUSTE
-    32: PERFIL_COMPRA,    # FACTURA COMPRA RECURRENTE
-
-    13: PERFIL_CONTABLE,  # ASIENTO
-    23: PERFIL_CONTABLE,  # DEPRECIACION
-    25: PERFIL_CONTABLE,  # CIERRE CONTABLE
+    13: PERFIL_CONTABLE,            # ASIENTO
+    9: PERFIL_INVENTARIO_ENTRADA,   # ENTRADA ALMACEN
+    10: PERFIL_INVENTARIO_SALIDA,   # SALIDA ALMACEN
 }
 
 
@@ -649,8 +581,8 @@ class GenDocumentoDetalleImportarSerializer(serializers.Serializer):
         perfil = PERFIL_POR_TIPO.get(documento.documento_tipo_id)
         if perfil is None:
             raise ValidationError(
-                f'El tipo de documento "{documento.documento_tipo}" no admite '
-                f'importación de detalles.'
+                f'El tipo de documento "{documento.documento_tipo}" no tiene '
+                f'establecida una estructura de importación de detalles.'
             )
         return perfil
 
