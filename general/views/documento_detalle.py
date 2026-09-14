@@ -230,7 +230,7 @@ class GenDocumentoDetalleViewSet(
             'modificable —la plantilla solo depende de su tipo—; eso lo valida '
             '`importar`. Responde 404 si el documento no existe, y 400 si su tipo no '
             'tiene establecida una estructura de importación (hoy ASIENTO, ENTRADA '
-            'ALMACEN y SALIDA ALMACEN).'
+            'ALMACEN, SALIDA ALMACEN, FACTURA y COMPRA).'
         ),
         parameters=[_DOCUMENTO_PARAM],
     )

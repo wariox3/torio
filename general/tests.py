@@ -2083,9 +2083,19 @@ class _ImportarDetalleBaseTests(TenantTestCase):
         self.tipo_salida = GenDocumentoTipo.objects.create(
             id=10, nombre='SALIDA ALMACEN', inventario=True, operacion_inventario=-1,
         )
+        # Factura y compra importan con la estructura de la entrada; el signo de la
+        # operación sale de su tipo, como en el fixture.
+        self.tipo_venta = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', venta=True, operacion_inventario=-1,
+        )
+        self.tipo_compra = GenDocumentoTipo.objects.create(
+            id=5, nombre='COMPRA', compra=True, operacion_inventario=1,
+        )
         # Tipos sin perfil: uno comercial, uno contable y uno de inventario, para
         # que quede fijado que compartir familia con un tipo habilitado no alcanza.
-        self.tipo_venta = GenDocumentoTipo.objects.create(id=1, nombre='FACTURA', venta=True)
+        self.tipo_nota_credito = GenDocumentoTipo.objects.create(
+            id=2, nombre='NOTA CRÉDITO DE VENTA', venta=True,
+        )
         self.tipo_depreciacion = GenDocumentoTipo.objects.create(
             id=23, nombre='DEPRECIACION', contabilidad=True,
         )
@@ -2184,13 +2194,14 @@ class ImportarDetallePadreTests(_ImportarDetalleBaseTests):
         self.assertEqual(response.status_code, 400)
         self.assertIn('no tiene establecida una estructura', str(response.data))
 
-    def test_solo_asiento_tiene_estructura_establecida(self):
+    def test_un_tipo_fuera_del_mapa_no_tiene_estructura(self):
         """
-        El perfil sale de `PERFIL_POR_TIPO`, no de la familia del tipo: una
-        factura y una depreciación tampoco importan, aunque la segunda comparta
-        columnas con el asiento. Agregar un tipo es agregar su entrada.
+        El perfil sale de `PERFIL_POR_TIPO`, no de la familia del tipo: una nota
+        crédito y una depreciación no importan, aunque la primera sea comercial
+        como la factura y la segunda comparta columnas con el asiento. Agregar un
+        tipo es agregar su entrada.
         """
-        for tipo in (self.tipo_venta, self.tipo_depreciacion, self.tipo_sin_perfil):
+        for tipo in (self.tipo_nota_credito, self.tipo_depreciacion, self.tipo_sin_perfil):
             with self.subTest(tipo=tipo.nombre):
                 documento = self._documento(tipo)
 
@@ -2374,6 +2385,46 @@ class ImportarDetalleInventarioTests(_ImportarDetalleBaseTests):
         self.entrada.refresh_from_db()
         self.assertEqual(self.entrada.subtotal, Decimal('6000'))
         self.assertEqual(self.entrada.total, Decimal('6000'))
+
+    # ---- factura y compra ----
+
+    def test_la_factura_y_la_compra_usan_la_plantilla_de_la_entrada(self):
+        from openpyxl import load_workbook
+
+        def encabezados(documento):
+            response = self._plantilla({'documento': documento.id})
+            self.assertEqual(response.status_code, 200)
+            ws = load_workbook(io.BytesIO(response.content)).active
+            return [c.value for c in next(ws.iter_rows())]
+
+        esperados = encabezados(self.entrada)
+        for tipo in (self.tipo_venta, self.tipo_compra):
+            with self.subTest(tipo=tipo.nombre):
+                self.assertEqual(encabezados(self._documento(tipo)), esperados)
+
+    def test_la_factura_importa_con_el_signo_de_su_tipo(self):
+        response = self._importar_en(self.factura, [self._fila()])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        detalle = GenDocumentoDetalle.objects.get()
+        self.assertEqual(detalle.operacion_inventario, -1)
+        self.assertEqual(detalle.cantidad_operada, Decimal('-5'))
+
+    def test_la_compra_importa_con_el_signo_de_su_tipo(self):
+        compra = self._documento(self.tipo_compra)
+
+        response = self._importar_en(compra, [self._fila()])
+
+        self.assertEqual(response.status_code, 200, response.data)
+        detalle = GenDocumentoDetalle.objects.get()
+        self.assertEqual(detalle.operacion_inventario, 1)
+        self.assertEqual(detalle.cantidad_operada, Decimal('5'))
+
+    def test_la_factura_exige_precio_como_la_entrada(self):
+        response = self._importar_en(self.factura, [self._fila(precio=None)])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Precio', str(response.data))
 
 
 class _ImportarDetalleContableBaseTests(_ImportarDetalleBaseTests):
@@ -2645,13 +2696,14 @@ class ImportarDetalleContableTests(_ImportarDetalleContableBaseTests):
 
     def test_importar_sobre_un_tipo_sin_estructura_se_corta_antes_del_archivo(self):
         """
-        El padre se valida antes de mirar el Excel: una factura no llega ni a la
-        fase de encabezados aunque el archivo venga bien armado.
+        El padre se valida antes de mirar el Excel: una nota crédito no llega ni a
+        la fase de encabezados aunque el archivo venga bien armado.
         """
+        nota_credito = self._documento(self.tipo_nota_credito)
         archivo = self._archivo(self.serializer, [self._fila()])
         request = APIRequestFactory().post(
             '/general/documento-detalle/importar/',
-            {'archivo': archivo, 'documento': self.factura.id},
+            {'archivo': archivo, 'documento': nota_credito.id},
             format='multipart',
         )
 

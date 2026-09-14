@@ -11,8 +11,8 @@ De ahí las tres diferencias:
   * **Las columnas dependen del `documento_tipo` del padre.** `PERFIL_POR_TIPO`
     decide qué perfil aplica, y un tipo sin perfil se rechaza en vez de importar
     columnas que no le sirven. Hoy tienen estructura ASIENTO (13), ENTRADA
-    ALMACEN (9) y SALIDA ALMACEN (10); los demás dan 400 y se van agregando con
-    su propio perfil.
+    ALMACEN (9), SALIDA ALMACEN (10), FACTURA (1) y COMPRA (5); los demás dan 400
+    y se van agregando con su propio perfil.
   * **No hay `bulk_create`.** Cada fila pasa por `crear_detalle()` —la misma
     puerta que usan el POST y el `masivo` del ViewSet— porque hay que sincronizar
     impuestos y llamar `calcular()` con el PK ya asignado. Al cierre se
@@ -414,10 +414,11 @@ class _PerfilContable(_Perfil):
 
 class _PerfilInventario(_Perfil):
     """
-    Entrada y salida de almacén: la línea mueve la existencia de un item en un
-    almacén. No hay contacto ni impuestos —no es una compra ni una venta, es un
-    ajuste de saldo—, y el almacén es obligatorio porque el saldo vive en
-    `InvExistencia`, que es por (item, almacén).
+    Líneas de item con almacén: entrada y salida de almacén, y también factura de
+    venta y compra, que importan con las mismas columnas que la entrada. El
+    almacén es obligatorio porque el saldo vive en `InvExistencia`, que es por
+    (item, almacén). No trae contacto —el de una factura o una compra va en el
+    documento— ni impuestos.
 
     `operacion_inventario` y `cantidad_operada` no vienen en el Excel ni las pone
     el perfil: las deriva `crear_detalle()` del tipo del documento, igual que en
@@ -525,6 +526,9 @@ PERFIL_POR_TIPO = {
     13: PERFIL_CONTABLE,            # ASIENTO
     9: PERFIL_INVENTARIO_ENTRADA,   # ENTRADA ALMACEN
     10: PERFIL_INVENTARIO_SALIDA,   # SALIDA ALMACEN
+    # Factura y compra usan las columnas de la entrada, precio obligatorio incluido.
+    1: PERFIL_INVENTARIO_ENTRADA,   # FACTURA ELECTRÓNICA DE VENTA
+    5: PERFIL_INVENTARIO_ENTRADA,   # COMPRA
 }
 
 
