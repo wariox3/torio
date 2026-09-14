@@ -5,9 +5,10 @@ from django.db import models
 from django.db.models import Q, Sum
 
 
-# El egreso no tiene líneas comerciales de las que derivar un total: sus detalles
-# son apuntes contables. Mismo id que `contabilizar.DOCUMENTO_TIPO_EGRESO`, que es
-# quien lo lleva al banco.
+# El pago y el egreso no tienen líneas comerciales de las que derivar un total:
+# sus detalles son apuntes contables. Mismos ids que `contabilizar.DOCUMENTO_TIPO_PAGO`
+# y `contabilizar.DOCUMENTO_TIPO_EGRESO`, que es quien los lleva al banco.
+DOCUMENTO_TIPO_PAGO = 4
 DOCUMENTO_TIPO_EGRESO = 8
 
 
@@ -225,12 +226,12 @@ class GenDocumento(models.Model):
         self.horas_diurnas_programadas = agregados['horas_diurnas_programadas'] or cero
         self.horas_nocturnas_programadas = agregados['horas_nocturnas_programadas'] or cero
 
-        if self.documento_tipo_id == DOCUMENTO_TIPO_EGRESO:
-            # Los detalles del egreso son apuntes contables, y `calcular()` no
-            # corre sobre ellos: su `total` queda en cero y la suma de arriba
-            # dejaría el egreso en cero también. Lo que vale es el neto del
-            # asiento, así que sale de `precio` agrupado por `naturaleza` —lo
-            # mismo que suma `documento._validar_partida_doble`—, y no de los
+        if self.documento_tipo_id in (DOCUMENTO_TIPO_PAGO, DOCUMENTO_TIPO_EGRESO):
+            # Los detalles del pago y del egreso son apuntes contables, y
+            # `calcular()` no corre sobre ellos: su `total` queda en cero y la suma
+            # de arriba dejaría el documento en cero también. Lo que vale es el
+            # neto del asiento, así que sale de `precio` agrupado por `naturaleza`
+            # —lo mismo que suma `documento._validar_partida_doble`—, y no de los
             # derivados del detalle.
             #
             # Va en su propia consulta y no en el `aggregate` de arriba: ahí
@@ -241,4 +242,15 @@ class GenDocumento(models.Model):
                 debito=Sum('precio', filter=Q(naturaleza='D')),
                 credito=Sum('precio', filter=Q(naturaleza='C')),
             )
-            self.total = (por_lado['debito'] or cero) - (por_lado['credito'] or cero)
+            debito = por_lado['debito'] or cero
+            credito = por_lado['credito'] or cero
+            # Los dos son espejo, y el signo es el lado contrario al banco, que es
+            # la pata que agrega `contabilizar._movimientos_banco` por el total:
+            # el egreso acredita el banco y debita lo que paga (la cuenta por
+            # pagar que cancela), así que su total es débitos menos créditos; el
+            # pago debita el banco y acredita lo que cobra (la cuenta por cobrar
+            # que descarga), así que el suyo es créditos menos débitos.
+            if self.documento_tipo_id == DOCUMENTO_TIPO_EGRESO:
+                self.total = debito - credito
+            else:
+                self.total = credito - debito

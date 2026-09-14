@@ -3392,6 +3392,55 @@ class DocumentoPagoTests(TenantTestCase):
         self.assertTrue(response.data['estado_anulado'])
 
 
+class TotalDocumentoContableTests(TenantTestCase):
+    """
+    El pago y el egreso no derivan el total de sus líneas: es el neto del asiento
+    sobre `precio`, con el signo del lado contrario al banco. Contabilizar pone el
+    banco por ese total, así que un signo al revés descuadra el asiento.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def _documento(self, tipo_id, nombre, lineas):
+        tipo = GenDocumentoTipo.objects.create(id=tipo_id, nombre=nombre)
+        documento = GenDocumento.objects.create(documento_tipo=tipo, fecha=date(2026, 1, 15))
+        for naturaleza, precio in lineas:
+            GenDocumentoDetalle.objects.create(
+                documento=documento, tipo_registro='C', naturaleza=naturaleza,
+                precio=Decimal(precio),
+            )
+        documento.recalcular_totales()
+        return documento
+
+    def test_el_egreso_es_debitos_menos_creditos(self):
+        """Lo que paga va al débito (la cuenta por pagar) y la retención al crédito."""
+        egreso = self._documento(8, 'EGRESO', [('D', '700'), ('D', '400'), ('C', '100')])
+
+        self.assertEqual(egreso.total, Decimal('1000'))
+
+    def test_el_pago_es_creditos_menos_debitos(self):
+        """Lo que cobra va al crédito (la cuenta por cobrar) y la retención al débito."""
+        pago = self._documento(4, 'PAGO', [('C', '700'), ('C', '400'), ('D', '100')])
+
+        self.assertEqual(pago.total, Decimal('1000'))
+
+    def test_un_pago_con_mas_debitos_queda_negativo(self):
+        """Negativo es un pago mal armado: `aprobar` lo rechaza por total menor a cero."""
+        pago = self._documento(4, 'PAGO', [('D', '500'), ('C', '200')])
+
+        self.assertEqual(pago.total, Decimal('-300'))
+
+    def test_otro_tipo_sigue_sumando_el_total_de_las_lineas(self):
+        """Un asiento no toma el neto: sus líneas no llevan banco por el total."""
+        asiento = self._documento(13, 'ASIENTO', [('D', '500'), ('C', '500')])
+
+        self.assertEqual(asiento.total, Decimal('0'))
+
+
 class DocumentoRespuestaTests(TenantTestCase):
     """El GET de documento trae código y nombre del comprobante, no solo el id."""
 
