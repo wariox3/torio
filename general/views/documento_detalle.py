@@ -13,7 +13,12 @@ from general.serializers import (
     GenDocumentoDetallePendienteSerializer,
     GenDocumentoDetalleSerializer,
 )
-from general.servicios import LiquidadorSupervigilancia, crear_detalle, sincronizar_impuestos
+from general.servicios import (
+    LiquidadorSupervigilancia,
+    asignar_operacion,
+    crear_detalle,
+    sincronizar_impuestos,
+)
 from turno.models import TurProgramacion
 from utilidades.filtros import aplicar_filtros, aplicar_ordenamientos
 from utilidades.mixins import FiltrosDinamicosMixin, ImportarExcelMixin
@@ -135,6 +140,7 @@ class GenDocumentoDetalleViewSet(
                 setattr(detalle, campo, valor)
             if impuestos is not None:
                 sincronizar_impuestos(detalle, impuestos)
+            asignar_operacion(detalle)
             detalle.calcular()
             detalle.save()
             documento.recalcular_totales()

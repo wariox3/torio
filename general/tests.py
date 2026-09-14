@@ -2229,6 +2229,8 @@ class ImportarDetalleInventarioTests(_ImportarDetalleBaseTests):
 
     def setUp(self):
         super().setUp()
+        # Solo un item que lleva inventario opera: el 'Servicio' de la base no.
+        self.item = GenItem.objects.create(nombre='Martillo', inventario=True)
         self.almacen = InvAlmacen.objects.create(nombre='Principal')
         self.entrada = self._documento(self.tipo_entrada)
         self.salida = self._documento(self.tipo_salida)
@@ -2306,8 +2308,9 @@ class ImportarDetalleInventarioTests(_ImportarDetalleBaseTests):
 
     def test_sin_operacion_inventario_la_aprobacion_no_moveria_nada(self):
         """
-        Por qué el perfil deriva `operacion_inventario`: `_afectar_inventario`
-        saltea la línea que lo tiene en cero, que es el default del modelo.
+        Por qué `crear_detalle` deriva `operacion_inventario` también en el import:
+        `_afectar_inventario` saltea la línea que lo tiene en cero, que es el
+        default del modelo.
         """
         self.assertEqual(
             self._importar_en(self.entrada, [self._fila()]).status_code, 200,
@@ -2898,6 +2901,145 @@ class DocumentoDetalleRespuestaTests(_ImportarDetalleContableBaseTests):
         detalle = response.data['results'][0]
         self.assertIsNone(detalle['cuenta_codigo'])
         self.assertIsNone(detalle['contacto_nombre_corto'])
+
+
+class OperacionDetalleTests(TenantTestCase):
+    """
+    Una línea de item toma del tipo del documento el sentido en que mueve saldos.
+    Si no lo hiciera, `operacion_inventario` quedaría en cero y aprobar se
+    saltaría la línea sin mover nada.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.tipo_factura = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', operacion_inventario=-1,
+        )
+        self.tipo_entrada = GenDocumentoTipo.objects.create(
+            id=9, nombre='ENTRADA ALMACEN', operacion_inventario=1,
+        )
+        self.tipo_traslado = GenDocumentoTipo.objects.create(
+            id=31, nombre='TRASLADO ALMACEN', operacion_inventario=1,
+        )
+        self.tipo_remision = GenDocumentoTipo.objects.create(
+            id=29, nombre='REMISION', operacion_remision=-1,
+        )
+        self.tipo_asiento = GenDocumentoTipo.objects.create(id=13, nombre='ASIENTO')
+        self.almacen = InvAlmacen.objects.create(nombre='Principal')
+        self.producto = GenItem.objects.create(nombre='Martillo', inventario=True)
+        self.servicio = GenItem.objects.create(nombre='Instalación', inventario=False)
+
+    def _documento(self, tipo):
+        return GenDocumento.objects.create(documento_tipo=tipo, fecha=date(2026, 1, 15))
+
+    def _crear(self, tipo, **datos):
+        from general.servicios.documento_detalle import crear_detalle
+
+        base = {
+            'tipo_registro': 'I', 'item': self.producto, 'almacen': self.almacen,
+            'cantidad': Decimal('5'), 'precio': Decimal('100'),
+        }
+        base.update(datos)
+        detalle = crear_detalle(self._documento(tipo), base)
+        detalle.refresh_from_db()
+        return detalle
+
+    def test_la_factura_saca_con_el_signo_del_tipo(self):
+        detalle = self._crear(self.tipo_factura)
+
+        self.assertEqual(detalle.operacion_inventario, -1)
+        self.assertEqual(detalle.cantidad_operada, Decimal('-5'))
+        self.assertEqual(detalle.cantidad_pendiente, Decimal('5'))
+
+    def test_la_entrada_mete(self):
+        detalle = self._crear(self.tipo_entrada)
+
+        self.assertEqual(detalle.operacion_inventario, 1)
+        self.assertEqual(detalle.cantidad_operada, Decimal('5'))
+
+    def test_un_item_sin_inventario_no_opera(self):
+        """Un servicio no tiene existencias: la línea queda pendiente pero no mueve saldo."""
+        detalle = self._crear(self.tipo_factura, item=self.servicio)
+
+        self.assertEqual(detalle.operacion_inventario, 0)
+        self.assertEqual(detalle.cantidad_operada, Decimal('0'))
+        self.assertEqual(detalle.cantidad_pendiente, Decimal('5'))
+
+    def test_el_cliente_no_elige_la_operacion(self):
+        """Fuera del traslado, lo que venga en la línea se ignora: manda el tipo."""
+        detalle = self._crear(self.tipo_entrada, operacion_inventario=-1)
+
+        self.assertEqual(detalle.operacion_inventario, 1)
+        self.assertEqual(detalle.cantidad_operada, Decimal('5'))
+
+    def test_el_traslado_toma_la_operacion_de_la_linea(self):
+        detalle = self._crear(self.tipo_traslado, operacion_inventario=-1)
+
+        self.assertEqual(detalle.operacion_inventario, -1)
+        self.assertEqual(detalle.cantidad_operada, Decimal('-5'))
+
+    def test_el_traslado_sin_operacion_valida_se_rechaza(self):
+        for operacion in (0, 2):
+            with self.subTest(operacion=operacion):
+                with self.assertRaises(ValidationError) as caso:
+                    self._crear(self.tipo_traslado, operacion_inventario=operacion)
+
+                self.assertIn('operacion_inventario', caso.exception.detail)
+        self.assertFalse(GenDocumentoDetalle.objects.exists())
+
+    def test_la_remision_opera_sobre_disponible(self):
+        """La remisión no saca existencia: el signo va por `operacion_remision`."""
+        detalle = self._crear(self.tipo_remision)
+
+        self.assertEqual(detalle.operacion_inventario, 0)
+        self.assertEqual(detalle.operacion_remision, -1)
+        self.assertEqual(detalle.cantidad_operada, Decimal('-5'))
+
+    def test_una_linea_contable_no_opera(self):
+        detalle = self._crear(
+            self.tipo_asiento, tipo_registro='C', item=None, almacen=None,
+            operacion_inventario=1,
+        )
+
+        self.assertEqual(detalle.operacion_inventario, 0)
+        self.assertEqual(detalle.cantidad_operada, Decimal('0'))
+        self.assertEqual(detalle.cantidad_pendiente, Decimal('0'))
+
+    def test_el_post_recibe_la_operacion_del_traslado(self):
+        documento = self._documento(self.tipo_traslado)
+        request = APIRequestFactory().post('/general/documento-detalle/', {
+            'documento': documento.id, 'item': self.producto.id,
+            'almacen': self.almacen.id, 'cantidad': '5', 'precio': '100',
+            'operacion_inventario': -1,
+        }, format='json')
+
+        response = _DocumentoDetalleViewSinPermisos.as_view({'post': 'create'})(request)
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['operacion_inventario'], -1)
+        detalle = GenDocumentoDetalle.objects.get()
+        self.assertEqual(detalle.cantidad_operada, Decimal('-5'))
+
+    def test_editar_la_cantidad_recalcula_lo_operado(self):
+        """Sin esto, aprobar movería la cantidad de antes de la edición."""
+        detalle = self._crear(self.tipo_factura)
+        request = APIRequestFactory().patch(
+            f'/general/documento-detalle/{detalle.pk}/', {'cantidad': '8'}, format='json',
+        )
+
+        response = _DocumentoDetalleViewSinPermisos.as_view(
+            {'patch': 'partial_update'}
+        )(request, pk=detalle.pk)
+
+        self.assertEqual(response.status_code, 200, response.data)
+        detalle.refresh_from_db()
+        self.assertEqual(detalle.cantidad_operada, Decimal('-8'))
+        self.assertEqual(detalle.cantidad_pendiente, Decimal('8'))
 
 
 class DocumentoRespuestaTests(TenantTestCase):

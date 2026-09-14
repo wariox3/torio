@@ -132,6 +132,9 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'contacto_nombre_corto',
             'almacen',
             'almacen_nombre',
+            # Solo lo lee el traslado de almacén; en los demás tipos lo fija
+            # `asignar_operacion` desde el tipo del documento.
+            'operacion_inventario',
             'credito',
             'activo',
             'activo_codigo',

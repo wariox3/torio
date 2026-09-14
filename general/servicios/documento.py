@@ -109,6 +109,10 @@ DOCUMENTO_TIPOS_REMISION = (
     DOCUMENTO_TIPO_DEVOLUCION_REMISION,
 )
 
+# El traslado mueve dos almacenes: cada línea saca de uno o mete en otro, así que
+# el sentido lo trae la línea y no el tipo.
+DOCUMENTO_TIPO_TRASLADO_ALMACEN = 31
+
 # Tipos que recalculan el costo promedio del item: los que meten mercancía y
 # traen un precio de entrada contra el cual promediar.
 DOCUMENTO_TIPOS_QUE_PROMEDIAN_COSTO = (

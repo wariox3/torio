@@ -419,25 +419,12 @@ class _PerfilInventario(_Perfil):
     ajuste de saldo—, y el almacén es obligatorio porque el saldo vive en
     `InvExistencia`, que es por (item, almacén).
 
-    Las dos columnas que el usuario no llena las deriva el perfil del tipo del
-    documento, y son las que hacen que el movimiento exista:
-
-      * `operacion_inventario` —+1 entra, -1 sale— es la bandera que mira
-        `_afectar_inventario`: con 0 la línea se saltea y aprobar no mueve nada.
-      * `cantidad_operada` es la cantidad CON signo, que es lo que se suma al
-        saldo. `cantidad` queda siempre positiva.
-
-    Ojo: el POST individual y el `masivo` del ViewSet no derivan ninguna de las
-    dos —no hay nada en el camino de escritura que las escriba—, así que un
-    detalle de almacén creado a mano hoy no mueve existencia. Acá se derivan
-    para que el import sirva; unificarlo en `crear_detalle()` es una decisión
-    aparte porque toca todos los que crean detalles.
+    `operacion_inventario` y `cantidad_operada` no vienen en el Excel ni las pone
+    el perfil: las deriva `crear_detalle()` del tipo del documento, igual que en
+    el POST, el masivo y el documento creado con detalles. `cantidad` queda
+    siempre positiva y el signo lo pone el tipo.
     """
 
-    # +1 entra, -1 sale. Coincide con `GenDocumentoTipo.operacion_inventario` del
-    # fixture, pero va explícito en el perfil: el fixture es editable por tenant y
-    # un signo invertido ahí movería el saldo al revés sin que nada lo note.
-    operacion = None
     # La entrada exige precio porque con él se promedia el costo del item (ver
     # `DOCUMENTO_TIPOS_QUE_PROMEDIAN_COSTO`): dejarlo vacío mete un cero al
     # promedio ponderado y le hunde el costo a todo el stock. En la salida el
@@ -483,8 +470,6 @@ class _PerfilInventario(_Perfil):
             'cantidad': cantidad,
             'precio': precio,
             'detalle': _texto_o_none(datos.get('detalle')),
-            'operacion_inventario': self.operacion,
-            'cantidad_operada': cantidad * self.operacion,
         }
         problemas.levantar()
         return campos
@@ -512,12 +497,11 @@ class _PerfilInventario(_Perfil):
 
 
 class _PerfilInventarioEntrada(_PerfilInventario):
-    operacion = 1
     exige_precio = True
 
 
 class _PerfilInventarioSalida(_PerfilInventario):
-    operacion = -1
+    """La salida toma el costo del promedio del item, así que no exige precio."""
 
 
 PERFIL_CONTABLE = _PerfilContable()
