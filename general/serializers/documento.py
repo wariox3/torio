@@ -113,6 +113,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'impuesto_retencion',
             'total',
             'afectado',
+            'pago',
             'pendiente',
             'salario',
             'horas',
@@ -138,6 +139,9 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             # los pagos. Escribible sería dejar que el cliente se invente el saldo.
             'afectado',
             'pendiente',
+            # Suma de los `GenDocumentoPago` no anulados; solo lo escribe
+            # `servicios.documento_pago`.
+            'pago',
             'estado_aprobado',
             'estado_anulado',
             'estado_contabilizado',

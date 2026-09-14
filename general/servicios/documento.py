@@ -146,11 +146,26 @@ def validar_aprobacion(documento, consecutivo):
     _validar_cantidad_afectada(documento)
     _validar_existencias(documento)
     _validar_nota_credito(documento)
+    _validar_pagos(documento)
 
 
 def _validar_total_no_negativo(documento):
     if documento.total < 0:
         raise ValidationError('El total del documento no puede ser menor a cero.')
+
+
+def _validar_pagos(documento):
+    """
+    Los pagos no pueden superar el total: el saldo en cartera quedaría negativo.
+
+    Se valida acá y no al registrar el pago porque mientras el documento es
+    modificable el total todavía se mueve con cada detalle.
+    """
+    if documento.pago > documento.total:
+        raise ValidationError(
+            f'Los pagos ({documento.pago:,.2f}) superan el total del documento '
+            f'({documento.total:,.2f}).'
+        )
 
 
 def _validar_resolucion(documento, consecutivo):
@@ -816,6 +831,10 @@ def anular(documento_id):
             raise ValidationError('El documento ya fue enviado electrónicamente.')
 
         _validar_sin_afectar(documento)
+        # Un pago vigente sobre un documento en cero es plata que no se sabe a qué
+        # se aplicó: se anula primero, con su propio rastro.
+        if documento.documentos_pagos_documento.filter(estado_anulado=False).exists():
+            raise ValidationError('El documento tiene pagos sin anular: anúlelos primero.')
         # Anular una entrada saca mercancía que quizá ya se despachó.
         _validar_existencias(documento, signo=-1)
 

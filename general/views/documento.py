@@ -86,6 +86,9 @@ class GenDocumentoViewSet(
             if not documento.es_mutable():
                 raise ValidationError('El documento no es modificable.')
             documento.documentos_detalles_documento_rel.all().delete()
+            # Un documento modificable puede tener pagos registrados, y la FK los
+            # protege: sin esto el borrado falla con `ProtectedError`.
+            documento.documentos_pagos_documento.all().delete()
             documento.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

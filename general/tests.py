@@ -30,10 +30,13 @@ from general.models import (
     GenArchivoTipo,
     GenAsesor,
     GenConfiguracion,
+    GenCuentaBanco,
+    GenCuentaBancoTipo,
     GenDocumento,
     GenDocumentoClase,
     GenDocumentoDetalle,
     GenDocumentoImpuesto,
+    GenDocumentoPago,
     GenDocumentoTipo,
     GenFestivo,
     GenFormaPago,
@@ -54,6 +57,7 @@ from general.models import (
     GenTipoPersona,
 )
 from general.servicios import documento as documento_servicio
+from general.servicios import documento_pago as documento_pago_servicio
 from general.servicios import factura_electronica
 from general.servicios import rededoc as rededoc_servicio
 from general.serializers import (
@@ -71,7 +75,9 @@ from general.serializers import (
 from general.servicios import logotipo
 from general.views.archivo import GenArchivoViewSet
 from general.views.configuracion import GenConfiguracionViewSet
+from general.views.documento import GenDocumentoViewSet
 from general.views.documento_detalle import GenDocumentoDetalleViewSet
+from general.views.documento_pago import GenDocumentoPagoViewSet
 from general.views.factura_electronica import GenFacturaElectronicaViewSet
 from general.views.parametro import GenParametroViewSet
 from general.views.modelo import GenModeloViewSet
@@ -3092,6 +3098,298 @@ class OperacionDetalleTests(TenantTestCase):
         detalle.refresh_from_db()
         self.assertEqual(detalle.cantidad_operada, Decimal('-8'))
         self.assertEqual(detalle.cantidad_pendiente, Decimal('8'))
+
+
+class _DocumentoPagoViewSinPermisos(GenDocumentoPagoViewSet):
+    """Variante sin auth ni throttle: acá se prueba el pago, no la membresía."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class _DocumentoViewSinPermisos(GenDocumentoViewSet):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class DocumentoPagoTests(TenantTestCase):
+    """
+    `GenDocumento.pago` sale de las filas de `GenDocumentoPago` y de ningún otro
+    lado: es lo que `aprobar` resta para dejar la cartera y lo que contabilizar
+    lleva al banco. Si se desincronizan, cartera y mayor muestran saldos distintos.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.tipo_factura = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', cobrar=True,
+            documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
+        )
+        self.item = GenItem.objects.create(nombre='Servicio')
+        self.cuenta_banco = GenCuentaBanco.objects.create(
+            nombre='Bancolombia',
+            cuenta=ConCuenta.objects.create(
+                codigo='111005', nombre='Bancos', permite_movimiento=True,
+            ),
+            cuenta_banco_tipo=GenCuentaBancoTipo.objects.create(nombre='Ahorros'),
+        )
+        self.factura = self._documento('1000')
+
+    def _documento(self, total, tipo=None, **overrides):
+        documento = GenDocumento.objects.create(
+            documento_tipo=tipo or self.tipo_factura, fecha=date(2026, 1, 15),
+            total=Decimal(total), **overrides,
+        )
+        GenDocumentoDetalle.objects.create(
+            documento=documento, item=self.item, cantidad=Decimal('1'),
+            precio=Decimal(total), total=Decimal(total),
+        )
+        return documento
+
+    def _registrar(self, valor, documento=None):
+        return documento_pago_servicio.registrar(
+            (documento or self.factura).pk, self.cuenta_banco, Decimal(valor),
+        )
+
+    def _refrescado(self, documento=None):
+        return GenDocumento.objects.get(pk=(documento or self.factura).pk)
+
+    # ---- registro ----
+
+    def test_registrar_suma_los_pagos_en_el_documento(self):
+        self._registrar('300')
+        self._registrar('200')
+
+        self.assertEqual(self._refrescado().pago, Decimal('500'))
+
+    def test_eliminar_descuenta_el_pago(self):
+        primero = self._registrar('300')
+        self._registrar('200')
+
+        documento_pago_servicio.eliminar(primero.pk)
+
+        self.assertEqual(self._refrescado().pago, Decimal('200'))
+        self.assertFalse(GenDocumentoPago.objects.filter(pk=primero.pk).exists())
+
+    def test_editar_recalcula_el_pago(self):
+        pago = self._registrar('300')
+
+        documento_pago_servicio.actualizar(pago.pk, {'pago': Decimal('450')})
+
+        self.assertEqual(self._refrescado().pago, Decimal('450'))
+
+    def test_un_tipo_que_no_cobra_no_recibe_pagos(self):
+        """Contabilizar solo lleva al banco los pagos de los tipos que cobran."""
+        compra = self._documento('1000', tipo=GenDocumentoTipo.objects.create(
+            id=5, nombre='COMPRA', pagar=True,
+        ))
+
+        with self.assertRaises(ValidationError) as caso:
+            self._registrar('100', documento=compra)
+
+        self.assertIn('no recibe pagos', str(caso.exception))
+        self.assertFalse(GenDocumentoPago.objects.exists())
+
+    def test_una_cuenta_bancaria_sin_cuenta_contable_se_rechaza(self):
+        self.cuenta_banco.cuenta = None
+        self.cuenta_banco.save(update_fields=['cuenta'])
+
+        with self.assertRaises(ValidationError) as caso:
+            self._registrar('100')
+
+        self.assertIn('cuenta_banco', caso.exception.detail)
+        self.assertEqual(self._refrescado().pago, Decimal('0'))
+
+    def test_un_documento_aprobado_no_recibe_pagos_nuevos(self):
+        documento_servicio.aprobar(self.factura.pk)
+
+        with self.assertRaises(ValidationError) as caso:
+            self._registrar('100')
+
+        self.assertIn('no es modificable', str(caso.exception))
+
+    def test_un_pago_de_un_documento_aprobado_no_se_elimina(self):
+        pago = self._registrar('100')
+        documento_servicio.aprobar(self.factura.pk)
+
+        with self.assertRaises(ValidationError):
+            documento_pago_servicio.eliminar(pago.pk)
+
+        self.assertTrue(GenDocumentoPago.objects.filter(pk=pago.pk).exists())
+
+    # ---- aprobar ----
+
+    def test_aprobar_deja_en_cartera_lo_que_no_se_pago(self):
+        self._registrar('400')
+
+        aprobado = documento_servicio.aprobar(self.factura.pk)
+
+        self.assertEqual(aprobado.pendiente, Decimal('600'))
+
+    def test_pagos_mayores_al_total_no_se_aprueban(self):
+        self._registrar('1500')
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(self.factura.pk)
+
+        self.assertIn('superan el total', str(caso.exception))
+        self.assertFalse(self._refrescado().estado_aprobado)
+
+    # ---- anular ----
+
+    def test_anular_devuelve_el_saldo_a_cartera(self):
+        pago = self._registrar('400')
+        documento_servicio.aprobar(self.factura.pk)
+
+        documento_pago_servicio.anular(pago.pk)
+
+        documento = self._refrescado()
+        self.assertEqual(documento.pago, Decimal('0'))
+        self.assertEqual(documento.pendiente, Decimal('1000'))
+        pago.refresh_from_db()
+        self.assertTrue(pago.estado_anulado)
+        self.assertEqual(pago.pago, Decimal('400'))
+
+    def test_anular_uno_de_varios_pagos(self):
+        self._registrar('300')
+        segundo = self._registrar('200')
+        documento_servicio.aprobar(self.factura.pk)
+
+        documento_pago_servicio.anular(segundo.pk)
+
+        documento = self._refrescado()
+        self.assertEqual(documento.pago, Decimal('300'))
+        self.assertEqual(documento.pendiente, Decimal('700'))
+
+    def test_un_pago_no_se_anula_dos_veces(self):
+        pago = self._registrar('400')
+        documento_servicio.aprobar(self.factura.pk)
+        documento_pago_servicio.anular(pago.pk)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_pago_servicio.anular(pago.pk)
+
+        self.assertIn('ya está anulado', str(caso.exception))
+        self.assertEqual(self._refrescado().pendiente, Decimal('1000'))
+
+    def test_un_pago_de_un_documento_sin_aprobar_se_elimina_no_se_anula(self):
+        pago = self._registrar('400')
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_pago_servicio.anular(pago.pk)
+
+        self.assertIn('se elimina, no se anula', str(caso.exception))
+
+    def test_un_pago_de_un_documento_contabilizado_no_se_anula(self):
+        pago = self._registrar('400')
+        documento_servicio.aprobar(self.factura.pk)
+        GenDocumento.objects.filter(pk=self.factura.pk).update(estado_contabilizado=True)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_pago_servicio.anular(pago.pk)
+
+        self.assertIn('contabilizado', str(caso.exception))
+        pago.refresh_from_db()
+        self.assertFalse(pago.estado_anulado)
+
+    def test_el_pago_de_una_nota_credito_no_se_anula(self):
+        """
+        La nota descargó `total - pago` de la factura al aprobarse: cambiar el pago
+        después haría que desaprobarla devolviera otro valor.
+        """
+        documento_servicio.aprobar(self.factura.pk)
+        tipo_nota = GenDocumentoTipo.objects.create(
+            id=2, nombre='NOTA CRÉDITO DE VENTA', cobrar=True,
+            documento_clase=GenDocumentoClase.objects.create(id=101, nombre='Nota crédito venta'),
+        )
+        nota = self._documento('400', tipo=tipo_nota, documento_referencia=self.factura)
+        pago = self._registrar('100', documento=nota)
+        documento_servicio.aprobar(nota.pk)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_pago_servicio.anular(pago.pk)
+
+        self.assertIn('nota crédito', str(caso.exception))
+
+    # ---- el documento ----
+
+    def test_anular_el_documento_exige_anular_antes_sus_pagos(self):
+        pago = self._registrar('400')
+        documento_servicio.aprobar(self.factura.pk)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.anular(self.factura.pk)
+
+        self.assertIn('pagos sin anular', str(caso.exception))
+
+        documento_pago_servicio.anular(pago.pk)
+        self.assertTrue(documento_servicio.anular(self.factura.pk).estado_anulado)
+
+    def test_eliminar_el_documento_borra_sus_pagos(self):
+        self._registrar('400')
+        request = APIRequestFactory().delete(f'/general/documento/{self.factura.pk}/')
+
+        response = _DocumentoViewSinPermisos.as_view({'delete': 'destroy'})(
+            request, pk=self.factura.pk,
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(GenDocumentoPago.objects.exists())
+        self.assertFalse(GenDocumento.objects.filter(pk=self.factura.pk).exists())
+
+    # ---- API ----
+
+    def test_el_post_registra_el_pago(self):
+        request = APIRequestFactory().post('/general/documento-pago/', {
+            'documento': self.factura.pk, 'cuenta_banco': self.cuenta_banco.pk, 'pago': '250',
+        }, format='json')
+
+        response = _DocumentoPagoViewSinPermisos.as_view({'post': 'create'})(request)
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['cuenta_banco_nombre'], 'Bancolombia')
+        self.assertEqual(self._refrescado().pago, Decimal('250'))
+
+    def test_el_post_rechaza_un_pago_en_cero(self):
+        request = APIRequestFactory().post('/general/documento-pago/', {
+            'documento': self.factura.pk, 'cuenta_banco': self.cuenta_banco.pk, 'pago': '0',
+        }, format='json')
+
+        response = _DocumentoPagoViewSinPermisos.as_view({'post': 'create'})(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('pago', response.data)
+        self.assertFalse(GenDocumentoPago.objects.exists())
+
+    def test_la_lista_filtra_por_documento(self):
+        self._registrar('100')
+        self._registrar('100', documento=self._documento('500'))
+        request = APIRequestFactory().get(
+            '/general/documento-pago/', {'documento_id': self.factura.pk},
+        )
+
+        response = _DocumentoPagoViewSinPermisos.as_view({'get': 'list'})(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data['results']), 1)
+
+    def test_el_endpoint_anular_responde_el_pago_anulado(self):
+        pago = self._registrar('400')
+        documento_servicio.aprobar(self.factura.pk)
+        request = APIRequestFactory().post(
+            '/general/documento-pago/anular/', {'id': pago.pk}, format='json',
+        )
+
+        response = _DocumentoPagoViewSinPermisos.as_view({'post': 'anular'})(request)
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data['estado_anulado'])
 
 
 class DocumentoRespuestaTests(TenantTestCase):

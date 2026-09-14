@@ -12,6 +12,7 @@ from .documento_clase import GenDocumentoClaseViewSet
 from .documento_detalle import GenDocumentoDetalleViewSet
 from .documento_detalle_informe import GenDocumentoDetalleInformeViewSet
 from .documento_informe import GenDocumentoInformeViewSet
+from .documento_pago import GenDocumentoPagoViewSet
 from .documento_tipo import GenDocumentoTipoViewSet
 from .estado import GenEstadoViewSet
 from .factura_electronica import GenFacturaElectronicaViewSet
