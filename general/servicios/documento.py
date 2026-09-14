@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Prefetch, Sum
+from django.db.models import Prefetch, Q, Sum
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, ValidationError
 
@@ -725,6 +725,120 @@ def _quitar_cartera(documento):
         return []
     documento.pendiente = Decimal('0')
     return ['pendiente']
+
+
+# ------------------------------------------------------------------ anular ----
+#
+# Anular deja un documento aprobado sin valor, pero sin borrarlo: conserva su
+# número —el consecutivo ya se gastó y el hueco tendría que explicarse— y su
+# aprobado. Antes de poner nada en cero revierte lo que hizo `aprobar` con las
+# mismas funciones que usa `desaprobar`: si anular tuviera su propia reversión,
+# las dos terminarían dejando saldos distintos.
+
+_CAMPOS_EN_CERO_DOCUMENTO = (
+    'subtotal', 'total', 'total_bruto', 'base_impuesto', 'descuento', 'impuesto',
+    'impuesto_operado', 'impuesto_retencion', 'pendiente', 'salario',
+    'base_cotizacion', 'base_prestacion', 'deduccion', 'devengado',
+)
+
+# `operacion_*` y `cantidad_operada` van en cero para que el detalle deje de
+# contar como movimiento; `pendiente` y `cantidad_pendiente` porque se derivan de
+# valores que acá quedan en cero y `QuerySet.update()` no pasa por `save()`.
+_CAMPOS_EN_CERO_DETALLE = (
+    'cantidad', 'cantidad_operada', 'cantidad_pendiente', 'operacion_inventario',
+    'operacion_remision', 'precio', 'porcentaje_descuento', 'descuento', 'subtotal',
+    'impuesto', 'impuesto_operado', 'impuesto_retencion', 'base_impuesto',
+    'base_cotizacion', 'base_prestacion', 'deduccion', 'devengado', 'total',
+    'total_bruto', 'pago', 'pendiente',
+)
+
+_CAMPOS_EN_CERO_IMPUESTO = ('base', 'total', 'total_operado')
+
+
+def _validar_sin_afectar(documento):
+    """
+    Un documento que otro vigente ya cruzó no se anula: ese otro quedaría
+    descargando un saldo que dejó de existir.
+
+    Se pregunta por los documentos que lo afectan y no por `GenDocumento.afectado`,
+    porque una nota crédito se afecta a sí misma al aprobarse
+    (`_afectar_documento_referencia`) y ese saldo no es de nadie más. Se miran los
+    tres caminos por los que `aprobar` escribe sobre otro documento.
+    """
+    afectante_id = (
+        GenDocumentoDetalle.objects
+        .filter(
+            Q(documento_afectado=documento)
+            | Q(documento_detalle_afectado__documento=documento)
+        )
+        .filter(documento__estado_aprobado=True, documento__estado_anulado=False)
+        .values_list('documento_id', flat=True)
+        .first()
+    )
+    if afectante_id is None:
+        afectante_id = (
+            GenDocumento.objects
+            .filter(
+                documento_referencia=documento,
+                documento_tipo_id__in=DOCUMENTO_TIPOS_NOTA_CREDITO,
+                estado_aprobado=True,
+                estado_anulado=False,
+            )
+            .values_list('id', flat=True)
+            .first()
+        )
+    if afectante_id is not None:
+        raise ValidationError(
+            f'El documento está afectado por el documento {afectante_id}.'
+        )
+
+
+def anular(documento_id):
+    """Anula un documento aprobado: revierte sus efectos y deja sus valores en cero."""
+    with transaction.atomic():
+        try:
+            documento = GenDocumento.objects.select_for_update().get(pk=documento_id)
+        except GenDocumento.DoesNotExist:
+            raise NotFound('Documento no encontrado.')
+        if documento.estado_anulado:
+            raise ValidationError('El documento ya está anulado.')
+        if not documento.estado_aprobado:
+            raise ValidationError('El documento no está aprobado.')
+        # Sus movimientos seguirían en el mayor con el documento en cero: primero
+        # se descontabiliza.
+        if documento.estado_contabilizado:
+            raise ValidationError('El documento está contabilizado.')
+        if documento.estado_electronico_enviado:
+            raise ValidationError('El documento ya fue enviado electrónicamente.')
+
+        _validar_sin_afectar(documento)
+        # Anular una entrada saca mercancía que quizá ya se despachó.
+        _validar_existencias(documento, signo=-1)
+
+        afectados, totales_a_afectar, cantidades_a_afectar = _agrupar_afectados(documento)
+        _aplicar_afectacion(afectados, totales_a_afectar, cantidades_a_afectar, signo=-1)
+
+        documentos_afectados, totales_documento = _agrupar_documentos_afectados(documento)
+        _aplicar_afectacion_documento(documentos_afectados, totales_documento, signo=-1)
+
+        _afectar_inventario(documento, signo=-1)
+
+        # Antes de poner el total en cero: la nota devuelve `total - pago`.
+        campos_actualizar = ['estado_anulado', *_CAMPOS_EN_CERO_DOCUMENTO]
+        campos_actualizar += _afectar_documento_referencia(documento, signo=-1)
+
+        GenDocumentoImpuesto.objects.filter(
+            documento_detalle__documento=documento
+        ).update(**dict.fromkeys(_CAMPOS_EN_CERO_IMPUESTO, 0))
+        documento.documentos_detalles_documento_rel.update(
+            **dict.fromkeys(_CAMPOS_EN_CERO_DETALLE, 0)
+        )
+
+        for campo in _CAMPOS_EN_CERO_DOCUMENTO:
+            setattr(documento, campo, Decimal('0'))
+        documento.estado_anulado = True
+        documento.save(update_fields=set(campos_actualizar))
+    return documento
 
 
 # ------------------------------------------------------------------ clonar ----

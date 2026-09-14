@@ -184,6 +184,30 @@ class GenDocumentoViewSet(
         return Response(salida.data, status=status.HTTP_200_OK)
 
     @extend_schema(
+        summary='Anular un documento',
+        description=(
+            'Deja un documento aprobado sin valor: revierte lo que hizo la aprobación '
+            '(cartera, afectaciones, nota crédito e inventario) y pone en cero los '
+            'valores del documento, sus detalles y sus impuestos. Conserva el número '
+            'y el aprobado.\n\n'
+            'No se anula un documento sin aprobar, ya anulado, contabilizado (hay que '
+            'descontabilizarlo primero), enviado electrónicamente, ni uno que otro '
+            'documento vigente esté afectando. Tampoco si revertir su inventario deja '
+            'en negativo un item que no lo admite.\n\n'
+            'Responde el documento anulado.'
+        ),
+        request=DocumentoAccionRequestSerializer,
+        responses=GenDocumentoSerializer,
+    )
+    @action(detail=False, methods=['post'])
+    def anular(self, request):
+        serializer = DocumentoAccionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        documento = documento_servicio.anular(serializer.validated_data['id'])
+        salida = GenDocumentoSerializer(documento)
+        return Response(salida.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
         summary='Cargar la depreciación del periodo',
         description=(
             'Carga en un documento de depreciación (tipo 23) una línea por cada activo '

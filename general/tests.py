@@ -3644,6 +3644,281 @@ class InventarioAprobarTests(TenantTestCase):
         self.assertFalse(InvExistencia.objects.exists())
 
 
+class AnularTests(TenantTestCase):
+    """
+    Anular revierte lo mismo que `desaprobar` y además deja el documento en cero.
+    Lo que se cuida es que no quede nada colgando: ni saldos en otros documentos,
+    ni inventario, ni valores en el propio documento.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.tipo_factura = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', venta=True,
+            documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
+        )
+        clase_inventario = GenDocumentoClase.objects.create(id=500, nombre='Entrada')
+        self.tipo_entrada = GenDocumentoTipo.objects.create(
+            id=9, nombre='ENTRADA ALMACEN', inventario=True, documento_clase=clase_inventario,
+        )
+        self.tipo_salida = GenDocumentoTipo.objects.create(
+            id=10, nombre='SALIDA ALMACEN', inventario=True, documento_clase=clase_inventario,
+        )
+        self.almacen = InvAlmacen.objects.create(nombre='Principal')
+        self.item = GenItem.objects.create(nombre='Item', negativo=False)
+
+    def _documento(self, tipo=None, **overrides):
+        return GenDocumento.objects.create(
+            documento_tipo=tipo or self.tipo_factura, fecha=date(2026, 1, 15), **overrides,
+        )
+
+    def _detalle(self, documento, **overrides):
+        datos = {'documento': documento, 'item': self.item, 'cantidad': Decimal('1'),
+                 'precio': Decimal('100')}
+        datos.update(overrides)
+        detalle = GenDocumentoDetalle.objects.create(**datos)
+        detalle.calcular()
+        detalle.save()
+        return detalle
+
+    def _factura_aprobada(self, total='1000'):
+        factura = self._documento(total=Decimal(total))
+        self._detalle(factura)
+        return documento_servicio.aprobar(factura.id)
+
+    # ---- el propio documento ----
+
+    def test_anular_deja_el_documento_en_cero(self):
+        factura = self._documento(total=Decimal('1190'), subtotal=Decimal('1000'),
+                                  impuesto=Decimal('190'))
+        detalle = self._detalle(factura, cantidad=Decimal('10'), precio=Decimal('100'))
+        impuesto = GenDocumentoImpuesto.objects.create(
+            documento_detalle=detalle, porcentaje=Decimal('19'),
+            impuesto=GenImpuesto.objects.create(
+                nombre='IVA', nombre_extendido='IVA 19%', porcentaje=Decimal('19'),
+            ),
+        )
+        detalle.calcular()
+        detalle.save()
+        impuesto.refresh_from_db()
+        self.assertEqual(impuesto.total, Decimal('190'))
+        documento_servicio.aprobar(factura.id)
+
+        anulado = documento_servicio.anular(factura.id)
+
+        anulado.refresh_from_db()
+        self.assertTrue(anulado.estado_anulado)
+        self.assertEqual(anulado.total, Decimal('0'))
+        self.assertEqual(anulado.subtotal, Decimal('0'))
+        self.assertEqual(anulado.impuesto, Decimal('0'))
+        self.assertEqual(anulado.pendiente, Decimal('0'))
+        detalle.refresh_from_db()
+        self.assertEqual(detalle.cantidad, Decimal('0'))
+        self.assertEqual(detalle.total, Decimal('0'))
+        self.assertEqual(detalle.pendiente, Decimal('0'))
+        impuesto.refresh_from_db()
+        self.assertEqual(impuesto.base, Decimal('0'))
+        self.assertEqual(impuesto.total, Decimal('0'))
+
+    def test_anular_conserva_el_numero_y_el_aprobado(self):
+        """El consecutivo ya se gastó: el documento sigue existiendo, sin valor."""
+        factura = self._factura_aprobada()
+
+        documento_servicio.anular(factura.id)
+
+        anulado = GenDocumento.objects.get(pk=factura.pk)
+        self.assertEqual(anulado.numero, factura.numero)
+        self.assertTrue(anulado.estado_aprobado)
+
+    # ---- guardas ----
+
+    def test_un_documento_inexistente_no_se_encuentra(self):
+        with self.assertRaises(NotFound):
+            documento_servicio.anular(999999)
+
+    def test_un_documento_sin_aprobar_no_se_anula(self):
+        documento = self._documento()
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.anular(documento.id)
+
+        self.assertIn('no está aprobado', str(caso.exception))
+
+    def test_un_documento_no_se_anula_dos_veces(self):
+        factura = self._factura_aprobada()
+        documento_servicio.anular(factura.id)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.anular(factura.id)
+
+        self.assertIn('ya está anulado', str(caso.exception))
+
+    def test_un_documento_contabilizado_no_se_anula(self):
+        """Sus movimientos seguirían en el mayor con el documento en cero."""
+        factura = self._factura_aprobada()
+        GenDocumento.objects.filter(pk=factura.pk).update(estado_contabilizado=True)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.anular(factura.id)
+
+        self.assertIn('contabilizado', str(caso.exception))
+        factura.refresh_from_db()
+        self.assertFalse(factura.estado_anulado)
+        self.assertEqual(factura.total, Decimal('1000'))
+
+    def test_un_documento_enviado_electronicamente_no_se_anula(self):
+        factura = self._factura_aprobada()
+        GenDocumento.objects.filter(pk=factura.pk).update(estado_electronico_enviado=True)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.anular(factura.id)
+
+        self.assertIn('enviado electrónicamente', str(caso.exception))
+
+    # ---- afectaciones ----
+
+    def _pago(self, factura, valor):
+        tipo, _ = GenDocumentoTipo.objects.get_or_create(id=4, defaults={
+            'nombre': 'PAGO',
+            'documento_clase': GenDocumentoClase.objects.create(id=200, nombre='Pago'),
+        })
+        pago = self._documento(tipo=tipo)
+        self._detalle(pago, precio=Decimal(valor), documento_afectado=factura)
+        return pago
+
+    def test_anular_un_pago_devuelve_el_saldo_a_la_factura(self):
+        factura = self._factura_aprobada('1000')
+        pago = self._pago(factura, '400')
+        documento_servicio.aprobar(pago.id)
+
+        documento_servicio.anular(pago.id)
+
+        factura.refresh_from_db()
+        self.assertEqual(factura.afectado, Decimal('0'))
+        self.assertEqual(factura.pendiente, Decimal('1000'))
+
+    def test_una_factura_con_un_pago_vigente_no_se_anula(self):
+        factura = self._factura_aprobada('1000')
+        pago = self._pago(factura, '400')
+        documento_servicio.aprobar(pago.id)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.anular(factura.id)
+
+        self.assertIn(f'afectado por el documento {pago.id}', str(caso.exception))
+        factura.refresh_from_db()
+        self.assertFalse(factura.estado_anulado)
+        self.assertEqual(factura.pendiente, Decimal('600'))
+
+    def test_una_factura_cuyo_pago_ya_se_anulo_si_se_anula(self):
+        """El pago anulado ya devolvió lo que afectaba: no retiene a la factura."""
+        factura = self._factura_aprobada('1000')
+        pago = self._pago(factura, '400')
+        documento_servicio.aprobar(pago.id)
+        documento_servicio.anular(pago.id)
+
+        anulada = documento_servicio.anular(factura.id)
+
+        self.assertTrue(anulada.estado_anulado)
+
+    def test_un_documento_con_detalles_afectados_no_se_anula(self):
+        """El cruce puede ir contra un detalle y no contra el documento entero."""
+        pedido = self._documento(total=Decimal('1000'))
+        afectado = self._detalle(pedido, cantidad=Decimal('10'), precio=Decimal('100'))
+        documento_servicio.aprobar(pedido.id)
+        documento = self._documento()
+        self._detalle(documento, cantidad=Decimal('4'), precio=Decimal('0'),
+                      documento_detalle_afectado=afectado)
+        documento_servicio.aprobar(documento.id)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.anular(pedido.id)
+
+        self.assertIn(f'afectado por el documento {documento.id}', str(caso.exception))
+
+    # ---- nota crédito ----
+
+    def _nota_credito(self, factura, total):
+        tipo = GenDocumentoTipo.objects.create(
+            id=2, nombre='NOTA CRÉDITO DE VENTA',
+            documento_clase=GenDocumentoClase.objects.create(id=101, nombre='Nota credito venta'),
+        )
+        return self._documento(tipo=tipo, documento_referencia=factura, total=Decimal(total))
+
+    def test_anular_la_nota_credito_devuelve_el_saldo_a_la_factura(self):
+        """
+        La nota queda con `afectado` propio al aprobarse; eso no es que otro
+        documento la afecte y no puede impedir anularla.
+        """
+        factura = self._factura_aprobada('1000')
+        nota = self._nota_credito(factura, '400')
+        documento_servicio.aprobar(nota.id)
+
+        anulada = documento_servicio.anular(nota.id)
+
+        self.assertEqual(anulada.afectado, Decimal('0'))
+        factura.refresh_from_db()
+        self.assertEqual(factura.afectado, Decimal('0'))
+        self.assertEqual(factura.pendiente, Decimal('1000'))
+
+    def test_una_factura_con_nota_credito_vigente_no_se_anula(self):
+        factura = self._factura_aprobada('1000')
+        nota = self._nota_credito(factura, '400')
+        documento_servicio.aprobar(nota.id)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.anular(factura.id)
+
+        self.assertIn(f'afectado por el documento {nota.id}', str(caso.exception))
+
+    # ---- inventario ----
+
+    def _movimiento(self, tipo, cantidad_operada):
+        cantidad = Decimal(cantidad_operada)
+        documento = self._documento(tipo=tipo)
+        self._detalle(
+            documento, almacen=self.almacen, cantidad=abs(cantidad),
+            cantidad_operada=cantidad, operacion_inventario=1 if cantidad > 0 else -1,
+        )
+        return documento
+
+    def _saldo(self):
+        return InvExistencia.objects.get(item=self.item, almacen=self.almacen)
+
+    def test_anular_una_entrada_devuelve_el_saldo(self):
+        entrada = self._movimiento(self.tipo_entrada, '10')
+        documento_servicio.aprobar(entrada.id)
+
+        documento_servicio.anular(entrada.id)
+
+        self.assertEqual(self._saldo().existencia, Decimal('0'))
+        self.assertEqual(self._saldo().disponible, Decimal('0'))
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.existencia, Decimal('0'))
+        detalle = entrada.documentos_detalles_documento_rel.get()
+        self.assertEqual(detalle.cantidad_operada, Decimal('0'))
+        self.assertEqual(detalle.operacion_inventario, 0)
+
+    def test_no_se_anula_una_entrada_cuya_mercancia_ya_salio(self):
+        entrada = self._movimiento(self.tipo_entrada, '10')
+        documento_servicio.aprobar(entrada.id)
+        salida = self._movimiento(self.tipo_salida, '-8')
+        documento_servicio.aprobar(salida.id)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.anular(entrada.id)
+
+        self.assertIn('supera la cantidad existente', str(caso.exception))
+        self.assertEqual(self._saldo().existencia, Decimal('2'))
+        entrada.refresh_from_db()
+        self.assertFalse(entrada.estado_anulado)
+
+
 class TipoRegistroContableCoherenteTests(SimpleTestCase):
     """
     Son dos mapas: `PERFIL_POR_TIPO` dice qué tipos usan el perfil contable y
