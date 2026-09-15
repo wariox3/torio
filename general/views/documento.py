@@ -99,7 +99,7 @@ class GenDocumentoViewSet(
         campos_filtrables = self._config_lista('campos_filtrables', set())
         qs = self.get_queryset().select_related(
             # `cuenta_banco__cuenta` y el documento afectado los lee el formato
-            # del egreso; sin esto serían una consulta por línea impresa.
+            # del egreso y del pago; sin esto serían una consulta por línea impresa.
             'documento_tipo', 'contacto', 'cuenta_banco__cuenta',
         ).prefetch_related(
             'documentos_detalles_documento_rel__item',

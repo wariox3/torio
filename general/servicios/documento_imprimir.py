@@ -6,20 +6,24 @@ import zipfile
 from reportlab.platypus import PageBreak
 from rest_framework.exceptions import ValidationError
 
-from general.formatos import FormatoDocumentoEgreso, FormatoDocumentoGenerico
+from general.formatos import (
+    FormatoDocumentoEgreso, FormatoDocumentoGenerico, FormatoDocumentoPago,
+)
 from utilidades.formatos.pagina import documento_pdf
 
 # Qué formato imprime cada tipo de documento. Está quemado a propósito y no sale
-# de `GenDocumentoTipo.formato`: mientras haya un solo tipo con formato propio,
+# de `GenDocumentoTipo.formato`: mientras sean pocos los tipos con formato propio,
 # una columna configurable obliga a sembrarla en cada tenant y a mantenerla en el
-# fixture para que el egreso salga bien, y basta que alguien la edite para que un
-# comprobante se imprima con el formato equivocado.
+# fixture para que el egreso y el pago salgan bien, y basta que alguien la edite
+# para que un comprobante se imprima con el formato equivocado.
 #
-# El día que sean varios, esto pasa a ser un mapa por tipo o vuelve a la columna;
+# El día que sean muchos, esto pasa a ser un mapa por tipo o vuelve a la columna;
 # el punto de entrada —`_clase_formato`— no cambia.
+DOCUMENTO_TIPO_PAGO = 4  # mismo id que `contabilizar.DOCUMENTO_TIPO_PAGO`
 DOCUMENTO_TIPO_EGRESO = 8  # mismo id que `contabilizar.DOCUMENTO_TIPO_EGRESO`
 
 FORMATOS = {
+    DOCUMENTO_TIPO_PAGO: FormatoDocumentoPago,
     DOCUMENTO_TIPO_EGRESO: FormatoDocumentoEgreso,
 }
 
