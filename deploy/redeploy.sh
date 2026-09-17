@@ -6,12 +6,12 @@
 # el servicio systemd. Idempotente: se puede correr varias veces sin problema.
 #
 # Uso (como root):
-#     sudo /opt/torio/app/deploy/redeploy.sh
+#     sudo /opt/torio/deploy/redeploy.sh
 #
 set -euo pipefail
 
 # ── Configuración (ajusta si cambian las rutas) ─────────────────────────────
-APP_DIR=/opt/torio/app
+APP_DIR=/opt/torio
 VENV=/opt/torio/venv
 SERVICE=torio
 RUN_USER=torio
