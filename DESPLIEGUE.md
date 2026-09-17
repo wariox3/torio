@@ -54,14 +54,14 @@ La aplicación se despliega bajo **`/opt/torio`** (software de aplicación
 autocontenido, según el FHS — **no** en `/home`, que es para usuarios humanos):
 
 ```
-/opt/torio/              # checkout de git (manage.py, requirements.txt, deploy/...)
+/opt/torio/              # checkout de git (manage.py, requirements.txt, ...)
 ├── .env                 # configuración de producción (chmod 600, ignorado por git)
 ├── venv/                # entorno virtual (ignorado por git)
 └── staticfiles/         # salida de collectstatic (ignorado por git)
 ```
 
 `venv/`, `staticfiles/` y `.env` están en `.gitignore`, así que conviven con el
-checkout sin ensuciar `git status` ni estorbar el `git pull --ff-only` del redeploy.
+checkout sin ensuciar `git status` ni estorbar el `git pull` de las actualizaciones (§10).
 
 Corre como un **usuario de sistema sin login** (`torio`), compatible con el
 endurecimiento de systemd (`ProtectHome=true`). Su home es `/var/lib/torio`, **no**
@@ -160,7 +160,7 @@ sudo mkdir -p /opt/torio
 sudo chown torio:torio /opt/torio
 
 # Clonar y crear el venv como el usuario de servicio (sin shell de login).
-# El repo es público: el clone y el `git pull` de redeploy.sh no piden credenciales.
+# El repo es público: el clone y el `git pull` de las actualizaciones (§10) no piden credenciales.
 sudo -u torio git clone https://github.com/wariox3/torio.git /opt/torio
 sudo -u torio python3.12 -m venv /opt/torio/venv
 sudo -u torio /opt/torio/venv/bin/pip install --upgrade pip
@@ -328,7 +328,7 @@ $PY manage.py createsuperuser
 exit   # salir de la shell del usuario torio
 ```
 
-> En cada **redeploy** que incluya migraciones, ejecutar `migrate_schemas --shared`
+> En cada **actualización** que incluya migraciones, ejecutar `migrate_schemas --shared`
 > y luego `migrate_schemas` (ver §10).
 
 ---
@@ -412,7 +412,7 @@ sudo systemd-analyze verify /etc/systemd/system/torio.service
 
 > **`<<'EOF'` va con comillas simples, a propósito.** Sin ellas, la shell reemplaza
 > `$MAINPID` por una cadena vacía al escribir el archivo, y `ExecReload` queda como
-> `/bin/kill -s HUP ` — el `reload` del redeploy fallaría. `sudo tee` (y no
+> `/bin/kill -s HUP ` — el `reload` de las actualizaciones (§10) fallaría. `sudo tee` (y no
 > `sudo cat > archivo`) porque la redirección `>` la hace tu shell, sin permisos de root.
 >
 > `systemd-analyze verify` no imprime nada si todo está bien. Si ya creaste antes el
@@ -615,47 +615,65 @@ Notas:
 
 ---
 
-## 10. Actualizaciones (redeploy)
+## 10. Actualizaciones
 
-El redeploy está automatizado en **`deploy/redeploy.sh`** (versionado en el repo).
-Hace todos los pasos como el usuario `torio` y recarga el servicio. Se ejecuta
-**como root**:
-
-```bash
-sudo /opt/torio/deploy/redeploy.sh
-```
-
-Qué hace, en orden: `git pull --ff-only` → `pip install` → `migrate_schemas --shared`
-→ `migrate_schemas` (tenants) → `cargar_geodata` + `cargar_datos_tenant` →
-`collectstatic` → fija `SENTRY_RELEASE` al SHA de git → `systemctl reload torio`.
-
-> La primera vez, da permiso de ejecución si hiciera falta: `sudo chmod +x /opt/torio/deploy/redeploy.sh`.
-
-> `reload` (HUP) recicla los workers sin downtime. **Tras migraciones de schema
-> incompatibles con la versión anterior**, edita el final del script (o ejecuta
-> `sudo systemctl restart torio`). Diseña las migraciones compatibles hacia atrás
-> cuando busques cero-downtime real (expand/contract).
-
-<details>
-<summary>Equivalente manual (si no usas el script)</summary>
+Las actualizaciones se hacen con un script en el servidor, `/root/actualizar_torio.sh`.
+Se crea una sola vez. Como root, copia y pega el bloque completo:
 
 ```bash
-sudo -u torio -s
+tee /root/actualizar_torio.sh > /dev/null <<'EOF'
+#!/bin/bash
+set -e
 cd /opt/torio
-export DJANGO_SETTINGS_MODULE=torioapp.settings.prod
-PY=/opt/torio/venv/bin/python
 
-git pull --ff-only
-/opt/torio/venv/bin/pip install -r requirements.txt
-$PY manage.py migrate_schemas --shared
-$PY manage.py migrate_schemas
-$PY manage.py cargar_geodata
-$PY manage.py cargar_datos_tenant
-$PY manage.py collectstatic --noinput
-exit
-sudo systemctl reload torio
+APP="sudo -u torio env DJANGO_SETTINGS_MODULE=torioapp.settings.prod"
+
+$APP git pull
+$APP venv/bin/pip install -r requirements.txt
+$APP venv/bin/python manage.py migrate
+
+if [ "$1" = "--fixtures" ] || [ "$1" = "-f" ]; then
+    echo "Cargando fixtures..."
+    $APP venv/bin/python manage.py cargar_geodata
+    $APP venv/bin/python manage.py cargar_datos_tenant
+    echo "Fixtures cargados"
+fi
+
+$APP venv/bin/python manage.py collectstatic --noinput
+
+systemctl reload torio
+EOF
+
+chmod 700 /root/actualizar_torio.sh
 ```
-</details>
+
+Para actualizar:
+
+```bash
+/root/actualizar_torio.sh              # código, dependencias, migraciones, estáticos
+/root/actualizar_torio.sh --fixtures   # lo mismo + recarga los fixtures (o -f)
+```
+
+Usa `--fixtures` cuando la actualización traiga cambios en:
+
+- **catálogos** (`*/fixtures/*.json`): países, ciudades, tipos de documento, impuestos…
+  Se cargan en el schema público y en **todos** los tenants;
+- **grupos y permisos** (`seguridad/grupos.py`): `cargar_geodata` también los
+  sincroniza, así que sin `--fixtures` los permisos nuevos no llegan a los grupos.
+
+Sin cambios de ese tipo no hace falta: la carga es idempotente, pero recorre todos los
+tenants y es el paso que más tarda a medida que crecen. Los contenedores nuevos no
+dependen de esto: su alta siembra sus propios catálogos (§14).
+
+- **`set -e`**: si un paso falla, el script se detiene y no recarga el servicio.
+  Corrige el error y vuelve a correrlo; todos los pasos se pueden repetir.
+- **`env DJANGO_SETTINGS_MODULE=...`** es necesario: `sudo` borra las variables de
+  entorno, y sin ella `manage.py` usa los settings de desarrollo.
+- **`migrate`** migra el schema público y todos los tenants (en este proyecto es
+  `migrate_schemas`).
+- **`reload`** recicla los workers sin cortar el servicio. Si la actualización cambia
+  la versión de `gunicorn` o la unidad systemd, usa en su lugar
+  `systemctl daemon-reload && systemctl restart torio`.
 
 ---
 
@@ -788,7 +806,7 @@ hace todo lo necesario para que el contenedor sirva:
 
 **Si la carga del paso 5 falla o se corta**, el contenedor queda sin catálogos y solo
 queda registrado en el log (`Falló la carga de catálogos del contenedor ...`). Corre en
-un hilo del worker, así que un `reload` o un redeploy en ese momento, o el reciclaje
+un hilo del worker, así que un `reload` o una actualización (§10) en ese momento, o el reciclaje
 por `--max-requests`, pueden cortarla. Se completa a mano (es idempotente):
 
 ```bash
