@@ -1,5 +1,6 @@
 """
-Creación del emisor del cliente en el servicio de facturación electrónica (rededoc).
+Facturación electrónica con rededoc: creación del emisor, carga del certificado y
+emisión de documentos.
 
 El flujo es front → back → rededoc. El front solo dispara la acción: el payload
 lo arma el back leyendo `GenConfiguracion`, nunca lo que mande el navegador. Si
@@ -12,9 +13,12 @@ no activa la facturación electrónica; `gen_factura_electronica_activa` se mane
 aparte.
 """
 
+from decimal import ROUND_HALF_UP, Decimal
+
 from rest_framework.exceptions import NotFound, ValidationError
 
 from general.models import GenConfiguracion, GenDocumento, GenParametro
+from general.servicios.documento import DOCUMENTO_CLASE_FACTURA_VENTA
 from general.servicios.rededoc import Rededoc
 
 EXTENSIONES_CERTIFICADO = ('.p12', '.pfx')
@@ -143,14 +147,41 @@ def cargar_certificado(archivo, clave, cliente: Rededoc = None) -> dict:
     return datos
 
 
-def emitir(documento_ids):
-    """
-    Valida que los documentos se puedan emitir: que la empresa tenga activa la
-    facturación electrónica y un emisor en rededoc, y que cada documento exista,
-    esté aprobado y no se haya enviado ya.
+# --------------------------------------------------------------- emitir ----
+#
+# Cada clase de documento arma su propio payload para rededoc. Lo que no está en
+# `ARMADORES` no se emite todavía, y se rechaza antes de enviar nada.
+#
+# Tipo de identificación, país, departamento y municipio viajan con el id de
+# torio, que rededoc recibe como llave primaria de su catálogo. El resto de
+# catálogos todavía va por código.
 
-    Se valida el lote completo antes de emitir cualquiera, con el mismo criterio
-    que `contabilizar`: o salen todos o no sale ninguno.
+# Lo que torio todavía no modela y rededoc exige. Valores fijos mientras no haya
+# de dónde sacarlos.
+MONEDA = 35  # COP, id del catálogo de monedas de rededoc
+UNIDAD_MEDIDA = '94'  # Unidad
+MEDIO_PAGO_NO_DEFINIDO = '1'  # Instrumento no definido
+FORMA_PAGO_CONTADO = '1'
+FORMA_PAGO_CREDITO = '2'
+
+# `GenImpuestoTipo.codigo` → código DIAN del tributo. Sin tipo, o con uno que no
+# esté acá, el impuesto sale como IVA, que es lo que son todos los de venta que
+# trae el fixture (ninguno tiene tipo).
+TRIBUTOS = {'IVA': '01', 'ICA': '03', 'COM': '04'}
+TRIBUTO_POR_DEFECTO = '01'
+
+DOS_DECIMALES = Decimal('0.01')
+
+
+def emitir(documento_ids, cliente: Rededoc = None) -> list:
+    """
+    Crea en rededoc cada documento y devuelve los ids de los que quedaron creados.
+
+    Todo se valida y se arma antes de enviar el primero: un dato que falte en
+    cualquiera de los documentos corta el lote sin haber mandado nada. El envío
+    en cambio no es atómico —rededoc no deshace lo creado—, así que cada
+    documento creado se marca apenas rededoc lo acepta, y si uno falla, los
+    anteriores quedan marcados y el error dice cuáles fueron.
     """
     if not documento_ids:
         raise ValidationError({'ids': 'Este campo es requerido.'})
@@ -161,7 +192,10 @@ def emitir(documento_ids):
     if not parametro.gen_rededoc_emisor:
         raise ValidationError('La empresa no tiene emisor en el servicio de facturación electrónica.')
 
-    documentos = GenDocumento.objects.in_bulk(documento_ids)
+    documentos = GenDocumento.objects.select_related(
+        'documento_tipo', 'resolucion', 'plazo_pago', 'metodo_pago',
+        'contacto__identificacion', 'contacto__ciudad__estado__pais',
+    ).in_bulk(documento_ids)
     for documento_id in documento_ids:
         documento = documentos.get(documento_id)
         if documento is None:
@@ -170,3 +204,167 @@ def emitir(documento_ids):
             raise ValidationError(f'El documento {documento_id} debe estar aprobado.')
         if documento.estado_electronico_enviado:
             raise ValidationError(f'El documento {documento_id} ya fue enviado electrónicamente.')
+        if documento.documento_tipo.documento_clase_id not in ARMADORES:
+            raise ValidationError(
+                f'El documento {documento_id} es de un tipo que todavía no se emite electrónicamente.'
+            )
+
+    payloads = [
+        (documentos[documento_id], _armar(documentos[documento_id], parametro))
+        for documento_id in documento_ids
+    ]
+
+    cliente = cliente or Rededoc()
+    emitidos = []
+    for documento, payload in payloads:
+        respuesta = cliente.crear_documento(payload)
+        if respuesta['error']:
+            status = 400 if 400 <= respuesta['status'] < 500 else 502
+            raise ErrorFacturaElectronica(
+                {'documento': documento.id, 'emitidos': emitidos, 'error': respuesta['datos']},
+                status=status,
+            )
+        documento.electronico_id = (respuesta['datos'] or {}).get('id')
+        documento.estado_electronico_enviado = True
+        documento.save(update_fields=['electronico_id', 'estado_electronico_enviado'])
+        emitidos.append(documento.id)
+    return emitidos
+
+
+def _armar(documento, parametro):
+    return ARMADORES[documento.documento_tipo.documento_clase_id](documento, parametro)
+
+
+def _armar_factura_venta(documento, parametro):
+    if documento.documento_tipo.codigo is None:
+        raise ValidationError(
+            f'El tipo de documento {documento.documento_tipo.nombre} no tiene código de '
+            'facturación electrónica.'
+        )
+    if documento.resolucion is None:
+        raise ValidationError(f'El documento {documento.id} no tiene resolución.')
+    if documento.numero is None:
+        raise ValidationError(f'El documento {documento.id} no tiene número.')
+    if documento.fecha is None:
+        raise ValidationError(f'El documento {documento.id} no tiene fecha.')
+
+    resolucion = documento.resolucion
+    if not (resolucion.consecutivo_desde <= documento.numero <= resolucion.consecutivo_hasta):
+        raise ValidationError(
+            f'El número {documento.numero} del documento {documento.id} está fuera del rango '
+            f'de la resolución, que va desde {resolucion.consecutivo_desde} hasta '
+            f'{resolucion.consecutivo_hasta}.'
+        )
+    if not (resolucion.fecha_desde <= documento.fecha <= resolucion.fecha_hasta):
+        raise ValidationError(
+            f'La fecha {documento.fecha} del documento {documento.id} está fuera de la vigencia '
+            f'de la resolución, que va desde {resolucion.fecha_desde} hasta {resolucion.fecha_hasta}.'
+        )
+
+    credito = bool(documento.plazo_pago and documento.plazo_pago.dias > 0)
+    if credito and documento.fecha_vence is None:
+        raise ValidationError(
+            f'El documento {documento.id} es a crédito y no tiene fecha de vencimiento.'
+        )
+
+    return {
+        'emisor': parametro.gen_rededoc_emisor,
+        'documento_tipo': documento.documento_tipo.codigo,
+        'prefijo': documento.resolucion.prefijo or '',
+        'numero_resolucion': documento.resolucion.numero,
+        'consecutivo': documento.numero,
+        'fecha_emision': documento.fecha.isoformat(),
+        'fecha_vencimiento': documento.fecha_vence.isoformat() if credito else None,
+        'forma_pago': FORMA_PAGO_CREDITO if credito else FORMA_PAGO_CONTADO,
+        'medio_pago': getattr(documento.metodo_pago, 'codigo', None) or MEDIO_PAGO_NO_DEFINIDO,
+        'moneda': MONEDA,
+        'adquiriente': _adquiriente(documento),
+        'detalles': _detalles(documento),
+    }
+
+
+def _adquiriente(documento):
+    contacto = documento.contacto
+    if contacto is None:
+        raise ValidationError(f'El documento {documento.id} no tiene cliente.')
+
+    ciudad = contacto.ciudad
+    codigo_postal = contacto.codigo_postal or ciudad.codigo_postal
+    if not codigo_postal:
+        raise ValidationError(
+            f'El cliente {contacto.nombre_corto} no tiene código postal, ni su ciudad uno por defecto.'
+        )
+
+    return {
+        'tipo_identificacion': contacto.identificacion_id,
+        'numero_identificacion': contacto.numero_identificacion,
+        'razon_social': contacto.nombre_corto,
+        'primer_nombre': contacto.nombre1 or '',
+        'segundo_nombre': contacto.nombre2 or '',
+        'primer_apellido': contacto.apellido1 or '',
+        'segundo_apellido': contacto.apellido2 or '',
+        # Los ids de `GenTipoPersona` coinciden con la lista TipoOrganizacion de
+        # la DIAN: 1 jurídica, 2 natural.
+        'tipo_organizacion': str(contacto.tipo_persona_id),
+        # Vacía sale como R-99-PN («No responsable»).
+        'responsabilidades': [],
+        'pais': ciudad.estado.pais_id,
+        'departamento': ciudad.estado_id,
+        'municipio': ciudad.id,
+        'direccion': contacto.direccion,
+        'telefono': contacto.telefono,
+        'correo': contacto.correo_facturacion_electronica or contacto.correo,
+        'codigo_postal': codigo_postal,
+    }
+
+
+def _detalles(documento):
+    lineas = (
+        documento.documentos_detalles_documento_rel
+        .filter(item__isnull=False)
+        .select_related('item')
+        .prefetch_related('documentos_impuestos_documento_detalle_rel__impuesto__impuesto_tipo')
+        .order_by('id')
+    )
+    detalles = []
+    for numero_linea, linea in enumerate(lineas, start=1):
+        detalles.append({
+            'codigo_producto': linea.item.codigo or str(linea.item.id),
+            'numero_linea': numero_linea,
+            'descripcion': linea.detalle or linea.item.nombre,
+            'unidad_medida': UNIDAD_MEDIDA,
+            'cantidad': _decimal(linea.cantidad),
+            'descuento': _decimal(linea.descuento),
+            'valor_unitario': _decimal(linea.precio),
+            'valor_total': _decimal(linea.total_bruto),
+            'impuestos': _impuestos(linea),
+        })
+    if not detalles:
+        raise ValidationError(f'El documento {documento.id} no tiene detalles para emitir.')
+    return detalles
+
+
+def _impuestos(linea):
+    # Las retenciones (operación negativa) no van: en la factura rededoc las
+    # rechaza, porque no las separa del total a pagar.
+    return [
+        {
+            'tributo': TRIBUTOS.get(
+                getattr(impuesto.impuesto.impuesto_tipo, 'codigo', None), TRIBUTO_POR_DEFECTO,
+            ),
+            'base_gravable': _decimal(impuesto.base),
+            'tarifa': _decimal(impuesto.porcentaje),
+            'valor': _decimal(impuesto.total),
+        }
+        for impuesto in linea.documentos_impuestos_documento_detalle_rel.all()
+        if impuesto.impuesto.operacion > 0
+    ]
+
+
+def _decimal(valor):
+    return str((valor or Decimal('0')).quantize(DOS_DECIMALES, rounding=ROUND_HALF_UP))
+
+
+ARMADORES = {
+    DOCUMENTO_CLASE_FACTURA_VENTA: _armar_factura_venta,
+}

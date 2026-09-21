@@ -12,7 +12,8 @@
       "contabilidad": true,
       "inventario": true,
       "operacion_inventario": -1,
-      "electronico": true
+      "electronico": true,
+      "codigo": 1
     },
     {
       "id": 2,

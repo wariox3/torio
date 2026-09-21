@@ -68,6 +68,14 @@ class Rededoc:
             archivos={'archivo': (nombre, archivo, 'application/x-pkcs12')},
         )
 
+    def crear_documento(self, datos: dict):
+        """
+        Crea un documento electrónico (factura, nota…) del emisor.
+        `POST /api/documentos/documento/`. Crearlo reserva el consecutivo en
+        rededoc; firmarlo y enviarlo a la DIAN es un paso aparte.
+        """
+        return self._peticion('POST', '/api/documentos/documento/', datos=datos)
+
     # --- Interno -----------------------------------------------------------
 
     def _headers(self):

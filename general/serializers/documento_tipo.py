@@ -34,6 +34,7 @@ class GenDocumentoTipoSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'nombre',
+            'codigo',
             'consecutivo',
             'formato',
             'venta',

@@ -8,6 +8,9 @@ class GenDocumentoTipo(models.Model):
     ]
 
     nombre = models.CharField(max_length=100)
+    # Tipo de documento en rededoc. Es lo que viaja en `documento_tipo` al emitir;
+    # sin él, el documento no se emite electrónicamente.
+    codigo = models.IntegerField(null=True)
     consecutivo = models.IntegerField(default=1, db_default=1)
     formato = models.CharField(
         max_length=20,

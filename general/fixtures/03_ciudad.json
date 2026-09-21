@@ -9912,6 +9912,13 @@
     },
     {
       "id": 1102,
+      "nombre": "Mapiripana",
+      "codigo_postal": "944057",
+      "estado_id": 30,
+      "codigo": "94663"
+    },
+    {
+      "id": 1103,
       "nombre": "San Felipe",
       "codigo_postal": "942010",
       "latitud": "2.312179782",
@@ -9920,7 +9927,7 @@
       "codigo": "94883"
     },
     {
-      "id": 1103,
+      "id": 1104,
       "nombre": "Puerto Colombia",
       "codigo_postal": "948840",
       "latitud": "2.582829542",
@@ -9929,7 +9936,7 @@
       "codigo": "94884"
     },
     {
-      "id": 1104,
+      "id": 1105,
       "nombre": "La Guadalupe",
       "codigo_postal": "948850",
       "latitud": "1.404540273",
@@ -9938,7 +9945,7 @@
       "codigo": "94885"
     },
     {
-      "id": 1105,
+      "id": 1106,
       "nombre": "Cacahual",
       "codigo_postal": "941010",
       "latitud": "3.38616245",
@@ -9947,7 +9954,7 @@
       "codigo": "94886"
     },
     {
-      "id": 1106,
+      "id": 1107,
       "nombre": "Pana Pana",
       "codigo_postal": "948870",
       "latitud": "1.981055294",
@@ -9956,7 +9963,7 @@
       "codigo": "94887"
     },
     {
-      "id": 1107,
+      "id": 1108,
       "nombre": "Morichal",
       "codigo_postal": "948880",
       "latitud": "2.421444806",
@@ -9965,7 +9972,7 @@
       "codigo": "94888"
     },
     {
-      "id": 1108,
+      "id": 1109,
       "nombre": "San José Del Guaviare",
       "codigo_postal": "950001",
       "latitud": "2.484286091",
@@ -9974,7 +9981,7 @@
       "codigo": "95001"
     },
     {
-      "id": 1109,
+      "id": 1110,
       "nombre": "Calamar",
       "codigo_postal": "953001",
       "latitud": "1.613634284",
@@ -9983,7 +9990,7 @@
       "codigo": "95015"
     },
     {
-      "id": 1110,
+      "id": 1111,
       "nombre": "El Retorno",
       "codigo_postal": "951001",
       "latitud": "2.143447362",
@@ -9992,7 +9999,7 @@
       "codigo": "95025"
     },
     {
-      "id": 1111,
+      "id": 1112,
       "nombre": "Miraflores",
       "codigo_postal": "952001",
       "latitud": "1.363974932",
@@ -10001,7 +10008,7 @@
       "codigo": "95200"
     },
     {
-      "id": 1112,
+      "id": 1113,
       "nombre": "Mitú",
       "codigo_postal": "970001",
       "latitud": "1.06148231",
@@ -10010,7 +10017,7 @@
       "codigo": "97001"
     },
     {
-      "id": 1113,
+      "id": 1114,
       "nombre": "Carurú",
       "codigo_postal": "973001",
       "latitud": "1.052762314",
@@ -10019,7 +10026,7 @@
       "codigo": "97161"
     },
     {
-      "id": 1114,
+      "id": 1115,
       "nombre": "Pacoa",
       "codigo_postal": "975110",
       "latitud": "-0.00834363999996",
@@ -10028,7 +10035,7 @@
       "codigo": "97511"
     },
     {
-      "id": 1115,
+      "id": 1116,
       "nombre": "Taraira",
       "codigo_postal": "972040",
       "latitud": "-0.719822209",
@@ -10037,7 +10044,7 @@
       "codigo": "97666"
     },
     {
-      "id": 1116,
+      "id": 1117,
       "nombre": "Papunahua",
       "codigo_postal": "977770",
       "latitud": "1.569312273",
@@ -10046,7 +10053,7 @@
       "codigo": "97777"
     },
     {
-      "id": 1117,
+      "id": 1118,
       "nombre": "Yavaraté",
       "codigo_postal": "978890",
       "latitud": "0.833312241",
@@ -10055,7 +10062,7 @@
       "codigo": "97889"
     },
     {
-      "id": 1118,
+      "id": 1119,
       "nombre": "Puerto Carreño",
       "codigo_postal": "990001",
       "latitud": "5.836529669",
@@ -10064,7 +10071,7 @@
       "codigo": "99001"
     },
     {
-      "id": 1119,
+      "id": 1120,
       "nombre": "La Primavera",
       "codigo_postal": "992001",
       "latitud": "5.517593607",
@@ -10073,7 +10080,7 @@
       "codigo": "99524"
     },
     {
-      "id": 1120,
+      "id": 1121,
       "nombre": "Santa Rosalía",
       "codigo_postal": "992050",
       "latitud": "4.968581012",
@@ -10082,7 +10089,7 @@
       "codigo": "99624"
     },
     {
-      "id": 1121,
+      "id": 1122,
       "nombre": "Cumaribo",
       "codigo_postal": "991001",
       "latitud": "4.262454746",

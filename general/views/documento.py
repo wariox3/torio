@@ -273,18 +273,26 @@ class GenDocumentoViewSet(
     @extend_schema(
         summary='Emitir documentos electrónicos',
         description=(
-            'Valida que cada documento exista, esté aprobado y no se haya enviado '
-            'electrónicamente. Si uno no cumple, no se emite ninguno.'
+            'Crea cada documento en el servicio de facturación electrónica. Antes '
+            'de enviar el primero valida el lote completo: que la empresa esté '
+            'activada y tenga emisor, y que cada documento exista, esté aprobado, '
+            'no se haya enviado y sea de un tipo que se emite. Si uno no cumple, '
+            'no se envía ninguno.\n\n'
+            'El envío no es atómico: si rededoc rechaza un documento, los '
+            'anteriores ya quedaron creados, y el error los lista en `emitidos`.'
         ),
         request=DocumentoIdsRequestSerializer,
-        responses={200: None},
+        responses=OpenApiTypes.OBJECT,
     )
     @action(detail=False, methods=['post'])
     def emitir(self, request):
         serializer = DocumentoIdsRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        factura_electronica_servicio.emitir(serializer.validated_data['ids'])
-        return Response(status=status.HTTP_200_OK)
+        try:
+            emitidos = factura_electronica_servicio.emitir(serializer.validated_data['ids'])
+        except factura_electronica_servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+        return Response({'emitidos': emitidos}, status=status.HTTP_200_OK)
 
     @extend_schema(request=BusquedaRequest, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=False, methods=['post'])

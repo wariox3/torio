@@ -5031,87 +5031,282 @@ class EncabezadoEmpresaTests(TenantTestCase):
 
 
 class EmitirTests(TenantTestCase):
-    """Emitir: solo pasa un lote en el que todos existen, están aprobados y no se enviaron."""
+    """
+    Emitir: valida el lote completo, arma el payload de cada documento según su
+    clase y lo crea en rededoc. Rededoc se reemplaza: acá no se sale a la red.
+    """
 
     def setUp(self):
         self.tipo = GenDocumentoTipo.objects.create(
-            id=1, nombre='FACTURA', venta=True,
+            id=1, nombre='FACTURA', venta=True, codigo=1,
             documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
         )
         GenParametro.objects.create(id=1, gen_factura_electronica_activa=True, gen_rededoc_emisor=77)
+        pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
+        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        self.ciudad = GenCiudad.objects.create(
+            id=1, nombre='Medellín', codigo='05001', codigo_postal='050001', estado=estado,
+        )
+        self.contacto = GenContacto.objects.create(
+            numero_identificacion='70143086', nombre_corto='Mario Estrada',
+            nombre1='Mario', apellido1='Estrada',
+            identificacion=GenIdentificacion.objects.create(id=3, nombre='Cédula', codigo='13'),
+            tipo_persona=GenTipoPersona.objects.create(id=2, nombre='Natural'),
+            ciudad=self.ciudad, direccion='Calle 84', telefono='3205015059',
+            correo='general@x.com', correo_facturacion_electronica='facturas@x.com',
+        )
+        self.resolucion = GenResolucion.objects.create(
+            prefijo='SETP', numero='18760000001', consecutivo_desde=990000000,
+            consecutivo_hasta=995000000, fecha_desde=date(2020, 1, 1), fecha_hasta=date(2030, 12, 31),
+        )
+        self.item = GenItem.objects.create(nombre='Servicio de prueba', codigo='PRB001')
+        self.iva = GenImpuesto.objects.create(
+            nombre='IVA 19%', nombre_extendido='IVA 19%', porcentaje=Decimal('19'), operacion=1,
+        )
+        self.retencion = GenImpuesto.objects.create(
+            nombre='RteFte 4%', nombre_extendido='RteFte 4%', porcentaje=Decimal('4'), operacion=-1,
+        )
         self.factory = APIRequestFactory()
 
-    def _documento(self, **overrides):
-        return GenDocumento.objects.create(
-            documento_tipo=self.tipo, fecha=date(2026, 1, 15), **overrides,
-        )
+    def _documento(self, detalles=True, **overrides):
+        datos = {
+            'documento_tipo': self.tipo, 'fecha': date(2026, 1, 15), 'estado_aprobado': True,
+            'contacto': self.contacto, 'resolucion': self.resolucion, 'numero': 990000011,
+        }
+        datos.update(overrides)
+        documento = GenDocumento.objects.create(**datos)
+        if detalles:
+            detalle = GenDocumentoDetalle.objects.create(
+                documento=documento, item=self.item, cantidad=Decimal('2'),
+                precio=Decimal('500'), porcentaje_descuento=Decimal('10'),
+            )
+            for impuesto in (self.iva, self.retencion):
+                GenDocumentoImpuesto.objects.create(
+                    documento_detalle=detalle, impuesto=impuesto, porcentaje=impuesto.porcentaje,
+                )
+            detalle.calcular()
+            detalle.save()
+        return documento
 
-    def _llamar(self, datos):
+    def _cliente(self, *respuestas):
+        cliente = mock.Mock()
+        cliente.crear_documento.side_effect = list(respuestas) or [
+            {'error': False, 'status': 201, 'datos': {'id': 500}},
+        ]
+        return cliente
+
+    def _llamar(self, datos, cliente=None):
+        cliente = cliente or self._cliente()
         vista = _DocumentoViewSinPermisos.as_view({'post': 'emitir'})
         peticion = self.factory.post('/general/documento/emitir/', datos, format='json')
         force_authenticate(peticion, user=SegUsuario(id=1))
-        return vista(peticion)
+        with mock.patch.object(factura_electronica, 'Rededoc', return_value=cliente):
+            return vista(peticion)
 
-    def test_documentos_aprobados_sin_enviar_responden_200(self):
-        uno = self._documento(estado_aprobado=True)
-        dos = self._documento(estado_aprobado=True)
+    # ---- envío ----
 
-        respuesta = self._llamar({'ids': [uno.id, dos.id]})
+    def test_crea_el_documento_en_rededoc_y_lo_marca_enviado(self):
+        documento = self._documento()
+        cliente = self._cliente()
+
+        respuesta = self._llamar({'ids': [documento.id]}, cliente)
 
         self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, {'emitidos': [documento.id]})
+        cliente.crear_documento.assert_called_once()
+        documento.refresh_from_db()
+        self.assertTrue(documento.estado_electronico_enviado)
+        self.assertEqual(documento.electronico_id, 500)
 
-    def test_sin_facturacion_electronica_activa_no_se_emite(self):
-        GenParametro.objects.filter(id=1).update(gen_factura_electronica_activa=False)
-        uno = self._documento(estado_aprobado=True)
+    def test_payload_de_la_factura_de_venta(self):
+        documento = self._documento()
+        cliente = self._cliente()
 
-        respuesta = self._llamar({'ids': [uno.id]})
+        self._llamar({'ids': [documento.id]}, cliente)
+
+        payload = cliente.crear_documento.call_args.args[0]
+        self.assertEqual(payload, {
+            'emisor': 77,
+            'documento_tipo': 1,
+            'prefijo': 'SETP',
+            'numero_resolucion': '18760000001',
+            'consecutivo': 990000011,
+            'fecha_emision': '2026-01-15',
+            'fecha_vencimiento': None,
+            'forma_pago': '1',
+            'medio_pago': '1',
+            'moneda': 35,
+            'adquiriente': {
+                'tipo_identificacion': 3,
+                'numero_identificacion': '70143086',
+                'razon_social': 'Mario Estrada',
+                'primer_nombre': 'Mario',
+                'segundo_nombre': '',
+                'primer_apellido': 'Estrada',
+                'segundo_apellido': '',
+                'tipo_organizacion': '2',
+                'responsabilidades': [],
+                'pais': 250,
+                'departamento': 1,
+                'municipio': 1,
+                'direccion': 'Calle 84',
+                'telefono': '3205015059',
+                'correo': 'facturas@x.com',
+                'codigo_postal': '050001',
+            },
+            'detalles': [{
+                'codigo_producto': 'PRB001',
+                'numero_linea': 1,
+                'descripcion': 'Servicio de prueba',
+                'unidad_medida': '94',
+                'cantidad': '2.00',
+                'descuento': '100.00',
+                'valor_unitario': '500.00',
+                'valor_total': '900.00',
+                # La retención no viaja: rededoc la rechaza en la factura.
+                'impuestos': [
+                    {'tributo': '01', 'base_gravable': '900.00', 'tarifa': '19.00', 'valor': '171.00'},
+                ],
+            }],
+        })
+
+    def test_a_credito_manda_forma_de_pago_y_vencimiento(self):
+        documento = self._documento(
+            plazo_pago=GenPlazoPago.objects.create(id=1, nombre='30 días', dias=30),
+            fecha_vence=date(2026, 2, 14),
+        )
+        cliente = self._cliente()
+
+        self._llamar({'ids': [documento.id]}, cliente)
+
+        payload = cliente.crear_documento.call_args.args[0]
+        self.assertEqual(payload['forma_pago'], '2')
+        self.assertEqual(payload['fecha_vencimiento'], '2026-02-14')
+
+    def test_si_rededoc_rechaza_uno_los_anteriores_quedan_emitidos(self):
+        uno = self._documento()
+        dos = self._documento(numero=990000012)
+        cliente = self._cliente(
+            {'error': False, 'status': 201, 'datos': {'id': 500}},
+            {'error': True, 'status': 400, 'datos': {'prefijo': ['No coincide.']}},
+        )
+
+        respuesta = self._llamar({'ids': [uno.id, dos.id]}, cliente)
 
         self.assertEqual(respuesta.status_code, 400)
-        self.assertIn('no se ha activado', str(respuesta.data))
+        self.assertEqual(respuesta.data, {
+            'documento': dos.id, 'emitidos': [uno.id], 'error': {'prefijo': ['No coincide.']},
+        })
+        uno.refresh_from_db()
+        dos.refresh_from_db()
+        self.assertTrue(uno.estado_electronico_enviado)
+        self.assertFalse(dos.estado_electronico_enviado)
 
-    def test_sin_emisor_no_se_emite(self):
-        GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
-        uno = self._documento(estado_aprobado=True)
+    def test_rededoc_caido_responde_502(self):
+        documento = self._documento()
+        cliente = self._cliente({'error': True, 'status': 0, 'datos': {'mensaje': 'timeout'}})
 
-        respuesta = self._llamar({'ids': [uno.id]})
+        respuesta = self._llamar({'ids': [documento.id]}, cliente)
 
-        self.assertEqual(respuesta.status_code, 400)
-        self.assertIn('no tiene emisor', str(respuesta.data))
+        self.assertEqual(respuesta.status_code, 502)
 
-    def test_la_activacion_se_valida_antes_que_los_documentos(self):
-        """Sin activación no importa si el documento existe: el error es el de la empresa."""
-        GenParametro.objects.filter(id=1).delete()
+    # ---- validaciones: cortan el lote sin enviar nada ----
 
-        respuesta = self._llamar({'ids': [999999]})
-
-        self.assertEqual(respuesta.status_code, 400)
-        self.assertIn('no se ha activado', str(respuesta.data))
-
-    def test_un_documento_inexistente_responde_404(self):
-        uno = self._documento(estado_aprobado=True)
-
-        respuesta = self._llamar({'ids': [uno.id, 999999]})
-
-        self.assertEqual(respuesta.status_code, 404)
-        self.assertIn('999999', str(respuesta.data))
-
-    def test_un_documento_sin_aprobar_no_se_emite(self):
-        uno = self._documento(estado_aprobado=True)
-        dos = self._documento()
-
-        respuesta = self._llamar({'ids': [uno.id, dos.id]})
-
-        self.assertEqual(respuesta.status_code, 400)
-        self.assertIn('debe estar aprobado', str(respuesta.data))
-
-    def test_un_documento_ya_enviado_no_se_emite(self):
-        uno = self._documento(estado_aprobado=True, estado_electronico_enviado=True)
-
-        respuesta = self._llamar({'ids': [uno.id]})
-
-        self.assertEqual(respuesta.status_code, 400)
-        self.assertIn('ya fue enviado', str(respuesta.data))
+    def _no_envia(self, datos, esperado_status, esperado_texto):
+        cliente = self._cliente()
+        respuesta = self._llamar(datos, cliente)
+        self.assertEqual(respuesta.status_code, esperado_status)
+        self.assertIn(esperado_texto, str(respuesta.data))
+        cliente.crear_documento.assert_not_called()
 
     def test_sin_ids_responde_400(self):
         self.assertEqual(self._llamar({'ids': []}).status_code, 400)
         self.assertEqual(self._llamar({}).status_code, 400)
+
+    def test_sin_facturacion_electronica_activa_no_se_emite(self):
+        GenParametro.objects.filter(id=1).update(gen_factura_electronica_activa=False)
+        self._no_envia({'ids': [self._documento().id]}, 400, 'no se ha activado')
+
+    def test_sin_emisor_no_se_emite(self):
+        GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
+        self._no_envia({'ids': [self._documento().id]}, 400, 'no tiene emisor')
+
+    def test_la_activacion_se_valida_antes_que_los_documentos(self):
+        GenParametro.objects.filter(id=1).delete()
+        self._no_envia({'ids': [999999]}, 400, 'no se ha activado')
+
+    def test_un_documento_inexistente_responde_404(self):
+        self._no_envia({'ids': [self._documento().id, 999999]}, 404, '999999')
+
+    def test_un_documento_sin_aprobar_no_se_emite(self):
+        uno = self._documento()
+        dos = self._documento(estado_aprobado=False)
+        self._no_envia({'ids': [uno.id, dos.id]}, 400, 'debe estar aprobado')
+
+    def test_un_documento_ya_enviado_no_se_emite(self):
+        documento = self._documento(estado_electronico_enviado=True)
+        self._no_envia({'ids': [documento.id]}, 400, 'ya fue enviado')
+
+    def test_un_tipo_sin_armador_no_se_emite(self):
+        otro = GenDocumentoTipo.objects.create(
+            id=2, nombre='NOTA', documento_clase=GenDocumentoClase.objects.create(id=101, nombre='NC'),
+        )
+        documento = self._documento(documento_tipo=otro)
+        self._no_envia({'ids': [documento.id]}, 400, 'todavía no se emite')
+
+    def test_un_tipo_sin_codigo_no_se_emite(self):
+        GenDocumentoTipo.objects.filter(pk=self.tipo.pk).update(codigo=None)
+        self._no_envia({'ids': [self._documento().id]}, 400, 'no tiene código')
+
+    def test_sin_resolucion_no_se_emite(self):
+        self._no_envia({'ids': [self._documento(resolucion=None).id]}, 400, 'no tiene resolución')
+
+    def test_a_credito_sin_vencimiento_no_se_emite(self):
+        documento = self._documento(
+            plazo_pago=GenPlazoPago.objects.create(id=1, nombre='30 días', dias=30),
+        )
+        self._no_envia({'ids': [documento.id]}, 400, 'no tiene fecha de vencimiento')
+
+    def test_sin_codigo_postal_no_se_emite(self):
+        GenCiudad.objects.filter(pk=self.ciudad.pk).update(codigo_postal=None)
+        self._no_envia({'ids': [self._documento().id]}, 400, 'no tiene código postal')
+
+    def test_sin_fecha_no_se_emite(self):
+        self._no_envia({'ids': [self._documento(fecha=None).id]}, 400, 'no tiene fecha')
+
+    def test_numero_por_debajo_del_rango_no_se_emite(self):
+        documento = self._documento(numero=989999999)
+        self._no_envia({'ids': [documento.id]}, 400, 'fuera del rango')
+
+    def test_numero_por_encima_del_rango_no_se_emite(self):
+        documento = self._documento(numero=995000001)
+        self._no_envia({'ids': [documento.id]}, 400, 'fuera del rango')
+
+    def test_los_extremos_del_rango_y_la_vigencia_se_emiten(self):
+        desde = self._documento(numero=990000000, fecha=date(2020, 1, 1))
+        hasta = self._documento(numero=995000000, fecha=date(2030, 12, 31))
+        cliente = self._cliente(
+            {'error': False, 'status': 201, 'datos': {'id': 1}},
+            {'error': False, 'status': 201, 'datos': {'id': 2}},
+        )
+
+        respuesta = self._llamar({'ids': [desde.id, hasta.id]}, cliente)
+
+        self.assertEqual(respuesta.status_code, 200)
+
+    def test_fecha_antes_de_la_vigencia_no_se_emite(self):
+        documento = self._documento(fecha=date(2019, 12, 31))
+        self._no_envia({'ids': [documento.id]}, 400, 'fuera de la vigencia')
+
+    def test_fecha_despues_de_la_vigencia_no_se_emite(self):
+        documento = self._documento(fecha=date(2031, 1, 1))
+        self._no_envia({'ids': [documento.id]}, 400, 'fuera de la vigencia')
+
+    def test_sin_detalles_no_se_emite(self):
+        self._no_envia({'ids': [self._documento(detalles=False).id]}, 400, 'no tiene detalles')
+
+    def test_un_documento_invalido_no_deja_enviar_los_validos(self):
+        """El armado va completo antes del primer envío."""
+        valido = self._documento()
+        invalido = self._documento(resolucion=None)
+        self._no_envia({'ids': [valido.id, invalido.id]}, 400, 'no tiene resolución')
