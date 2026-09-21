@@ -68,7 +68,7 @@ class GenDocumento(models.Model):
     cue = models.CharField(max_length=150, null=True)
     comentario = models.CharField(max_length=500, null=True)
     qr = models.CharField(max_length=500, null=True)
-    electronico_id = models.IntegerField(null=True)
+    electronico_id = models.UUIDField(null=True)
     referencia_cue = models.CharField(max_length=150, null=True)
     referencia_numero = models.IntegerField(null=True)
     referencia_prefijo = models.CharField(max_length=50, null=True)

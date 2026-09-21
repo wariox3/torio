@@ -5091,7 +5091,7 @@ class EmitirTests(TenantTestCase):
     def _cliente(self, *respuestas):
         cliente = mock.Mock()
         cliente.crear_documento.side_effect = list(respuestas) or [
-            {'error': False, 'status': 201, 'datos': {'id': 500}},
+            {'error': False, 'status': 201, 'datos': {'id': '0b8f3c2e-5d7a-4e1b-9c6f-2a4d8e7b1f90'}},
         ]
         return cliente
 
@@ -5116,7 +5116,7 @@ class EmitirTests(TenantTestCase):
         cliente.crear_documento.assert_called_once()
         documento.refresh_from_db()
         self.assertTrue(documento.estado_electronico_enviado)
-        self.assertEqual(documento.electronico_id, 500)
+        self.assertEqual(documento.electronico_id, uuid_lib.UUID('0b8f3c2e-5d7a-4e1b-9c6f-2a4d8e7b1f90'))
 
     def test_payload_de_la_factura_de_venta(self):
         documento = self._documento()
@@ -5187,7 +5187,7 @@ class EmitirTests(TenantTestCase):
         uno = self._documento()
         dos = self._documento(numero=990000012)
         cliente = self._cliente(
-            {'error': False, 'status': 201, 'datos': {'id': 500}},
+            {'error': False, 'status': 201, 'datos': {'id': '0b8f3c2e-5d7a-4e1b-9c6f-2a4d8e7b1f90'}},
             {'error': True, 'status': 400, 'datos': {'prefijo': ['No coincide.']}},
         )
 
@@ -5216,7 +5216,9 @@ class EmitirTests(TenantTestCase):
         cliente = self._cliente()
         respuesta = self._llamar(datos, cliente)
         self.assertEqual(respuesta.status_code, esperado_status)
-        self.assertIn(esperado_texto, str(respuesta.data))
+        # El estándar del proyecto: un solo `detail` con el mensaje, no una lista.
+        self.assertEqual(list(respuesta.data), ['detail'])
+        self.assertIn(esperado_texto, respuesta.data['detail'])
         cliente.crear_documento.assert_not_called()
 
     def test_sin_ids_responde_400(self):
@@ -5286,8 +5288,8 @@ class EmitirTests(TenantTestCase):
         desde = self._documento(numero=990000000, fecha=date(2020, 1, 1))
         hasta = self._documento(numero=995000000, fecha=date(2030, 12, 31))
         cliente = self._cliente(
-            {'error': False, 'status': 201, 'datos': {'id': 1}},
-            {'error': False, 'status': 201, 'datos': {'id': 2}},
+            {'error': False, 'status': 201, 'datos': {'id': str(uuid_lib.uuid4())}},
+            {'error': False, 'status': 201, 'datos': {'id': str(uuid_lib.uuid4())}},
         )
 
         respuesta = self._llamar({'ids': [desde.id, hasta.id]}, cliente)

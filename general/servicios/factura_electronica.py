@@ -188,9 +188,9 @@ def emitir(documento_ids, cliente: Rededoc = None) -> list:
 
     parametro = GenParametro.objects.filter(id=1).first()
     if parametro is None or not parametro.gen_factura_electronica_activa:
-        raise ValidationError('La empresa no se ha activado para facturar electrónicamente.')
+        raise ErrorFacturaElectronica('La empresa no se ha activado para facturar electrónicamente.')
     if not parametro.gen_rededoc_emisor:
-        raise ValidationError('La empresa no tiene emisor en el servicio de facturación electrónica.')
+        raise ErrorFacturaElectronica('La empresa no tiene emisor en el servicio de facturación electrónica.')
 
     documentos = GenDocumento.objects.select_related(
         'documento_tipo', 'resolucion', 'plazo_pago', 'metodo_pago',
@@ -201,11 +201,11 @@ def emitir(documento_ids, cliente: Rededoc = None) -> list:
         if documento is None:
             raise NotFound(f'El documento {documento_id} no existe.')
         if not documento.estado_aprobado:
-            raise ValidationError(f'El documento {documento_id} debe estar aprobado.')
+            raise ErrorFacturaElectronica(f'El documento {documento_id} debe estar aprobado.')
         if documento.estado_electronico_enviado:
-            raise ValidationError(f'El documento {documento_id} ya fue enviado electrónicamente.')
+            raise ErrorFacturaElectronica(f'El documento {documento_id} ya fue enviado electrónicamente.')
         if documento.documento_tipo.documento_clase_id not in ARMADORES:
-            raise ValidationError(
+            raise ErrorFacturaElectronica(
                 f'El documento {documento_id} es de un tipo que todavía no se emite electrónicamente.'
             )
 
@@ -237,33 +237,33 @@ def _armar(documento, parametro):
 
 def _armar_factura_venta(documento, parametro):
     if documento.documento_tipo.codigo is None:
-        raise ValidationError(
+        raise ErrorFacturaElectronica(
             f'El tipo de documento {documento.documento_tipo.nombre} no tiene código de '
             'facturación electrónica.'
         )
     if documento.resolucion is None:
-        raise ValidationError(f'El documento {documento.id} no tiene resolución.')
+        raise ErrorFacturaElectronica(f'El documento {documento.id} no tiene resolución.')
     if documento.numero is None:
-        raise ValidationError(f'El documento {documento.id} no tiene número.')
+        raise ErrorFacturaElectronica(f'El documento {documento.id} no tiene número.')
     if documento.fecha is None:
-        raise ValidationError(f'El documento {documento.id} no tiene fecha.')
+        raise ErrorFacturaElectronica(f'El documento {documento.id} no tiene fecha.')
 
     resolucion = documento.resolucion
     if not (resolucion.consecutivo_desde <= documento.numero <= resolucion.consecutivo_hasta):
-        raise ValidationError(
+        raise ErrorFacturaElectronica(
             f'El número {documento.numero} del documento {documento.id} está fuera del rango '
             f'de la resolución, que va desde {resolucion.consecutivo_desde} hasta '
             f'{resolucion.consecutivo_hasta}.'
         )
     if not (resolucion.fecha_desde <= documento.fecha <= resolucion.fecha_hasta):
-        raise ValidationError(
+        raise ErrorFacturaElectronica(
             f'La fecha {documento.fecha} del documento {documento.id} está fuera de la vigencia '
             f'de la resolución, que va desde {resolucion.fecha_desde} hasta {resolucion.fecha_hasta}.'
         )
 
     credito = bool(documento.plazo_pago and documento.plazo_pago.dias > 0)
     if credito and documento.fecha_vence is None:
-        raise ValidationError(
+        raise ErrorFacturaElectronica(
             f'El documento {documento.id} es a crédito y no tiene fecha de vencimiento.'
         )
 
@@ -286,12 +286,12 @@ def _armar_factura_venta(documento, parametro):
 def _adquiriente(documento):
     contacto = documento.contacto
     if contacto is None:
-        raise ValidationError(f'El documento {documento.id} no tiene cliente.')
+        raise ErrorFacturaElectronica(f'El documento {documento.id} no tiene cliente.')
 
     ciudad = contacto.ciudad
     codigo_postal = contacto.codigo_postal or ciudad.codigo_postal
     if not codigo_postal:
-        raise ValidationError(
+        raise ErrorFacturaElectronica(
             f'El cliente {contacto.nombre_corto} no tiene código postal, ni su ciudad uno por defecto.'
         )
 
@@ -340,7 +340,7 @@ def _detalles(documento):
             'impuestos': _impuestos(linea),
         })
     if not detalles:
-        raise ValidationError(f'El documento {documento.id} no tiene detalles para emitir.')
+        raise ErrorFacturaElectronica(f'El documento {documento.id} no tiene detalles para emitir.')
     return detalles
 
 
