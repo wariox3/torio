@@ -257,8 +257,7 @@ WOMPI_INTEGRITY_SECRET=<secret real>
 
 # ── RedEDoc (servicio Nobelio) ─────────────────────────
 REDEDOC_URL=https://api.rededoc.uk
-# Se llama KEY_REDEDOC (no REDEDOC_KEY) por compatibilidad con los .env existentes
-KEY_REDEDOC=<llave real>
+REDEDOC_KEY=<llave real>
 
 # ── Backblaze B2 (almacenamiento de archivos) ──────────
 # Cada bucket tiene su propia application key, restringida a él: no son

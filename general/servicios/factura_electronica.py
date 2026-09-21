@@ -12,7 +12,9 @@ no activa la facturación electrónica; `gen_factura_electronica_activa` se mane
 aparte.
 """
 
-from general.models import GenConfiguracion, GenParametro
+from rest_framework.exceptions import NotFound, ValidationError
+
+from general.models import GenConfiguracion, GenDocumento, GenParametro
 from general.servicios.rededoc import Rededoc
 
 EXTENSIONES_CERTIFICADO = ('.p12', '.pfx')
@@ -90,8 +92,8 @@ def crear_emisor(cliente: Rededoc = None) -> GenParametro:
     emisor_id = (respuesta['datos'] or {}).get('id')
 
     parametro, _ = GenParametro.objects.get_or_create(id=1)
-    parametro.gen_factura_electronica_emisor = emisor_id
-    parametro.save(update_fields=['gen_factura_electronica_emisor'])
+    parametro.gen_rededoc_emisor = emisor_id
+    parametro.save(update_fields=['gen_rededoc_emisor'])
     return parametro
 
 
@@ -121,7 +123,7 @@ def cargar_certificado(archivo, clave, cliente: Rededoc = None) -> dict:
 
     # El certificado se cuelga del emisor, así que sin emisor no hay dónde ponerlo.
     parametro, _ = GenParametro.objects.get_or_create(id=1)
-    if not parametro.gen_factura_electronica_emisor:
+    if not parametro.gen_rededoc_emisor:
         raise ErrorFacturaElectronica(
             'Primero hay que crear el emisor en el servicio de facturación electrónica.',
         )
@@ -129,7 +131,7 @@ def cargar_certificado(archivo, clave, cliente: Rededoc = None) -> dict:
     cliente = cliente or Rededoc()
     archivo.seek(0)
     respuesta = cliente.cargar_certificado(
-        parametro.gen_factura_electronica_emisor, archivo, clave, nombre=nombre,
+        parametro.gen_rededoc_emisor, archivo, clave, nombre=nombre,
     )
     if respuesta['error']:
         status = 400 if 400 <= respuesta['status'] < 500 else 502
@@ -139,3 +141,32 @@ def cargar_certificado(archivo, clave, cliente: Rededoc = None) -> dict:
     parametro.gen_certificado_vence = datos.get('vigente_hasta')
     parametro.save(update_fields=['gen_certificado_vence'])
     return datos
+
+
+def emitir(documento_ids):
+    """
+    Valida que los documentos se puedan emitir: que la empresa tenga activa la
+    facturación electrónica y un emisor en rededoc, y que cada documento exista,
+    esté aprobado y no se haya enviado ya.
+
+    Se valida el lote completo antes de emitir cualquiera, con el mismo criterio
+    que `contabilizar`: o salen todos o no sale ninguno.
+    """
+    if not documento_ids:
+        raise ValidationError({'ids': 'Este campo es requerido.'})
+
+    parametro = GenParametro.objects.filter(id=1).first()
+    if parametro is None or not parametro.gen_factura_electronica_activa:
+        raise ValidationError('La empresa no se ha activado para facturar electrónicamente.')
+    if not parametro.gen_rededoc_emisor:
+        raise ValidationError('La empresa no tiene emisor en el servicio de facturación electrónica.')
+
+    documentos = GenDocumento.objects.in_bulk(documento_ids)
+    for documento_id in documento_ids:
+        documento = documentos.get(documento_id)
+        if documento is None:
+            raise NotFound(f'El documento {documento_id} no existe.')
+        if not documento.estado_aprobado:
+            raise ValidationError(f'El documento {documento_id} debe estar aprobado.')
+        if documento.estado_electronico_enviado:
+            raise ValidationError(f'El documento {documento_id} ya fue enviado electrónicamente.')

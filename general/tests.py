@@ -1419,8 +1419,8 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
         cliente = self._cliente()
         parametro = factura_electronica.crear_emisor(cliente=cliente)
 
-        self.assertEqual(parametro.gen_factura_electronica_emisor, 77)
-        self.assertEqual(GenParametro.objects.get(id=1).gen_factura_electronica_emisor, 77)
+        self.assertEqual(parametro.gen_rededoc_emisor, 77)
+        self.assertEqual(GenParametro.objects.get(id=1).gen_rededoc_emisor, 77)
         self.assertIs(GenParametro.objects.get(id=1).gen_factura_electronica_activa, False)
 
     def test_el_payload_sale_de_la_configuracion_y_no_lleva_cuenta(self):
@@ -1493,7 +1493,7 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
             'detail': 'Ya existe un emisor con ese número de identificación.',
         })
         self.assertEqual(caso.exception.status, 400)
-        self.assertFalse(GenParametro.objects.filter(gen_factura_electronica_emisor__isnull=False).exists())
+        self.assertFalse(GenParametro.objects.filter(gen_rededoc_emisor__isnull=False).exists())
 
     def test_un_rechazo_de_rededoc_es_400_y_no_guarda_el_emisor(self):
         cliente = self._cliente(crear={
@@ -1503,7 +1503,7 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
             factura_electronica.crear_emisor(cliente=cliente)
 
         self.assertEqual(caso.exception.status, 400)
-        self.assertFalse(GenParametro.objects.filter(gen_factura_electronica_emisor__isnull=False).exists())
+        self.assertFalse(GenParametro.objects.filter(gen_rededoc_emisor__isnull=False).exists())
 
     def test_el_error_de_rededoc_sube_tal_cual(self):
         """
@@ -1535,7 +1535,7 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
             factura_electronica.crear_emisor(cliente=cliente)
 
         self.assertEqual(caso.exception.status, 502)
-        self.assertFalse(GenParametro.objects.filter(gen_factura_electronica_emisor__isnull=False).exists())
+        self.assertFalse(GenParametro.objects.filter(gen_rededoc_emisor__isnull=False).exists())
 
 
 class FacturaElectronicaCertificadoTests(TenantTestCase):
@@ -1545,7 +1545,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
 
     def setUp(self):
         GenParametro.objects.all().delete()
-        GenParametro.objects.create(id=1, gen_factura_electronica_emisor=77)
+        GenParametro.objects.create(id=1, gen_rededoc_emisor=77)
 
     def _archivo(self, nombre='certificado.p12', contenido=b'\x30\x82binario', tamano=None):
         archivo = SimpleUploadedFile(nombre, contenido, content_type='application/x-pkcs12')
@@ -1611,7 +1611,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
 
     def test_sin_emisor_no_llama_a_rededoc(self):
         """El certificado se cuelga del emisor: sin emisor no hay dónde ponerlo."""
-        GenParametro.objects.filter(id=1).update(gen_factura_electronica_emisor=None)
+        GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
         cliente = self._cliente()
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
             factura_electronica.cargar_certificado(self._archivo(), 'secreta', cliente=cliente)
@@ -1687,7 +1687,7 @@ class FacturaElectronicaVistaTests(TenantTestCase):
         return vista(peticion)
 
     def test_una_creacion_correcta_responde_200(self):
-        parametro = GenParametro(id=1, gen_factura_electronica_emisor=77)
+        parametro = GenParametro(id=1, gen_rededoc_emisor=77)
         with mock.patch.object(factura_electronica, 'crear_emisor', return_value=parametro):
             respuesta = self._llamar()
 
@@ -5028,3 +5028,90 @@ class EncabezadoEmpresaTests(TenantTestCase):
             EncabezadoEmpresa(configuracion, titulo='X').construir()
 
         self.assertEqual(len(consultas), 0)
+
+
+class EmitirTests(TenantTestCase):
+    """Emitir: solo pasa un lote en el que todos existen, están aprobados y no se enviaron."""
+
+    def setUp(self):
+        self.tipo = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', venta=True,
+            documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
+        )
+        GenParametro.objects.create(id=1, gen_factura_electronica_activa=True, gen_rededoc_emisor=77)
+        self.factory = APIRequestFactory()
+
+    def _documento(self, **overrides):
+        return GenDocumento.objects.create(
+            documento_tipo=self.tipo, fecha=date(2026, 1, 15), **overrides,
+        )
+
+    def _llamar(self, datos):
+        vista = _DocumentoViewSinPermisos.as_view({'post': 'emitir'})
+        peticion = self.factory.post('/general/documento/emitir/', datos, format='json')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return vista(peticion)
+
+    def test_documentos_aprobados_sin_enviar_responden_200(self):
+        uno = self._documento(estado_aprobado=True)
+        dos = self._documento(estado_aprobado=True)
+
+        respuesta = self._llamar({'ids': [uno.id, dos.id]})
+
+        self.assertEqual(respuesta.status_code, 200)
+
+    def test_sin_facturacion_electronica_activa_no_se_emite(self):
+        GenParametro.objects.filter(id=1).update(gen_factura_electronica_activa=False)
+        uno = self._documento(estado_aprobado=True)
+
+        respuesta = self._llamar({'ids': [uno.id]})
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('no se ha activado', str(respuesta.data))
+
+    def test_sin_emisor_no_se_emite(self):
+        GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
+        uno = self._documento(estado_aprobado=True)
+
+        respuesta = self._llamar({'ids': [uno.id]})
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('no tiene emisor', str(respuesta.data))
+
+    def test_la_activacion_se_valida_antes_que_los_documentos(self):
+        """Sin activación no importa si el documento existe: el error es el de la empresa."""
+        GenParametro.objects.filter(id=1).delete()
+
+        respuesta = self._llamar({'ids': [999999]})
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('no se ha activado', str(respuesta.data))
+
+    def test_un_documento_inexistente_responde_404(self):
+        uno = self._documento(estado_aprobado=True)
+
+        respuesta = self._llamar({'ids': [uno.id, 999999]})
+
+        self.assertEqual(respuesta.status_code, 404)
+        self.assertIn('999999', str(respuesta.data))
+
+    def test_un_documento_sin_aprobar_no_se_emite(self):
+        uno = self._documento(estado_aprobado=True)
+        dos = self._documento()
+
+        respuesta = self._llamar({'ids': [uno.id, dos.id]})
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('debe estar aprobado', str(respuesta.data))
+
+    def test_un_documento_ya_enviado_no_se_emite(self):
+        uno = self._documento(estado_aprobado=True, estado_electronico_enviado=True)
+
+        respuesta = self._llamar({'ids': [uno.id]})
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('ya fue enviado', str(respuesta.data))
+
+    def test_sin_ids_responde_400(self):
+        self.assertEqual(self._llamar({'ids': []}).status_code, 400)
+        self.assertEqual(self._llamar({}).status_code, 400)

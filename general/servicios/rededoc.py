@@ -4,7 +4,7 @@ Cliente del servicio RedEDoc (`api.rededoc.uk`, internamente "nobelio").
 Un solo lugar para hablar con ese API: acá viven la URL base, el token y el
 manejo de errores de red, y cada endpoint se agrega como un método de la clase.
 Las credenciales salen de `settings.REDEDOC_URL` y `settings.REDEDOC_KEY`
-(esta última se lee de la variable de entorno `KEY_REDEDOC`).
+(esta última se lee de la variable de entorno `REDEDOC_KEY`).
 
 Todos los métodos públicos devuelven la misma forma de respuesta, igual que
 `utilidades.zinc.Zinc`, para que quien llame no tenga que atrapar excepciones:
@@ -75,7 +75,7 @@ class Rededoc:
         if self.key:
             headers['Authorization'] = f'{self.ESQUEMA_AUTH} {self.key}'
         else:
-            logger.warning('RedEDoc sin llave configurada (KEY_REDEDOC vacía)')
+            logger.warning('RedEDoc sin llave configurada (REDEDOC_KEY vacía)')
         return headers
 
     def _peticion(self, metodo: str, ruta: str, datos: dict = None, parametros: dict = None,

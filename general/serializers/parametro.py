@@ -16,7 +16,7 @@ class GenParametroSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'gen_factura_electronica_activa',
-            'gen_factura_electronica_emisor',
+            'gen_rededoc_emisor',
             'gen_certificado_vence',
             'gen_asistente_datos_iniciales',
         ]

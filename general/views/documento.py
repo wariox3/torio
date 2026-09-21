@@ -24,6 +24,7 @@ from general.serializers import (
 from general.servicios import contabilizar as contabilizar_servicio
 from general.servicios import documento as documento_servicio
 from general.servicios import documento_imprimir
+from general.servicios import factura_electronica as factura_electronica_servicio
 from utilidades.filtros import aplicar_filtros
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.mixins.filtros import BusquedaRequest
@@ -268,6 +269,22 @@ class GenDocumentoViewSet(
         serializer.is_valid(raise_exception=True)
         cantidad = contabilizar_servicio.descontabilizar(serializer.validated_data['ids'])
         return Response({'descontabilizados': cantidad}, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Emitir documentos electrónicos',
+        description=(
+            'Valida que cada documento exista, esté aprobado y no se haya enviado '
+            'electrónicamente. Si uno no cumple, no se emite ninguno.'
+        ),
+        request=DocumentoIdsRequestSerializer,
+        responses={200: None},
+    )
+    @action(detail=False, methods=['post'])
+    def emitir(self, request):
+        serializer = DocumentoIdsRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        factura_electronica_servicio.emitir(serializer.validated_data['ids'])
+        return Response(status=status.HTTP_200_OK)
 
     @extend_schema(request=BusquedaRequest, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=False, methods=['post'])

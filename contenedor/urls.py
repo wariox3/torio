@@ -10,6 +10,7 @@ from contenedor.views import (
     CtnInvitacionViewSet,
     CtnMovimientoViewSet,
     CtnPaisViewSet,
+    CtnRededocViewSet,
     CtnSuscripcionViewSet,
     CtnSuscripcionTipoViewSet,
 )
@@ -23,6 +24,7 @@ router.register(r'evento-pago', CtnEventoPagoViewSet, basename='evento-pago')
 router.register(r'identificacion', CtnIdentificacionViewSet, basename='identificacion')
 router.register(r'movimiento', CtnMovimientoViewSet, basename='movimiento')
 router.register(r'pais', CtnPaisViewSet, basename='pais')
+router.register(r'rededoc', CtnRededocViewSet, basename='rededoc')
 router.register(r'suscripcion', CtnSuscripcionViewSet, basename='suscripcion')
 router.register(r'suscripcion-tipo', CtnSuscripcionTipoViewSet, basename='suscripcion-tipo')
 router.register(r'invitacion', CtnInvitacionViewSet, basename='invitacion')

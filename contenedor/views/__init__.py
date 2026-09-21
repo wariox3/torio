@@ -9,3 +9,4 @@ from .pais import CtnPaisViewSet
 from .suscripcion import CtnSuscripcionViewSet
 from .suscripcion_tipo import CtnSuscripcionTipoViewSet
 from .evento_pago import CtnEventoPagoViewSet
+from .rededoc import CtnRededocViewSet
