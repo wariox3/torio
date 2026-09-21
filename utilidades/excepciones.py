@@ -15,9 +15,10 @@ from rest_framework.views import exception_handler
 
 MENSAJE_POR_DEFECTO = 'La petición no se pudo procesar.'
 
-# La clave que DRF usa para los errores de `validate()`, que no son de un campo:
-# su mensaje va sin prefijo.
-CAMPOS_SIN_PREFIJO = ('non_field_errors',)
+# Claves que no son un campo sino el propio mensaje, así que va sin prefijo: la
+# de DRF para los errores de `validate()`, y la que usan los clientes de
+# servicios externos (`Rededoc`, `Zinc`) para sus fallas de red.
+CAMPOS_SIN_PREFIJO = ('non_field_errors', 'mensaje')
 
 
 def manejador_excepciones(exc, context):

@@ -1526,7 +1526,10 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
             factura_electronica.crear_emisor(cliente=cliente)
 
-        self.assertEqual(caso.exception.cuerpo, {'razon_social': ['Requerido']})
+        # Sube sin envolver, con el `detail` que exige el estándar de errores.
+        self.assertEqual(caso.exception.cuerpo, {
+            'detail': 'razon_social: Requerido', 'razon_social': ['Requerido'],
+        })
         self.assertEqual(caso.exception.status, 400)
 
     def test_si_rededoc_no_responde_es_502_y_no_guarda_el_emisor(self):

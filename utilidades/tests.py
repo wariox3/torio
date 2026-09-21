@@ -35,6 +35,9 @@ class ConDetailTests(SimpleTestCase):
     def test_non_field_errors_va_sin_prefijo(self):
         self.assertEqual(con_detail({'non_field_errors': ['No cuadra.']})['detail'], 'No cuadra.')
 
+    def test_mensaje_de_un_servicio_externo_va_sin_prefijo(self):
+        self.assertEqual(con_detail({'mensaje': 'timeout'})['detail'], 'timeout')
+
     def test_un_error_anidado_lleva_la_ruta(self):
         cuerpo = {'detalles': [{}, {'impuestos': [{'tributo': ['No admitido.']}]}]}
         self.assertEqual(con_detail(cuerpo)['detail'], 'detalles.impuestos.tributo: No admitido.')
