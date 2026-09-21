@@ -138,6 +138,8 @@ REST_FRAMEWORK = {
         'seguridad.permissions.SuscripcionVigente',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    # Todo error sale con `detail` (ver utilidades/excepciones.py).
+    'EXCEPTION_HANDLER': 'utilidades.excepciones.manejador_excepciones',
     'PAGE_SIZE': 25,
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',

@@ -99,7 +99,11 @@ class GenContactoViewSet(
     @action(detail=False, methods=['get'], url_path='consulta-dian')
     def consulta_dian(self, request):
         return Response(
-            {'mensaje': 'El servicio de consulta de NIT ya no existe.', 'codigo': 1},
+            {
+                'detail': 'El servicio de consulta de NIT ya no existe.',
+                'mensaje': 'El servicio de consulta de NIT ya no existe.',
+                'codigo': 1,
+            },
             status=status.HTTP_400_BAD_REQUEST,
         )
 

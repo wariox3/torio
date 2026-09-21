@@ -20,6 +20,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from general.models import GenConfiguracion, GenDocumento, GenParametro
 from general.servicios.documento import DOCUMENTO_CLASE_FACTURA_VENTA
 from general.servicios.rededoc import Rededoc
+from utilidades.excepciones import con_detail
 
 EXTENSIONES_CERTIFICADO = ('.p12', '.pfx')
 TAMANO_MAXIMO_CERTIFICADO = 1024 * 1024  # 1 MB; un certificado real pesa unos pocos KB
@@ -29,15 +30,16 @@ class ErrorFacturaElectronica(Exception):
     """
     Falla esperable de la activación. La vista la traduce a una respuesta HTTP.
 
-    `cuerpo` es lo que sale tal cual en la respuesta: un texto nuestro se envuelve
-    en `detail`, y el cuerpo de error de rededoc pasa sin tocar, porque ya viene
-    con esa misma forma. Envolverlo otra vez dejaba al front con el error anidado
-    dentro del error, y con un `detail` externo que además podía mentir.
+    `cuerpo` es lo que sale en la respuesta: un texto nuestro se envuelve en
+    `detail`, y el cuerpo de error de rededoc pasa sin envolver —envolverlo dejaba
+    al front con el error anidado dentro del error—. Si rededoc no trae `detail`
+    (un error por campo, por ejemplo), `con_detail` lo completa con su primer
+    mensaje sin quitar nada.
     """
 
     def __init__(self, cuerpo, status=400):
         super().__init__(cuerpo)
-        self.cuerpo = {'detail': cuerpo} if isinstance(cuerpo, str) else (cuerpo or {})
+        self.cuerpo = con_detail(cuerpo)
         self.status = status
 
 
@@ -221,7 +223,14 @@ def emitir(documento_ids, cliente: Rededoc = None) -> list:
         if respuesta['error']:
             status = 400 if 400 <= respuesta['status'] < 500 else 502
             raise ErrorFacturaElectronica(
-                {'documento': documento.id, 'emitidos': emitidos, 'error': respuesta['datos']},
+                {
+                    'detail': (
+                        f'El servicio de facturación electrónica rechazó el documento {documento.id}.'
+                    ),
+                    'documento': documento.id,
+                    'emitidos': emitidos,
+                    'error': respuesta['datos'],
+                },
                 status=status,
             )
         documento.electronico_id = (respuesta['datos'] or {}).get('id')

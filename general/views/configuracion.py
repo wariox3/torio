@@ -68,7 +68,7 @@ class GenConfiguracionViewSet(SingletonMixin, viewsets.GenericViewSet):
         archivo = request.FILES.get('logotipo')
         if not archivo:
             return Response(
-                {'logotipo': 'Este campo es requerido.'},
+                {'detail': 'logotipo: Este campo es requerido.', 'logotipo': 'Este campo es requerido.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -77,7 +77,10 @@ class GenConfiguracionViewSet(SingletonMixin, viewsets.GenericViewSet):
             servicio_logotipo.cargar(archivo, instancia)
         except ValueError as error:
             # Lo que es culpa del archivo sale como 400; el resto sube tal cual.
-            return Response({'logotipo': str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'detail': f'logotipo: {error}', 'logotipo': str(error)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         return Response({'logotipo': instancia.gen_empresa_logotipo})
 

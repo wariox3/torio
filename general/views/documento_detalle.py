@@ -381,11 +381,17 @@ class GenDocumentoDetalleViewSet(
         try:
             sector = GenSector.objects.get(pk=datos['sector_id'])
         except GenSector.DoesNotExist:
-            return Response({'mensaje': 'Sector no encontrado', 'codigo': 1}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'detail': 'Sector no encontrado', 'mensaje': 'Sector no encontrado', 'codigo': 1},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             modalidad = GenModalidad.objects.get(pk=datos['modalidad_id'])
         except GenModalidad.DoesNotExist:
-            return Response({'mensaje': 'Modalidad no encontrada', 'codigo': 1}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'detail': 'Modalidad no encontrada', 'mensaje': 'Modalidad no encontrada', 'codigo': 1},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         resultado = LiquidadorSupervigilancia.calcular_precio(
             salario=datos['salario'],

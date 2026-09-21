@@ -33,7 +33,7 @@ class CtnEventoPagoViewSet(viewsets.GenericViewSet):
                 description='Evento registrado correctamente',
             ),
             400: OpenApiResponse(
-                inline_serializer('WebhookErrorSerializer', {'detalle': serializers.CharField()}),
+                inline_serializer('WebhookErrorSerializer', {'detail': serializers.CharField()}),
                 description='Payload inválido',
             ),
         },
@@ -49,7 +49,7 @@ class CtnEventoPagoViewSet(viewsets.GenericViewSet):
         payload = request.data
         if not isinstance(payload, dict):
             return Response(
-                {'detalle': 'Payload inválido'},
+                {'detail': 'Payload inválido'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

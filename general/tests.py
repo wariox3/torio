@@ -5195,6 +5195,7 @@ class EmitirTests(TenantTestCase):
 
         self.assertEqual(respuesta.status_code, 400)
         self.assertEqual(respuesta.data, {
+            'detail': f'El servicio de facturación electrónica rechazó el documento {dos.id}.',
             'documento': dos.id, 'emitidos': [uno.id], 'error': {'prefijo': ['No coincide.']},
         })
         uno.refresh_from_db()
