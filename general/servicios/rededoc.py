@@ -15,7 +15,10 @@ Todos los métodos públicos devuelven la misma forma de respuesta, igual que
 (timeout, DNS, conexión rechazada).
 """
 
+import hashlib
+import hmac
 import logging
+import time
 
 import httpx
 from django.conf import settings
@@ -122,3 +125,58 @@ class Rededoc:
             return respuesta.json()
         except Exception:
             return {'mensaje': respuesta.text[:500]}
+
+
+# --- Firma de los avisos del webhook -------------------------------------
+#
+# Rededoc firma cada aviso que le manda a torio:
+#
+#     X-Rededoc-Fecha: <timestamp unix, en segundos>
+#     X-Rededoc-Firma: v1=<hex de HMAC-SHA256(secreto, "<fecha>.<cuerpo crudo>")>
+#
+# La fecha entra en lo firmado para que un aviso capturado no se pueda reenviar
+# después de `TOLERANCIA_FIRMA`. El cuerpo es el crudo, tal cual llegó: firmar el
+# JSON ya parseado dependería de cómo cada lado lo serializa.
+
+HEADER_FECHA = 'X-Rededoc-Fecha'
+HEADER_FIRMA = 'X-Rededoc-Firma'
+VERSION_FIRMA = 'v1'
+TOLERANCIA_FIRMA = 300  # segundos, hacia atrás y hacia adelante
+
+
+def firmar_aviso(cuerpo: bytes, fecha: str, secreto: str) -> str:
+    """El valor de `X-Rededoc-Firma` para ese cuerpo y esa fecha."""
+    mensaje = fecha.encode() + b'.' + cuerpo
+    digest = hmac.new(secreto.encode(), mensaje, hashlib.sha256).hexdigest()
+    return f'{VERSION_FIRMA}={digest}'
+
+
+def firma_valida(cuerpo: bytes, fecha: str, firma: str, ahora: float = None) -> bool:
+    """
+    ¿Viene el aviso de rededoc y es reciente?
+
+    Se acepta con el secreto actual o con el anterior, para poder rotarlo sin
+    rechazar los avisos que ya iban en camino. Sin ningún secreto configurado se
+    rechaza todo: un webhook que acepta avisos sin verificar deja que cualquiera
+    marque facturas como validadas.
+    """
+    secretos = [s for s in (settings.REDEDOC_WEBHOOK_SECRETO,
+                            settings.REDEDOC_WEBHOOK_SECRETO_ANTERIOR) if s]
+    if not secretos:
+        logger.error('Aviso de rededoc rechazado: REDEDOC_WEBHOOK_SECRETO no está configurado')
+        return False
+    if not fecha or not firma:
+        return False
+    try:
+        marca = int(fecha)
+    except ValueError:
+        return False
+    ahora = time.time() if ahora is None else ahora
+    if abs(ahora - marca) > TOLERANCIA_FIRMA:
+        return False
+    # `compare_digest` en todos los casos, para que el tiempo de respuesta no
+    # diga cuánto de la firma coincidía.
+    return any(
+        hmac.compare_digest(firmar_aviso(cuerpo, fecha, secreto), firma)
+        for secreto in secretos
+    )

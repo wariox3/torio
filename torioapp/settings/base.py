@@ -277,6 +277,11 @@ WOMPI_INTEGRITY_SECRET = config('WOMPI_INTEGRITY_SECRET', default='')
 # RedEDoc (servicio Nobelio, api.rededoc.uk).
 REDEDOC_URL = config('REDEDOC_URL', default='https://api.rededoc.uk')
 REDEDOC_KEY = config('REDEDOC_KEY', default='')
+# Secreto con el que rededoc firma los avisos del webhook. Separado de
+# REDEDOC_KEY: esa autentica a torio ante rededoc, este a rededoc ante torio. El
+# anterior solo se llena mientras se rota, para no rechazar los avisos en vuelo.
+REDEDOC_WEBHOOK_SECRETO = config('REDEDOC_WEBHOOK_SECRETO', default='')
+REDEDOC_WEBHOOK_SECRETO_ANTERIOR = config('REDEDOC_WEBHOOK_SECRETO_ANTERIOR', default='')
 
 # Backblaze B2
 B2_KEY_ID = config('B2_KEY_ID', default='')

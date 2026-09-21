@@ -6,20 +6,31 @@ que se prueba con un tenant real: el documento se crea en su schema y la vista
 tiene que encontrarlo desde afuera.
 """
 
+import json
+import time
 import uuid
 from datetime import date, datetime
 
+from django.test import override_settings
 from django.utils import timezone
 from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIRequestFactory
 
 from contenedor.views.rededoc import CtnRededocViewSet
 from general.models import GenDocumento, GenDocumentoClase, GenDocumentoTipo
+from general.servicios.rededoc import firmar_aviso
+
+SECRETO = 'secreto-de-prueba'
 
 
 class WebhookRededocTests(TenantTestCase):
 
     def setUp(self):
+        # En `setUp` y no como decorador de la clase: `TenantTestCase` redefine
+        # `setUpClass` y el `override_settings` de clase no llega a activarse.
+        ajustes = override_settings(REDEDOC_WEBHOOK_SECRETO=SECRETO, REDEDOC_WEBHOOK_SECRETO_ANTERIOR='')
+        ajustes.enable()
+        self.addCleanup(ajustes.disable)
         tipo = GenDocumentoTipo.objects.create(
             id=1, nombre='FACTURA', documento_clase=GenDocumentoClase.objects.create(id=100, nombre='FV'),
         )
@@ -30,15 +41,33 @@ class WebhookRededocTests(TenantTestCase):
         )
         self.factory = APIRequestFactory()
 
-    def _llamar(self, **datos):
-        cuerpo = {'cliente': self.tenant.id, 'documento': str(self.electronico_id)}
-        cuerpo.update(datos)
-        cuerpo = {k: v for k, v in cuerpo.items() if v is not None}
+    def _enviar(self, crudo, fecha=None, firma=None, secreto=SECRETO):
+        """Manda `crudo` tal cual; sin `firma` explícita, lo firma con `secreto`."""
+        fecha = str(int(time.time())) if fecha is None else fecha
+        if firma is None:
+            firma = firmar_aviso(crudo, fecha, secreto)
+        headers = {}
+        if fecha:
+            headers['HTTP_X_REDEDOC_FECHA'] = fecha
+        if firma:
+            headers['HTTP_X_REDEDOC_FIRMA'] = firma
         # Los `permission_classes` y `authentication_classes` del `@action` los
         # pasa el router como initkwargs; se pasan igual acá para probar la vista
         # tal como se publica, sin sesión.
         vista = CtnRededocViewSet.as_view({'post': 'webhook'}, **CtnRededocViewSet.webhook.kwargs)
-        return vista(self.factory.post('/contenedor/rededoc/webhook/', cuerpo, format='json'))
+        peticion = self.factory.post(
+            '/contenedor/rededoc/webhook/', crudo, content_type='application/json', **headers,
+        )
+        return vista(peticion)
+
+    def _cuerpo(self, **datos):
+        cuerpo = {'cliente': self.tenant.id, 'documento': str(self.electronico_id)}
+        cuerpo.update(datos)
+        cuerpo = {k: v for k, v in cuerpo.items() if v is not None}
+        return json.dumps(cuerpo).encode()
+
+    def _llamar(self, **datos):
+        return self._enviar(self._cuerpo(**datos))
 
     def _validacion(self, **datos):
         return self._llamar(**{
@@ -126,3 +155,53 @@ class WebhookRededocTests(TenantTestCase):
         respuesta = self._llamar(tipo='notificacion', cliente=999999)
         self.assertEqual(respuesta.status_code, 404)
         self.assertEqual(respuesta.data, {'detail': 'El documento no existe.'})
+
+    # ---- firma ----
+
+    def test_sin_firma_responde_401_y_no_marca(self):
+        respuesta = self._enviar(self._cuerpo(tipo='notificacion'), fecha='', firma='')
+
+        self.assertEqual(respuesta.status_code, 401)
+        self.assertEqual(respuesta.data, {'detail': 'Firma inválida.'})
+        self.documento.refresh_from_db()
+        self.assertFalse(self.documento.estado_electronico_notificado)
+
+    def test_firmado_con_otro_secreto_responde_401(self):
+        respuesta = self._enviar(self._cuerpo(tipo='notificacion'), secreto='otro')
+        self.assertEqual(respuesta.status_code, 401)
+
+    def test_un_cuerpo_alterado_despues_de_firmar_responde_401(self):
+        """Cambiar el `cliente` (o cualquier byte) invalida la firma."""
+        fecha = str(int(time.time()))
+        firma = firmar_aviso(self._cuerpo(tipo='notificacion'), fecha, SECRETO)
+        alterado = self._cuerpo(tipo='notificacion', cliente=999999)
+
+        respuesta = self._enviar(alterado, fecha=fecha, firma=firma)
+
+        self.assertEqual(respuesta.status_code, 401)
+
+    def test_un_aviso_viejo_responde_401_aunque_la_firma_cuadre(self):
+        """Un aviso capturado no se puede reenviar pasados cinco minutos."""
+        fecha = str(int(time.time()) - 301)
+        respuesta = self._enviar(self._cuerpo(tipo='notificacion'), fecha=fecha)
+        self.assertEqual(respuesta.status_code, 401)
+
+    def test_una_fecha_que_no_es_numero_responde_401(self):
+        respuesta = self._enviar(self._cuerpo(tipo='notificacion'), fecha='ayer')
+        self.assertEqual(respuesta.status_code, 401)
+
+    def test_la_firma_se_revisa_antes_que_el_cuerpo(self):
+        """Sin firma válida no se valida nada: ni siquiera se dice qué campo falta."""
+        respuesta = self._enviar(b'{}', secreto='otro')
+        self.assertEqual(respuesta.status_code, 401)
+
+    @override_settings(REDEDOC_WEBHOOK_SECRETO='nuevo', REDEDOC_WEBHOOK_SECRETO_ANTERIOR=SECRETO)
+    def test_mientras_se_rota_se_acepta_el_secreto_anterior(self):
+        self.assertEqual(self._enviar(self._cuerpo(tipo='notificacion'), secreto=SECRETO).status_code, 200)
+        self.assertEqual(self._enviar(self._cuerpo(tipo='notificacion'), secreto='nuevo').status_code, 200)
+
+    @override_settings(REDEDOC_WEBHOOK_SECRETO='', REDEDOC_WEBHOOK_SECRETO_ANTERIOR='')
+    def test_sin_secreto_configurado_rechaza_todo(self):
+        """Mejor rechazar que aceptar avisos sin verificar."""
+        respuesta = self._enviar(self._cuerpo(tipo='notificacion'), secreto='')
+        self.assertEqual(respuesta.status_code, 401)

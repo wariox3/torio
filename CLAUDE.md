@@ -125,6 +125,18 @@ can forge its own IP.
 
 Full design and rationale: **`docs/accesos.md`**.
 
+### Rededoc webhook
+
+`POST /contenedor/rededoc/webhook/` lives in the **public schema** (no `X-Tenant`, no user
+auth): rededoc sends the tenant in the body as `cliente`, and the view enters that schema
+with `schema_context`. What proves the notice comes from rededoc is an **HMAC signature**
+over `<X-Rededoc-Fecha>.<raw body>`, checked **before** `request.data` is touched — once DRF
+parses the body it can't be re-read. With no `REDEDOC_WEBHOOK_SECRETO` set it rejects
+everything. `REDEDOC_WEBHOOK_SECRETO` is not `REDEDOC_KEY`: that one authenticates torio to
+rededoc, this one rededoc to torio.
+
+Full contract (payload, response codes, retries, test vector): **`docs/webhook_rededoc.md`**.
+
 ### Development notes
 
 - Cookie domain is set to `.localhost` so JWT cookies work across all tenant subdomains.

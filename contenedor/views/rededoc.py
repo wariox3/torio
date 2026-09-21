@@ -4,12 +4,24 @@ from django_tenants.utils import schema_context
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import APIException, NotFound
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from contenedor.models import CtnCliente
-from general.servicios import factura_electronica
+from general.servicios import factura_electronica, rededoc
+
+
+class FirmaInvalida(APIException):
+    """
+    401 fijo. `AuthenticationFailed` no sirve: en una vista sin clases de
+    autenticación DRF no tiene header `WWW-Authenticate` que mandar y lo convierte
+    en 403.
+    """
+
+    status_code = status.HTTP_401_UNAUTHORIZED
+    default_detail = 'Firma inválida.'
+    default_code = 'firma_invalida'
 
 
 class FechaHoraField(serializers.DateTimeField):
@@ -61,6 +73,10 @@ class CtnRededocViewSet(viewsets.GenericViewSet):
             'Recibe los avisos de RedEDoc sobre un documento electrónico: '
             '`validacion` (la DIAN lo aceptó; trae `fecha_validacion` y `cufe`) y '
             '`notificacion` (se le entregó al adquiriente).\n\n'
+            'Cada aviso viene firmado: `X-Rededoc-Fecha` (timestamp unix) y '
+            '`X-Rededoc-Firma: v1=<hex>`, el HMAC-SHA256 de `<fecha>.<cuerpo crudo>` '
+            'con el secreto compartido. Una firma que no cuadra, o una fecha de '
+            'más de 5 minutos, responde 401 sin mirar el cuerpo.\n\n'
             'Un cliente o un documento que no existen responden el mismo 404, '
             'para no revelar qué clientes hay.'
         ),
@@ -75,6 +91,15 @@ class CtnRededocViewSet(viewsets.GenericViewSet):
         url_path='webhook',
     )
     def webhook(self, request):
+        # Antes de tocar `request.data`: la firma es sobre el cuerpo crudo, y una
+        # vez que DRF lo parsea ya no se puede releer.
+        if not rededoc.firma_valida(
+            request.body,
+            request.headers.get(rededoc.HEADER_FECHA, ''),
+            request.headers.get(rededoc.HEADER_FIRMA, ''),
+        ):
+            raise FirmaInvalida()
+
         serializer = RededocAvisoSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         datos = serializer.validated_data
