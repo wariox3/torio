@@ -15,7 +15,8 @@ aparte.
 
 from decimal import ROUND_HALF_UP, Decimal
 
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework import status
+from rest_framework.exceptions import APIException, NotFound, ValidationError
 
 from general.models import GenConfiguracion, GenDocumento, GenParametro
 from general.servicios.documento import DOCUMENTO_CLASE_FACTURA_VENTA
@@ -377,3 +378,48 @@ def _decimal(valor):
 ARMADORES = {
     DOCUMENTO_CLASE_FACTURA_VENTA: _armar_factura_venta,
 }
+
+
+# ---------------------------------------------------------------- avisos ----
+#
+# Lo que rededoc avisa por el webhook (`contenedor.views.rededoc`). La vista ya
+# entró al schema del tenant; acá solo se aplica el aviso al documento.
+
+AVISO_VALIDACION = 'validacion'
+AVISO_NOTIFICACION = 'notificacion'
+AVISOS = (AVISO_VALIDACION, AVISO_NOTIFICACION)
+
+
+class DocumentoYaValidado(APIException):
+    """Un aviso de validación para un documento que ya estaba validado."""
+
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = 'El documento ya estaba validado.'
+    default_code = 'documento_ya_validado'
+
+
+def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenDocumento:
+    """
+    Aplica un aviso de rededoc al documento cuyo `electronico_id` es `documento_id`.
+
+    - `validacion`: la DIAN aceptó el documento; guarda su CUFE y la fecha. Si el
+      documento ya estaba validado no se reescribe: responde 409, porque un CUFE
+      no cambia, y uno distinto para el mismo documento es un error que hay que ver.
+    - `notificacion`: el documento se le entregó al adquiriente. Repetirla deja el
+      documento igual.
+    """
+    documento = GenDocumento.objects.filter(electronico_id=documento_id).first()
+    if documento is None:
+        raise NotFound('El documento no existe.')
+
+    if tipo == AVISO_VALIDACION:
+        if documento.estado_electronico:
+            raise DocumentoYaValidado()
+        documento.estado_electronico = True
+        documento.fecha_validacion = fecha_validacion
+        documento.cue = cufe
+        documento.save(update_fields=['estado_electronico', 'fecha_validacion', 'cue'])
+    else:
+        documento.estado_electronico_notificado = True
+        documento.save(update_fields=['estado_electronico_notificado'])
+    return documento
