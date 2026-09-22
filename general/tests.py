@@ -60,6 +60,8 @@ from general.servicios import documento as documento_servicio
 from general.servicios import documento_pago as documento_pago_servicio
 from general.servicios import factura_electronica
 from general.servicios import documento_imprimir
+from general import tasks as tareas
+from celery.exceptions import Retry
 from general.formatos import FormatoDocumentoFactura
 from general.servicios import rededoc as rededoc_servicio
 from general.serializers import (
@@ -5778,3 +5780,80 @@ class NotificarTests(TenantTestCase):
         valido = self._documento()
         sin_validar = self._documento(numero=2814, estado_electronico=False, cue=None)
         self._no_envia({'ids': [valido.id, sin_validar.id]}, 400, 'no ha sido validado')
+
+
+class NotificarDocumentoTareaTests(TenantTestCase):
+    """
+    La tarea de Celery que notifica un documento recién validado. Corre con
+    `apply`, en el mismo proceso: acá no hay RabbitMQ.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        tipo = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', documento_clase=GenDocumentoClase.objects.create(id=100, nombre='FV'),
+        )
+        self.documento = GenDocumento.objects.create(
+            documento_tipo=tipo, fecha=date(2026, 9, 17), estado_aprobado=True,
+            estado_electronico=True, cue='cufe', electronico_id=uuid_lib.uuid4(),
+        )
+
+    def _correr(self):
+        return tareas.notificar_documento.apply(args=[self.tenant.schema_name, self.documento.id])
+
+    def test_va_por_su_propia_cola(self):
+        from torioapp.celery import app
+
+        ruta = app.amqp.router.route({}, tareas.notificar_documento.name)
+        self.assertEqual(ruta['queue'].name, 'notificar_documento')
+
+    def test_notifica_el_documento(self):
+        with mock.patch.object(factura_electronica, 'notificar') as notificar:
+            self._correr()
+        notificar.assert_called_once_with([self.documento.id])
+
+    def test_uno_ya_notificado_no_se_vuelve_a_notificar(self):
+        """La tarea puede correr dos veces; la segunda no le manda otro correo al cliente."""
+        GenDocumento.objects.filter(pk=self.documento.pk).update(estado_electronico_notificado=True)
+        with mock.patch.object(factura_electronica, 'notificar') as notificar:
+            self._correr()
+        notificar.assert_not_called()
+
+    def test_un_documento_que_no_existe_no_falla(self):
+        with mock.patch.object(factura_electronica, 'notificar') as notificar:
+            resultado = tareas.notificar_documento.apply(args=[self.tenant.schema_name, 999999])
+        self.assertEqual(resultado.state, 'SUCCESS')
+        notificar.assert_not_called()
+
+    def test_si_rededoc_no_responde_reintenta_con_espera(self):
+        error = factura_electronica.ErrorFacturaElectronica('caído', status=502)
+        with mock.patch.object(factura_electronica, 'notificar', side_effect=error), \
+                mock.patch.object(tareas.notificar_documento, 'retry', side_effect=Retry()) as reintentar:
+            resultado = self._correr()
+
+        self.assertEqual(resultado.state, 'RETRY')
+        reintentar.assert_called_once()
+        self.assertEqual(reintentar.call_args.kwargs['countdown'], tareas.ESPERA_BASE_REINTENTO)
+
+    def test_si_rededoc_rechaza_el_documento_no_reintenta(self):
+        """Un 4xx —un adquiriente sin correo— no se arregla reintentando."""
+        error = factura_electronica.ErrorFacturaElectronica('sin correo', status=400)
+        with mock.patch.object(factura_electronica, 'notificar', side_effect=error), \
+                mock.patch.object(tareas.notificar_documento, 'retry') as reintentar:
+            resultado = self._correr()
+
+        self.assertEqual(resultado.state, 'SUCCESS')
+        reintentar.assert_not_called()
+
+    def test_una_validacion_de_torio_no_reintenta(self):
+        with mock.patch.object(factura_electronica, 'notificar', side_effect=ValidationError('no procede')), \
+                mock.patch.object(tareas.notificar_documento, 'retry') as reintentar:
+            resultado = self._correr()
+
+        self.assertEqual(resultado.state, 'SUCCESS')
+        reintentar.assert_not_called()

@@ -137,6 +137,19 @@ rededoc, this one rededoc to torio.
 
 Full contract (payload, response codes, retries, test vector): **`docs/webhook_rededoc.md`**.
 
+A `validacion` notice queues the customer notification in **Celery** (broker RabbitMQ,
+`CELERY_BROKER_URL`; task `general.tasks.notificar_documento`). It is enqueued with
+`transaction.on_commit`, and a broker failure is logged but never fails the webhook:
+an error there would make rededoc retry, get 409, and the notification would be lost.
+Tasks run outside any request, so they receive `schema_name` and enter it with
+`schema_context` — without that they would run in the public schema. With
+`acks_late`, every task must be safe to run twice.
+
+Each task type gets **its own queue, named after the task** (`CELERY_TASK_ROUTES`;
+`notificar_documento` today). The worker only consumes the queues passed with `-Q`,
+so a new routed task needs its queue added there (or its own worker) — otherwise it
+sits in RabbitMQ with no consumer.
+
 ### Development notes
 
 - Cookie domain is set to `.localhost` so JWT cookies work across all tenant subdomains.

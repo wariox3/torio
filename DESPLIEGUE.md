@@ -450,6 +450,118 @@ sudo systemd-analyze security torio
 
 ---
 
+## 8.1 Cola de tareas: RabbitMQ y worker de Celery
+
+Lo que no tiene que esperar a un request va por Celery, con RabbitMQ de broker. Hoy
+es una sola tarea: **notificar al adquiriente** cuando el webhook de rededoc avisa
+que la DIAN validó un documento (`general/tasks.py`). El webhook solo encola; el
+worker arma el PDF y lo manda a rededoc.
+
+Sin el worker corriendo, la validación se guarda igual pero **las facturas no se
+notifican**: se quedan en la cola hasta que el worker arranque. Si el broker no
+responde, el webhook responde bien, deja un error en el log y esa notificación no
+queda encolada: hay que mandarla a mano con `documento/notificar/`.
+
+### RabbitMQ en CloudAMQP
+
+El broker no se instala en el servidor: es una instancia de RabbitMQ en
+[CloudAMQP](https://www.cloudamqp.com). En su consola:
+
+1. Crear una instancia **para producción**, en la región más cercana al servidor.
+   Desarrollo usa **otra instancia**, nunca la misma: con el mismo vhost, un worker
+   de desarrollo tomaría las notificaciones de producción, las correría contra su base
+   —donde ese documento no existe—, las confirmaría y se perderían.
+2. Copiar la URL **`amqps://`** (con *s*, puerto 5671) de los detalles de la instancia.
+
+En el `.env` (§5):
+
+```
+CELERY_BROKER_URL=amqps://<usuario>:<clave>@<host>.cloudamqp.com/<vhost>
+```
+
+- La URL lleva la clave: es una credencial, como `REDEDOC_KEY`. Si se filtra, se rota
+  desde la consola de CloudAMQP y se reinician `torio` y `torio-celery`.
+- Con `amqps://` los settings verifican el certificado **y el nombre** del servidor
+  (`CELERY_BROKER_USE_SSL`). No use la URL `amqp://`: el broker está en internet, y
+  por ella viajarían la clave y el contenido de las tareas sin cifrar.
+- No hay puerto que abrir: el servidor sale hacia CloudAMQP, nadie entra.
+- Revise los límites del plan (conexiones simultáneas y mensajes al mes). Para no
+  gastarlos en tráfico de control, cada proceso publica por una sola conexión
+  (`CELERY_BROKER_POOL_LIMIT = 1`) y el worker arranca sin gossip, mingle ni heartbeat.
+
+### Worker como servicio systemd
+
+```bash
+sudo tee /etc/systemd/system/torio-celery.service > /dev/null <<'EOF'
+[Unit]
+Description=Torio worker de Celery
+# El broker es externo (CloudAMQP): solo dependemos de la red.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=torio
+Group=torio
+WorkingDirectory=/opt/torio
+
+Environment=DJANGO_SETTINGS_MODULE=torioapp.settings.prod
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+# Dos procesos: las tareas son lentas (PDF y llamadas a rededoc), no intensivas en
+# CPU. `-O fair` reparte de a una, junto con el prefetch de 1 de los settings.
+# Sin gossip, mingle ni heartbeat: con un solo worker no hay con quién coordinarse,
+# y en CloudAMQP ese tráfico de control cuenta contra los mensajes del plan.
+# `-Q`: las colas que atiende. Cada tipo de tarea tiene la suya (`CELERY_TASK_ROUTES`),
+# y `celery` es la de las tareas sin ruta. Una cola que no esté acá no la atiende nadie:
+# al sumar una tarea con cola propia, se agrega aquí o se le da su propio worker.
+ExecStart=/opt/torio/venv/bin/celery -A torioapp worker \
+    --loglevel=info --concurrency=2 -O fair \
+    -Q notificar_documento,celery \
+    --without-gossip --without-mingle --without-heartbeat
+
+Restart=always
+RestartSec=5
+# Deja terminar la tarea en curso antes de matar el proceso. Si se corta igual,
+# no se pierde: las tareas se confirman al terminar (`acks_late`) y RabbitMQ la
+# vuelve a entregar.
+TimeoutStopSec=60
+UMask=0027
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now torio-celery
+sudo systemctl status torio-celery
+```
+
+Para ver qué está haciendo:
+
+```bash
+journalctl -u torio-celery -f                     # el log del worker
+```
+
+Cuántas tareas esperan en la cola se ve en la consola de CloudAMQP (*RabbitMQ Manager*
+→ *Queues*).
+
+---
+
 ## 9. Nginx como reverse proxy
 
 Nginx hace proxy al puerto local **`127.0.0.1:8060`** donde escucha Gunicorn. Al
@@ -642,6 +754,9 @@ fi
 $APP venv/bin/python manage.py collectstatic --noinput
 
 systemctl reload torio
+# El worker no recarga código en caliente: hay que reiniciarlo. `restart` espera a
+# que termine la tarea en curso (TimeoutStopSec) antes de cortar.
+systemctl restart torio-celery
 EOF
 
 chmod 700 /root/actualizar_torio.sh
@@ -674,6 +789,8 @@ dependen de esto: su alta siembra sus propios catálogos (§14).
 - **`reload`** recicla los workers sin cortar el servicio. Si la actualización cambia
   la versión de `gunicorn` o la unidad systemd, usa en su lugar
   `systemctl daemon-reload && systemctl restart torio`.
+- **`restart torio-celery`**: el worker de Celery (§8.1) carga el código al arrancar,
+  así que sin reiniciarlo seguiría corriendo las tareas con la versión anterior.
 
 ---
 

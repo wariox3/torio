@@ -407,9 +407,10 @@ def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenD
     """
     Aplica un aviso de rededoc al documento cuyo `electronico_id` es `documento_id`.
 
-    - `validacion`: la DIAN aceptó el documento; guarda su CUFE y la fecha. Si el
-      documento ya estaba validado no se reescribe: responde 409, porque un CUFE
-      no cambia, y uno distinto para el mismo documento es un error que hay que ver.
+    - `validacion`: la DIAN aceptó el documento; guarda su CUFE y la fecha, y
+      programa su notificación al adquiriente (`general.tasks`). Si el documento ya
+      estaba validado no se reescribe: responde 409, porque un CUFE no cambia, y
+      uno distinto para el mismo documento es un error que hay que ver.
     - `notificacion`: el documento se le entregó al adquiriente. Repetirla deja el
       documento igual.
     """
@@ -424,6 +425,12 @@ def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenD
         documento.fecha_validacion = fecha_validacion
         documento.cue = cufe
         documento.save(update_fields=['estado_electronico', 'fecha_validacion', 'cue'])
+        # Validado, ya se le puede entregar al adquiriente. Va por la cola y no
+        # acá: armar el PDF y esperar a rededoc y a su pasarela de correo no
+        # tiene por qué demorar la respuesta del webhook.
+        from general.tasks import programar_notificacion
+
+        programar_notificacion(documento.id)
     else:
         documento.estado_electronico_notificado = True
         documento.save(update_fields=['estado_electronico_notificado'])

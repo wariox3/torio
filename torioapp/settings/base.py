@@ -283,6 +283,46 @@ REDEDOC_KEY = config('REDEDOC_KEY', default='')
 REDEDOC_WEBHOOK_SECRETO = config('REDEDOC_WEBHOOK_SECRETO', default='')
 REDEDOC_WEBHOOK_SECRETO_ANTERIOR = config('REDEDOC_WEBHOOK_SECRETO_ANTERIOR', default='')
 
+# Celery, con RabbitMQ de broker (ver torioapp/celery.py). En los dos ambientes es
+# CloudAMQP, así que la URL es `amqps://`: el broker está en internet.
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='amqp://guest:guest@localhost:5672//')
+if CELERY_BROKER_URL.startswith('amqps://'):
+    # Con `amqps://` a secas py-amqp verifica el certificado pero no el nombre del
+    # servidor —no manda `server_hostname`—, así que un certificado válido de otro
+    # dominio pasaría. `server_hostname: None` hace que kombu ponga el host de la
+    # URL: se verifica el nombre y se manda el SNI.
+    import ssl
+
+    CELERY_BROKER_USE_SSL = {'cert_reqs': ssl.CERT_REQUIRED, 'server_hostname': None}
+# Una conexión por proceso para publicar. Los planes de CloudAMQP limitan las
+# conexiones simultáneas, y cada worker de gunicorn que encola abre las suyas.
+CELERY_BROKER_POOL_LIMIT = 1
+# Una tarea se confirma al terminar y no al tomarla: si el worker muere a mitad
+# de camino, RabbitMQ la vuelve a entregar en vez de perderla. Por eso toda tarea
+# tiene que poder correr dos veces sin efecto doble.
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+# De a una por worker: las tareas son lentas (PDF, llamadas a rededoc) y con el
+# prefetch por defecto un worker acapara las que otro podría estar corriendo.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+# El resultado queda en el documento; no hay backend de resultados que mantener.
+CELERY_TASK_IGNORE_RESULT = True
+# Una cola por tipo de tarea, con el nombre de la tarea: así cada una puede tener
+# su propio worker, y una tarea lenta de un tipo no demora a las de otro. El worker
+# tiene que escucharlas con `-Q` (ver DESPLIEGUE.md §8.1); una tarea sin ruta cae
+# en la cola por defecto, `celery`.
+CELERY_TASK_ROUTES = {
+    'general.tasks.notificar_documento': {'queue': 'notificar_documento'},
+}
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+# Encolar se hace dentro de un request (el webhook de rededoc). Con RabbitMQ caído
+# el reintento por defecto dejaba el request colgado; así falla en un par de
+# segundos y el request sigue.
+CELERY_BROKER_CONNECTION_TIMEOUT = 3
+CELERY_TASK_PUBLISH_RETRY_POLICY = {
+    'max_retries': 2, 'interval_start': 0, 'interval_step': 0.5, 'interval_max': 1,
+}
+
 # Backblaze B2
 B2_KEY_ID = config('B2_KEY_ID', default='')
 B2_APP_KEY = config('B2_APP_KEY', default='')
