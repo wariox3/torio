@@ -3599,9 +3599,9 @@ class ValidarAprobacionTests(TenantTestCase):
         self.item = GenItem.objects.create(nombre='Item')
 
     def _documento(self, tipo=None, **overrides):
-        return GenDocumento.objects.create(
-            documento_tipo=tipo or self.tipo_factura, fecha=date(2026, 1, 15), **overrides,
-        )
+        datos = {'documento_tipo': tipo or self.tipo_factura, 'fecha': date(2026, 1, 15)}
+        datos.update(overrides)
+        return GenDocumento.objects.create(**datos)
 
     def _detalle(self, documento, **overrides):
         datos = {'documento': documento, 'item': self.item, 'cantidad': 1,
@@ -3686,6 +3686,64 @@ class ValidarAprobacionTests(TenantTestCase):
         aprobado = documento_servicio.aprobar(documento.id)
 
         self.assertEqual(aprobado.numero, 1000)
+
+    def test_una_factura_fechada_antes_de_la_vigencia_no_se_aprueba(self):
+        documento = self._documento(
+            fecha=date(2019, 12, 31), resolucion=self._resolucion(fecha_desde=date(2020, 1, 1)),
+        )
+        self._detalle(documento)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(documento.id)
+
+        self.assertIn('fuera de la vigencia', str(caso.exception))
+
+    def test_una_factura_fechada_despues_de_la_vigencia_no_se_aprueba(self):
+        documento = self._documento(
+            fecha=date(2031, 1, 1), resolucion=self._resolucion(fecha_hasta=date(2030, 12, 31)),
+        )
+        self._detalle(documento)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(documento.id)
+
+        self.assertIn('fuera de la vigencia', str(caso.exception))
+
+    def test_una_factura_en_los_extremos_de_la_vigencia_se_aprueba(self):
+        desde = self._documento(
+            fecha=date(2026, 1, 1),
+            resolucion=self._resolucion(fecha_desde=date(2026, 1, 1)),
+        )
+        self._detalle(desde)
+        hasta = self._documento(
+            fecha=date(2030, 12, 31),
+            resolucion=self._resolucion(numero='2', fecha_hasta=date(2030, 12, 31)),
+        )
+        self._detalle(hasta)
+
+        self.assertTrue(documento_servicio.aprobar(desde.id).estado_aprobado)
+        self.assertTrue(documento_servicio.aprobar(hasta.id).estado_aprobado)
+
+    def test_una_factura_sin_fecha_no_se_aprueba(self):
+        documento = self._documento(fecha=None, resolucion=self._resolucion())
+        self._detalle(documento)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(documento.id)
+
+        self.assertIn('no tiene fecha', str(caso.exception))
+
+    def test_la_vigencia_por_fecha_solo_se_exige_a_la_factura_de_venta(self):
+        """Otro tipo de la misma clase conserva solo las reglas de siempre."""
+        otro = GenDocumentoTipo.objects.create(
+            id=2, nombre='OTRA FACTURA', venta=True, documento_clase=self.clase_factura,
+        )
+        documento = self._documento(
+            tipo=otro, fecha=date(2019, 12, 31), resolucion=self._resolucion(fecha_desde=date(2020, 1, 1)),
+        )
+        self._detalle(documento)
+
+        self.assertTrue(documento_servicio.aprobar(documento.id).estado_aprobado)
 
     def test_una_factura_sin_resolucion_se_aprueba(self):
         documento = self._documento()
@@ -4905,6 +4963,75 @@ class DatosEmpresaTests(TenantTestCase):
         self.assertEqual(
             datos_empresa(configuracion)['ciudad'], 'MEDELLÍN - ANTIOQUIA',
         )
+
+
+class HeredarResolucionTests(TenantTestCase):
+    """
+    La factura de venta (tipo 1) se numera contra la resolución de su tipo, no
+    contra la que mande el front. Los demás tipos no se tocan.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        datos = {'consecutivo_desde': 1, 'consecutivo_hasta': 100,
+                 'fecha_desde': date(2026, 1, 1), 'fecha_hasta': date(2026, 12, 31)}
+        self.del_tipo = GenResolucion.objects.create(numero='111', **datos)
+        self.otra = GenResolucion.objects.create(numero='222', **datos)
+        self.factura = GenDocumentoTipo.objects.create(id=1, nombre='FACTURA', resolucion=self.del_tipo)
+        self.otro_tipo = GenDocumentoTipo.objects.create(id=2, nombre='NOTA', resolucion=self.del_tipo)
+
+    def _crear(self, tipo, **datos):
+        serializador = GenDocumentoCrearSerializer(data={
+            'documento_tipo': tipo.pk, 'fecha': '2026-03-10', **datos,
+        })
+        serializador.is_valid(raise_exception=True)
+        return serializador.save()
+
+    def _editar(self, documento, **datos):
+        serializador = GenDocumentoSerializer(documento, data=datos, partial=True)
+        serializador.is_valid(raise_exception=True)
+        return serializador.save()
+
+    def test_la_factura_hereda_la_resolucion_del_tipo(self):
+        documento = self._crear(self.factura)
+        self.assertEqual(documento.resolucion, self.del_tipo)
+
+    def test_la_resolucion_que_manda_el_front_se_descarta(self):
+        documento = self._crear(self.factura, resolucion=self.otra.pk)
+        self.assertEqual(documento.resolucion, self.del_tipo)
+
+    def test_al_editar_la_factura_vuelve_a_la_del_tipo(self):
+        documento = self._crear(self.factura)
+        documento = self._editar(documento, resolucion=self.otra.pk)
+        self.assertEqual(documento.resolucion, self.del_tipo)
+
+    def test_al_editar_toma_la_resolucion_actual_del_tipo(self):
+        documento = self._crear(self.factura)
+        GenDocumentoTipo.objects.filter(pk=1).update(resolucion=self.otra)
+        documento.refresh_from_db()
+
+        documento = self._editar(documento, comentario='x')
+
+        self.assertEqual(documento.resolucion, self.otra)
+
+    def test_un_tipo_sin_resolucion_deja_la_factura_sin_resolucion(self):
+        GenDocumentoTipo.objects.filter(pk=1).update(resolucion=None)
+        self.factura.refresh_from_db()
+        documento = self._crear(self.factura, resolucion=self.otra.pk)
+        self.assertIsNone(documento.resolucion)
+
+    def test_otro_tipo_conserva_la_que_manden(self):
+        documento = self._crear(self.otro_tipo, resolucion=self.otra.pk)
+        self.assertEqual(documento.resolucion, self.otra)
+
+    def test_otro_tipo_sin_resolucion_no_la_hereda(self):
+        documento = self._crear(self.otro_tipo)
+        self.assertIsNone(documento.resolucion)
 
 
 class EncabezadoEmpresaTests(TenantTestCase):

@@ -11,6 +11,10 @@ from django.db.models import Q, Sum
 DOCUMENTO_TIPO_PAGO = 4
 DOCUMENTO_TIPO_EGRESO = 8
 
+# La factura de venta se numera contra la resolución que tiene configurada su
+# tipo, no contra una que elija quien la digita (ver `GenDocumentoSerializer.validate`).
+DOCUMENTO_TIPO_FACTURA_VENTA = 1
+
 
 class GenDocumento(models.Model):
     log_auditoria = True

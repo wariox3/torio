@@ -5,6 +5,7 @@ from general.models import (
     GenDocumento,
     GenDocumentoTipo,
 )
+from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
 from general.serializers.documento_detalle import GenDocumentoDetalleSerializer
 from general.servicios import crear_detalle
 
@@ -148,6 +149,25 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, datos):
+        self._heredar_resolucion(datos)
+        return self._seguir_fecha(datos)
+
+    def _heredar_resolucion(self, datos):
+        """
+        La factura de venta toma siempre la resolución de su tipo.
+
+        Es contra esa resolución que se valida el consecutivo al aprobar y la que
+        viaja a rededoc al emitir: si la eligiera quien digita, una factura podría
+        numerarse contra otra resolución que la configurada. La que mande el front
+        se descarta. Solo corre al guardar por la API, y un documento aprobado ya
+        no se edita, así que la factura conserva la resolución con la que se numeró
+        aunque después cambie la del tipo.
+        """
+        tipo = datos.get('documento_tipo') or getattr(self.instance, 'documento_tipo', None)
+        if tipo is not None and tipo.pk == DOCUMENTO_TIPO_FACTURA_VENTA:
+            datos['resolucion'] = tipo.resolucion
+
+    def _seguir_fecha(self, datos):
         """
         Mantiene `fecha_contable` a la par de `fecha` mientras nadie las separe.
 

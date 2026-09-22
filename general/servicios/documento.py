@@ -15,6 +15,7 @@ from general.models import (
     GenFestivo,
     GenItem,
 )
+from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
 from general.servicios.supervigilancia import LiquidadorSupervigilancia
 from inventario.models import InvExistencia
 
@@ -193,6 +194,20 @@ def _validar_resolucion(documento, consecutivo):
             f'El consecutivo {consecutivo} no corresponde con la resolución, que va '
             f'desde {resolucion.consecutivo_desde} hasta {resolucion.consecutivo_hasta}.'
         )
+
+    # La factura de venta además tiene que estar fechada dentro de la vigencia: una
+    # factura fechada antes de que la resolución empezara a regir, o después de
+    # vencida, la rechaza la DIAN aunque el número quepa en el rango. Es la misma
+    # regla que exige `factura_electronica.emitir`, adelantada a donde todavía se
+    # puede corregir la fecha.
+    if documento.documento_tipo_id == DOCUMENTO_TIPO_FACTURA_VENTA:
+        if documento.fecha is None:
+            raise ValidationError('La factura no tiene fecha.')
+        if not (resolucion.fecha_desde <= documento.fecha <= resolucion.fecha_hasta):
+            raise ValidationError(
+                f'La fecha {documento.fecha} está fuera de la vigencia de la resolución, '
+                f'que va desde {resolucion.fecha_desde} hasta {resolucion.fecha_hasta}.'
+            )
 
 
 def _validar_nomina_electronica(documento):
