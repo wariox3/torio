@@ -188,12 +188,7 @@ def emitir(documento_ids, cliente: Rededoc = None) -> list:
     """
     if not documento_ids:
         raise ValidationError({'ids': 'Este campo es requerido.'})
-
-    parametro = GenParametro.objects.filter(id=1).first()
-    if parametro is None or not parametro.gen_factura_electronica_activa:
-        raise ErrorFacturaElectronica('La empresa no se ha activado para facturar electrónicamente.')
-    if not parametro.gen_rededoc_emisor:
-        raise ErrorFacturaElectronica('La empresa no tiene emisor en el servicio de facturación electrónica.')
+    parametro = _parametro_habilitado()
 
     documentos = GenDocumento.objects.select_related(
         'documento_tipo', 'resolucion', 'plazo_pago', 'metodo_pago',
@@ -239,6 +234,16 @@ def emitir(documento_ids, cliente: Rededoc = None) -> list:
         documento.save(update_fields=['electronico_id', 'estado_electronico_enviado'])
         emitidos.append(documento.id)
     return emitidos
+
+
+def _parametro_habilitado():
+    """El `GenParametro` de una empresa que puede usar la facturación electrónica."""
+    parametro = GenParametro.objects.filter(id=1).first()
+    if parametro is None or not parametro.gen_factura_electronica_activa:
+        raise ErrorFacturaElectronica('La empresa no se ha activado para facturar electrónicamente.')
+    if not parametro.gen_rededoc_emisor:
+        raise ErrorFacturaElectronica('La empresa no tiene emisor en el servicio de facturación electrónica.')
+    return parametro
 
 
 def _armar(documento, parametro):
@@ -423,3 +428,71 @@ def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenD
         documento.estado_electronico_notificado = True
         documento.save(update_fields=['estado_electronico_notificado'])
     return documento
+
+
+# ------------------------------------------------------------ notificar ----
+
+def notificar(documento_ids, cliente: Rededoc = None) -> list:
+    """
+    Le entrega cada documento a su adquiriente a través de rededoc y devuelve los ids
+    de los que quedaron notificados.
+
+    Solo se notifica lo que la DIAN ya validó: la representación gráfica lleva el
+    CUFE y la fecha de validación, y rededoc rechaza lo que no esté aceptado. Un
+    documento ya notificado se puede volver a notificar: es la forma de reenviarle
+    la factura a un cliente que la perdió, o después de corregirle el correo.
+
+    Como en `emitir`, el lote se valida entero antes de enviar el primero, pero el
+    envío no es atómico: cada documento se marca apenas rededoc lo acepta, y si uno
+    falla el error dice cuáles ya salieron.
+    """
+    # El import va acá: `documento_imprimir` arrastra los formatos, y los
+    # formatos no tienen por qué cargarse para crear un emisor.
+    from general.servicios import documento_imprimir
+
+    if not documento_ids:
+        raise ValidationError({'ids': 'Este campo es requerido.'})
+    _parametro_habilitado()
+
+    documentos = (
+        GenDocumento.objects
+        .select_related(
+            'documento_tipo', 'resolucion', 'metodo_pago', 'plazo_pago',
+            'cuenta_banco__cuenta_banco_tipo', 'contacto__identificacion', 'contacto__ciudad',
+        )
+        .prefetch_related('documentos_detalles_documento_rel__item')
+        .in_bulk(documento_ids)
+    )
+    for documento_id in documento_ids:
+        documento = documentos.get(documento_id)
+        if documento is None:
+            raise NotFound(f'El documento {documento_id} no existe.')
+        if not (documento.estado_electronico and documento.cue and documento.electronico_id):
+            raise ErrorFacturaElectronica(
+                f'El documento {documento_id} todavía no ha sido validado por la DIAN.'
+            )
+
+    cliente = cliente or Rededoc()
+    notificados = []
+    for documento_id in documento_ids:
+        documento = documentos[documento_id]
+        pdf, nombre = documento_imprimir.pdf_documento(documento)
+        respuesta = cliente.notificar_documento(documento.electronico_id, pdf, nombre)
+        if respuesta['error']:
+            status = 400 if 400 <= respuesta['status'] < 500 else 502
+            raise ErrorFacturaElectronica(
+                {
+                    'detail': (
+                        'El servicio de facturación electrónica no pudo notificar el '
+                        f'documento {documento.id}.'
+                    ),
+                    'documento': documento.id,
+                    'notificados': notificados,
+                    'error': respuesta['datos'],
+                },
+                status=status,
+            )
+        documento.estado_electronico_notificado = True
+        documento.save(update_fields=['estado_electronico_notificado'])
+        notificados.append(documento.id)
+    return notificados

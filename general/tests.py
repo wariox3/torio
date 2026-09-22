@@ -1171,6 +1171,20 @@ class RededocTests(SimpleTestCase):
         metodo, url = peticion.call_args.args
         self.assertEqual((metodo, url), ('GET', 'https://api.rededoc.uk/estado/'))
 
+    def test_notificar_manda_el_pdf_en_multipart_con_timeout_largo(self):
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {'enviado': True}),
+        ) as peticion:
+            rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k').notificar_documento(
+                'abc-uuid', b'%PDF-1.4', 'factura2813.pdf',
+            )
+
+        metodo, url = peticion.call_args.args
+        self.assertEqual((metodo, url), ('POST', 'https://api.rededoc.uk/api/documentos/documento/abc-uuid/notificar/'))
+        self.assertEqual(peticion.call_args.kwargs['files'],
+                         {'pdf': ('factura2813.pdf', b'%PDF-1.4', 'application/pdf')})
+        self.assertEqual(peticion.call_args.kwargs['timeout'], rededoc_servicio.Rededoc.TIMEOUT_NOTIFICAR)
+
     def test_la_llave_viaja_en_el_header_authorization(self):
         with mock.patch.object(
             rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {}),
@@ -5643,3 +5657,124 @@ class FormatoFacturaTests(TenantTestCase):
         nota = self._factura(documento_tipo=otro)
 
         self.assertEqual(self._numeros_de_pagina([factura, nota]), [(1, 1)])
+
+
+class NotificarTests(TenantTestCase):
+    """
+    Notificar: solo lo que la DIAN validó, con la representación gráfica que arma
+    torio. Rededoc se reemplaza: acá no se sale a la red.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.tipo = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA ELECTRÓNICA DE VENTA', venta=True,
+            documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
+        )
+        GenParametro.objects.create(id=1, gen_factura_electronica_activa=True, gen_rededoc_emisor=77)
+        self.factory = APIRequestFactory()
+
+    def _documento(self, **overrides):
+        datos = {
+            'documento_tipo': self.tipo, 'fecha': date(2026, 9, 17), 'numero': 2813,
+            'estado_aprobado': True, 'estado_electronico_enviado': True, 'estado_electronico': True,
+            'cue': 'cufe-de-prueba', 'electronico_id': uuid_lib.uuid4(),
+        }
+        datos.update(overrides)
+        return GenDocumento.objects.create(**datos)
+
+    def _cliente(self, *respuestas):
+        cliente = mock.Mock()
+        cliente.notificar_documento.side_effect = list(respuestas) or [
+            {'error': False, 'status': 200, 'datos': {'enviado': True}},
+        ]
+        return cliente
+
+    def _llamar(self, datos, cliente=None):
+        cliente = cliente or self._cliente()
+        vista = _DocumentoViewSinPermisos.as_view({'post': 'notificar'})
+        peticion = self.factory.post('/general/documento/notificar/', datos, format='json')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        with mock.patch.object(factura_electronica, 'Rededoc', return_value=cliente):
+            return vista(peticion)
+
+    def test_notifica_con_la_representacion_grafica_y_lo_marca(self):
+        documento = self._documento()
+        cliente = self._cliente()
+
+        respuesta = self._llamar({'ids': [documento.id]}, cliente)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, {'notificados': [documento.id]})
+        documento_id, pdf, nombre = cliente.notificar_documento.call_args.args
+        self.assertEqual(documento_id, documento.electronico_id)
+        self.assertTrue(pdf.startswith(b'%PDF'))
+        self.assertEqual(nombre, 'factura_electronica_de_venta2813.pdf')
+        documento.refresh_from_db()
+        self.assertTrue(documento.estado_electronico_notificado)
+
+    def test_uno_ya_notificado_se_puede_reenviar(self):
+        documento = self._documento(estado_electronico_notificado=True)
+        self.assertEqual(self._llamar({'ids': [documento.id]}).status_code, 200)
+
+    def test_si_rededoc_rechaza_uno_los_anteriores_quedan_notificados(self):
+        uno = self._documento()
+        dos = self._documento(numero=2814)
+        cliente = self._cliente(
+            {'error': False, 'status': 200, 'datos': {}},
+            {'error': True, 'status': 400, 'datos': {'detail': 'El adquiriente no tiene correo.'}},
+        )
+
+        respuesta = self._llamar({'ids': [uno.id, dos.id]}, cliente)
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data['notificados'], [uno.id])
+        self.assertEqual(respuesta.data['documento'], dos.id)
+        self.assertEqual(respuesta.data['error'], {'detail': 'El adquiriente no tiene correo.'})
+        self.assertIn('no pudo notificar', respuesta.data['detail'])
+        dos.refresh_from_db()
+        self.assertFalse(dos.estado_electronico_notificado)
+
+    def test_rededoc_caido_responde_502(self):
+        documento = self._documento()
+        cliente = self._cliente({'error': True, 'status': 0, 'datos': {'mensaje': 'timeout'}})
+        self.assertEqual(self._llamar({'ids': [documento.id]}, cliente).status_code, 502)
+
+    # ---- validaciones: cortan el lote sin enviar nada ----
+
+    def _no_envia(self, datos, esperado_status, esperado_texto):
+        cliente = self._cliente()
+        respuesta = self._llamar(datos, cliente)
+        self.assertEqual(respuesta.status_code, esperado_status)
+        self.assertIn(esperado_texto, respuesta.data['detail'])
+        cliente.notificar_documento.assert_not_called()
+
+    def test_sin_ids_responde_400(self):
+        self.assertEqual(self._llamar({'ids': []}).status_code, 400)
+
+    def test_sin_facturacion_electronica_activa_no_notifica(self):
+        GenParametro.objects.filter(id=1).update(gen_factura_electronica_activa=False)
+        self._no_envia({'ids': [self._documento().id]}, 400, 'no se ha activado')
+
+    def test_un_documento_inexistente_responde_404(self):
+        self._no_envia({'ids': [self._documento().id, 999999]}, 404, '999999')
+
+    def test_uno_sin_validar_no_se_notifica(self):
+        """La DIAN no lo aceptó: entregarlo haría creer al cliente que tiene una factura válida."""
+        documento = self._documento(estado_electronico=False, cue=None)
+        self._no_envia({'ids': [documento.id]}, 400, 'no ha sido validado')
+
+    def test_sin_estado_electronico_no_se_notifica_aunque_tenga_cufe(self):
+        """Lo que decide es `estado_electronico`: un CUFE solo no prueba que la DIAN lo aceptó."""
+        documento = self._documento(estado_electronico=False, cue='cufe-de-prueba')
+        self._no_envia({'ids': [documento.id]}, 400, 'no ha sido validado')
+
+    def test_uno_sin_validar_no_deja_notificar_los_validados(self):
+        valido = self._documento()
+        sin_validar = self._documento(numero=2814, estado_electronico=False, cue=None)
+        self._no_envia({'ids': [valido.id, sin_validar.id]}, 400, 'no ha sido validado')

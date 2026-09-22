@@ -298,6 +298,32 @@ class GenDocumentoViewSet(
             return Response(e.cuerpo, status=e.status)
         return Response({'emitidos': emitidos}, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary='Notificar documentos electrónicos',
+        description=(
+            'Le entrega cada documento a su adquiriente: genera la representación '
+            'gráfica y se la manda al servicio de facturación electrónica, que arma '
+            'el zip con el documento validado y lo envía por correo.\n\n'
+            'Solo se notifican documentos que la DIAN ya validó. Uno ya notificado '
+            'se puede volver a notificar, para reenviarlo. Antes de enviar el '
+            'primero se valida el lote completo; si uno no cumple, no se envía '
+            'ninguno.\n\n'
+            'El envío no es atómico: si el servicio rechaza un documento, los '
+            'anteriores ya quedaron notificados, y el error los lista en `notificados`.'
+        ),
+        request=DocumentoIdsRequestSerializer,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['post'])
+    def notificar(self, request):
+        serializer = DocumentoIdsRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            notificados = factura_electronica_servicio.notificar(serializer.validated_data['ids'])
+        except factura_electronica_servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+        return Response({'notificados': notificados}, status=status.HTTP_200_OK)
+
     @extend_schema(request=BusquedaRequest, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=False, methods=['post'])
     def imprimir(self, request):

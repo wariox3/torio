@@ -79,6 +79,25 @@ class Rededoc:
         """
         return self._peticion('POST', '/api/documentos/documento/', datos=datos)
 
+    # Notificar incluye el envío del correo por la pasarela, dentro de la misma
+    # llamada: con el timeout general se cortaba antes de que rededoc respondiera.
+    TIMEOUT_NOTIFICAR = 30
+
+    def notificar_documento(self, documento_id, pdf: bytes, nombre: str):
+        """
+        Le entrega el documento al adquiriente.
+        `POST /api/documentos/documento/{id}/notificar/`, en multipart con `pdf`.
+
+        Rededoc arma el zip —el AttachedDocument con el acuse de la DIAN más la
+        representación gráfica—, lo envía por correo y marca el documento como
+        notificado. Solo acepta documentos que la DIAN ya validó.
+        """
+        return self._peticion(
+            'POST', f'/api/documentos/documento/{documento_id}/notificar/',
+            archivos={'pdf': (nombre, pdf, 'application/pdf')},
+            timeout=self.TIMEOUT_NOTIFICAR,
+        )
+
     # --- Interno -----------------------------------------------------------
 
     def _headers(self):
@@ -90,7 +109,7 @@ class Rededoc:
         return headers
 
     def _peticion(self, metodo: str, ruta: str, datos: dict = None, parametros: dict = None,
-                  archivos: dict = None):
+                  archivos: dict = None, timeout: float = None):
         """
         Con `archivos` la petición sale como multipart y `datos` son los campos del
         formulario; sin ellos, `datos` va como cuerpo JSON. httpx pone el
@@ -106,7 +125,7 @@ class Rededoc:
                 files=archivos,
                 params=parametros,
                 headers=self._headers(),
-                timeout=self.timeout,
+                timeout=timeout or self.timeout,
             )
         except Exception as e:
             logger.error('RedEDoc %s %s falló: %s', metodo, url_completa, e)

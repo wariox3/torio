@@ -92,6 +92,11 @@ def _pdf(elementos):
     return buffer.getvalue()
 
 
+def pdf_documento(documento):
+    """El PDF de un solo documento, con su formato. Devuelve (contenido, nombre)."""
+    return _pdf(_construir(documento)), _nombre_archivo(documento)
+
+
 def imprimir(documentos):
     """Genera un único PDF con todos los documentos (uno por página). Devuelve (contenido, nombre)."""
     documentos = _listar(documentos)
