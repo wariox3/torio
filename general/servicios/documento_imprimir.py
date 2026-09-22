@@ -7,9 +7,11 @@ from reportlab.platypus import PageBreak
 from rest_framework.exceptions import ValidationError
 
 from general.formatos import (
-    FormatoDocumentoEgreso, FormatoDocumentoGenerico, FormatoDocumentoPago,
+    FormatoDocumentoEgreso, FormatoDocumentoFactura, FormatoDocumentoGenerico,
+    FormatoDocumentoPago,
 )
-from utilidades.formatos.pagina import documento_pdf
+from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
+from utilidades.formatos.pagina import CanvasNumerado, MarcaDocumento, documento_pdf
 
 # Qué formato imprime cada tipo de documento. Está quemado a propósito y no sale
 # de `GenDocumentoTipo.formato`: mientras sean pocos los tipos con formato propio,
@@ -23,6 +25,7 @@ DOCUMENTO_TIPO_PAGO = 4  # mismo id que `contabilizar.DOCUMENTO_TIPO_PAGO`
 DOCUMENTO_TIPO_EGRESO = 8  # mismo id que `contabilizar.DOCUMENTO_TIPO_EGRESO`
 
 FORMATOS = {
+    DOCUMENTO_TIPO_FACTURA_VENTA: FormatoDocumentoFactura,
     DOCUMENTO_TIPO_PAGO: FormatoDocumentoPago,
     DOCUMENTO_TIPO_EGRESO: FormatoDocumentoEgreso,
 }
@@ -34,8 +37,15 @@ def _clase_formato(documento):
 
 
 def _construir(documento):
-    """Elige la clase de formato según el tipo y devuelve los elementos del documento."""
-    return _clase_formato(documento)(documento).construir()
+    """
+    Elige la clase de formato según el tipo y devuelve los elementos del documento.
+
+    Todos arrancan con su `MarcaDocumento`, numeren o no: es la marca la que le dice
+    al canvas dónde termina el documento anterior, así que uno sin numerar que no
+    la llevara le sumaría sus páginas al que va antes.
+    """
+    clase = _clase_formato(documento)
+    return [MarcaDocumento(documento.id, clase.numerar_paginas), *clase(documento).construir()]
 
 
 def _nombre_archivo(documento, sufijo=''):
@@ -78,7 +88,7 @@ def _pdf(elementos):
     buffer = io.BytesIO()
     # La misma caja que el resto de los formatos impresos: los márgenes de los
     # que sale `ANCHO_CONTENIDO`, contra el que cada formato calcula sus anchos.
-    documento_pdf(buffer).build(elementos)
+    documento_pdf(buffer).build(elementos, canvasmaker=CanvasNumerado)
     return buffer.getvalue()
 
 

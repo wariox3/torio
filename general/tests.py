@@ -3,7 +3,7 @@ import io
 import json
 import uuid as uuid_lib
 import zipfile
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from unittest import mock
 
@@ -59,6 +59,8 @@ from general.models import (
 from general.servicios import documento as documento_servicio
 from general.servicios import documento_pago as documento_pago_servicio
 from general.servicios import factura_electronica
+from general.servicios import documento_imprimir
+from general.formatos import FormatoDocumentoFactura
 from general.servicios import rededoc as rededoc_servicio
 from general.serializers import (
     GenAsesorImportarSerializer,
@@ -5443,3 +5445,201 @@ class EmitirTests(TenantTestCase):
         valido = self._documento()
         invalido = self._documento(resolucion=None)
         self._no_envia({'ids': [valido.id, invalido.id]}, 400, 'no tiene resolución')
+
+
+class FormatoFacturaTests(TenantTestCase):
+    """
+    La factura de venta (tipo 1) sale con su propio formato. Se revisa el contenido
+    de los flowables y no el PDF: el PDF comprimido no se puede leer, y lo que
+    importa es qué datos llegan a la hoja.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.tipo = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA ELECTRÓNICA DE VENTA', venta=True,
+            documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
+        )
+        pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
+        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        self.contacto = GenContacto.objects.create(
+            numero_identificacion='901998045', digito_verificacion='1',
+            nombre_corto='ESTRATEGIA & DIGITAL SAS',
+            identificacion=GenIdentificacion.objects.create(id=6, nombre='NIT', abreviatura='NIT'),
+            tipo_persona=GenTipoPersona.objects.create(id=1, nombre='Jurídica'),
+            ciudad=ciudad, direccion='CR 51 9 30', telefono='3044769718',
+            correo='general@x.com', correo_facturacion_electronica='facturas@x.com',
+        )
+        self.resolucion = GenResolucion.objects.create(
+            prefijo='FE', numero='18764109390869', consecutivo_desde=2552, consecutivo_hasta=4000,
+            fecha_desde=date(2025, 5, 5), fecha_hasta=date(2027, 5, 5),
+        )
+        self.item = GenItem.objects.create(nombre='FIRMA DIGITAL', codigo='42359505')
+
+    def _factura(self, **overrides):
+        datos = {
+            'documento_tipo': self.tipo, 'fecha': date(2026, 9, 17), 'fecha_vence': date(2026, 9, 17),
+            'numero': 2813, 'contacto': self.contacto, 'resolucion': self.resolucion,
+            'total': Decimal('60000'), 'subtotal': Decimal('60000'),
+        }
+        datos.update(overrides)
+        documento = GenDocumento.objects.create(**datos)
+        GenDocumentoDetalle.objects.create(
+            documento=documento, item=self.item, cantidad=Decimal('1'),
+            precio=Decimal('60000'), total=Decimal('60000'),
+        )
+        return documento
+
+    def _textos(self, documento):
+        """Todo el texto de la hoja, en una sola cadena."""
+        textos = []
+
+        def recorrer(elemento):
+            if isinstance(elemento, (list, tuple)):
+                for item in elemento:
+                    recorrer(item)
+            elif hasattr(elemento, 'getPlainText'):
+                textos.append(elemento.getPlainText())
+            elif hasattr(elemento, '_cellvalues'):
+                recorrer(elemento._cellvalues)
+            elif isinstance(elemento, str):
+                textos.append(elemento)
+
+        recorrer(FormatoDocumentoFactura(documento).construir())
+        return ' '.join(textos)
+
+    def test_la_factura_de_venta_usa_su_formato(self):
+        documento = self._factura()
+        self.assertIs(documento_imprimir._clase_formato(documento), FormatoDocumentoFactura)
+
+    def test_otro_tipo_sigue_con_el_generico(self):
+        otro = GenDocumentoTipo.objects.create(id=2, nombre='NOTA')
+        documento = self._factura(documento_tipo=otro)
+        self.assertIsNot(documento_imprimir._clase_formato(documento), FormatoDocumentoFactura)
+
+    def test_genera_el_pdf(self):
+        contenido, nombre = documento_imprimir.imprimir(GenDocumento.objects.filter(pk=self._factura().pk))
+        self.assertTrue(contenido.startswith(b'%PDF'))
+        self.assertEqual(nombre, 'factura_electronica_de_venta2813.pdf')
+
+    def test_lleva_numero_con_prefijo_adquiriente_y_resolucion(self):
+        texto = self._textos(self._factura())
+
+        self.assertIn('FE2813', texto)
+        self.assertIn('NIT 901998045-1', texto)
+        self.assertIn('facturas@x.com', texto)
+        self.assertIn('42359505', texto)
+        self.assertIn('18764109390869', texto)
+        self.assertIn('rango del 2552 al 4000', texto)
+        self.assertIn('RedDoc ERP', texto)
+        self.assertIn('SEMÁNTICA DIGITAL S.A.S. — NIT 901192048-4', texto)
+        self.assertIn('Software propio', texto)
+        self.assertNotIn('PROVEEDOR TECNOLÓGICO', texto)
+        self.assertIn('SESENTA MIL', texto.upper())
+
+    def test_el_encabezado_propio_lleva_la_empresa_el_titulo_y_el_numero(self):
+        GenConfiguracion.objects.update_or_create(id=1, defaults={
+            'gen_empresa_razon_social': 'Semantica Digital SAS',
+            'gen_empresa_numero_identificacion': '901192048', 'gen_empresa_digito_verificacion': '4',
+            'gen_empresa_direccion': 'CL 9 SUR # 50 FF 165',
+        })
+        texto = self._textos(self._factura())
+
+        self.assertIn('SEMANTICA DIGITAL SAS', texto)
+        self.assertIn('901192048-4', texto)
+        self.assertIn('CL 9 SUR # 50 FF 165', texto)
+        self.assertIn('FACTURA ELECTRÓNICA DE VENTA', texto)
+        self.assertIn('Fecha de emisión: 2026-09-17', texto)
+
+    def test_sin_configuracion_de_empresa_se_imprime_igual(self):
+        GenConfiguracion.objects.all().delete()
+        contenido, _ = documento_imprimir.imprimir(GenDocumento.objects.filter(pk=self._factura().pk))
+        self.assertTrue(contenido.startswith(b'%PDF'))
+
+    def test_un_ampersand_en_los_datos_no_rompe_la_hoja(self):
+        """`Paragraph` interpreta marcado: sin escapar, «&» rompe la construcción."""
+        texto = self._textos(self._factura())
+        self.assertIn('ESTRATEGIA & DIGITAL SAS', texto)
+
+    def test_validada_lleva_cufe_y_fecha_de_validacion(self):
+        documento = self._factura(
+            cue='7c6f490a8c42bdff', fecha_validacion=timezone.make_aware(datetime(2026, 9, 17, 14, 16, 53)),
+        )
+        texto = self._textos(documento)
+
+        self.assertIn('7c6f490a8c42bdff', texto)
+        self.assertIn('2026-09-17 14:16:53', texto)
+        self.assertNotIn('SIN VALIDAR', texto)
+        contenido, _ = documento_imprimir.imprimir(GenDocumento.objects.filter(pk=documento.pk))
+        self.assertTrue(contenido.startswith(b'%PDF'))
+
+    def test_sin_cufe_avisa_que_no_esta_validada(self):
+        texto = self._textos(self._factura())
+        self.assertIn('SIN VALIDAR ANTE LA DIAN', texto)
+
+    def test_una_factura_a_medio_llenar_se_imprime_igual(self):
+        """Sin cliente, sin resolución y sin número: sirve para revisarla antes de aprobar."""
+        documento = self._factura(contacto=None, resolucion=None, numero=None)
+        texto = self._textos(documento)
+
+        self.assertIn('SIN NUMERAR', texto)
+        contenido, _ = documento_imprimir.imprimir(GenDocumento.objects.filter(pk=documento.pk))
+        self.assertTrue(contenido.startswith(b'%PDF'))
+
+    # ---- número de página ----
+
+    def _numeros_de_pagina(self, documentos):
+        """Los «(página, total)» que se dibujaron, en orden, sin leer el PDF."""
+        dibujados = []
+
+        class Capturador(documento_imprimir.CanvasNumerado):
+            def numero_pagina(self, pagina, total):
+                dibujados.append((pagina, total))
+                super().numero_pagina(pagina, total)
+
+        with mock.patch.object(documento_imprimir, 'CanvasNumerado', Capturador):
+            documento_imprimir.imprimir(GenDocumento.objects.filter(pk__in=[d.pk for d in documentos]).order_by('pk'))
+        return dibujados
+
+    def _factura_larga(self, **overrides):
+        documento = self._factura(**overrides)
+        for _ in range(60):
+            GenDocumentoDetalle.objects.create(
+                documento=documento, item=self.item, cantidad=Decimal('1'),
+                precio=Decimal('1000'), total=Decimal('1000'),
+            )
+        return documento
+
+    def test_una_factura_de_una_hoja_dice_1_de_1(self):
+        self.assertEqual(self._numeros_de_pagina([self._factura()]), [(1, 1)])
+
+    def test_una_factura_larga_numera_todas_sus_hojas(self):
+        numeros = self._numeros_de_pagina([self._factura_larga()])
+
+        total = len(numeros)
+        self.assertGreater(total, 1)
+        self.assertEqual(numeros, [(pagina, total) for pagina in range(1, total + 1)])
+
+    def test_cada_factura_de_un_lote_cuenta_sus_propias_hojas(self):
+        larga = self._factura_larga()
+        corta = self._factura(numero=2814)
+
+        numeros = self._numeros_de_pagina([larga, corta])
+
+        paginas_larga = numeros[0][1]
+        self.assertEqual(numeros[:paginas_larga], [(p, paginas_larga) for p in range(1, paginas_larga + 1)])
+        self.assertEqual(numeros[paginas_larga:], [(1, 1)])
+
+    def test_un_documento_que_no_numera_no_suma_hojas_a_la_factura(self):
+        """El pago que va después de una factura no lleva número ni cuenta como hoja suya."""
+        otro = GenDocumentoTipo.objects.create(id=2, nombre='NOTA')
+        factura = self._factura()
+        nota = self._factura(documento_tipo=otro)
+
+        self.assertEqual(self._numeros_de_pagina([factura, nota]), [(1, 1)])

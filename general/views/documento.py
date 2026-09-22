@@ -102,6 +102,10 @@ class GenDocumentoViewSet(
             # `cuenta_banco__cuenta` y el documento afectado los lee el formato
             # del egreso y del pago; sin esto serían una consulta por línea impresa.
             'documento_tipo', 'contacto', 'cuenta_banco__cuenta',
+            # Lo que lee la factura de venta: su resolución, cómo se paga y los
+            # datos del adquiriente.
+            'resolucion', 'metodo_pago', 'plazo_pago', 'cuenta_banco__cuenta_banco_tipo',
+            'contacto__identificacion', 'contacto__ciudad',
         ).prefetch_related(
             'documentos_detalles_documento_rel__item',
             'documentos_detalles_documento_rel__cuenta',
