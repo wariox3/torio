@@ -19,6 +19,19 @@ class CtnEventoPago(models.Model):
         db_table = 'ctn_evento_pago'
         verbose_name = 'Evento pago'
         verbose_name_plural = 'Eventos pago'
+        constraints = [
+            # Una transacción aprobada se aplica una sola vez: es lo que impide que
+            # un evento reenviado —un reintento de Wompi o uno capturado, que
+            # conserva su firma válida— extienda la suscripción otra vez. El
+            # webhook lo revisa antes, pero dos entregas simultáneas pasarían las
+            # dos esa revisión; esta es la que no se puede saltar. Los demás estados
+            # (pendiente, rechazado) sí se pueden repetir: no aplican nada.
+            models.UniqueConstraint(
+                fields=['transaccion'],
+                condition=models.Q(estado='APPROVED'),
+                name='ctn_evento_pago_transaccion_aprobada_unica',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.evento} - {self.transaccion} - {self.estado}'

@@ -256,6 +256,9 @@ TURNSTILE_SECRET_KEY=<secret real>
 
 # ── Wompi (pagos) ──────────────────────────────────────
 WOMPI_INTEGRITY_SECRET=<secret real>
+# Obligatorio: sin él el webhook de Wompi rechaza todos los eventos y los pagos no
+# se aplican. Es el «secreto de eventos» del panel de Wompi, no el de integridad.
+WOMPI_EVENTS_SECRET=<secret real>
 
 # ── RedEDoc (servicio Nobelio) ─────────────────────────
 REDEDOC_URL=https://api.rededoc.uk
