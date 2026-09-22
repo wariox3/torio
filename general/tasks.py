@@ -68,13 +68,22 @@ def notificar_documento(self, schema_name, documento_id):
     with schema_context(schema_name):
         with transaction.atomic():
             documento = (
-                GenDocumento.objects.select_for_update(skip_locked=True)
+                GenDocumento.objects.select_for_update(skip_locked=True, of=('self',))
+                .select_related('contacto')
                 .filter(pk=documento_id).first()
             )
             if documento is None:
                 # O no existe, o la tiene otro worker en este momento.
                 return
             if documento.estado_electronico_notificado:
+                return
+            # Sin correo de facturación electrónica no se notifica, y no es un
+            # error: queda pendiente y la pantalla de pendientes lo muestra.
+            if not factura_electronica.tiene_correo_facturacion(documento):
+                logger.info(
+                    'Documento %s (schema %s) sin correo de facturación electrónica: '
+                    'no se notifica', documento_id, schema_name,
+                )
                 return
             try:
                 factura_electronica.notificar([documento_id])

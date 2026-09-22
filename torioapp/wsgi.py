@@ -11,6 +11,9 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'torioapp.settings.prod')
+# Desarrollo por defecto, como `manage.py` y `celery.py`. En producción lo fija
+# la unidad systemd (`Environment=DJANGO_SETTINGS_MODULE=torioapp.settings.prod`,
+# DESPLIEGUE.md §8): esa línea es obligatoria.
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'torioapp.settings.dev')
 
 application = get_wsgi_application()

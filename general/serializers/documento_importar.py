@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from contabilidad.models import ConCentroCosto
+from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
 from general.models import (
     GenAsesor,
     GenContacto,
@@ -119,6 +120,14 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
                     asesor=asesor,
                     sector=sector,
                     centro_costo=centro_costo,
+                    # La factura de venta se numera contra la resolución de su
+                    # tipo, igual que al guardarla por la API
+                    # (`GenDocumentoSerializer._heredar_resolucion`). El Excel no
+                    # trae resolución: los demás tipos quedan sin ella, como antes.
+                    resolucion_id=(
+                        documento_tipo.resolucion_id
+                        if documento_tipo.pk == DOCUMENTO_TIPO_FACTURA_VENTA else None
+                    ),
                 ))
             except Exception as e:
                 errores.append({'fila': idx, 'mensaje': str(e)})

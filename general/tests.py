@@ -1451,6 +1451,8 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
 
         payload = cliente.crear_emisor.call_args.args[0]
         self.assertNotIn('cuenta', payload)
+        # El tenant: rededoc lo devuelve como `cliente` en los avisos del webhook.
+        self.assertEqual(payload['referencia_externa'], self.tenant.id)
         self.assertEqual(payload['razon_social'], 'Semantica Digital S.A.S')
         self.assertEqual(payload['numero_identificacion'], '901192048')
         self.assertEqual(payload['digito_verificacion'], '8')
@@ -4697,6 +4699,28 @@ class FechaContableTests(TenantTestCase):
 
         self.assertEqual(documento.fecha_contable, date(2026, 3, 10))
 
+    def test_al_importar_una_factura_de_venta_hereda_la_resolucion_del_tipo(self):
+        resolucion = GenResolucion.objects.create(
+            numero='111', consecutivo_desde=1, consecutivo_hasta=100,
+            fecha_desde=date(2026, 1, 1), fecha_hasta=date(2026, 12, 31),
+        )
+        factura = GenDocumentoTipo.objects.create(id=1, nombre='FACTURA', resolucion=resolucion)
+
+        documento = self._importar(**{'documento_tipo.id': factura.pk})
+
+        self.assertEqual(documento.resolucion, resolucion)
+
+    def test_al_importar_otro_tipo_no_hereda_resolucion(self):
+        resolucion = GenResolucion.objects.create(
+            numero='111', consecutivo_desde=1, consecutivo_hasta=100,
+            fecha_desde=date(2026, 1, 1), fecha_hasta=date(2026, 12, 31),
+        )
+        otro = GenDocumentoTipo.objects.create(id=2, nombre='NOTA', resolucion=resolucion)
+
+        documento = self._importar(**{'documento_tipo.id': otro.pk})
+
+        self.assertIsNone(documento.resolucion)
+
     def test_al_importar_se_respeta_la_fecha_contable_de_la_celda(self):
         documento = self._importar(fecha_contable=date(2026, 1, 31))
 
@@ -5306,7 +5330,7 @@ class EmitirTests(TenantTestCase):
                 'codigo_producto': 'PRB001',
                 'numero_linea': 1,
                 'descripcion': 'Servicio de prueba',
-                'unidad_medida': '94',
+                'unidad_medida': 70,
                 'cantidad': '2.00',
                 'descuento': '100.00',
                 'valor_unitario': '500.00',
@@ -5661,6 +5685,20 @@ class FormatoFacturaTests(TenantTestCase):
         self.assertEqual(self._numeros_de_pagina([factura, nota]), [(1, 1)])
 
 
+def _contacto_facturacion(correo_facturacion='facturas@x.com'):
+    """Un cliente con lo mínimo para notificarle, y con el correo de facturación dado."""
+    pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
+    estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+    return GenContacto.objects.create(
+        numero_identificacion='901998045', nombre_corto='CLIENTE SAS',
+        identificacion=GenIdentificacion.objects.create(id=6, nombre='NIT', abreviatura='NIT'),
+        tipo_persona=GenTipoPersona.objects.create(id=1, nombre='Jurídica'),
+        ciudad=GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado),
+        direccion='CR 51 9 30', telefono='3044769718', correo='general@x.com',
+        correo_facturacion_electronica=correo_facturacion,
+    )
+
+
 class NotificarTests(TenantTestCase):
     """
     Notificar: solo lo que la DIAN validó, con la representación gráfica que arma
@@ -5679,13 +5717,14 @@ class NotificarTests(TenantTestCase):
             documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
         )
         GenParametro.objects.create(id=1, gen_factura_electronica_activa=True, gen_rededoc_emisor=77)
+        self.contacto = _contacto_facturacion()
         self.factory = APIRequestFactory()
 
     def _documento(self, **overrides):
         datos = {
             'documento_tipo': self.tipo, 'fecha': date(2026, 9, 17), 'numero': 2813,
             'estado_aprobado': True, 'estado_electronico_enviado': True, 'estado_electronico': True,
-            'cue': 'cufe-de-prueba', 'electronico_id': uuid_lib.uuid4(),
+            'cue': 'cufe-de-prueba', 'electronico_id': uuid_lib.uuid4(), 'contacto': self.contacto,
         }
         datos.update(overrides)
         return GenDocumento.objects.create(**datos)
@@ -5776,6 +5815,14 @@ class NotificarTests(TenantTestCase):
         documento = self._documento(estado_electronico=False, cue='cufe-de-prueba')
         self._no_envia({'ids': [documento.id]}, 400, 'no ha sido validado')
 
+    def test_sin_correo_de_facturacion_no_se_notifica(self):
+        """El correo general no sirve de respaldo: el cliente dice dónde recibe sus facturas."""
+        GenContacto.objects.filter(pk=self.contacto.pk).update(correo_facturacion_electronica='')
+        self._no_envia({'ids': [self._documento().id]}, 400, 'no tiene correo de facturación')
+
+    def test_sin_cliente_no_se_notifica(self):
+        self._no_envia({'ids': [self._documento(contacto=None).id]}, 400, 'no tiene correo de facturación')
+
     def test_uno_sin_validar_no_deja_notificar_los_validados(self):
         valido = self._documento()
         sin_validar = self._documento(numero=2814, estado_electronico=False, cue=None)
@@ -5798,9 +5845,11 @@ class NotificarDocumentoTareaTests(TenantTestCase):
         tipo = GenDocumentoTipo.objects.create(
             id=1, nombre='FACTURA', documento_clase=GenDocumentoClase.objects.create(id=100, nombre='FV'),
         )
+        self.contacto = _contacto_facturacion()
         self.documento = GenDocumento.objects.create(
             documento_tipo=tipo, fecha=date(2026, 9, 17), estado_aprobado=True,
             estado_electronico=True, cue='cufe', electronico_id=uuid_lib.uuid4(),
+            contacto=self.contacto,
         )
 
     def _correr(self):
@@ -5816,6 +5865,19 @@ class NotificarDocumentoTareaTests(TenantTestCase):
         with mock.patch.object(factura_electronica, 'notificar') as notificar:
             self._correr()
         notificar.assert_called_once_with([self.documento.id])
+
+    def test_sin_correo_de_facturacion_no_notifica_ni_es_error(self):
+        """Queda pendiente, a la vista en la pantalla de pendientes; no se reintenta."""
+        GenContacto.objects.filter(pk=self.contacto.pk).update(correo_facturacion_electronica=None)
+        with mock.patch.object(factura_electronica, 'notificar') as notificar, \
+                mock.patch.object(tareas.notificar_documento, 'retry') as reintentar:
+            resultado = self._correr()
+
+        self.assertEqual(resultado.state, 'SUCCESS')
+        notificar.assert_not_called()
+        reintentar.assert_not_called()
+        self.documento.refresh_from_db()
+        self.assertFalse(self.documento.estado_electronico_notificado)
 
     def test_uno_ya_notificado_no_se_vuelve_a_notificar(self):
         """La tarea puede correr dos veces; la segunda no le manda otro correo al cliente."""
@@ -5857,3 +5919,56 @@ class NotificarDocumentoTareaTests(TenantTestCase):
 
         self.assertEqual(resultado.state, 'SUCCESS')
         reintentar.assert_not_called()
+
+
+
+class FiltroNotificadoTests(TenantTestCase):
+    """Lo que necesita la pantalla de pendientes por notificar: filtrar y ver los estados electrónicos."""
+
+    def setUp(self):
+        self.tipo = GenDocumentoTipo.objects.create(id=1, nombre='FACTURA')
+
+    def _filtrar(self, filtros):
+        from utilidades.filtros import aplicar_filtros
+
+        return list(aplicar_filtros(
+            GenDocumento.objects.all(), filtros, GenDocumentoSerializer.campos_filtrables,
+        ))
+
+    def test_pendientes_por_notificar_son_los_validados_sin_notificar(self):
+        notificado = GenDocumento.objects.create(
+            documento_tipo=self.tipo, estado_electronico=True, estado_electronico_notificado=True,
+        )
+        sin_validar = GenDocumento.objects.create(documento_tipo=self.tipo)
+        pendiente = GenDocumento.objects.create(documento_tipo=self.tipo, estado_electronico=True)
+
+        filtrados = self._filtrar([
+            {'propiedad': 'estado_electronico', 'operador': '=', 'valor': True},
+            {'propiedad': 'estado_electronico_notificado', 'operador': '=', 'valor': False},
+        ])
+
+        self.assertEqual(filtrados, [pendiente])
+        self.assertNotIn(notificado, filtrados)
+        self.assertNotIn(sin_validar, filtrados)
+
+    def test_la_respuesta_trae_los_estados_electronicos(self):
+        documento = GenDocumento.objects.create(
+            documento_tipo=self.tipo, estado_electronico=True, estado_electronico_notificado=False,
+        )
+        datos = GenDocumentoSerializer(documento).data
+
+        self.assertIs(datos['estado_electronico'], True)
+        self.assertIs(datos['estado_electronico_notificado'], False)
+
+    def test_los_estados_electronicos_no_se_escriben_desde_el_front(self):
+        documento = GenDocumento.objects.create(documento_tipo=self.tipo)
+        serializador = GenDocumentoSerializer(
+            documento, data={'estado_electronico': True, 'estado_electronico_notificado': True},
+            partial=True,
+        )
+        serializador.is_valid(raise_exception=True)
+        serializador.save()
+
+        documento.refresh_from_db()
+        self.assertFalse(documento.estado_electronico)
+        self.assertFalse(documento.estado_electronico_notificado)

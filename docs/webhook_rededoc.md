@@ -3,8 +3,9 @@
 Estado: **implementado del lado de torio**: vista `contenedor/views/rededoc.py`, firma en
 `general/servicios/rededoc.py` (`firmar_aviso`, `firma_valida`), aplicación del aviso en
 `general/servicios/factura_electronica.py` (`procesar_aviso`), con tests en
-`contenedor/tests_rededoc.py`. **Del lado de nobelio falta el envío**: hoy el modelo
-`Webhook` solo guarda la URL y las banderas.
+`contenedor/tests_rededoc.py`. **Nobelio ya envía los avisos** (`apps/emisores/servicios/
+webhooks.py`), y el flujo completo —emitir, validación, notificación— está probado de punta
+a punta.
 
 Este documento es el contrato: lo que nobelio tiene que mandar y cómo tiene que leer la
 respuesta. Lo que no esté acá no forma parte del contrato.
@@ -65,7 +66,7 @@ Todo error trae `detail` con el mensaje. Un 200 no trae cuerpo.
 | `401` | Firma inválida o fecha fuera de la ventana (sección 4) | Sí, **firmando de nuevo** con la hora actual. Si persiste, es el secreto o el reloj |
 | `404` | El cliente no existe, o el documento no está en ese cliente. Es la misma respuesta en los dos casos, a propósito | No |
 | `409` | `validacion` de un documento que ya estaba validado. Torio **no** lo reescribe | No: es definitivo |
-| `429` | Límite de peticiones de torio | Sí, con espera |
+| `429` | Límite de peticiones de torio: 600 por minuto desde una misma IP | Sí, con espera |
 | `5xx`, timeout, sin conexión | Falla de torio o de la red | Sí, con espera |
 
 Sobre el `409`: si torio aplicó una validación pero su `200` se perdió en la red, el
@@ -151,14 +152,16 @@ preferible a aceptarlos sin verificar.
 
 ## 5. De dónde sale el `cliente`
 
-Rededoc no conoce los tenants de torio: torio tiene que decírselo. Esto **todavía no está
-decidido**. Las dos opciones que se discutieron:
+Rededoc no conoce los tenants de torio: torio se lo dice **al crear el emisor**. En
+`POST /api/emisores/emisor/` va `referencia_externa` con el id del cliente (tenant) en
+torio (`general/servicios/factura_electronica.py`, `crear_emisor`). Rededoc lo guarda en
+el emisor y lo devuelve como `cliente` en cada aviso de ese emisor.
 
-- Guardarlo en el emisor al crearlo (un campo genérico como `referencia_externa`, no
-  `tenant_id`, para que sirva a cualquier ERP), y que rededoc lo copie en cada aviso.
-- Que torio registre el `Webhook` del emisor al crearlo, con el cliente en la URL.
+El nombre es genérico a propósito —`referencia_externa` y no `tenant_id`—: es lo que el
+ERP que integra quiera usar para reconocer a sus emisores, no un concepto de torio.
 
-La segunda cambiaría la URL de la sección 2, y el `cliente` dejaría de ir en el cuerpo.
+Un emisor creado antes de esto no tiene `referencia_externa`, y sus avisos no pueden
+llegar a ningún tenant: hay que completarlo en rededoc con el id del cliente.
 
 ## 6. Qué no hace el webhook
 

@@ -160,6 +160,9 @@ REST_FRAMEWORK = {
         'mfa_verificar': '10/min',
         'mfa_gestion': '10/hour',
         'mfa_envio_codigo': '3/min',
+        # Los avisos de rededoc llegan todos de la misma IP, y un lote grande de
+        # validaciones son cientos seguidos: el `anon` de 60/min los frenaba.
+        'rededoc_webhook': '600/min',
     },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }

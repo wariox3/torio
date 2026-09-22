@@ -6,6 +6,7 @@ from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, NotFound
 from rest_framework.permissions import AllowAny
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.response import Response
 
 from contenedor.models import CtnCliente
@@ -66,6 +67,10 @@ class RededocAvisoSerializer(serializers.Serializer):
 
 @extend_schema(tags=['Rededoc'])
 class CtnRededocViewSet(viewsets.GenericViewSet):
+    # El alcance del `ScopedRateThrottle` del webhook. Va en la clase y no en el
+    # `@action`: el router pasa los kwargs de la acción a `as_view`, que solo
+    # acepta atributos que la clase ya declare.
+    throttle_scope = 'rededoc_webhook'
 
     @extend_schema(
         summary='Webhook RedEDoc',
@@ -88,6 +93,11 @@ class CtnRededocViewSet(viewsets.GenericViewSet):
         methods=['post'],
         permission_classes=[AllowAny],
         authentication_classes=[],
+        # Límite propio y no el `anon` general: corre antes que la firma, por IP, y
+        # todos los avisos legítimos vienen de la misma, la de rededoc. Lo cuenta
+        # cada worker de gunicorn por separado; la protección seria contra una
+        # inundación va en Nginx (`limit_req`), que cuenta en todo el servidor.
+        throttle_classes=[ScopedRateThrottle],
         url_path='webhook',
     )
     def webhook(self, request):

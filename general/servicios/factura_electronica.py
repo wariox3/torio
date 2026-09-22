@@ -15,6 +15,8 @@ aparte.
 
 from decimal import ROUND_HALF_UP, Decimal
 
+from django.db import connection
+
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 
@@ -87,6 +89,10 @@ def crear_emisor(cliente: Rededoc = None) -> GenParametro:
         'direccion': configuracion.gen_empresa_direccion,
         'telefono': configuracion.gen_empresa_telefono or '',
         'correo': configuracion.gen_empresa_correo or '',
+        # El tenant de torio. Rededoc lo guarda en el emisor y lo devuelve como
+        # `cliente` en cada aviso del webhook: es como el webhook sabe a qué
+        # schema entrar (ver docs/webhook_rededoc.md §5).
+        'referencia_externa': connection.tenant.id,
     }
 
     respuesta = cliente.crear_emisor(payload)
@@ -162,7 +168,10 @@ def cargar_certificado(archivo, clave, cliente: Rededoc = None) -> dict:
 # Lo que torio todavía no modela y rededoc exige. Valores fijos mientras no haya
 # de dónde sacarlos.
 MONEDA = 35  # COP, id del catálogo de monedas de rededoc
-UNIDAD_MEDIDA = '94'  # Unidad
+# Unidad (código DIAN 94). Va el id del catálogo de rededoc, no el código: rededoc
+# convierte a entero lo que parece número y lo busca como id, y el id 94 es «pie
+# cúbico por hora». El error no avisa, sale en la factura.
+UNIDAD_MEDIDA = 70
 MEDIO_PAGO_NO_DEFINIDO = '1'  # Instrumento no definido
 FORMA_PAGO_CONTADO = '1'
 FORMA_PAGO_CREDITO = '2'
@@ -439,13 +448,26 @@ def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenD
 
 # ------------------------------------------------------------ notificar ----
 
+def tiene_correo_facturacion(documento):
+    """
+    ¿Se le puede notificar? Solo al correo de facturación electrónica del cliente.
+
+    El correo general no sirve de respaldo: el cliente dice a dónde quiere recibir
+    sus facturas, y un contacto sin ese correo no se notifica —queda pendiente, a la
+    vista en la pantalla de pendientes por notificar, hasta que alguien lo cargue—.
+    """
+    contacto = documento.contacto
+    return bool(contacto and (contacto.correo_facturacion_electronica or '').strip())
+
+
 def notificar(documento_ids, cliente: Rededoc = None) -> list:
     """
     Le entrega cada documento a su adquiriente a través de rededoc y devuelve los ids
     de los que quedaron notificados.
 
-    Solo se notifica lo que la DIAN ya validó: la representación gráfica lleva el
-    CUFE y la fecha de validación, y rededoc rechaza lo que no esté aceptado. Un
+    Solo se notifica lo que la DIAN ya validó —la representación gráfica lleva el
+    CUFE y la fecha de validación, y rededoc rechaza lo que no esté aceptado— y a un
+    cliente con correo de facturación electrónica (`tiene_correo_facturacion`). Un
     documento ya notificado se puede volver a notificar: es la forma de reenviarle
     la factura a un cliente que la perdió, o después de corregirle el correo.
 
@@ -477,6 +499,11 @@ def notificar(documento_ids, cliente: Rededoc = None) -> list:
         if not (documento.estado_electronico and documento.cue and documento.electronico_id):
             raise ErrorFacturaElectronica(
                 f'El documento {documento_id} todavía no ha sido validado por la DIAN.'
+            )
+        if not tiene_correo_facturacion(documento):
+            raise ErrorFacturaElectronica(
+                f'El cliente del documento {documento_id} no tiene correo de facturación '
+                'electrónica.'
             )
 
     cliente = cliente or Rededoc()

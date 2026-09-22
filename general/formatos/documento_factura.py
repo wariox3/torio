@@ -33,7 +33,6 @@ from reportlab.lib.utils import ImageReader
 from reportlab.platypus import Image, Paragraph, Spacer, Table, TableStyle
 
 from general.formatos.base import FormatoBase
-from general.servicios import logotipo
 from utilidades.formatos import configuracion_actual, datos_empresa
 from utilidades.formatos.pagina import ANCHO_CONTENIDO, anchos
 from utilidades.numero_letras import valor_en_letras
@@ -268,6 +267,11 @@ class FormatoDocumentoFactura(FormatoBase):
         Un logotipo ilegible se trata como si no estuviera: que alguien haya guardado
         bytes rotos no es motivo para que no salga la factura.
         """
+        # El import va acá y no arriba: `general.servicios` carga
+        # `documento_imprimir`, que importa los formatos, y desde el módulo sería
+        # circular si algo importa `general.formatos` antes que los servicios.
+        from general.servicios import logotipo
+
         datos = logotipo.bytes_logotipo(configuracion)
         if datos is None:
             return Spacer(LADO_LOGO, LADO_LOGO)

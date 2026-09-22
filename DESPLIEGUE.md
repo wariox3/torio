@@ -29,9 +29,11 @@ Linux con **PostgreSQL + Gunicorn + Nginx + systemd**.
 
 Puntos clave específicos de este proyecto:
 
-- **Settings de producción ya cableados.** `torioapp/wsgi.py` y `asgi.py` hacen
-  `setdefault('DJANGO_SETTINGS_MODULE', 'torioapp.settings.prod')`. Aun así, lo
-  fijamos explícitamente en el servicio systemd.
+- **Los settings de producción los fija systemd, y es obligatorio.** `wsgi.py`,
+  `asgi.py`, `celery.py` y `manage.py` arrancan todos con los de **desarrollo** si no
+  se les dice otra cosa. Las unidades `torio` (§8) y `torio-celery` (§8.1) fijan
+  `DJANGO_SETTINGS_MODULE=torioapp.settings.prod`, y el script de actualización (§10)
+  lo pasa con `env`: sin eso el servidor correría con `DEBUG = True`.
 - **Multi-tenancy por header `X-Tenant`** (`seguridad.middleware.TenantHeaderMiddleware`,
   primero en `MIDDLEWARE`):
   - Sin header (o con el nombre del schema público) → opera en el **schema público**
@@ -366,6 +368,8 @@ Group=torio
 WorkingDirectory=/opt/torio
 
 # Entorno mínimo. El resto de la config la lee la app desde /opt/torio/.env
+# Obligatorio: sin esta línea `wsgi.py` arranca con los settings de desarrollo
+# (DEBUG = True).
 Environment=DJANGO_SETTINGS_MODULE=torioapp.settings.prod
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
@@ -505,6 +509,8 @@ User=torio
 Group=torio
 WorkingDirectory=/opt/torio
 
+# Obligatorio: sin esta línea `celery.py` arranca con los settings de desarrollo
+# (DEBUG = True).
 Environment=DJANGO_SETTINGS_MODULE=torioapp.settings.prod
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1

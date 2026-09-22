@@ -15,6 +15,10 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         'id', 'numero', 'fecha', 'fecha_vence', 'documento_tipo_id', 'contacto_id',
         'contacto__nombre_corto', 'contacto__numero_identificacion',
         'centro_costo_id', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado',
+        # Los pendientes por notificar son `estado_electronico=True` y
+        # `estado_electronico_notificado=False`: sin el primero saldrían también las
+        # que la DIAN todavía no ha validado, que no se pueden notificar.
+        'estado_electronico', 'estado_electronico_notificado',
         'afectado', 'pendiente',
         # Banderas del tipo: permiten acotar por naturaleza del documento sin
         # tener que enumerar los ids de tipo que caen de cada lado.
@@ -126,6 +130,11 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'estado_aprobado',
             'estado_anulado',
             'estado_contabilizado',
+            # Los escriben el webhook de rededoc y la notificación, nunca el front:
+            # escribibles, una factura podría quedar como validada sin que la DIAN
+            # la hubiera aceptado.
+            'estado_electronico',
+            'estado_electronico_notificado',
         ]
         read_only_fields = [
             'id',
@@ -146,6 +155,11 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'estado_aprobado',
             'estado_anulado',
             'estado_contabilizado',
+            # Los escriben el webhook de rededoc y la notificación, nunca el front:
+            # escribibles, una factura podría quedar como validada sin que la DIAN
+            # la hubiera aceptado.
+            'estado_electronico',
+            'estado_electronico_notificado',
         ]
 
     def validate(self, datos):

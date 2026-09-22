@@ -13,10 +13,12 @@ from datetime import date, datetime
 
 from unittest import mock
 
+from django.core.cache import cache
 from django.test import override_settings
 from django.utils import timezone
 from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIRequestFactory
+from rest_framework.throttling import ScopedRateThrottle
 
 from contenedor.views.rededoc import CtnRededocViewSet
 from general.models import GenDocumento, GenDocumentoClase, GenDocumentoTipo
@@ -33,6 +35,8 @@ class WebhookRededocTests(TenantTestCase):
         ajustes = override_settings(REDEDOC_WEBHOOK_SECRETO=SECRETO, REDEDOC_WEBHOOK_SECRETO_ANTERIOR='')
         ajustes.enable()
         self.addCleanup(ajustes.disable)
+        # El throttle cuenta en la caché del proceso, que sobrevive entre pruebas.
+        cache.clear()
         tipo = GenDocumentoTipo.objects.create(
             id=1, nombre='FACTURA', documento_clase=GenDocumentoClase.objects.create(id=100, nombre='FV'),
         )
@@ -251,3 +255,24 @@ class WebhookRededocTests(TenantTestCase):
 
         self.assertEqual(respuesta.status_code, 409)
         delay.assert_not_called()
+
+    # ---- límite de peticiones ----
+
+    def test_tiene_su_propio_limite_de_600_por_minuto(self):
+        self.assertEqual(CtnRededocViewSet.webhook.kwargs['throttle_classes'], [ScopedRateThrottle])
+        self.assertEqual(CtnRededocViewSet.throttle_scope, 'rededoc_webhook')
+        self.assertEqual(ScopedRateThrottle.THROTTLE_RATES['rededoc_webhook'], '600/min')
+
+    def test_pasado_el_limite_responde_429_con_detail(self):
+        with mock.patch.dict(ScopedRateThrottle.THROTTLE_RATES, {'rededoc_webhook': '2/min'}):
+            respuestas = [self._llamar(tipo='notificacion').status_code for _ in range(3)]
+            ultima = self._llamar(tipo='notificacion')
+
+        self.assertEqual(respuestas, [200, 200, 429])
+        self.assertEqual(ultima.status_code, 429)
+        self.assertIn('detail', ultima.data)
+
+    def test_el_limite_del_webhook_no_es_el_anonimo_general(self):
+        """Con el `anon` de 60/min, un lote de 61 validaciones ya recibía 429."""
+        for _ in range(61):
+            self.assertEqual(self._llamar(tipo='notificacion').status_code, 200)
