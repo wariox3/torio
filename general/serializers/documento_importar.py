@@ -1,7 +1,6 @@
 from rest_framework import serializers
 
 from contabilidad.models import ConCentroCosto
-from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
 from general.models import (
     GenAsesor,
     GenContacto,
@@ -11,6 +10,7 @@ from general.models import (
     GenPlazoPago,
     GenSector,
 )
+from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
 
 
 class GenDocumentoImportarSerializer(serializers.Serializer):

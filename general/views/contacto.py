@@ -11,7 +11,11 @@ from general.serializers import (
     GenContactoSerializer,
 )
 from seguridad.permissions import TienePermisoModelo
-from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
+from utilidades.mixins import (
+    ExportarExcelMixin,
+    FiltrosDinamicosMixin,
+    ImportarExcelMixin,
+)
 from utilidades.paginacion import SeleccionarPaginacion
 
 _SELECCIONAR_PARAMS = [

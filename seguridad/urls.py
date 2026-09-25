@@ -13,8 +13,8 @@ from seguridad.views import (
     SegMfaViewSet,
     SegPermisoViewSet,
     SegRolViewSet,
-    SegUsuarioViewSet,
     SegUsuarioClienteViewSet,
+    SegUsuarioViewSet,
 )
 
 router = DefaultRouter()

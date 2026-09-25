@@ -4,7 +4,10 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 
 from contenedor.models import CtnIdentificacion
-from contenedor.serializers import CtnIdentificacionSeleccionarSerializer, CtnIdentificacionSerializer
+from contenedor.serializers import (
+    CtnIdentificacionSeleccionarSerializer,
+    CtnIdentificacionSerializer,
+)
 from utilidades.paginacion import SeleccionarPaginacion
 
 _LIST_PARAMS = [

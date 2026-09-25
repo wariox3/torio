@@ -25,7 +25,6 @@ from utilidades.mixins import FiltrosDinamicosMixin, ImportarExcelMixin
 from utilidades.mixins.filtros import BusquedaRequest
 from utilidades.throttles import ImportarUsuarioTenantThrottle
 
-
 # Solo se regeneran horas de los documentos de este tipo (programación de turnos).
 DOCUMENTO_TIPO_REGENERAR_HORAS = 35
 

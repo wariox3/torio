@@ -11,6 +11,7 @@ from rest_framework.response import Response
 
 from general.models import GenDocumento, GenDocumentoDetalle
 from humano.models import HumContrato
+from seguridad.permissions import TienePermisoModelo
 from turno.models import TurProgramacion
 from turno.serializers import (
     TurProgramacionExportarSerializer,
@@ -25,8 +26,11 @@ from turno.servicios import (
     eliminar_programaciones,
     generar_programacion,
 )
-from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
-from seguridad.permissions import TienePermisoModelo
+from utilidades.mixins import (
+    ExportarExcelMixin,
+    FiltrosDinamicosMixin,
+    ImportarExcelMixin,
+)
 
 
 class ItemCrearProgramacionSerializer(serializers.Serializer):

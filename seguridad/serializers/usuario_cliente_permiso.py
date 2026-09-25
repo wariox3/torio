@@ -2,6 +2,7 @@ from django.contrib.auth.models import Group, Permission
 from rest_framework import serializers
 
 from seguridad.models import SegUsuarioCliente
+
 # Import directo del módulo, no del paquete: `seguridad.serializers.__init__`
 # importa este archivo y volver a entrar por ahí sería circular.
 from seguridad.serializers.permiso import SegPermisoSerializer

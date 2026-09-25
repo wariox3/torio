@@ -11,8 +11,8 @@ from contenedor.views import (
     CtnMovimientoViewSet,
     CtnPaisViewSet,
     CtnRededocViewSet,
-    CtnSuscripcionViewSet,
     CtnSuscripcionTipoViewSet,
+    CtnSuscripcionViewSet,
 )
 
 router = DefaultRouter()

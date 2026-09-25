@@ -6,21 +6,18 @@ from unittest.mock import patch
 import pyotp
 from botocore.exceptions import ConnectionClosedError
 from cryptography.fernet import Fernet
-from django.core.files.uploadedfile import SimpleUploadedFile
-from PIL import Image
 from django.conf import settings
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
+from PIL import Image
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from seguridad import acceso as servicio_acceso
 from seguridad import foto
 from seguridad import mfa as servicio_mfa
-from seguridad.serializers import SegUsuarioMeSerializer
-from utilidades import backblaze, imagenes
-from utilidades.telefono import a_nacional, normalizar_e164
 from seguridad.models import (
     METODO_CORREO,
     METODO_SMS,
@@ -37,6 +34,9 @@ from seguridad.models import (
     SegMfaUsuario,
     SegUsuario,
 )
+from seguridad.serializers import SegUsuarioMeSerializer
+from utilidades import backblaze, imagenes
+from utilidades.telefono import a_nacional, normalizar_e164
 
 # Clave propia para los tests: no dependen de la que haya en el `.env` del entorno.
 _CLAVE_MFA = Fernet.generate_key().decode()

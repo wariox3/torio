@@ -8,28 +8,33 @@ from decimal import Decimal
 from unittest import mock
 
 import httpx
-from PIL import Image, ImageDraw
-from reportlab.platypus import Spacer
 from botocore.exceptions import ClientError, ConnectionClosedError
+from celery.exceptions import Retry
 from django.apps import apps
 from django.conf import settings
-from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.db import IntegrityError, connection, transaction
 from django.test import SimpleTestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django_tenants.test.cases import TenantTestCase
+from PIL import Image, ImageDraw
+from reportlab.platypus import Spacer
 from rest_framework import permissions
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from contabilidad.models import ConCentroCosto, ConComprobante, ConCuenta
+from general import tasks as tareas
+from general.formatos import FormatoDocumentoFactura
 from general.models import (
     GenArchivo,
     GenArchivoTipo,
     GenAsesor,
+    GenCiudad,
     GenConfiguracion,
+    GenContacto,
     GenCuentaBanco,
     GenCuentaBancoTipo,
     GenDocumento,
@@ -38,13 +43,11 @@ from general.models import (
     GenDocumentoImpuesto,
     GenDocumentoPago,
     GenDocumentoTipo,
+    GenEstado,
     GenFestivo,
     GenFormaPago,
-    GenContacto,
-    GenImpuesto,
-    GenCiudad,
-    GenEstado,
     GenIdentificacion,
+    GenImpuesto,
     GenItem,
     GenModalidad,
     GenModelo,
@@ -56,39 +59,34 @@ from general.models import (
     GenResolucion,
     GenTipoPersona,
 )
-from general.servicios import documento as documento_servicio
-from general.servicios import documento_pago as documento_pago_servicio
-from general.servicios import factura_electronica
-from general.servicios import documento_imprimir
-from general import tasks as tareas
-from celery.exceptions import Retry
-from general.formatos import FormatoDocumentoFactura
-from general.servicios import rededoc as rededoc_servicio
 from general.serializers import (
     GenAsesorImportarSerializer,
     GenConfiguracionSerializer,
     GenDocumentoCrearSerializer,
+    GenDocumentoDetalleImportarSerializer,
     GenDocumentoDetalleSerializer,
     GenDocumentoGenerarRecurrenteSerializer,
     GenDocumentoImportarSerializer,
     GenDocumentoSerializer,
-    GenDocumentoDetalleImportarSerializer,
     GenParametroSerializer,
     GenPrecioDetalleImportarSerializer,
 )
-from general.servicios import logotipo
+from general.servicios import archivo as archivo_servicio
+from general.servicios import documento as documento_servicio
+from general.servicios import documento_imprimir, factura_electronica, logotipo
+from general.servicios import documento_pago as documento_pago_servicio
+from general.servicios import rededoc as rededoc_servicio
 from general.views.archivo import GenArchivoViewSet
 from general.views.configuracion import GenConfiguracionViewSet
 from general.views.documento import GenDocumentoViewSet
 from general.views.documento_detalle import GenDocumentoDetalleViewSet
 from general.views.documento_pago import GenDocumentoPagoViewSet
 from general.views.factura_electronica import GenFacturaElectronicaViewSet
-from general.views.parametro import GenParametroViewSet
 from general.views.modelo import GenModeloViewSet
+from general.views.parametro import GenParametroViewSet
 from general.views.precio_detalle import GenPrecioDetalleViewSet
-from seguridad.models import SegUsuario
-from general.servicios import archivo as archivo_servicio
 from inventario.models import InvAlmacen, InvExistencia
+from seguridad.models import SegUsuario
 from utilidades import backblaze, mime
 from utilidades.formatos import EncabezadoEmpresa, datos_empresa
 from utilidades.formatos.empresa import LADO_LOGO, SEPARACION_LOGO

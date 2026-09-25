@@ -3,19 +3,28 @@ import logging
 from django.conf import settings
 from django.core import signing
 from django.db import models
-from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+    inline_serializer,
+)
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
-from rest_framework.parsers import MultiPartParser
-
 from seguridad import mfa as servicio_mfa
 from seguridad.foto import subir_foto
 from seguridad.models import METODO_SMS, SegMfaUsuario, SegUsuario
-from seguridad.serializers import SegUsuarioActualizarSerializer, SegUsuarioMeSerializer, SegUsuarioSeleccionarSerializer, SegUsuarioSerializer
+from seguridad.serializers import (
+    SegUsuarioActualizarSerializer,
+    SegUsuarioMeSerializer,
+    SegUsuarioSeleccionarSerializer,
+    SegUsuarioSerializer,
+)
 from utilidades.paginacion import SeleccionarPaginacion
 from utilidades.telefono import a_nacional, normalizar_e164
 from utilidades.turnstile import verify_turnstile

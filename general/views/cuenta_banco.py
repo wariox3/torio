@@ -10,7 +10,11 @@ from general.serializers import (
     GenCuentaBancoSerializer,
 )
 from seguridad.permissions import TienePermisoModelo
-from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
+from utilidades.mixins import (
+    ExportarExcelMixin,
+    FiltrosDinamicosMixin,
+    ImportarExcelMixin,
+)
 from utilidades.paginacion import SeleccionarPaginacion
 
 _LIST_PARAMS = [

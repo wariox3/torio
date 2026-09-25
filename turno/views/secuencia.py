@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
+from seguridad.permissions import TienePermisoModelo
 from turno.models import TurSecuencia
 from turno.serializers import (
     TurSecuenciaExportarSerializer,
@@ -14,8 +15,11 @@ from turno.serializers import (
     TurSecuenciaSerializer,
 )
 from turno.servicios import calcular_mes
-from seguridad.permissions import TienePermisoModelo
-from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
+from utilidades.mixins import (
+    ExportarExcelMixin,
+    FiltrosDinamicosMixin,
+    ImportarExcelMixin,
+)
 from utilidades.paginacion import SeleccionarPaginacion
 
 _LIST_PARAMS = [

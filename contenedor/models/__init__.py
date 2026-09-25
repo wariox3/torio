@@ -1,11 +1,11 @@
 from .ciudad import CtnCiudad
-from .invitacion import CtnInvitacion, CtnInvitacionGrupo
 from .cliente import CtnCliente
 from .contacto import CtnContacto
 from .dominio import CtnDominio
 from .estado import CtnEstado
 from .evento_pago import CtnEventoPago
 from .identificacion import CtnIdentificacion
+from .invitacion import CtnInvitacion, CtnInvitacionGrupo
 from .movimiento import CtnMovimiento
 from .pais import CtnPais
 from .suscripcion import CtnSuscripcion

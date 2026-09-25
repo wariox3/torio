@@ -10,7 +10,6 @@ import json
 import time
 import uuid
 from datetime import date, datetime
-
 from unittest import mock
 
 from django.core.cache import cache

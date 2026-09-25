@@ -2,7 +2,10 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
 
 from general.models import GenPrecioDetalle
-from general.serializers import GenPrecioDetalleImportarSerializer, GenPrecioDetalleSerializer
+from general.serializers import (
+    GenPrecioDetalleImportarSerializer,
+    GenPrecioDetalleSerializer,
+)
 from utilidades.mixins import FiltrosDinamicosMixin, ImportarExcelMixin
 
 _LIST_PARAMS = [

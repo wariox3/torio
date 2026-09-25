@@ -14,12 +14,12 @@ from rest_framework.exceptions import NotFound, ValidationError
 from contabilidad.models import ConMovimiento, ConPeriodo
 from contabilidad.servicios.movimiento import TOLERANCIA_DESCUADRE
 from general.models import GenDocumento, GenDocumentoImpuesto
-from seguridad.contexto import obtener_usuario_actual
 from humano.models import (
     HumConceptoCuenta,
     HumConfiguracionAporte,
     HumConfiguracionProvision,
 )
+from seguridad.contexto import obtener_usuario_actual
 
 CERO = Decimal('0')
 DEBITO = 'D'

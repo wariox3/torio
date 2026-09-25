@@ -7,7 +7,9 @@ from reportlab.platypus import PageBreak
 from rest_framework.exceptions import ValidationError
 
 from general.formatos import (
-    FormatoDocumentoEgreso, FormatoDocumentoFactura, FormatoDocumentoGenerico,
+    FormatoDocumentoEgreso,
+    FormatoDocumentoFactura,
+    FormatoDocumentoGenerico,
     FormatoDocumentoPago,
 )
 from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA

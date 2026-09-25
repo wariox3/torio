@@ -15,9 +15,13 @@ from contabilidad.serializers import (
 from contabilidad.servicios import inconsistencias_excel
 from contabilidad.servicios.movimiento import analizar_inconsistencias
 from contabilidad.views.periodo import InconsistenciasResponse
-from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
-from utilidades.paginacion import SeleccionarPaginacion
 from seguridad.permissions import TienePermisoModelo
+from utilidades.mixins import (
+    ExportarExcelMixin,
+    FiltrosDinamicosMixin,
+    ImportarExcelMixin,
+)
+from utilidades.paginacion import SeleccionarPaginacion
 
 _LIST_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por detalle o cuenta'),

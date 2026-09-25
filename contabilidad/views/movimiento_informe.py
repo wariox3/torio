@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from contabilidad.formatos import FormatoCertificadoRetencion
 from contabilidad.models import ConMovimiento
 from contabilidad.serializers import (
     ConMovimientoInformeAuxiliarContactoSerializer,
@@ -21,7 +22,6 @@ from contabilidad.serializers import (
     ConMovimientoInformeEstadoSerializer,
     ConMovimientoInformeEstadoTotalesSerializer,
 )
-from contabilidad.formatos import FormatoCertificadoRetencion
 from contabilidad.servicios import balance, balance_excel
 from general.models import GenConfiguracion
 from utilidades.filtros import aplicar_filtros

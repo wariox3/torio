@@ -2,7 +2,12 @@ import logging
 
 from django.conf import settings
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+    inline_serializer,
+)
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -10,7 +15,11 @@ from rest_framework.response import Response
 from tenant_users.tenants.models import ExistsError
 
 from contenedor.models import CtnInvitacion
-from contenedor.serializers import CtnInvitacionClienteSerializer, CtnInvitacionCrearSerializer, CtnInvitacionSerializer
+from contenedor.serializers import (
+    CtnInvitacionClienteSerializer,
+    CtnInvitacionCrearSerializer,
+    CtnInvitacionSerializer,
+)
 from seguridad.models import CAMPOS_ACCESO, SegUsuario, SegUsuarioCliente
 from utilidades.zinc import Zinc
 

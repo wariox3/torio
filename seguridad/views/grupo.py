@@ -1,5 +1,5 @@
-from drf_spectacular.utils import OpenApiParameter, extend_schema
 from django.contrib.auth.models import Group
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
 from rest_framework.permissions import IsAuthenticated
 

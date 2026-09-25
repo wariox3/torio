@@ -3,7 +3,13 @@ from decimal import Decimal, InvalidOperation
 
 from rest_framework import serializers
 
-from contabilidad.models import ConActivo, ConActivoGrupo, ConCentroCosto, ConCuenta, ConMetodoDepreciacion
+from contabilidad.models import (
+    ConActivo,
+    ConActivoGrupo,
+    ConCentroCosto,
+    ConCuenta,
+    ConMetodoDepreciacion,
+)
 
 
 class ConActivoImportarSerializer(serializers.Serializer):

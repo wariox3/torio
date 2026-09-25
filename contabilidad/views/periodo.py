@@ -16,8 +16,13 @@ from contabilidad.serializers import (
 )
 from contabilidad.servicios.movimiento import analizar_inconsistencias
 from seguridad.permissions import TienePermisoModelo
-from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
+from utilidades.mixins import (
+    ExportarExcelMixin,
+    FiltrosDinamicosMixin,
+    ImportarExcelMixin,
+)
 from utilidades.paginacion import SeleccionarPaginacion
+
 
 class CrearPeriodosAnioRequestSerializer(serializers.Serializer):
     anio = serializers.IntegerField(min_value=2000, max_value=2100)

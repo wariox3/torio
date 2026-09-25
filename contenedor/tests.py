@@ -16,15 +16,20 @@ from django_tenants.utils import get_public_schema_name, schema_context
 from rest_framework import permissions
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from contenedor.models import CtnCliente, CtnInvitacion, CtnSuscripcion, CtnSuscripcionTipo
+from contenedor.models import (
+    CtnCliente,
+    CtnInvitacion,
+    CtnSuscripcion,
+    CtnSuscripcionTipo,
+)
 from contenedor.views.cliente import (
     DIAS_PRUEBA,
     SUSCRIPCION_TIPO_PRUEBA_ID,
     CtnClienteViewSet,
     _cargar_catalogos,
 )
-from general.models import GenCiudad, GenContacto
 from contenedor.views.invitacion import CtnInvitacionViewSet
+from general.models import GenCiudad, GenContacto
 from seguridad.models import CAMPOS_ACCESO, SegUsuario, SegUsuarioCliente
 
 

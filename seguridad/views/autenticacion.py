@@ -22,7 +22,11 @@ from seguridad.models import (
     RESULTADO_OK,
     SegUsuario,
 )
-from seguridad.serializers import SegLoginSerializer, SegMfaLoginSerializer, SegUsuarioMeSerializer
+from seguridad.serializers import (
+    SegLoginSerializer,
+    SegMfaLoginSerializer,
+    SegUsuarioMeSerializer,
+)
 from utilidades.turnstile import verify_turnstile
 
 _RespuestaDetalle = inline_serializer(

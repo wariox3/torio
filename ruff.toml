@@ -1,0 +1,19 @@
+target-version = "py312"
+
+[lint]
+# `extend-select` y no `select`: conserva las reglas por defecto de Ruff (E4, E7,
+# E9, F) y suma el orden de imports.
+extend-select = ["I"]
+
+[lint.isort]
+known-first-party = [
+    "contabilidad",
+    "contenedor",
+    "general",
+    "humano",
+    "inventario",
+    "seguridad",
+    "torioapp",
+    "turno",
+    "utilidades",
+]

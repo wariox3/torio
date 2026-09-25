@@ -16,7 +16,6 @@ aparte.
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import connection
-
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 

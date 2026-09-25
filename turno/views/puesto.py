@@ -2,6 +2,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 
+from seguridad.permissions import TienePermisoModelo
 from turno.models import TurPuesto
 from turno.serializers import (
     TurPuestoExportarSerializer,
@@ -9,8 +10,11 @@ from turno.serializers import (
     TurPuestoSeleccionarSerializer,
     TurPuestoSerializer,
 )
-from seguridad.permissions import TienePermisoModelo
-from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
+from utilidades.mixins import (
+    ExportarExcelMixin,
+    FiltrosDinamicosMixin,
+    ImportarExcelMixin,
+)
 from utilidades.paginacion import SeleccionarPaginacion
 
 _LIST_PARAMS = [

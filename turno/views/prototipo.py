@@ -1,14 +1,18 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
 
+from seguridad.permissions import TienePermisoModelo
 from turno.models import TurPrototipo
 from turno.serializers import (
     TurPrototipoExportarSerializer,
     TurPrototipoImportarSerializer,
     TurPrototipoSerializer,
 )
-from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
-from seguridad.permissions import TienePermisoModelo
+from utilidades.mixins import (
+    ExportarExcelMixin,
+    FiltrosDinamicosMixin,
+    ImportarExcelMixin,
+)
 
 _LIST_PARAMS = [
     OpenApiParameter('contrato', int, description='Filtrar por contrato'),

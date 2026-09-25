@@ -12,9 +12,8 @@ expedir el certificado, y el artículo 10 del Decreto 836 de 1991 es el que
 permite entregarlo sin firma autógrafa; sin esa segunda mención el documento
 impreso no se sostiene solo.
 """
-from decimal import Decimal
-
 import io
+from decimal import Decimal
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
@@ -29,7 +28,6 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
-
 from rest_framework.exceptions import ValidationError
 
 from contabilidad.servicios.balance import RETENCION

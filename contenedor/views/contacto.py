@@ -4,7 +4,10 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 
 from contenedor.models import CtnContacto
-from contenedor.serializers import CtnContactoListaUsuarioSerializer, CtnContactoSerializer
+from contenedor.serializers import (
+    CtnContactoListaUsuarioSerializer,
+    CtnContactoSerializer,
+)
 
 
 @extend_schema(tags=['Contacto'])

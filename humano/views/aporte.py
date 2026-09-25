@@ -9,9 +9,13 @@ from humano.serializers import (
     HumAporteSeleccionarSerializer,
     HumAporteSerializer,
 )
-from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
-from utilidades.paginacion import SeleccionarPaginacion
 from seguridad.permissions import TienePermisoModelo
+from utilidades.mixins import (
+    ExportarExcelMixin,
+    FiltrosDinamicosMixin,
+    ImportarExcelMixin,
+)
+from utilidades.paginacion import SeleccionarPaginacion
 
 _LIST_PARAMS = [
     OpenApiParameter('estado_aprobado', bool, description='Filtrar por aprobado'),

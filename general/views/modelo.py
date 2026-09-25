@@ -11,7 +11,6 @@ from general.models import GenModelo
 from general.serializers import GenModeloSerializer
 from utilidades.mixins import FiltrosDinamicosMixin
 
-
 # ---- Resolución de tipo de dato (amigable para el front) ----
 
 # Tipos de campo del modelo Django -> tipo expuesto al front.

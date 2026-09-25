@@ -4,13 +4,23 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.utils import timezone
-from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+    inline_serializer,
+)
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from contenedor.models import CtnCliente, CtnContacto, CtnSuscripcion, CtnSuscripcionTipo
+from contenedor.models import (
+    CtnCliente,
+    CtnContacto,
+    CtnSuscripcion,
+    CtnSuscripcionTipo,
+)
 from contenedor.serializers import CtnSuscripcionSerializer
 
 _LIST_PARAMS = [

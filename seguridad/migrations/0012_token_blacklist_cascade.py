@@ -12,7 +12,6 @@ genera con un hash que depende del entorno.
 """
 from django.db import migrations
 
-
 _ALTER_OUTSTANDING_TO_CASCADE = """
 DO $$
 DECLARE

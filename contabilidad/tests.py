@@ -3,13 +3,13 @@ from decimal import Decimal
 from io import BytesIO
 
 from django_tenants.test.cases import TenantTestCase
-from reportlab.platypus import PageBreak, Table
 from openpyxl import load_workbook
+from reportlab.platypus import PageBreak, Table
 from rest_framework import permissions
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.test import APIRequestFactory
 
-from rest_framework.exceptions import NotFound, ValidationError
-
+from contabilidad.formatos import FormatoCertificadoRetencion
 from contabilidad.models import (
     ConActivo,
     ConActivoGrupo,
@@ -23,18 +23,13 @@ from contabilidad.models import (
     ConMovimiento,
     ConPeriodo,
 )
-from general.serializers import GenDocumentoDetalleSerializer
-from general.servicios import contabilizar
-from contabilidad.formatos import FormatoCertificadoRetencion
 from contabilidad.serializers import ConActivoImportarSerializer, ConActivoSerializer
 from contabilidad.servicios import balance, depreciacion
-from utilidades.filtros import aplicar_filtros
 from contabilidad.servicios.movimiento import analizar_inconsistencias
 from contabilidad.views.comprobante import ConComprobanteViewSet
 from contabilidad.views.cuenta import ConCuentaViewSet
 from contabilidad.views.movimiento import ConMovimientoViewSet
 from contabilidad.views.movimiento_informe import ConMovimientoInformeViewSet
-from utilidades.formatos.pagina import ANCHO_CONTENIDO
 from general.models import (
     GenCiudad,
     GenConfiguracion,
@@ -52,6 +47,10 @@ from general.models import (
     GenSede,
     GenTipoPersona,
 )
+from general.serializers import GenDocumentoDetalleSerializer
+from general.servicios import contabilizar
+from utilidades.filtros import aplicar_filtros
+from utilidades.formatos.pagina import ANCHO_CONTENIDO
 
 
 class _CuentaViewSinPermisos(ConCuentaViewSet):

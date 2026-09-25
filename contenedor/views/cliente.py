@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from django.conf import settings
 from django.core.management import call_command
 from django.db import connection, transaction
+from django.db.models import Prefetch
 from django_tenants.utils import get_public_schema_name, schema_context
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
@@ -13,11 +14,12 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from django.db.models import Prefetch
-
 from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion, CtnSuscripcionTipo
 from contenedor.serializers import CtnClienteSerializer
-from contenedor.serializers.cliente import CtnClienteActualizarSerializer, CtnClienteListaUsuarioSerializer
+from contenedor.serializers.cliente import (
+    CtnClienteActualizarSerializer,
+    CtnClienteListaUsuarioSerializer,
+)
 from seguridad.models import CAMPOS_ACCESO, SegUsuarioCliente
 
 # Todo contenedor nuevo arranca en el mismo plan de prueba —'Prueba ERP', categoría

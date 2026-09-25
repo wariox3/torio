@@ -1,6 +1,11 @@
 from rest_framework import serializers
 
-from general.models import GenDocumento, GenDocumentoDetalle, GenDocumentoImpuesto, GenImpuesto
+from general.models import (
+    GenDocumento,
+    GenDocumentoDetalle,
+    GenDocumentoImpuesto,
+    GenImpuesto,
+)
 
 
 class GenDocumentoImpuestoSerializer(serializers.ModelSerializer):

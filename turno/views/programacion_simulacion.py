@@ -9,6 +9,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from general.models import GenDocumentoDetalle
+from seguridad.permissions import TienePermisoModelo
 from turno.models import TurProgramacionSimulacion
 from turno.serializers import (
     TurProgramacionSimulacionExportarSerializer,
@@ -16,8 +17,11 @@ from turno.serializers import (
     TurProgramacionSimulacionSerializer,
 )
 from turno.servicios import simular as simular_servicio
-from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
-from seguridad.permissions import TienePermisoModelo
+from utilidades.mixins import (
+    ExportarExcelMixin,
+    FiltrosDinamicosMixin,
+    ImportarExcelMixin,
+)
 
 
 class SimularRequestSerializer(serializers.Serializer):

@@ -1,14 +1,18 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
 
+from seguridad.permissions import TienePermisoModelo
 from turno.models import TurSoporte
 from turno.serializers import (
     TurSoporteExportarSerializer,
     TurSoporteImportarSerializer,
     TurSoporteSerializer,
 )
-from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin, ImportarExcelMixin
-from seguridad.permissions import TienePermisoModelo
+from utilidades.mixins import (
+    ExportarExcelMixin,
+    FiltrosDinamicosMixin,
+    ImportarExcelMixin,
+)
 
 _LIST_PARAMS = [
     OpenApiParameter('grupo', int, description='Filtrar por grupo'),
