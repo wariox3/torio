@@ -1,4 +1,5 @@
 import re
+import time
 
 from django_tenants.utils import schema_context
 from drf_spectacular.utils import extend_schema
@@ -124,3 +125,42 @@ class CtnRededocViewSet(viewsets.GenericViewSet):
                 fecha_validacion=datos.get('fecha_validacion'), cufe=datos.get('cufe'),
             )
         return Response(status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Probar la firma del webhook RedEDoc',
+        description=(
+            'Verifica `X-Rededoc-Fecha` y `X-Rededoc-Firma` exactamente como el webhook, '
+            'pero no lee el cuerpo ni toca ningún documento: sirve para confirmar el '
+            'secreto y la forma de firmar antes de mandar avisos reales. El cuerpo puede '
+            'ser cualquiera; se firma igual que un aviso.\n\n'
+            'A diferencia del webhook, un 401 dice qué falló (header faltante, fecha fuera '
+            'de los 5 minutos, firma que no coincide). Nunca devuelve la firma esperada. '
+            '`hora_servidor` (timestamp unix) sirve para detectar un reloj desfasado.\n\n'
+            'Comparte el límite de peticiones del webhook.'
+        ),
+        request=None,
+        responses={200: None, 401: None},
+    )
+    @action(
+        detail=False,
+        methods=['post'],
+        permission_classes=[AllowAny],
+        authentication_classes=[],
+        # El mismo `throttle_scope` que el webhook, así que cuentan juntos: probar
+        # firmas acá no da un cupo aparte para tantear el webhook.
+        throttle_classes=[ScopedRateThrottle],
+        url_path='webhook/prueba',
+    )
+    def webhook_prueba(self, request):
+        motivo = rededoc.motivo_firma_invalida(
+            request.body,
+            request.headers.get(rededoc.HEADER_FECHA, ''),
+            request.headers.get(rededoc.HEADER_FIRMA, ''),
+        )
+        hora_servidor = int(time.time())
+        if motivo:
+            return Response(
+                {'detail': motivo, 'hora_servidor': hora_servidor},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        return Response({'detail': 'Firma válida.', 'hora_servidor': hora_servidor})

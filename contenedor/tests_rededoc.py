@@ -13,7 +13,7 @@ from datetime import date, datetime
 from unittest import mock
 
 from django.core.cache import cache
-from django.test import override_settings
+from django.test import SimpleTestCase, override_settings
 from django.utils import timezone
 from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIRequestFactory
@@ -275,3 +275,93 @@ class WebhookRededocTests(TenantTestCase):
         """Con el `anon` de 60/min, un lote de 61 validaciones ya recibía 429."""
         for _ in range(61):
             self.assertEqual(self._llamar(tipo='notificacion').status_code, 200)
+
+
+@override_settings(REDEDOC_WEBHOOK_SECRETO=SECRETO, REDEDOC_WEBHOOK_SECRETO_ANTERIOR='')
+class WebhookPruebaRededocTests(SimpleTestCase):
+    """
+    `POST /contenedor/rededoc/webhook/prueba/`: la misma firma que el webhook, pero
+    dice qué falló. No toca la base: `SimpleTestCase` falla si lo intentara.
+    """
+
+    CUERPO = b'{"cualquier": "cosa"}'
+
+    def setUp(self):
+        cache.clear()
+        self.factory = APIRequestFactory()
+
+    def _enviar(self, crudo=CUERPO, fecha=None, firma=None, secreto=SECRETO):
+        fecha = str(int(time.time())) if fecha is None else fecha
+        if firma is None:
+            firma = firmar_aviso(crudo, fecha, secreto)
+        headers = {}
+        if fecha:
+            headers['HTTP_X_REDEDOC_FECHA'] = fecha
+        if firma:
+            headers['HTTP_X_REDEDOC_FIRMA'] = firma
+        vista = CtnRededocViewSet.as_view(
+            {'post': 'webhook_prueba'}, **CtnRededocViewSet.webhook_prueba.kwargs,
+        )
+        peticion = self.factory.post(
+            '/contenedor/rededoc/webhook/prueba/', crudo, content_type='application/json', **headers,
+        )
+        return vista(peticion)
+
+    def test_una_firma_correcta_responde_200_con_la_hora_del_servidor(self):
+        respuesta = self._enviar()
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data['detail'], 'Firma válida.')
+        self.assertAlmostEqual(respuesta.data['hora_servidor'], time.time(), delta=5)
+
+    def test_acepta_un_cuerpo_que_no_es_un_aviso(self):
+        """No valida el cuerpo: solo que la firma cuadre sobre sus bytes."""
+        self.assertEqual(self._enviar(crudo=b'no es json').status_code, 200)
+
+    def test_sin_fecha_dice_que_falta_el_header(self):
+        respuesta = self._enviar(fecha='', firma='v1=abc')
+        self.assertEqual(respuesta.status_code, 401)
+        self.assertEqual(respuesta.data['detail'], 'Falta el header X-Rededoc-Fecha.')
+
+    def test_sin_firma_dice_que_falta_el_header(self):
+        respuesta = self._enviar(firma='')
+        self.assertEqual(respuesta.status_code, 401)
+        self.assertEqual(respuesta.data['detail'], 'Falta el header X-Rededoc-Firma.')
+
+    def test_una_fecha_que_no_es_numero(self):
+        respuesta = self._enviar(fecha='ayer')
+        self.assertEqual(respuesta.status_code, 401)
+        self.assertIn('timestamp unix', respuesta.data['detail'])
+
+    def test_una_fecha_vieja_dice_que_esta_fuera_de_tolerancia(self):
+        respuesta = self._enviar(fecha=str(int(time.time()) - 301))
+        self.assertEqual(respuesta.status_code, 401)
+        self.assertIn('fuera de tolerancia', respuesta.data['detail'])
+        self.assertIn('hora_servidor', respuesta.data)
+
+    def test_otro_secreto_dice_que_no_coincide_sin_revelar_la_esperada(self):
+        respuesta = self._enviar(secreto='otro')
+
+        self.assertEqual(respuesta.status_code, 401)
+        self.assertEqual(respuesta.data['detail'], 'La firma no coincide.')
+        esperada = firmar_aviso(self.CUERPO, str(int(time.time())), SECRETO).split('=', 1)[1]
+        self.assertNotIn(esperada, json.dumps(respuesta.data))
+
+    @override_settings(REDEDOC_WEBHOOK_SECRETO='nuevo', REDEDOC_WEBHOOK_SECRETO_ANTERIOR=SECRETO)
+    def test_mientras_se_rota_acepta_el_secreto_anterior(self):
+        self.assertEqual(self._enviar(secreto=SECRETO).status_code, 200)
+        self.assertEqual(self._enviar(secreto='nuevo').status_code, 200)
+
+    @override_settings(REDEDOC_WEBHOOK_SECRETO='', REDEDOC_WEBHOOK_SECRETO_ANTERIOR='')
+    def test_sin_secreto_configurado_lo_dice(self):
+        with self.assertLogs('general.servicios.rededoc', level='ERROR'):
+            respuesta = self._enviar(secreto='x')
+        self.assertEqual(respuesta.status_code, 401)
+        self.assertIn('no tiene configurado el secreto', respuesta.data['detail'])
+
+    def test_comparte_el_limite_del_webhook(self):
+        """Probar firmas acá no da un cupo aparte para tantear el webhook."""
+        self.assertEqual(CtnRededocViewSet.webhook_prueba.kwargs['throttle_classes'], [ScopedRateThrottle])
+        with mock.patch.dict(ScopedRateThrottle.THROTTLE_RATES, {'rededoc_webhook': '2/min'}):
+            estados = [self._enviar().status_code for _ in range(3)]
+        self.assertEqual(estados, [200, 200, 429])
