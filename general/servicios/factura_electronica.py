@@ -401,6 +401,10 @@ ARMADORES = {
 AVISO_VALIDACION = 'validacion'
 AVISO_NOTIFICACION = 'notificacion'
 AVISOS = (AVISO_VALIDACION, AVISO_NOTIFICACION)
+# Para que rededoc confirme el secreto y la forma de firmar. No es de ningún
+# documento: la vista lo responde apenas pasa la firma y nunca llega a
+# `procesar_aviso`, por eso no va en `AVISOS`.
+AVISO_PRUEBA = 'prueba'
 
 
 class DocumentoYaValidado(APIException):

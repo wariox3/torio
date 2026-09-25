@@ -1,5 +1,4 @@
 import re
-import time
 
 from django_tenants.utils import schema_context
 from drf_spectacular.utils import extend_schema
@@ -46,13 +45,18 @@ class FechaHoraField(serializers.DateTimeField):
 
 
 class RededocAvisoSerializer(serializers.Serializer):
-    tipo = serializers.ChoiceField(choices=factura_electronica.AVISOS)
+    tipo = serializers.ChoiceField(choices=(*factura_electronica.AVISOS, factura_electronica.AVISO_PRUEBA))
     cliente = serializers.IntegerField(min_value=1, help_text='Id del cliente (tenant) en torio.')
-    documento = serializers.UUIDField(help_text='Id del documento en rededoc.')
+    # Opcional solo para `prueba`; `validate` lo exige en los demás.
+    documento = serializers.UUIDField(required=False, help_text='Id del documento en rededoc.')
     fecha_validacion = FechaHoraField(required=False, allow_null=True)
     cufe = serializers.CharField(max_length=150, required=False, allow_null=True, allow_blank=True)
 
     def validate(self, attrs):
+        if attrs['tipo'] == factura_electronica.AVISO_PRUEBA:
+            return attrs
+        if 'documento' not in attrs:
+            raise serializers.ValidationError({'documento': 'Este campo es requerido.'})
         # Una validación sin CUFE ni fecha dejaría el documento marcado como
         # validado sin lo que lo prueba.
         if attrs['tipo'] == factura_electronica.AVISO_VALIDACION:
@@ -78,7 +82,9 @@ class CtnRededocViewSet(viewsets.GenericViewSet):
         description=(
             'Recibe los avisos de RedEDoc sobre un documento electrónico: '
             '`validacion` (la DIAN lo aceptó; trae `fecha_validacion` y `cufe`) y '
-            '`notificacion` (se le entregó al adquiriente).\n\n'
+            '`notificacion` (se le entregó al adquiriente). `prueba` verifica la '
+            'firma y que el `cliente` exista, y responde 200 sin tocar nada; no lleva '
+            '`documento`. Un cliente inexistente en `prueba` sí responde «El cliente no existe.».\n\n'
             'Cada aviso viene firmado: `X-Rededoc-Fecha` (timestamp unix) y '
             '`X-Rededoc-Firma: v1=<hex>`, el HMAC-SHA256 de `<fecha>.<cuerpo crudo>` '
             'con el secreto compartido. Una firma que no cuadra, o una fecha de '
@@ -116,6 +122,15 @@ class CtnRededocViewSet(viewsets.GenericViewSet):
         datos = serializer.validated_data
 
         cliente = CtnCliente.objects.filter(pk=datos['cliente']).first()
+
+        # Llegar acá ya prueba la URL, el secreto y la forma de firmar; falta que el
+        # cliente exista, y no hay documento que tocar. Con la firma válida quien
+        # pregunta es rededoc, así que acá sí se puede decir que el cliente no existe.
+        if datos['tipo'] == factura_electronica.AVISO_PRUEBA:
+            if cliente is None:
+                raise NotFound('El cliente no existe.')
+            return Response({'detail': 'Aviso de prueba recibido.'}, status=status.HTTP_200_OK)
+
         if cliente is None:
             raise NotFound('El documento no existe.')
 
@@ -125,42 +140,3 @@ class CtnRededocViewSet(viewsets.GenericViewSet):
                 fecha_validacion=datos.get('fecha_validacion'), cufe=datos.get('cufe'),
             )
         return Response(status=status.HTTP_200_OK)
-
-    @extend_schema(
-        summary='Probar la firma del webhook RedEDoc',
-        description=(
-            'Verifica `X-Rededoc-Fecha` y `X-Rededoc-Firma` exactamente como el webhook, '
-            'pero no lee el cuerpo ni toca ningún documento: sirve para confirmar el '
-            'secreto y la forma de firmar antes de mandar avisos reales. El cuerpo puede '
-            'ser cualquiera; se firma igual que un aviso.\n\n'
-            'A diferencia del webhook, un 401 dice qué falló (header faltante, fecha fuera '
-            'de los 5 minutos, firma que no coincide). Nunca devuelve la firma esperada. '
-            '`hora_servidor` (timestamp unix) sirve para detectar un reloj desfasado.\n\n'
-            'Comparte el límite de peticiones del webhook.'
-        ),
-        request=None,
-        responses={200: None, 401: None},
-    )
-    @action(
-        detail=False,
-        methods=['post'],
-        permission_classes=[AllowAny],
-        authentication_classes=[],
-        # El mismo `throttle_scope` que el webhook, así que cuentan juntos: probar
-        # firmas acá no da un cupo aparte para tantear el webhook.
-        throttle_classes=[ScopedRateThrottle],
-        url_path='webhook/prueba',
-    )
-    def webhook_prueba(self, request):
-        motivo = rededoc.motivo_firma_invalida(
-            request.body,
-            request.headers.get(rededoc.HEADER_FECHA, ''),
-            request.headers.get(rededoc.HEADER_FIRMA, ''),
-        )
-        hora_servidor = int(time.time())
-        if motivo:
-            return Response(
-                {'detail': motivo, 'hora_servidor': hora_servidor},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-        return Response({'detail': 'Firma válida.', 'hora_servidor': hora_servidor})
