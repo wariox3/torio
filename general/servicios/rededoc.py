@@ -83,10 +83,11 @@ class Rededoc:
     # llamada: con el timeout general se cortaba antes de que rededoc respondiera.
     TIMEOUT_NOTIFICAR = 30
 
-    def notificar_documento(self, documento_id, pdf: bytes, nombre: str):
+    def notificar_documento(self, documento_id, pdf: bytes, nombre: str, correo: str):
         """
         Le entrega el documento al adquiriente.
-        `POST /api/documentos/documento/{id}/notificar/`, en multipart con `pdf`.
+        `POST /api/documentos/documento/{id}/notificar/`, en multipart con `pdf` y
+        `correo`, la dirección a la que se envía.
 
         Rededoc arma el zip —el AttachedDocument con el acuse de la DIAN más la
         representación gráfica—, lo envía por correo y marca el documento como
@@ -94,6 +95,7 @@ class Rededoc:
         """
         return self._peticion(
             'POST', f'/api/documentos/documento/{documento_id}/notificar/',
+            datos={'correo': correo},
             archivos={'pdf': (nombre, pdf, 'application/pdf')},
             timeout=self.TIMEOUT_NOTIFICAR,
         )

@@ -1176,13 +1176,15 @@ class RededocTests(SimpleTestCase):
             rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {'enviado': True}),
         ) as peticion:
             rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k').notificar_documento(
-                'abc-uuid', b'%PDF-1.4', 'factura2813.pdf',
+                'abc-uuid', b'%PDF-1.4', 'factura2813.pdf', 'compras@cliente.com',
             )
 
         metodo, url = peticion.call_args.args
         self.assertEqual((metodo, url), ('POST', 'https://api.rededoc.uk/api/documentos/documento/abc-uuid/notificar/'))
         self.assertEqual(peticion.call_args.kwargs['files'],
                          {'pdf': ('factura2813.pdf', b'%PDF-1.4', 'application/pdf')})
+        self.assertEqual(peticion.call_args.kwargs['data'], {'correo': 'compras@cliente.com'})
+        self.assertIsNone(peticion.call_args.kwargs['json'])
         self.assertEqual(peticion.call_args.kwargs['timeout'], rededoc_servicio.Rededoc.TIMEOUT_NOTIFICAR)
 
     def test_la_llave_viaja_en_el_header_authorization(self):
@@ -5750,12 +5752,22 @@ class NotificarTests(TenantTestCase):
 
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(respuesta.data, {'notificados': [documento.id]})
-        documento_id, pdf, nombre = cliente.notificar_documento.call_args.args
+        documento_id, pdf, nombre, correo = cliente.notificar_documento.call_args.args
         self.assertEqual(documento_id, documento.electronico_id)
         self.assertTrue(pdf.startswith(b'%PDF'))
         self.assertEqual(nombre, 'factura_electronica_de_venta2813.pdf')
+        self.assertEqual(correo, self.contacto.correo_facturacion_electronica)
         documento.refresh_from_db()
         self.assertTrue(documento.estado_electronico_notificado)
+
+    def test_manda_el_correo_de_facturacion_sin_espacios(self):
+        self.contacto.correo_facturacion_electronica = '  facturas@cliente.com '
+        self.contacto.save(update_fields=['correo_facturacion_electronica'])
+        cliente = self._cliente()
+
+        self._llamar({'ids': [self._documento().id]}, cliente)
+
+        self.assertEqual(cliente.notificar_documento.call_args.args[3], 'facturas@cliente.com')
 
     def test_uno_ya_notificado_se_puede_reenviar(self):
         documento = self._documento(estado_electronico_notificado=True)
@@ -5813,13 +5825,21 @@ class NotificarTests(TenantTestCase):
         documento = self._documento(estado_electronico=False, cue='cufe-de-prueba')
         self._no_envia({'ids': [documento.id]}, 400, 'no ha sido validado')
 
-    def test_sin_correo_de_facturacion_no_se_notifica(self):
-        """El correo general no sirve de respaldo: el cliente dice dónde recibe sus facturas."""
-        GenContacto.objects.filter(pk=self.contacto.pk).update(correo_facturacion_electronica='')
-        self._no_envia({'ids': [self._documento().id]}, 400, 'no tiene correo de facturación')
+    def test_sin_correo_de_facturacion_se_notifica_al_correo_general(self):
+        GenContacto.objects.filter(pk=self.contacto.pk).update(correo_facturacion_electronica='  ')
+        cliente = self._cliente()
+
+        respuesta = self._llamar({'ids': [self._documento().id]}, cliente)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(cliente.notificar_documento.call_args.args[3], 'general@x.com')
+
+    def test_sin_ningun_correo_no_se_notifica(self):
+        GenContacto.objects.filter(pk=self.contacto.pk).update(correo_facturacion_electronica=None, correo='')
+        self._no_envia({'ids': [self._documento().id]}, 400, 'no tiene correo')
 
     def test_sin_cliente_no_se_notifica(self):
-        self._no_envia({'ids': [self._documento(contacto=None).id]}, 400, 'no tiene correo de facturación')
+        self._no_envia({'ids': [self._documento(contacto=None).id]}, 400, 'no tiene correo')
 
     def test_uno_sin_validar_no_deja_notificar_los_validados(self):
         valido = self._documento()
@@ -5864,9 +5884,15 @@ class NotificarDocumentoTareaTests(TenantTestCase):
             self._correr()
         notificar.assert_called_once_with([self.documento.id])
 
-    def test_sin_correo_de_facturacion_no_notifica_ni_es_error(self):
-        """Queda pendiente, a la vista en la pantalla de pendientes; no se reintenta."""
+    def test_sin_correo_de_facturacion_notifica_con_el_general(self):
         GenContacto.objects.filter(pk=self.contacto.pk).update(correo_facturacion_electronica=None)
+        with mock.patch.object(factura_electronica, 'notificar') as notificar:
+            self._correr()
+        notificar.assert_called_once_with([self.documento.id])
+
+    def test_sin_ningun_correo_no_notifica_ni_es_error(self):
+        """Queda pendiente, a la vista en la pantalla de pendientes; no se reintenta."""
+        GenContacto.objects.filter(pk=self.contacto.pk).update(correo_facturacion_electronica=None, correo='')
         with mock.patch.object(factura_electronica, 'notificar') as notificar, \
                 mock.patch.object(tareas.notificar_documento, 'retry') as reintentar:
             resultado = self._correr()

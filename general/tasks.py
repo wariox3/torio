@@ -77,12 +77,12 @@ def notificar_documento(self, schema_name, documento_id):
                 return
             if documento.estado_electronico_notificado:
                 return
-            # Sin correo de facturación electrónica no se notifica, y no es un
-            # error: queda pendiente y la pantalla de pendientes lo muestra.
-            if not factura_electronica.tiene_correo_facturacion(documento):
+            # Sin correo —ni de facturación electrónica ni general— no se notifica,
+            # y no es un error: queda pendiente y la pantalla de pendientes lo muestra.
+            if not factura_electronica.correo_notificacion(documento):
                 logger.info(
-                    'Documento %s (schema %s) sin correo de facturación electrónica: '
-                    'no se notifica', documento_id, schema_name,
+                    'Documento %s (schema %s) sin correo: no se notifica',
+                    documento_id, schema_name,
                 )
                 return
             try:

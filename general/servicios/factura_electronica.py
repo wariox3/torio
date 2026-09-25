@@ -451,16 +451,19 @@ def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenD
 
 # ------------------------------------------------------------ notificar ----
 
-def tiene_correo_facturacion(documento):
+def correo_notificacion(documento) -> str:
     """
-    ¿Se le puede notificar? Solo al correo de facturación electrónica del cliente.
+    A dónde se le envía el documento al cliente, o `''` si no hay a dónde.
 
-    El correo general no sirve de respaldo: el cliente dice a dónde quiere recibir
-    sus facturas, y un contacto sin ese correo no se notifica —queda pendiente, a la
-    vista en la pantalla de pendientes por notificar, hasta que alguien lo cargue—.
+    El de facturación electrónica, que es el que el cliente eligió para recibir sus
+    facturas; si no lo tiene, el correo general. Un contacto sin ninguno de los dos
+    no se notifica: queda pendiente, a la vista en la pantalla de pendientes por
+    notificar, hasta que alguien lo cargue.
     """
     contacto = documento.contacto
-    return bool(contacto and (contacto.correo_facturacion_electronica or '').strip())
+    if contacto is None:
+        return ''
+    return (contacto.correo_facturacion_electronica or '').strip() or (contacto.correo or '').strip()
 
 
 def notificar(documento_ids, cliente: Rededoc = None) -> list:
@@ -470,7 +473,7 @@ def notificar(documento_ids, cliente: Rededoc = None) -> list:
 
     Solo se notifica lo que la DIAN ya validó —la representación gráfica lleva el
     CUFE y la fecha de validación, y rededoc rechaza lo que no esté aceptado— y a un
-    cliente con correo de facturación electrónica (`tiene_correo_facturacion`). Un
+    cliente con correo (`correo_notificacion`). Un
     documento ya notificado se puede volver a notificar: es la forma de reenviarle
     la factura a un cliente que la perdió, o después de corregirle el correo.
 
@@ -503,18 +506,20 @@ def notificar(documento_ids, cliente: Rededoc = None) -> list:
             raise ErrorFacturaElectronica(
                 f'El documento {documento_id} todavía no ha sido validado por la DIAN.'
             )
-        if not tiene_correo_facturacion(documento):
-            raise ErrorFacturaElectronica(
-                f'El cliente del documento {documento_id} no tiene correo de facturación '
-                'electrónica.'
-            )
+        if not correo_notificacion(documento):
+            raise ErrorFacturaElectronica(f'El cliente del documento {documento_id} no tiene correo.')
 
     cliente = cliente or Rededoc()
     notificados = []
     for documento_id in documento_ids:
         documento = documentos[documento_id]
         pdf, nombre = documento_imprimir.pdf_documento(documento)
-        respuesta = cliente.notificar_documento(documento.electronico_id, pdf, nombre)
+        # Se manda el correo y no se deja el que rededoc tenga del adquiriente: si
+        # el cliente lo corrigió después de emitir, un reenvío tiene que llegar al
+        # nuevo.
+        respuesta = cliente.notificar_documento(
+            documento.electronico_id, pdf, nombre, correo_notificacion(documento),
+        )
         if respuesta['error']:
             status = 400 if 400 <= respuesta['status'] < 500 else 502
             raise ErrorFacturaElectronica(
