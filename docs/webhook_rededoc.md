@@ -35,9 +35,9 @@ X-Rededoc-Firma: v1=<firma>
 
 | Campo | Tipo | Obligatorio | Qué es |
 |---|---|---|---|
-| `tipo` | texto | siempre | `validacion` o `notificacion` |
+| `tipo` | texto | siempre | `validacion`, `notificacion` o `prueba` |
 | `cliente` | entero | siempre | Id del cliente (tenant) en torio |
-| `documento` | UUID | siempre | Id del documento en rededoc: el mismo que devolvió al crearlo |
+| `documento` | UUID | en `validacion` y `notificacion` | Id del documento en rededoc: el mismo que devolvió al crearlo. En `prueba` no se usa |
 | `fecha_validacion` | fecha y hora ISO 8601 | en `validacion` | Cuándo lo validó la DIAN. Con hora: `2026-09-21` solo se rechaza |
 | `cufe` | texto, hasta 150 | en `validacion` | CUFE/CUDE del documento |
 
@@ -45,6 +45,9 @@ X-Rededoc-Firma: v1=<firma>
   y la fecha.
 - **`notificacion`**: el documento se le entregó al adquiriente. Torio lo marca
   notificado. `fecha_validacion` y `cufe` no se usan.
+- **`prueba`**: no es de ningún documento. Sirve para comprobar la configuración de un
+  emisor antes de mandar avisos reales (sección 3, *Probar la configuración*). Torio
+  verifica la firma y que el `cliente` exista, y no toca nada.
 
 Incluya la zona horaria en `fecha_validacion` (`2026-09-21T10:15:00-05:00`). Sin ella,
 torio la interpreta como hora de Bogotá.
@@ -57,14 +60,14 @@ Ejemplo:
 
 ## 3. La respuesta
 
-Todo error trae `detail` con el mensaje. Un 200 no trae cuerpo.
+Todo error trae `detail` con el mensaje. Un 200 no trae cuerpo, salvo el de `prueba`.
 
 | Código | Cuándo | ¿Reintentar? |
 |---|---|---|
-| `200` | Aviso aplicado. También una `notificacion` repetida | No: listo |
+| `200` | Aviso aplicado. También una `notificacion` repetida, y una `prueba` que pasó | No: listo |
 | `400` | Cuerpo inválido (campo que falta, `tipo` desconocido, fecha sin hora…). Trae el error por campo además de `detail` | No: el mismo cuerpo volverá a fallar |
 | `401` | Firma inválida o fecha fuera de la ventana (sección 4) | Sí, **firmando de nuevo** con la hora actual. Si persiste, es el secreto o el reloj |
-| `404` | El cliente no existe, o el documento no está en ese cliente. Es la misma respuesta en los dos casos, a propósito | No |
+| `404` | El cliente no existe, o el documento no está en ese cliente. Es la misma respuesta en los dos casos, a propósito, salvo en `prueba` | No |
 | `409` | `validacion` de un documento que ya estaba validado. Torio **no** lo reescribe | No: es definitivo |
 | `429` | Límite de peticiones de torio: 600 por minuto desde una misma IP | Sí, con espera |
 | `5xx`, timeout, sin conexión | Falla de torio o de la red | Sí, con espera |
@@ -72,6 +75,28 @@ Todo error trae `detail` con el mensaje. Un 200 no trae cuerpo.
 Sobre el `409`: si torio aplicó una validación pero su `200` se perdió en la red, el
 reintento recibe `409`. Tómelo como entregado. Un `409` con un CUFE **distinto** del que
 torio tiene es una inconsistencia que hay que revisar a mano; torio conserva el primero.
+
+### Probar la configuración
+
+Un aviso `prueba` recorre el mismo camino que uno real: la misma URL, la misma firma, el
+mismo `cliente`. Así comprueba lo que un endpoint aparte no podría, que la URL configurada
+es la correcta.
+
+```json
+{"tipo": "prueba", "cliente": 12}
+```
+
+| Respuesta | Qué quiere decir |
+|---|---|
+| `200 {"detail": "Aviso de prueba recibido."}` | URL, secreto, forma de firmar, reloj y `cliente` están bien |
+| `401 Firma inválida.` | El secreto, la forma de firmar o el reloj (sección 4). No dice cuál, igual que en los avisos reales |
+| `404 El cliente no existe.` | La firma está bien pero el `cliente` no: revise la `referencia_externa` del emisor (sección 5) |
+| `400` | Falta `cliente` o no es un entero |
+| `404` sin ese `detail`, o HTML | La URL está mal: la petición no llegó al webhook |
+
+A diferencia de los avisos reales, en `prueba` el `404` sí dice que lo que falta es el
+cliente: solo llega a esa respuesta quien firmó con el secreto, así que no sirve para
+averiguar qué clientes existen. Un aviso `prueba` no se reintenta.
 
 ### Reintentos
 
