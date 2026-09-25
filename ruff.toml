@@ -1,9 +1,11 @@
 target-version = "py312"
 
 [lint]
-# `extend-select` y no `select`: conserva las reglas por defecto de Ruff (E4, E7,
-# E9, F) y suma el orden de imports.
 extend-select = ["I"]
+# RUF012 (atributo de clase mutable): en Django y DRF es la forma normal de declarar
+# `Meta.fields`, `ordering`, `permission_classes`, las `operations` de una migración…
+# El framework los lee y nunca los modifica, así que la regla solo da falsos positivos.
+ignore = ["RUF012"]
 
 [lint.isort]
 known-first-party = [
