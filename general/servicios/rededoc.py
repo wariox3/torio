@@ -170,44 +170,32 @@ def firmar_aviso(cuerpo: bytes, fecha: str, secreto: str) -> str:
     return f'{VERSION_FIRMA}={digest}'
 
 
-def motivo_firma_invalida(cuerpo: bytes, fecha: str, firma: str, ahora: float | None = None) -> str | None:
+def firma_valida(cuerpo: bytes, fecha: str, firma: str, ahora: float = None) -> bool:
     """
-    Por qué el aviso no pasa la firma, o `None` si viene de rededoc y es reciente.
+    ¿Viene el aviso de rededoc y es reciente?
 
     Se acepta con el secreto actual o con el anterior, para poder rotarlo sin
     rechazar los avisos que ya iban en camino. Sin ningún secreto configurado se
     rechaza todo: un webhook que acepta avisos sin verificar deja que cualquiera
     marque facturas como validadas.
-
-    El motivo es para depurar la integración (`webhook/prueba/`): dice qué falló,
-    nunca cuál era la firma esperada, que serviría para firmar avisos falsos.
     """
     secretos = [s for s in (settings.REDEDOC_WEBHOOK_SECRETO,
                             settings.REDEDOC_WEBHOOK_SECRETO_ANTERIOR) if s]
     if not secretos:
         logger.error('Aviso de rededoc rechazado: REDEDOC_WEBHOOK_SECRETO no está configurado')
-        return 'El servidor no tiene configurado el secreto del webhook.'
-    if not fecha:
-        return f'Falta el header {HEADER_FECHA}.'
-    if not firma:
-        return f'Falta el header {HEADER_FIRMA}.'
+        return False
+    if not fecha or not firma:
+        return False
     try:
         marca = int(fecha)
     except ValueError:
-        return f'{HEADER_FECHA} tiene que ser un timestamp unix en segundos.'
+        return False
     ahora = time.time() if ahora is None else ahora
     if abs(ahora - marca) > TOLERANCIA_FIRMA:
-        return f'{HEADER_FECHA} está fuera de tolerancia (±{TOLERANCIA_FIRMA} s).'
+        return False
     # `compare_digest` en todos los casos, para que el tiempo de respuesta no
     # diga cuánto de la firma coincidía.
-    if not any(
+    return any(
         hmac.compare_digest(firmar_aviso(cuerpo, fecha, secreto), firma)
         for secreto in secretos
-    ):
-        return 'La firma no coincide.'
-    return None
-
-
-def firma_valida(cuerpo: bytes, fecha: str, firma: str, ahora: float | None = None) -> bool:
-    """¿Viene el aviso de rededoc y es reciente? Ver `motivo_firma_invalida`."""
-    return motivo_firma_invalida(cuerpo, fecha, firma, ahora) is None
+    )
