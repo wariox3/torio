@@ -20,6 +20,8 @@ Linux con **PostgreSQL + Gunicorn + Nginx + systemd**.
                                      PostgreSQL gestionado            Backblaze B2 (archivos)
                                     (servicio externo, schema
                                           por tenant)
+
+  Además, por red: Redis gestionado (cache del throttling, TLS) y RabbitMQ en CloudAMQP (§8.1).
 ```
 
 > **La base de datos es un servicio externo/gestionado** (PostgreSQL administrado:
@@ -79,7 +81,7 @@ aparecerían como archivos sin versionar. El `.env` vive en `/opt/torio/.env` (d
 - Python 3.12 (el proyecto se desarrolla y prueba con 3.12)
 - **Acceso de red a un PostgreSQL 14+ gestionado/externo** (no se instala aquí)
 - Nginx
-- Redis (local, en el mismo servidor: cache del throttling)
+- **Acceso de red a un Redis gestionado** (cache del throttling; no se instala aquí)
 - Un usuario de sistema sin privilegios para correr la app (ej. `torio`)
 - Certificado TLS (recomendado: Let's Encrypt / certbot)
 
@@ -111,37 +113,36 @@ pg_dump --version
 > `psycopg2-binary` (en `requirements.txt`) trae su propia copia de libpq, así que
 > no hace falta `libpq-dev` ni compilar nada.
 
-**Redis.** Es el cache de Django, compartido por los workers de gunicorn: sin él cada
-worker lleva su propio contador y los límites de DRF (`login: 5/min`, etc.) dejan pasar
-N veces el límite. Va en el mismo servidor y escuchando solo en `127.0.0.1` (el paquete
-de Ubuntu ya viene así): no guarda nada que no se pueda perder, así que no necesita
-persistencia ni respaldo.
+**Redis (servicio gestionado, no se instala aquí).** Es el cache de Django, compartido
+por los workers de gunicorn: sin él cada worker lleva su propio contador y los límites de
+DRF (`login: 5/min`, etc.) dejan pasar N veces el límite. Como la BD y RabbitMQ, es un
+servicio externo; en esta VM no se instala nada. Al crear la instancia en el proveedor:
+
+- **Misma región que la VM de la app.** Los timeouts del cache son de 0,5 s
+  (`torioapp/settings/base.py`): en la misma región una consulta tarda ~1 ms; en otra,
+  los timeouts empiezan a cortar y el throttling deja pasar.
+- **Una instancia por ambiente**, como CloudAMQP: si desarrollo y producción compartieran
+  Redis, compartirían los contadores del throttling.
+- **TLS obligatorio.** `settings/prod.py` rechaza al arrancar una `REDIS_URL` que no sea
+  `rediss://` (con doble `s`). redis-py verifica el certificado y el nombre del host sin
+  configuración adicional.
+- **Es solo cache:** sin persistencia ni backups si el plan deja elegir, y política de
+  desalojo `allkeys-lru` (al llenarse descarta las claves menos usadas; lo peor que se
+  pierde es un contador). Con unos pocos MB sobra.
+- **Base `0`.** Varios proveedores (Upstash, Redis Cloud) solo ofrecen esa.
+- **Conexiones:** cada worker de gunicorn abre la suya. Revise el tope del plan contra el
+  número de workers (§8), sobre todo en planes gratuitos.
+- Si el proveedor lo permite, restrinja el acceso a la IP de la VM de la app.
+
+La URL va en `REDIS_URL` (§5) y es obligatoria en producción: sin ella la app no arranca,
+en vez de quedar apuntando a un `localhost` sin Redis. Para verificar la conexión, con el
+`.env` ya creado:
 
 ```bash
-sudo apt install -y redis-server
-sudo systemctl enable --now redis-server
-redis-cli ping    # PONG
+sudo -u torio DJANGO_SETTINGS_MODULE=torioapp.settings.prod /opt/torio/venv/bin/python \
+    /opt/torio/manage.py shell -c "from django.core.cache import cache; cache.set('p', 1); print(cache.get('p'))"
+# 1  (None = no conecta: revise la URL, la clave y la allowlist del proveedor)
 ```
-
-Como es solo cache, se le quita la persistencia en disco y se le pone tope de memoria:
-al llenarse descarta las claves menos usadas, y lo peor que se pierde es un contador.
-`CONFIG REWRITE` lo guarda en `/etc/redis/redis.conf` con los permisos del servicio
-(el directorio es `drwxrws--- redis:redis`, así que para verlo a mano hace falta `sudo`).
-
-```bash
-redis-cli CONFIG SET save ""
-redis-cli CONFIG SET appendonly no
-redis-cli CONFIG SET maxmemory 256mb
-redis-cli CONFIG SET maxmemory-policy allkeys-lru
-redis-cli CONFIG REWRITE
-sudo systemctl restart redis-server
-redis-cli CONFIG GET maxmemory-policy    # allkeys-lru: quedó guardado
-```
-
-Va en este mismo servidor mientras haya uno solo de app. Con dos o más detrás de un
-balanceador tiene que ser un Redis compartido (uno gestionado, con TLS y clave:
-`REDIS_URL=rediss://:<clave>@<host>:6379/0`); uno local por servidor volvería a contar
-por separado.
 
 Si Redis se cae, la app sigue: el cache responde vacío (`IGNORE_EXCEPTIONS`), el
 throttling deja pasar y el error queda en el log (`django_redis.cache`). Lo que tiene
@@ -297,8 +298,9 @@ WOMPI_INTEGRITY_SECRET=<secret real>
 # se aplican. Es el «secreto de eventos» del panel de Wompi, no el de integridad.
 WOMPI_EVENTS_SECRET=<secret real>
 
-# ── Redis (cache compartido entre workers, §2) ─────────
-REDIS_URL=redis://localhost:6379/0
+# ── Redis gestionado (cache compartido entre workers, §2) ─
+# Obligatoria y con TLS (rediss://): sin ella, o con redis://, la app no arranca.
+REDIS_URL=rediss://<usuario>:<clave>@<host>:<puerto>/0
 
 # ── RedEDoc (servicio Nobelio) ─────────────────────────
 REDEDOC_URL=https://api.rededoc.uk
@@ -879,7 +881,8 @@ Verifica además:
 - [ ] Rol PostgreSQL con privilegio de crear schemas (alta de tenants).
 - [ ] Backups automáticos del servicio de BD gestionado activados (§13).
 - [ ] Turnstile y Wompi con secrets reales.
-- [ ] `redis-cli ping` responde `PONG` y Redis escucha solo en `127.0.0.1`.
+- [ ] Redis gestionado de producción (no el de dev), en la región de la VM, con
+      `REDIS_URL=rediss://` y la prueba de conexión del §2 devolviendo `1`.
 - [ ] `SENTRY_DSN` configurado y `SENTRY_SEND_PII=False` (ver §12 › Sentry).
 - [ ] Backups de PostgreSQL programados (ver §13).
 
@@ -1050,7 +1053,7 @@ dígitos y guion bajo. El frontend luego envía `X-Tenant: acme` en sus peticion
 
 ## Resumen rápido (orden de ejecución, primera instalación)
 
-1. Instalar paquetes del sistema (cliente PostgreSQL, sin servidor; Redis) (§2)
+1. Instalar paquetes del sistema (cliente PostgreSQL, sin servidor) y crear el Redis gestionado (§2)
 2. Aprovisionar rol/BD en el PostgreSQL gestionado + abrir conectividad (§3)
 3. Crear usuario de sistema `torio` + clonar en `/opt/torio` + venv (§4)
 4. Crear `/opt/torio/.env` de producción, incluida `MFA_ENCRYPTION_KEY` (`chmod 600`) (§5)
