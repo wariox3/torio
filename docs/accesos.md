@@ -69,6 +69,13 @@ lo reescriba: con el servicio expuesto directo, cualquiera manda el header que q
 falsea su IP. Por eso `CONFIAR_EN_PROXY` (en el `.env`) arranca en `False` y se prende en
 el despliegue que sí tiene proxy adelante.
 
+Prenderlo supone que Nginx le pasa a Django **una sola IP, la real**. Con Cloudflare
+adelante —y el servidor del frontend llamando a la API a través de Cloudflare— eso exige
+el `real_ip` recursivo de `DESPLIEGUE.md` §9 › *Cloudflare adelante*: con
+`CF-Connecting-IP` todos los usuarios serían la IP del frontend, y con
+`$proxy_add_x_forwarded_for` el primer valor lo elige el cliente. El throttling de DRF
+depende de lo mismo: identifica al cliente por el `X-Forwarded-For` completo.
+
 ## 4. Consulta
 
 | Método | Ruta | Descripción |

@@ -267,8 +267,9 @@ AUTH_COOKIE_SECURE=True
 CORS_ALLOWED_ORIGINS=https://app.tu-dominio.com,https://www.tu-dominio.com
 SECURE_SSL_REDIRECT=True
 SECURE_HSTS_SECONDS=31536000
-# True porque Nginx va adelante y reescribe X-Forwarded-For (ver §9). Sin esto, la
-# bitácora de accesos y los desafíos MFA registran la IP de Nginx (127.0.0.1).
+# True porque Nginx va adelante y reescribe X-Forwarded-For con la IP real (ver §9,
+# también con Cloudflare adelante). Sin esto, la bitácora de accesos y los desafíos
+# MFA registran la IP de Nginx (127.0.0.1).
 CONFIAR_EN_PROXY=True
 
 # ── MFA (obligatoria) ──────────────────────────────────
@@ -777,11 +778,116 @@ Notas:
   **primer** valor del header como IP del cliente. `$proxy_add_x_forwarded_for` agrega
   la IP real *al final* de lo que mandó el cliente, así que con él cualquiera elige la
   IP que queda en la bitácora de accesos y en los desafíos MFA enviando su propio
-  `X-Forwarded-For`. Esto vale mientras Nginx sea el único proxy: si se pone otro
-  adelante (Cloudflare, un balanceador), hay que tomar la IP del header que ese proxy
-  garantiza (p. ej. `CF-Connecting-IP` con `real_ip_header`) y no la de la conexión.
+  `X-Forwarded-For`. Con Cloudflare adelante, `$remote_addr` tiene que ser antes la IP
+  real del usuario: ver la subsección siguiente.
 - Renovación automática del certificado: el timer `certbot.timer` ya viene activo;
   verifícalo con `sudo certbot renew --dry-run`.
+
+### Cloudflare adelante: la IP real del cliente
+
+Con Cloudflare (nube naranja) delante de la API, la conexión a Nginx la abre un nodo de
+Cloudflare, así que `$remote_addr` es una IP de Cloudflare —y cambia de un request a
+otro—. De esa IP dependen dos cosas:
+
+- **El throttling de DRF.** Identifica al cliente por `X-Forwarded-For` **completo**
+  (`NUM_PROXIES` no está configurado): si el header trae una cadena, la clave del
+  contador es la cadena entera. Con `$proxy_add_x_forwarded_for` el último valor es el
+  nodo de Cloudflare, cada request cae en un contador distinto y `login: 5/min` no
+  frena nada; y como el cliente controla el principio de la cadena, mandando un
+  `X-Forwarded-For` distinto en cada intento lo esquiva del todo.
+- **`ip_del_request()`**, que toma el **primer** valor: la bitácora de accesos y los
+  desafíos MFA guardarían la IP que el cliente quiera.
+
+Por eso Nginx calcula la IP real con el módulo `real_ip` y le pasa a Django **solo esa**.
+
+**Por qué no `CF-Connecting-IP`.** Es la solución habitual, pero ese header trae la IP de
+quien se conectó a Cloudflare, y el **servidor del frontend llama a la API a través de
+Cloudflare**:
+
+```
+Navegador ─► Servidor frontend ─► Cloudflare ─► Nginx API ─► Django
+ (usuario)    (pone XFF = usuario)  (agrega el     ($remote_addr =
+                                     frontend)       nodo Cloudflare)
+```
+
+Con `CF-Connecting-IP` todos los usuarios serían la IP del frontend y compartirían un
+solo contador de login: cinco claves erradas de cualquiera bloquearían el login de todos.
+
+**La solución: recorrer `X-Forwarded-For` desde la derecha.** Con `real_ip_recursive on`,
+Nginx salta las IPs de confianza (Cloudflare y el frontend) y se queda con la primera que
+no lo es:
+
+```
+38.225.57.143 , 159.203.57.104 , 172.69.130.92
+      ▲          de confianza      de confianza
+      └── IP real  (frontend)       (Cloudflare)
+```
+
+No se puede falsear: un `X-Forwarded-For` inventado por el cliente queda a la izquierda
+de su IP real y el recorrido se detiene antes; y a una conexión que no viene de una IP de
+confianza (alguien que le pega al servidor sin pasar por Cloudflare) no se le cree el
+header. Para los sitios del servidor a los que el navegador llega directo por Cloudflare
+el resultado es el mismo que con `CF-Connecting-IP`, así que la configuración puede ir a
+nivel `http` y servir a todos.
+
+**1. `/etc/nginx/conf.d/cloudflare-realip.conf`** (nivel `http`, aplica a todos los sitios):
+
+```nginx
+# real_ip para los sitios detrás de Cloudflare: nginx recorre X-Forwarded-For de derecha
+# a izquierda saltando los proxies de confianza (Cloudflare y el frontend de torio); la
+# primera IP que no es de confianza es la del cliente.
+# Rangos de https://www.cloudflare.com/ips/ (revisados <fecha>); se mantienen a mano.
+set_real_ip_from 173.245.48.0/20;
+set_real_ip_from 103.21.244.0/22;
+# … el resto de rangos IPv4 e IPv6 de https://www.cloudflare.com/ips/, uno por línea …
+set_real_ip_from 2c0f:f248::/32;
+
+# Servidor del frontend de torio: llama a la API a través de Cloudflare, así que
+# CF-Connecting-IP sería él y no el usuario. Se le cree lo que agrega a X-Forwarded-For.
+set_real_ip_from <IP pública del servidor del frontend>;
+
+real_ip_header X-Forwarded-For;
+real_ip_recursive on;
+```
+
+Los rangos se pueden generar en vez de copiarlos a mano:
+
+```bash
+for ip in $(curl -s https://www.cloudflare.com/ips-v4) $(curl -s https://www.cloudflare.com/ips-v6); do
+  echo "set_real_ip_from $ip;"
+done
+```
+
+Tiene que haber **un solo** `real_ip_header` en toda la configuración, y los
+`set_real_ip_from` solo en este archivo: si un `server` define los suyos, **reemplazan**
+la lista del nivel `http` en vez de sumarse. Verifique con
+`sudo nginx -T | grep -n -E "real_ip_header|set_real_ip_from"`.
+
+**2. En el `server` de la API**, `X-Forwarded-For` con `$remote_addr` —que después del
+paso 1 ya es la IP del usuario—, como en la Fase 2:
+
+```nginx
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $remote_addr;
+```
+
+**3. `CONFIAR_EN_PROXY=True`** en el `.env` (§5).
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+**Verificación.** Seis logins seguidos con clave errada: en Redis tiene que quedar **una
+sola** clave `public::1:throttle_login_<IP del usuario>` —ni la del frontend ni una
+`172.x`/`162.158.x` de Cloudflare, ni una cadena con comas— y el sexto intento responde
+`429`. En el log de Nginx, `$realip_remote_addr` es el nodo de Cloudflare y
+`$remote_addr` el usuario; para ver la cadena que llegó, agregue temporalmente
+`$http_x_forwarded_for` al `log_format`.
+
+**Mantenimiento.** Si el servidor del frontend cambia de IP, hay que cambiarla en
+`cloudflare-realip.conf`: si no, todos los usuarios quedan como la IP del frontend. Los
+rangos de Cloudflare cambian rara vez; revíselos contra https://www.cloudflare.com/ips/
+de vez en cuando y actualice la fecha del comentario.
 
 ---
 
@@ -879,6 +985,9 @@ Verifica además:
       y respaldada fuera del servidor: si se pierde, ningún TOTP se puede descifrar.
 - [ ] `CONFIAR_EN_PROXY=True` y Nginx sobrescribiendo `X-Forwarded-For` con
       `$remote_addr` (§9).
+- [ ] Con Cloudflare adelante: `cloudflare-realip.conf` con `real_ip_recursive on` y la IP
+      del frontend de producción, y la prueba de los seis logins dejando una sola clave
+      `throttle_login_<IP del usuario>` (§9 › Cloudflare adelante).
 - [ ] `/opt/torio/.env` con `chmod 600`, propiedad de `torio`, fuera de git.
 - [ ] Servicio corre como usuario de sistema sin login y con el sandbox de systemd
       activo (`systemd-analyze security torio` con score razonable).

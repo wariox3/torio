@@ -121,7 +121,11 @@ read it from the admin, which is deliberately read-only.
 `ip_del_request()` in the same module is the only source of the client IP, shared by
 `SegAcceso`, `SegMfaDesafio` and `SegMfaDispositivo`. It honours `X-Forwarded-For` only
 when `CONFIAR_EN_PROXY` is on, because without a proxy rewriting that header any client
-can forge its own IP.
+can forge its own IP. DRF throttling keys on the **whole** `X-Forwarded-For`, so nginx must
+pass exactly one IP, the real one. The API sits behind Cloudflare and the frontend server
+calls it *through* Cloudflare, so `CF-Connecting-IP` would be the frontend for every user:
+nginx instead uses `real_ip_recursive` over `X-Forwarded-For`, trusting Cloudflare's ranges
+plus the frontend's IP (`DESPLIEGUE.md` §9 › *Cloudflare adelante*).
 
 Full design and rationale: **`docs/accesos.md`**.
 
