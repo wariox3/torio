@@ -188,9 +188,8 @@ El endpoint exige sesión, así que cuenta por cuenta autenticada, no por IP an�
 
 Lo que hay que saber de ese freno, para no confiarle más de lo que aguanta:
 
-- **Cuenta por worker.** No hay `CACHES`, así que el throttle vive en la memoria de cada
-  proceso de gunicorn: con cuatro workers el límite efectivo son cuarenta intentos por hora,
-  no diez. Es un freno a la inundación, no un muro.
+- **Falla abierto.** El throttle vive en Redis, compartido por los workers, así que diez son
+  diez; pero si Redis se cae deja pasar todo. Es un freno a la inundación, no un muro.
 - **No hay conteo en base.** Se evaluó y se descartó: nada de tabla de intentos, nada de
   ventana deslizante. Si en algún momento el barrido se vuelve un problema real, ese es el
   camino —es lo que hace `SegMfaDesafio` con su contador de `intentos`— pero no se implementa
@@ -320,7 +319,7 @@ las 6am no le tumben el ERP a la oficina— sin el segundo codebase.
 |---|---|---|
 | **Bloqueante** | El token del empleado no puede servir contra el ERP | Es la razón de ser de la compuerta. Sin ella, cualquier cuenta de empleado con membresía lee medio ERP. |
 | **Bloqueante** | El token de portal atado al contenedor | Sin eso, una persona con dos empleadores puede leer el contenedor equivocado cambiando un header. |
-| **Bloqueante** | Límite de intentos que limite de verdad | No hay backend de `CACHES`, así que `login: 5/min` son cinco **por worker**. Hace falta Redis, o contar en base como ya hace el desafío de MFA. |
+| ~~Bloqueante~~ | Límite de intentos que limite de verdad | Resuelto: el cache es Redis y `login: 5/min` cuenta entre todos los workers. Con Redis caído deja pasar; si eso no basta, contar en base como ya hace el desafío de MFA. |
 | Antes de salir | Cierre de acceso al borrar el vínculo | Terminar el contrato no corta el acceso; borrar la fila sí, y ahí las sesiones vivas de ese contenedor tienen que morir, no esperar a que expire el refresh. |
 | Antes de salir | Sesión pensada para navegador | Refresh de 1 día por inactividad (`REFRESH_TOKEN_LIFETIME`) obliga al empleado a hacer login con MFA cada dos días. Hace falta un perfil propio del portal, atado al dispositivo. |
 | A vigilar | Cambia la escala de usuarios | Hoy los `SegUsuario` son los del contenedor: decenas. Mañana son todos los empleados de todos los contenedores, con su foto, su MFA y su bitácora. |
@@ -359,7 +358,7 @@ Los tres primeros pasos no producen nada visible en el teléfono.
    dos empleadores.
 4. **`urls_portal`** con los dos endpoints de lectura: mis turnos y mis nóminas, los dos
    filtrados por el vínculo del token.
-5. **Redis** para el límite de intentos, y el segundo proceso de despliegue.
+5. ~~**Redis** para el límite de intentos~~ (hecho), y el segundo proceso de despliegue.
 6. **La app**: login **en dos pasos** —con MFA y dispositivo recordado, aunque el MFA sea
    opcional—, verificación de correo por OTP, enrolamiento por código, selector de empresa
    cuando hay más de una, y esos dos endpoints.

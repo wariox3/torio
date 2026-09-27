@@ -9,10 +9,9 @@ class SegMfaDesafio(models.Model):
     """
     Segundo paso pendiente de un login con la clave ya validada.
 
-    Va en base de datos y no en cache porque no hay `CACHES` configurado: el cache es
-    `LocMemCache`, un espacio por proceso, inservible entre workers de gunicorn. Acá
-    además queda el conteo de intentos —el freno real a la fuerza bruta sobre 6
-    dígitos— y la traza para auditoría.
+    Va en base de datos y no en cache porque acá queda el conteo de intentos —el freno
+    real a la fuerza bruta sobre 6 dígitos— y el cache no sirve para eso: si Redis se
+    cae responde vacío y deja pasar. Además queda la traza para auditoría.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

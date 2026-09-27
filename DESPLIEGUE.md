@@ -79,6 +79,7 @@ aparecerían como archivos sin versionar. El `.env` vive en `/opt/torio/.env` (d
 - Python 3.12 (el proyecto se desarrolla y prueba con 3.12)
 - **Acceso de red a un PostgreSQL 14+ gestionado/externo** (no se instala aquí)
 - Nginx
+- Redis (local, en el mismo servidor: cache del throttling)
 - Un usuario de sistema sin privilegios para correr la app (ej. `torio`)
 - Certificado TLS (recomendado: Let's Encrypt / certbot)
 
@@ -109,6 +110,42 @@ pg_dump --version
 
 > `psycopg2-binary` (en `requirements.txt`) trae su propia copia de libpq, así que
 > no hace falta `libpq-dev` ni compilar nada.
+
+**Redis.** Es el cache de Django, compartido por los workers de gunicorn: sin él cada
+worker lleva su propio contador y los límites de DRF (`login: 5/min`, etc.) dejan pasar
+N veces el límite. Va en el mismo servidor y escuchando solo en `127.0.0.1` (el paquete
+de Ubuntu ya viene así): no guarda nada que no se pueda perder, así que no necesita
+persistencia ni respaldo.
+
+```bash
+sudo apt install -y redis-server
+sudo systemctl enable --now redis-server
+redis-cli ping    # PONG
+```
+
+Como es solo cache, se le quita la persistencia en disco y se le pone tope de memoria:
+al llenarse descarta las claves menos usadas, y lo peor que se pierde es un contador.
+`CONFIG REWRITE` lo guarda en `/etc/redis/redis.conf` con los permisos del servicio
+(el directorio es `drwxrws--- redis:redis`, así que para verlo a mano hace falta `sudo`).
+
+```bash
+redis-cli CONFIG SET save ""
+redis-cli CONFIG SET appendonly no
+redis-cli CONFIG SET maxmemory 256mb
+redis-cli CONFIG SET maxmemory-policy allkeys-lru
+redis-cli CONFIG REWRITE
+sudo systemctl restart redis-server
+redis-cli CONFIG GET maxmemory-policy    # allkeys-lru: quedó guardado
+```
+
+Va en este mismo servidor mientras haya uno solo de app. Con dos o más detrás de un
+balanceador tiene que ser un Redis compartido (uno gestionado, con TLS y clave:
+`REDIS_URL=rediss://:<clave>@<host>:6379/0`); uno local por servidor volvería a contar
+por separado.
+
+Si Redis se cae, la app sigue: el cache responde vacío (`IGNORE_EXCEPTIONS`), el
+throttling deja pasar y el error queda en el log (`django_redis.cache`). Lo que tiene
+que limitar de verdad —los intentos del desafío MFA— cuenta en la base de datos.
 
 ---
 
@@ -259,6 +296,9 @@ WOMPI_INTEGRITY_SECRET=<secret real>
 # Obligatorio: sin él el webhook de Wompi rechaza todos los eventos y los pagos no
 # se aplican. Es el «secreto de eventos» del panel de Wompi, no el de integridad.
 WOMPI_EVENTS_SECRET=<secret real>
+
+# ── Redis (cache compartido entre workers, §2) ─────────
+REDIS_URL=redis://localhost:6379/0
 
 # ── RedEDoc (servicio Nobelio) ─────────────────────────
 REDEDOC_URL=https://api.rededoc.uk
@@ -430,10 +470,10 @@ sudo systemd-analyze verify /etc/systemd/system/torio.service
 
 Notas profesionales:
 - **Workers:** regla práctica `(2 × núcleos) + 1`. Ajusta a la VM.
-- **Throttling por worker.** No hay backend de `CACHES`, así que los límites de DRF
-  (`DEFAULT_THROTTLE_RATES`) se cuentan en la memoria de cada worker: con 2 workers,
-  el `login: 5/min` admite en la práctica hasta 10 intentos por minuto. Lo que tiene que
-  limitar de verdad (los intentos del desafío MFA) cuenta en la base de datos.
+- **Throttling en Redis.** Los límites de DRF (`DEFAULT_THROTTLE_RATES`) se cuentan en
+  Redis (§2), compartido por todos los workers. Si Redis se cae dejan pasar todo, así que
+  lo que tiene que limitar de verdad (los intentos del desafío MFA) cuenta en la base de
+  datos.
 - **Reciclaje de workers** (`--max-requests` + `--max-requests-jitter`): recicla
   cada worker tras ~1000 peticiones (con jitter para no reiniciarlos a la vez),
   mitigando fugas de memoria en procesos de larga vida.
@@ -839,6 +879,7 @@ Verifica además:
 - [ ] Rol PostgreSQL con privilegio de crear schemas (alta de tenants).
 - [ ] Backups automáticos del servicio de BD gestionado activados (§13).
 - [ ] Turnstile y Wompi con secrets reales.
+- [ ] `redis-cli ping` responde `PONG` y Redis escucha solo en `127.0.0.1`.
 - [ ] `SENTRY_DSN` configurado y `SENTRY_SEND_PII=False` (ver §12 › Sentry).
 - [ ] Backups de PostgreSQL programados (ver §13).
 
@@ -1009,7 +1050,7 @@ dígitos y guion bajo. El frontend luego envía `X-Tenant: acme` en sus peticion
 
 ## Resumen rápido (orden de ejecución, primera instalación)
 
-1. Instalar paquetes del sistema (cliente PostgreSQL, sin servidor) (§2)
+1. Instalar paquetes del sistema (cliente PostgreSQL, sin servidor; Redis) (§2)
 2. Aprovisionar rol/BD en el PostgreSQL gestionado + abrir conectividad (§3)
 3. Crear usuario de sistema `torio` + clonar en `/opt/torio` + venv (§4)
 4. Crear `/opt/torio/.env` de producción, incluida `MFA_ENCRYPTION_KEY` (`chmod 600`) (§5)

@@ -93,9 +93,9 @@ de método con un desafío en vuelo, ese desafío se resuelve como fue emitido.
 
 ### Notas de diseño
 
-- **`SegMfaDesafio` en BD, no en cache.** No hay `CACHES` configurado, así que el cache es
-  `LocMemCache`: un espacio por proceso, inservible entre workers de gunicorn. En BD además
-  queda el conteo de intentos por desafío (bloqueo a los 5) y la traza de auditoría.
+- **`SegMfaDesafio` en BD, no en cache.** El cache (Redis) está configurado para que, si se
+  cae, responda vacío y deje pasar: no sirve de freno de seguridad. En BD queda el conteo de
+  intentos por desafío (bloqueo a los 5), que no falla abierto, y la traza de auditoría.
 - **`ultimo_contador`** impide reusar un código de 6 dígitos dentro de su ventana de 30 s.
   Es necesario porque se acepta `valid_window=1` (el código anterior y el siguiente) para
   tolerar el desfase de reloj de los celulares.
@@ -300,12 +300,12 @@ Política obligatoria a nivel de organización y administración del MFA de terc
 
 ## 9. Deuda que esto destapa
 
-El throttling actual (`login: 5/min`) usa el cache por defecto. Sin `CACHES` configurado eso
-es `LocMemCache`: un contador independiente por worker de gunicorn, que además se reinicia en
-cada deploy. Con 4 workers el límite real es ~20/min.
+~~El throttling contaba por worker de gunicorn~~ — resuelto: el cache es Redis, compartido
+por todos los workers, así que `login: 5/min` son cinco de verdad. Pero con Redis caído el
+throttle deja pasar todo (`IGNORE_EXCEPTIONS`), y por eso los intentos del MFA se siguen
+contando en `SegMfaDesafio`.
 
-No es parte del MFA —por eso los intentos se cuentan en `SegMfaDesafio`— pero conviene
-configurar Redis como backend de cache en el mismo ciclo. Además, los 429 que devuelve el
+Queda pendiente: los 429 que devuelve el
 throttle se cortan antes de llegar a la vista, así que no quedan en la bitácora de
 ingresos (`docs/accesos.md`), que registra todo lo demás: éxitos, clave incorrecta, cuenta
 sin verificar, segundo factor pendiente y segundo factor fallido.

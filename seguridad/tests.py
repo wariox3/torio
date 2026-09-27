@@ -266,7 +266,7 @@ class MfaEndpointsTests(TestCase):
     CLAVE = 'clave-de-prueba-123'
 
     def setUp(self):
-        # El throttling usa el cache y el cache es LocMem: sin limpiarlo, los scopes se
+        # El throttling usa el cache (LocMem en tests): sin limpiarlo, los scopes se
         # arrastran entre tests del mismo proceso.
         cache.clear()
         self.usuario = SegUsuario.objects.create(email='endpoints@torio.test', is_verified=True)

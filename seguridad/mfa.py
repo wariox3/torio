@@ -48,8 +48,8 @@ EMISOR = 'Torio'
 # El desafío vive 5 minutos: suficiente para abrir el correo, corto para que una
 # ventana olvidada no quede utilizable.
 DURACION_DESAFIO = timedelta(minutes=5)
-# Freno real a la fuerza bruta sobre 6 dígitos. El throttle de DRF no sirve para esto
-# mientras el cache sea LocMemCache (un contador por worker); el conteo va en la fila.
+# Freno real a la fuerza bruta sobre 6 dígitos. El throttle de DRF no sirve para esto:
+# vive en el cache, y si Redis se cae deja pasar todo; el conteo va en la fila.
 MAX_INTENTOS = 5
 
 # ±1 ventana de 30 s para tolerar el desfase de reloj de los celulares.

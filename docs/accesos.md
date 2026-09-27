@@ -86,8 +86,7 @@ método, y búsqueda por correo e IP.
 ## 5. Lo que no cubre
 
 - **Los 429 del throttle no quedan registrados**: DRF corta la petición antes de que
-  llegue a la vista. Es la deuda del cache que ya está anotada en `docs/mfa.md` §9 — sin
-  Redis, el throttle además cuenta por worker de gunicorn.
+  llegue a la vista. Es la deuda anotada en `docs/mfa.md` §9.
 - **No hay purga.** La tabla crece sin tope; con el volumen actual eso no es problema en
   meses, pero es una decisión que hay que revisar, no un olvido.
 - No se registran el logout ni el refresh, solo los intentos de ingreso.

@@ -1,3 +1,4 @@
+import sys
 from datetime import timedelta
 from pathlib import Path
 
@@ -109,6 +110,37 @@ DATABASES = {
         'PORT': config('DATABASE_PORT'),
     }
 }
+
+# Cache en Redis, compartido por todos los workers de gunicorn. Con el LocMemCache
+# por defecto cada worker tenía su propio contador y el throttling de DRF dejaba
+# pasar N veces el límite. Si Redis se cae, `IGNORE_EXCEPTIONS` hace que el cache
+# responda vacío en vez de fallar: el throttling deja pasar y el login sigue en pie.
+# Por eso nada que sea un freno de seguridad de verdad (el conteo de intentos del MFA)
+# puede depender del cache: va en base de datos.
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': config('REDIS_URL', default='redis://localhost:6379/0'),
+        # Un solo Redis para todos los tenants: el schema va en la clave para que
+        # uno no lea lo que cacheó otro.
+        'KEY_FUNCTION': 'django_tenants.cache.make_key',
+        'REVERSE_KEY_FUNCTION': 'django_tenants.cache.reverse_key',
+        'OPTIONS': {
+            'IGNORE_EXCEPTIONS': True,
+            # Con Redis caído o inalcanzable, cada request paga como mucho este
+            # tiempo por consulta en vez de quedar colgado.
+            'SOCKET_CONNECT_TIMEOUT': 0.5,
+            'SOCKET_TIMEOUT': 0.5,
+        },
+    }
+}
+# Que la caída de Redis quede en el log (logger `django_redis.cache`) y no pase callada.
+DJANGO_REDIS_LOG_IGNORED_EXCEPTIONS = True
+
+# Los tests no dependen de un Redis levantado ni pisan el cache de desarrollo, que
+# está en el mismo Redis y lo borrarían con los `cache.clear()`.
+if 'test' in sys.argv[1:2]:
+    CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}}
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},

@@ -155,6 +155,9 @@ sits in RabbitMQ with no consumer.
 - Cookie domain is set to `.localhost` so JWT cookies work across all tenant subdomains.
 - In `DEBUG=True`, the login response includes `access_token` in the body for Postman testing.
 - Add `.localhost` to `ALLOWED_HOSTS` in `.env` to accept all tenant subdomains locally.
-- There is no `CACHES` backend configured, so DRF throttling counts **per gunicorn worker**.
-  Anything that must actually limit attempts (like the MFA challenge) counts in the database,
-  not in the cache.
+- The cache is **Redis** (`django-redis`, `REDIS_URL`), shared by all gunicorn workers, so DRF
+  throttling counts globally. Keys carry the schema (`django_tenants.cache.make_key`). With
+  `IGNORE_EXCEPTIONS`, a Redis outage makes the cache answer empty and throttling **lets
+  everything through** — so anything that must actually limit attempts (like the MFA
+  challenge) counts in the database, not in the cache. `manage.py test` swaps in
+  `LocMemCache`, so tests don't need Redis.
