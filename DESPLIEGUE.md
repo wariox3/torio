@@ -21,7 +21,8 @@ Linux con **PostgreSQL + Gunicorn + Nginx + systemd**.
                                     (servicio externo, schema
                                           por tenant)
 
-  Además, por red: Redis gestionado (cache del throttling, TLS) y RabbitMQ en CloudAMQP (§8.1).
+  Además, por red: Valkey gestionado de DigitalOcean (cache del throttling, TLS, §2) y
+  RabbitMQ en CloudAMQP (§8.1).
 ```
 
 > **La base de datos es un servicio externo/gestionado** (PostgreSQL administrado:
@@ -81,7 +82,8 @@ aparecerían como archivos sin versionar. El `.env` vive en `/opt/torio/.env` (d
 - Python 3.12 (el proyecto se desarrolla y prueba con 3.12)
 - **Acceso de red a un PostgreSQL 14+ gestionado/externo** (no se instala aquí)
 - Nginx
-- **Acceso de red a un Redis gestionado** (cache del throttling; no se instala aquí)
+- **Un cluster Valkey gestionado de DigitalOcean** en la VPC del droplet (cache del
+  throttling; no se instala aquí)
 - Un usuario de sistema sin privilegios para correr la app (ej. `torio`)
 - Certificado TLS (recomendado: Let's Encrypt / certbot)
 
@@ -113,35 +115,39 @@ pg_dump --version
 > `psycopg2-binary` (en `requirements.txt`) trae su propia copia de libpq, así que
 > no hace falta `libpq-dev` ni compilar nada.
 
-**Redis (servicio gestionado, no se instala aquí).** Es el cache de Django, compartido
-por los workers de gunicorn: sin él cada worker lleva su propio contador y los límites de
-DRF (`login: 5/min`, etc.) dejan pasar N veces el límite. Como la BD y RabbitMQ, es un
-servicio externo; en esta VM no se instala nada. Al crear la instancia en el proveedor:
+**Redis: Valkey gestionado de DigitalOcean (no se instala aquí).** Es el cache de Django,
+compartido por los workers de gunicorn: sin él cada worker lleva su propio contador y los
+límites de DRF (`login: 5/min`, etc.) dejan pasar N veces el límite. DigitalOcean ya no
+ofrece Redis: su *Managed Caching* es **Valkey**, un fork de Redis con el mismo protocolo,
+así que `django-redis` lo usa sin cambios y la URL sigue siendo `rediss://`.
 
-- **Misma región que la VM de la app.** Los timeouts del cache son de 0,5 s
-  (`torioapp/settings/base.py`): en la misma región una consulta tarda ~1 ms; en otra,
-  los timeouts empiezan a cortar y el throttling deja pasar.
-- **Una instancia por ambiente**, como CloudAMQP: si desarrollo y producción compartieran
-  Redis, compartirían los contadores del throttling.
-- **TLS obligatorio.** `settings/prod.py` rechaza al arrancar una `REDIS_URL` que no sea
-  `rediss://` (con doble `s`). redis-py verifica el certificado y el nombre del host sin
-  configuración adicional.
-- **Es solo cache:** sin persistencia ni backups si el plan deja elegir, y política de
-  desalojo `allkeys-lru` (al llenarse descarta las claves menos usadas; lo peor que se
-  pierde es un contador). Con unos pocos MB sobra.
-- **Base `0`.** Varios proveedores (Upstash, Redis Cloud) solo ofrecen esa.
-- **Conexiones:** cada worker de gunicorn abre la suya. Revise el tope del plan contra el
-  número de workers (§8), sobre todo en planes gratuitos.
-- Si el proveedor lo permite, restrinja el acceso a la IP de la VM de la app.
+En el panel, *Databases → Create Database Cluster → Valkey*:
 
-La URL va en `REDIS_URL` (§5) y es obligatoria en producción: sin ella la app no arranca,
-en vez de quedar apuntando a un `localhost` sin Redis. Para verificar la conexión, con el
-`.env` ya creado:
+1. **Misma región y misma VPC que el droplet de la app.** Así se conecta por el hostname
+   privado, sin salir a internet. Los timeouts del cache son de 0,5 s
+   (`torioapp/settings/base.py`): en otra región empiezan a cortar y el throttling deja
+   pasar.
+2. **Plan:** el más chico (1 GiB, un nodo) sobra; los contadores ocupan unos KB.
+3. **Eviction policy: `allkeys-lru`** (el asistente la marca *Recommended*; se cambia
+   después en *Settings → Eviction policy*). **No** `noeviction`, el valor por defecto de
+   DigitalOcean: con la memoria llena rechaza las escrituras, el cache falla abierto y el
+   throttling deja de contar sin que nada avise.
+4. **Trusted sources** (*Settings*): solo el droplet de la app. Sin él no conecta.
+5. **Un cluster por ambiente**, como CloudAMQP: si dos ambientes compartieran uno,
+   compartirían los contadores del throttling.
+6. **Cadena de conexión:** *Overview → Connection details → Private network →
+   Connection string*. Es `rediss://default:<clave>@private-<nombre>.db.ondigitalocean.com:25061`:
+   puerto propio (no 6379) y TLS obligatorio, que es lo que exige `settings/prod.py` —
+   rechaza al arrancar una `REDIS_URL` que no sea `rediss://`. Va en `REDIS_URL` (§5),
+   agregándole `/0` al final.
+
+`REDIS_URL` es obligatoria en producción: sin ella la app no arranca, en vez de quedar
+apuntando a un `localhost` sin Redis. Para verificar la conexión, con el `.env` ya creado:
 
 ```bash
 sudo -u torio DJANGO_SETTINGS_MODULE=torioapp.settings.prod /opt/torio/venv/bin/python \
     /opt/torio/manage.py shell -c "from django.core.cache import cache; cache.set('p', 1); print(cache.get('p'))"
-# 1  (None = no conecta: revise la URL, la clave y la allowlist del proveedor)
+# 1  (None = no conecta: revise la URL, la clave y los trusted sources del cluster)
 ```
 
 Si Redis se cae, la app sigue: el cache responde vacío (`IGNORE_EXCEPTIONS`), el
@@ -298,9 +304,10 @@ WOMPI_INTEGRITY_SECRET=<secret real>
 # se aplican. Es el «secreto de eventos» del panel de Wompi, no el de integridad.
 WOMPI_EVENTS_SECRET=<secret real>
 
-# ── Redis gestionado (cache compartido entre workers, §2) ─
+# ── Valkey de DigitalOcean (cache entre workers, §2) ───
 # Obligatoria y con TLS (rediss://): sin ella, o con redis://, la app no arranca.
-REDIS_URL=rediss://<usuario>:<clave>@<host>:<puerto>/0
+# Cadena de conexión de la red privada del cluster, con /0 al final.
+REDIS_URL=rediss://default:<clave>@private-<nombre>.db.ondigitalocean.com:25061/0
 
 # ── RedEDoc (servicio Nobelio) ─────────────────────────
 REDEDOC_URL=https://api.rededoc.uk
@@ -881,8 +888,9 @@ Verifica además:
 - [ ] Rol PostgreSQL con privilegio de crear schemas (alta de tenants).
 - [ ] Backups automáticos del servicio de BD gestionado activados (§13).
 - [ ] Turnstile y Wompi con secrets reales.
-- [ ] Redis gestionado de producción (no el de dev), en la región de la VM, con
-      `REDIS_URL=rediss://` y la prueba de conexión del §2 devolviendo `1`.
+- [ ] Valkey de producción en la VPC del droplet, con eviction policy `allkeys-lru`,
+      trusted sources solo el droplet, `REDIS_URL` con el host `private-…` y
+      `rediss://`, y la prueba de conexión del §2 devolviendo `1`.
 - [ ] `SENTRY_DSN` configurado y `SENTRY_SEND_PII=False` (ver §12 › Sentry).
 - [ ] Backups de PostgreSQL programados (ver §13).
 
@@ -1053,7 +1061,7 @@ dígitos y guion bajo. El frontend luego envía `X-Tenant: acme` en sus peticion
 
 ## Resumen rápido (orden de ejecución, primera instalación)
 
-1. Instalar paquetes del sistema (cliente PostgreSQL, sin servidor) y crear el Redis gestionado (§2)
+1. Instalar paquetes del sistema (cliente PostgreSQL, sin servidor) y crear el cluster Valkey en DigitalOcean (§2)
 2. Aprovisionar rol/BD en el PostgreSQL gestionado + abrir conectividad (§3)
 3. Crear usuario de sistema `torio` + clonar en `/opt/torio` + venv (§4)
 4. Crear `/opt/torio/.env` de producción, incluida `MFA_ENCRYPTION_KEY` (`chmod 600`) (§5)

@@ -161,6 +161,6 @@ sits in RabbitMQ with no consumer.
   everything through** — so anything that must actually limit attempts (like the MFA
   challenge) counts in the database, not in the cache. `manage.py test` swaps in
   `LocMemCache`, so tests don't need Redis. In dev `REDIS_URL` defaults to localhost; in
-  production Redis is a **managed service**, and `settings/prod.py` requires `REDIS_URL`
+  production it is a **managed service** — DigitalOcean's Valkey (Redis-compatible), and `settings/prod.py` requires `REDIS_URL`
   with `rediss://` (TLS) — without it the app refuses to start rather than silently
   running with no throttling.
