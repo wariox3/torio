@@ -160,7 +160,10 @@ sits in RabbitMQ with no consumer.
 - In `DEBUG=True`, the login response includes `access_token` in the body for Postman testing.
 - Add `.localhost` to `ALLOWED_HOSTS` in `.env` to accept all tenant subdomains locally.
 - The cache is **Redis** (`django-redis`, `REDIS_URL`), shared by all gunicorn workers, so DRF
-  throttling counts globally. Keys carry the schema (`django_tenants.cache.make_key`). With
+  throttling counts globally. Keys carry the schema (`django_tenants.cache.make_key`) and
+  the project prefix `torio` (`KEY_PREFIX`), since the Redis may be shared with other
+  projects — which also each need their own Redis DB number, because `cache.clear()` is
+  `FLUSHDB` (`DESPLIEGUE.md` §2). With
   `IGNORE_EXCEPTIONS`, a Redis outage makes the cache answer empty and throttling **lets
   everything through** — so anything that must actually limit attempts (like the MFA
   challenge) counts in the database, not in the cache. `manage.py test` swaps in

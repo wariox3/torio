@@ -141,6 +141,33 @@ En el panel, *Databases → Create Database Cluster → Valkey*:
    rechaza al arrancar una `REDIS_URL` que no sea `rediss://`. Va en `REDIS_URL` (§5),
    agregándole `/0` al final.
 
+**Si el cluster lo comparten otros proyectos.** Nada separa las claves de Torio de las de
+otro proyecto salvo dos cosas, y hacen falta las dos:
+
+- **Prefijo de claves.** Todas las claves de Torio empiezan con `torio`
+  (`KEY_PREFIX`, variable `CACHE_KEY_PREFIX`, por defecto `torio`): el throttle de login
+  queda `public:torio:1:throttle_login_<ip>`. Sin él, cualquier otro proyecto con
+  django-tenants y DRF escribe exactamente la misma clave, y los intentos fallidos en uno
+  bloquean la misma IP en el otro. Cada proyecto necesita un prefijo distinto.
+- **Una base de Redis por proyecto** (el número al final de `REDIS_URL`). El prefijo no
+  protege de un `cache.clear()`: en `django-redis` es `FLUSHDB` y vacía la base entera,
+  la de todos los que estén en ella. Torio usa la `/0`; el resto de proyectos va en otras
+  (`/1`, `/2`…), anotadas acá para que nadie repita número:
+
+  | Base | Proyecto |
+  |------|----------|
+  | `/0` | Torio    |
+
+  Antes de repartir números, verifique que el cluster acepta más de una base:
+  `redis-cli -u "$REDIS_URL" SELECT 1` tiene que responder `OK`. Si no, cada proyecto
+  necesita su propio cluster.
+
+Aun así comparten memoria y eviction policy: si otro proyecto llena el cluster, se
+desalojan los contadores de Torio y el throttling deja pasar sin avisar. Y quien tenga la
+URL de cualquiera de ellos lee y escribe las claves de todos, porque el usuario `default`
+no está restringido a ninguna base ni prefijo. Si eso no es aceptable, un cluster por
+proyecto.
+
 `REDIS_URL` es obligatoria en producción: sin ella la app no arranca, en vez de quedar
 apuntando a un `localhost` sin Redis. Para verificar la conexión, con el `.env` ya creado:
 
@@ -307,8 +334,12 @@ WOMPI_EVENTS_SECRET=<secret real>
 
 # ── Valkey de DigitalOcean (cache entre workers, §2) ───
 # Obligatoria y con TLS (rediss://): sin ella, o con redis://, la app no arranca.
-# Cadena de conexión de la red privada del cluster, con /0 al final.
+# Cadena de conexión de la red privada del cluster, con /0 al final (la base de Torio
+# si el cluster es compartido, ver §2).
 REDIS_URL=rediss://default:<clave>@private-<nombre>.db.ondigitalocean.com:25061/0
+# Opcional: prefijo de las claves del cache (default torio). Solo cambia si otro
+# proyecto del mismo cluster ya usa `torio`.
+# CACHE_KEY_PREFIX=torio
 
 # ── RedEDoc (servicio Nobelio) ─────────────────────────
 REDEDOC_URL=https://api.rededoc.uk
@@ -878,7 +909,7 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
 **Verificación.** Seis logins seguidos con clave errada: en Redis tiene que quedar **una
-sola** clave `public::1:throttle_login_<IP del usuario>` —ni la del frontend ni una
+sola** clave `public:torio:1:throttle_login_<IP del usuario>` —ni la del frontend ni una
 `172.x`/`162.158.x` de Cloudflare, ni una cadena con comas— y el sexto intento responde
 `429`. En el log de Nginx, `$realip_remote_addr` es el nodo de Cloudflare y
 `$remote_addr` el usuario; para ver la cadena que llegó, agregue temporalmente

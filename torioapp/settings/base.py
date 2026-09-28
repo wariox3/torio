@@ -125,6 +125,12 @@ CACHES = {
         # uno no lea lo que cacheó otro.
         'KEY_FUNCTION': 'django_tenants.cache.make_key',
         'REVERSE_KEY_FUNCTION': 'django_tenants.cache.reverse_key',
+        # Y el proyecto también, por si el Redis lo comparte con otros: sin prefijo la
+        # clave del throttle de login es `public::1:throttle_login_<ip>`, la misma que
+        # escribe cualquier otro proyecto con django-tenants y DRF, y compartirían los
+        # contadores. El prefijo no protege de un `cache.clear()` ajeno (es FLUSHDB):
+        # para eso cada proyecto va en su propia base de Redis (DESPLIEGUE.md §2).
+        'KEY_PREFIX': config('CACHE_KEY_PREFIX', default='torio'),
         'OPTIONS': {
             'IGNORE_EXCEPTIONS': True,
             # Con Redis caído o inalcanzable, cada request paga como mucho este
