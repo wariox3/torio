@@ -151,7 +151,9 @@ class LoginView(APIView):
             # para una clave mala y para un correo inventado.
             servicio_acceso.registrar_acceso(
                 request, RESULTADO_CLAVE,
-                usuario=SegUsuario.objects.filter(email__iexact=email).first(),
+                # `=` y no `__iexact`: igual que `authenticate()`, y así usa el índice
+                # único de `email` en vez de recorrer la tabla con UPPER().
+                usuario=SegUsuario.objects.filter(email=email).first(),
                 email=email,
             )
             return Response({'detail': 'Credenciales inválidas.'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -166,6 +168,9 @@ class LoginView(APIView):
         # El MFA se evalúa recién acá, con la clave ya validada: así el endpoint no
         # sirve como oráculo de "esta cuenta existe y tiene segundo factor".
         mfa = servicio_mfa.mfa_activo(usuario)
+        # Se deja en la relación `usuario.mfa` para que SegUsuarioMeSerializer no la
+        # vuelva a consultar. None cuando no hay MFA activo, que el serializer lee igual.
+        SegUsuario.mfa.related.set_cached_value(usuario, mfa)
         recordado = bool(mfa) and servicio_mfa.dispositivo_recordado(
             usuario, request.COOKIES.get(_COOKIE_DISPOSITIVO)
         )
