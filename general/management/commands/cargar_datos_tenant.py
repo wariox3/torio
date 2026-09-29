@@ -71,10 +71,15 @@ class Command(BaseCommand):
             return
 
         schema = options.get('schema')
+        # Sin `--schema`, solo los contenedores listos: uno en `creando` lo está
+        # sembrando su propia tarea (`contenedor.tasks.crear_contenedor`, que sí pasa
+        # `--schema`), y uno en `error` puede no tener tablas.
         tenants = (
             CtnCliente.objects.filter(schema_name=schema)
             if schema
-            else CtnCliente.objects.exclude(schema_name='public')
+            else CtnCliente.objects.exclude(schema_name='public').filter(
+                estado=CtnCliente.ESTADO_LISTO,
+            )
         )
 
         for tenant in tenants:

@@ -19,6 +19,7 @@ from django_tenants.test.cases import TenantTestCase
 from rest_framework.test import APIRequestFactory
 from rest_framework.throttling import ScopedRateThrottle
 
+from contenedor.models import CtnCliente
 from contenedor.views.rededoc import CtnRededocViewSet
 from general.models import GenDocumento, GenDocumentoClase, GenDocumentoTipo
 from general.servicios.rededoc import firmar_aviso
@@ -160,6 +161,16 @@ class WebhookRededocTests(TenantTestCase):
         respuesta = self._llamar(tipo='notificacion', cliente=999999)
         self.assertEqual(respuesta.status_code, 404)
         self.assertEqual(respuesta.data, {'detail': 'El documento no existe.'})
+
+    def test_un_cliente_que_no_esta_listo_es_un_cliente_desconocido(self):
+        """Su schema puede no tener tablas: se responde 404 y rededoc reintenta."""
+        CtnCliente.objects.filter(pk=self.tenant.pk).update(estado=CtnCliente.ESTADO_CREANDO)
+
+        respuesta = self._llamar(tipo='notificacion')
+
+        self.assertEqual(respuesta.status_code, 404)
+        self.documento.refresh_from_db()
+        self.assertFalse(self.documento.estado_electronico_notificado)
 
     # ---- firma ----
 

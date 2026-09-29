@@ -121,7 +121,11 @@ class CtnRededocViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         datos = serializer.validated_data
 
-        cliente = CtnCliente.objects.filter(pk=datos['cliente']).first()
+        # Uno que no está `listo` no puede tener documentos, y su schema puede no
+        # tener tablas: para rededoc, no existe todavía.
+        cliente = CtnCliente.objects.filter(
+            pk=datos['cliente'], estado=CtnCliente.ESTADO_LISTO,
+        ).first()
 
         # Llegar acá ya prueba la URL, el secreto y la forma de firmar; falta que el
         # cliente exista, y no hay documento que tocar. Con la firma válida quien

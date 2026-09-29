@@ -65,6 +65,19 @@ class TenantHeaderMiddleware:
                 status=404,
             )
 
+        # Un contenedor que se está creando existe, pero su schema está a medio
+        # migrar o sin catálogos: entrar lo mostraría vacío, y un `get_or_create`
+        # de `SingletonMixin` le ganaría a la semilla de configuración. Se corta
+        # acá, antes de la autenticación, para todos por igual.
+        if tenant.estado != self.tenant_model.ESTADO_LISTO:
+            self._etiquetar_sentry(slug)
+            detalle = (
+                f'La creación del contenedor "{slug}" falló.'
+                if tenant.estado == self.tenant_model.ESTADO_ERROR
+                else f'El contenedor "{slug}" todavía se está creando.'
+            )
+            return JsonResponse({'detail': detalle, 'estado': tenant.estado}, status=409)
+
         connection.set_tenant(tenant)
         request.tenant = tenant
         self._etiquetar_sentry(tenant.schema_name)

@@ -202,6 +202,10 @@ REST_FRAMEWORK = {
         # Los avisos de rededoc llegan todos de la misma IP, y un lote grande de
         # validaciones son cientos seguidos: el `anon` de 60/min los frenaba.
         'rededoc_webhook': '600/min',
+        # Cada contenedor es un schema con 126 migraciones. Esto frena a quien los
+        # cree en serie; el tope real —uno en creación por usuario— lo pone la vista
+        # en la base, porque si Redis se cae este límite deja pasar todo.
+        'crear_contenedor': '5/hour',
     },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
@@ -355,6 +359,10 @@ CELERY_TASK_IGNORE_RESULT = True
 # en la cola por defecto, `celery`.
 CELERY_TASK_ROUTES = {
     'general.tasks.notificar_documento': {'queue': 'notificar_documento'},
+    # La atiende el mismo `torio-celery`. Una ráfaga de creaciones (unos 20 s cada
+    # una) puede demorar las notificaciones; si eso se vuelve un problema, se le da
+    # un worker propio solo cambiando el `-Q` (docs/creacion_contenedor.md).
+    'contenedor.tasks.crear_contenedor': {'queue': 'crear_contenedor'},
 }
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # Encolar se hace dentro de un request (el webhook de rededoc). Con RabbitMQ caído

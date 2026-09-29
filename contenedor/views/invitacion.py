@@ -14,7 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tenant_users.tenants.models import ExistsError
 
-from contenedor.models import CtnInvitacion
+from contenedor.models import CtnCliente, CtnInvitacion
 from contenedor.serializers import (
     CtnInvitacionClienteSerializer,
     CtnInvitacionCrearSerializer,
@@ -66,6 +66,14 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
             return Response(
                 {'detail': 'Solo el owner del contenedor puede invitar usuarios.'},
                 status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Aceptar la invitación escribe en el schema del contenedor, que hasta
+        # estar listo puede no tener tablas.
+        if cliente.estado != CtnCliente.ESTADO_LISTO:
+            return Response(
+                {'detail': 'El contenedor todavía no está listo.'},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:

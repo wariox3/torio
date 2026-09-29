@@ -41,10 +41,11 @@ Each `CtnCliente` owns a separate PostgreSQL schema. `seguridad.middleware.Tenan
 - **No `X-Tenant` header** (or the public schema name) → public schema → `torioapp/urls_public.py` → `contenedor/`, `seguridad/`
 - **`X-Tenant: <schema>`** → that tenant's schema → `torioapp/urls_tenant.py` → `general/`, `contabilidad/`, `turno/`, `humano/`, `inventario/`
 - An unknown schema name gets a 404 from the middleware.
+- A container whose `CtnCliente.estado` is not `listo` (still being created, or creation failed) gets a 409 — see *Container creation* below.
 
 The middleware only resolves the schema; it does **not** authorize. Membership is checked by `seguridad.permissions.EsMiembroDelTenant` (in `DEFAULT_PERMISSION_CLASSES`), which runs after DRF authenticates — otherwise an anonymous request could probe any container by guessing its name. `CtnDominio` still exists because django-tenants requires `TENANT_DOMAIN_MODEL` and the API exposes each client's primary domain, but nothing routes by it.
 
-Tenant isolation is covered by `contenedor/tests_aislamiento.py` (`python manage.py test contenedor.tests_aislamiento`), one test class per layer: schema, header, membership, per-tenant permissions, subscription, and connection reuse between requests.
+Tenant isolation is covered by `contenedor/tests_aislamiento.py` (`python manage.py test contenedor.tests_aislamiento`), one test class per layer: schema, header, container state (`creando`/`error` → 409), membership, per-tenant permissions, subscription, and connection reuse between requests.
 
 `SHARED_APPS` run in the public schema. `TENANT_APPS` run in each tenant's isolated schema.
 
@@ -150,9 +151,42 @@ Tasks run outside any request, so they receive `schema_name` and enter it with
 `acks_late`, every task must be safe to run twice.
 
 Each task type gets **its own queue, named after the task** (`CELERY_TASK_ROUTES`;
-`notificar_documento` today). The worker only consumes the queues passed with `-Q`,
+`notificar_documento` and `crear_contenedor` today). The worker only consumes the queues passed with `-Q`,
 so a new routed task needs its queue added there (or its own worker) — otherwise it
 sits in RabbitMQ with no consumer.
+
+### Container creation
+
+`POST /contenedor/cliente/` does **not** build the container. In a millisecond
+transaction it saves `CtnCliente` with `estado='creando'`, an **empty** schema, the
+domain, the owner's `SegUsuarioCliente` and the trial subscription, and answers **202**.
+`contenedor.tasks.crear_contenedor` (queue `crear_contenedor`, consumed by the same
+`torio-celery` worker as the notifications) then migrates, creates the owner's `UserTenantPermissions`, loads
+catalogs with `--inicial` and sets `listo`. The front polls
+`GET /contenedor/cliente/<id>/estado/`; `POST .../reintentar/` re-enqueues one in `error`.
+
+Why: tenant migrations create FKs to `seg_usuario`, `auth_group` and `auth_permission`,
+and each FK holds `ShareRowExclusiveLock` on them until COMMIT. In one transaction that
+blocked every login for ~10 s. The task runs `migrate_schemas` **outside any `atomic`**
+so each migration commits and releases its locks — don't wrap it.
+
+Things that are easy to break:
+
+- **`estado` defaults to `listo`**, because `TenantTestCase`, the shell and the admin
+  build the container synchronously on `save()`. Only the view marks `creando`, and it
+  sets `auto_create_schema = False` **on the instance**, never on the class.
+- Anything that enters a tenant schema must skip non-`listo` containers: the middleware
+  (409), `cargar_datos_tenant` without `--schema`, the rededoc webhook, invitations.
+- Validate schema names with `CtnCliente.SCHEMA_NAME_VALIDO`, not django-tenants'
+  `is_valid_schema_name` — that one accepts quotes, and the name is interpolated in SQL.
+- The worker has two processes, so two runs for the **same** container can overlap
+  (double retry, `acks_late` redelivery). `_candado` takes a per-container
+  `pg_try_advisory_lock` on its own connection — not Django's, which `migrate_schemas`
+  closes — and the loser exits.
+- Deploys stop `torio-celery` before `migrate` (`DESPLIEGUE.md` §10), so `migrate`
+  never migrates the same schema as a creation in progress.
+
+Full design and rationale: **`docs/creacion_contenedor.md`**.
 
 ### Development notes
 

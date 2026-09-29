@@ -17,9 +17,10 @@ class CtnClienteSerializer(serializers.ModelSerializer):
     class Meta:
         model = CtnCliente
         fields = [
-            'id', 'schema_name', 'nombre', 'celular', 'correo', 'activo', 'fecha_creacion',
+            'id', 'schema_name', 'nombre', 'celular', 'correo', 'activo', 'estado',
+            'fecha_creacion',
         ]
-        read_only_fields = ['id', 'activo', 'fecha_creacion']
+        read_only_fields = ['id', 'activo', 'estado', 'fecha_creacion']
 
 
 class CtnClienteActualizarSerializer(serializers.ModelSerializer):
@@ -35,6 +36,9 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
     schema_name = serializers.CharField(source='cliente.schema_name', read_only=True)
     cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True)
     activo = serializers.BooleanField(source='cliente.activo', read_only=True)
+    # Un contenedor en `creando` o `error` también aparece en la lista: el front
+    # lo muestra con su estado en vez de dejar entrar.
+    estado = serializers.CharField(source='cliente.estado', read_only=True)
     dominio = serializers.SerializerMethodField()
     suscripcion_id = serializers.IntegerField(source='cliente.suscripcion.id', read_only=True)
     suscripcion_fecha_fin = serializers.DateField(source='cliente.suscripcion.fecha_fin', read_only=True)
@@ -46,7 +50,7 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = SegUsuarioCliente
         fields = [
-            'cliente_id', 'schema_name', 'cliente_nombre', 'activo', 'dominio',
+            'cliente_id', 'schema_name', 'cliente_nombre', 'activo', 'estado', 'dominio',
             'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
             'suscripcion_suscripcion_tipo_nombre',
             'propietario',

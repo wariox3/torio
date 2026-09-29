@@ -477,6 +477,51 @@ class ResolucionDeTenantTests(AislamientoBase):
 # 3. La membresía
 # --------------------------------------------------------------------------- #
 
+class ContenedorNoListoTests(AislamientoBase):
+    """
+    Un contenedor en `creando` o `error` existe, pero su schema está a medio construir:
+    el middleware lo corta con 409 antes de autenticar, incluso a su propio owner.
+    """
+
+    def test_uno_en_creacion_no_deja_entrar_ni_a_su_owner(self):
+        CtnCliente.objects.filter(pk=Escenario.cliente_a.pk).update(
+            estado=CtnCliente.ESTADO_CREANDO,
+        )
+
+        respuesta = self._get(RUTA_ITEM, usuario=Escenario.sol_a, tenant=ESQUEMA_A)
+
+        self.assertEqual(respuesta.status_code, 409)
+        self.assertEqual(respuesta.json()['estado'], CtnCliente.ESTADO_CREANDO)
+
+    def test_uno_fallido_tampoco(self):
+        CtnCliente.objects.filter(pk=Escenario.cliente_a.pk).update(
+            estado=CtnCliente.ESTADO_ERROR,
+        )
+
+        respuesta = self._get(RUTA_ITEM, usuario=Escenario.sol_a, tenant=ESQUEMA_A)
+
+        self.assertEqual(respuesta.status_code, 409)
+        self.assertEqual(respuesta.json()['estado'], CtnCliente.ESTADO_ERROR)
+
+    def test_el_rechazo_no_deja_la_conexion_en_su_schema(self):
+        CtnCliente.objects.filter(pk=Escenario.cliente_a.pk).update(
+            estado=CtnCliente.ESTADO_CREANDO,
+        )
+
+        self._get(RUTA_ITEM, usuario=Escenario.sol_a, tenant=ESQUEMA_A)
+
+        self.assertEqual(connection.schema_name, get_public_schema_name())
+
+    def test_el_otro_contenedor_sigue_funcionando(self):
+        CtnCliente.objects.filter(pk=Escenario.cliente_a.pk).update(
+            estado=CtnCliente.ESTADO_CREANDO,
+        )
+
+        respuesta = self._get(RUTA_ITEM, usuario=Escenario.sol_b, tenant=ESQUEMA_B)
+
+        self.assertEqual(respuesta.status_code, 200)
+
+
 class MembresiaTests(AislamientoBase):
     """
     El header lo pone el cliente, así que resolver el schema no autoriza nada: la

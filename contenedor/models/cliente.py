@@ -1,3 +1,5 @@
+import re
+
 from django.db import models, transaction
 from tenant_users.permissions.models import UserTenantPermissions
 from tenant_users.tenants.models import (
@@ -11,11 +13,39 @@ from tenant_users.tenants.models import (
 
 
 class CtnCliente(TenantBase):
+    # Ciclo de vida del contenedor. `CtnClienteViewSet.create` lo registra en
+    # `creando` y la tarea `crear_contenedor` lo lleva a `listo` o a `error`; mientras
+    # no esté `listo`, `TenantHeaderMiddleware` no deja entrar a su schema.
+    #
+    # El default es `listo` y no `creando` porque todo lo que crea un contenedor con
+    # `save()` —`TenantTestCase`, el shell, el admin— lo deja completo en ese mismo
+    # llamado (`auto_create_schema`). Solo la vista lo difiere, y lo marca ella.
+    #
+    # No es `activo`: ese dice si el contenedor está habilitado, este si ya terminó
+    # de construirse. Un contenedor listo puede estar inactivo, y al revés.
+    ESTADO_CREANDO = 'creando'
+    ESTADO_LISTO = 'listo'
+    ESTADO_ERROR = 'error'
+    ESTADO_CHOICES = [
+        (ESTADO_CREANDO, 'Creando'),
+        (ESTADO_LISTO, 'Listo'),
+        (ESTADO_ERROR, 'Error'),
+    ]
+
+    # Qué nombre de schema se acepta al crear un contenedor. No sirve el
+    # `is_valid_schema_name` de django-tenants: es `^(?!pg_).{1,63}$`, que deja pasar
+    # comillas, y el nombre va interpolado en `CREATE SCHEMA "<nombre>"`.
+    SCHEMA_NAME_VALIDO = re.compile(r'^(?!pg_)[a-z][a-z0-9_]{0,62}$')
+
     schema_name = models.CharField(max_length=100, unique=True)
     nombre = models.CharField('Nombre', max_length=100)
     celular = models.CharField('Celular', max_length=20)
     correo = models.EmailField('Correo', max_length=255)
     activo = models.BooleanField('Activo', default=True, db_default=True)
+    estado = models.CharField(
+        'Estado', max_length=10, choices=ESTADO_CHOICES,
+        default=ESTADO_LISTO, db_default=ESTADO_LISTO,
+    )
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
     fecha_ultima_conexion = models.DateTimeField(null=True, auto_now_add=True)
     owner = models.ForeignKey(
@@ -73,6 +103,12 @@ class CtnCliente(TenantBase):
         `@schema_required` conmuta al schema del tenant: `UserTenantPermissions`
         y sus grupos caen ahí, y `seg_usuario_cliente` y `auth_group` se
         resuelven a `public` por el search_path.
+
+        Hay una única excepción a escribir las dos filas juntas: el owner de un
+        contenedor nuevo. `CtnClienteViewSet.create` crea su membresía en el
+        request, cuando el schema todavía no tiene tablas, y `crear_contenedor`
+        crea sus permisos al terminar las migraciones. Entre una cosa y la otra
+        el contenedor está en `creando`, y el middleware no deja entrar a nadie.
         """
         from seguridad.models import CAMPOS_ACCESO, SegUsuarioCliente
 

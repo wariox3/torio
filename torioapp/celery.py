@@ -4,7 +4,7 @@ La aplicación de Celery de torio. El broker es RabbitMQ (`CELERY_BROKER_URL`).
 Como `manage.py`, arranca con los settings de desarrollo salvo que se diga otra
 cosa, así que en local basta con:
 
-    celery -A torioapp worker -l info -Q notificar_documento,celery
+    celery -A torioapp worker -l info -Q notificar_documento,crear_contenedor,celery
 
 En producción los fija la unidad systemd (`Environment=DJANGO_SETTINGS_MODULE=
 torioapp.settings.prod`, ver DESPLIEGUE.md §8.1). Esa línea es obligatoria: sin ella

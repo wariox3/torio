@@ -1,18 +1,17 @@
-import io
-import logging
-import threading
 from datetime import date, timedelta
 
 from django.conf import settings
-from django.core.management import call_command
-from django.db import connection, transaction
+from django.core.cache import cache
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Prefetch
-from django_tenants.utils import get_public_schema_name, schema_context
+from django.utils import timezone
+from django_tenants.utils import schema_exists
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 
 from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion, CtnSuscripcionTipo
 from contenedor.serializers import CtnClienteSerializer
@@ -20,7 +19,8 @@ from contenedor.serializers.cliente import (
     CtnClienteActualizarSerializer,
     CtnClienteListaUsuarioSerializer,
 )
-from seguridad.models import CAMPOS_ACCESO, SegUsuarioCliente
+from contenedor.tasks import clave_paso, programar_creacion
+from seguridad.models import CAMPOS_ACCESO, SegUsuario, SegUsuarioCliente
 
 # Todo contenedor nuevo arranca en el mismo plan de prueba —'Prueba ERP', categoría
 # 99, precio 0— por quince días. No es algo que elija quien crea el tenant: para
@@ -28,72 +28,10 @@ from seguridad.models import CAMPOS_ACCESO, SegUsuarioCliente
 SUSCRIPCION_TIPO_PRUEBA_ID = 13
 DIAS_PRUEBA = 15
 
-logger = logging.getLogger(__name__)
-
-
-def lanzar_carga_de_catalogos(schema_name):
-    """
-    Arranca la carga de catálogos en un hilo aparte y devuelve el hilo.
-
-    Está separada de `_cargar_catalogos` para que las pruebas puedan sustituir el
-    disparo sin tocar el trabajo, y para que llamar al trabajo en forma síncrona
-    siga siendo posible.
-    """
-    hilo = threading.Thread(
-        target=_en_hilo,
-        args=(schema_name,),
-        name=f'catalogos-{schema_name}',
-    )
-    hilo.start()
-    return hilo
-
-
-def _en_hilo(schema_name):
-    """
-    Envoltorio del hilo: hace el trabajo y devuelve la conexión que abrió.
-
-    El cierre va acá y no en `_cargar_catalogos` porque la conexión es del hilo:
-    si lo hiciera el trabajo, llamarlo en forma síncrona —una prueba, el shell—
-    le cerraría la conexión a quien lo llamó.
-    """
-    try:
-        _cargar_catalogos(schema_name)
-    finally:
-        connection.close()
-
-
-def _cargar_catalogos(schema_name):
-    """
-    Siembra los 54 archivos de fixtures del tenant.
-
-    Corre fuera del request porque son 4.550 filas y el request que crea el
-    contenedor ya carga con las 104 migraciones del schema.
-
-    Tres cosas que hay que tener presentes:
-
-    - **No hay reintento, y el fallo solo queda en el log.** Si el worker se
-      recicla, el servicio se cae a mitad de carga o el comando falla, el
-      contenedor queda sin catálogos y nada en la base lo delata: hay que correr
-      `manage.py cargar_datos_tenant --schema <nombre> --inicial` a mano.
-    - **El contenedor existe antes de tener datos.** Entre el 201 y el fin de esta
-      carga, entrar al tenant lo muestra vacío. Peor: si alguien abre configuración
-      en esa ventana, `SingletonMixin` crea la fila con `get_or_create`, y cuando
-      esta carga llega a `01_configuracion.json` la encuentra y omite la semilla.
-    - **Las semillas van con los catálogos, no antes.** `fixtures_inicial/` tiene
-      FKs contra las tablas de `fixtures/` (el contacto semilla apunta a ciudad e
-      identificación), así que no se puede sembrar primero y diferir el resto.
-    """
-    with schema_context(get_public_schema_name()):
-        try:
-            call_command(
-                'cargar_datos_tenant',
-                schema=schema_name,
-                inicial=True,
-                verbosity=0,
-                stdout=io.StringIO(),
-            )
-        except Exception:
-            logger.exception('Falló la carga de catálogos del contenedor %s', schema_name)
+# Un contenedor tarda unos 20 s en crearse. Si sigue en `creando` pasado este
+# tiempo, la tarea se perdió —un mensaje que RabbitMQ no entregó, un worker muerto
+# por el límite duro— y `reintentar` lo deja volver a encolar.
+CREACION_ATASCADA = timedelta(minutes=30)
 
 
 @extend_schema(tags=['Cliente'])
@@ -102,11 +40,17 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = CtnCliente.objects.all()
 
+    # Alcance del `ScopedRateThrottle` que `get_throttles` le suma a `create`.
+    throttle_scope = 'crear_contenedor'
+
     def get_queryset(self):
         # Un usuario solo ve y opera sobre los contenedores de los que es
         # miembro. `create` no usa el queryset, así que no queda bloqueado.
         # La autorización fina de escritura (update/destroy) la refina cada
         # acción contra is_superuser del contenedor.
+        #
+        # Un contenedor en `creando` ya aparece: la membresía del owner la crea
+        # el request, no la tarea.
         return CtnCliente.objects.filter(
             segusuariocliente__usuario=self.request.user,
         ).distinct()
@@ -116,26 +60,67 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
             return CtnClienteActualizarSerializer
         return CtnClienteSerializer
 
+    def get_throttles(self):
+        # Solo `create` lleva el límite propio; el resto de acciones, solo los
+        # límites generales.
+        throttles = super().get_throttles()
+        if self.action == 'create':
+            throttles.append(ScopedRateThrottle())
+        return throttles
+
     @extend_schema(
         summary='Crear tenant',
-        description='Crea un nuevo cliente tenant con su schema PostgreSQL, dominio y vincula al usuario autenticado como owner.',
+        description=(
+            'Registra el contenedor en `estado: creando` y responde 202 enseguida: el '
+            'schema, las migraciones y los catálogos los termina una tarea en segundo '
+            'plano. El front consulta `GET /contenedor/cliente/<id>/estado/` hasta que '
+            'llegue a `listo` (o a `error`, que se reintenta con '
+            '`POST /contenedor/cliente/<id>/reintentar/`). Mientras no esté listo, '
+            'cualquier request con su `X-Tenant` responde 409.'
+        ),
         responses={
-            201: CtnClienteSerializer,
+            202: CtnClienteSerializer,
             400: OpenApiResponse(
                 inline_serializer('ErrorSerializer', {'detail': serializers.CharField()}),
-                description='Dominio o schema ya registrado',
+                description='Nombre de schema inválido o ya registrado',
+            ),
+            409: OpenApiResponse(
+                inline_serializer('ClienteEnCreacionSerializer', {'detail': serializers.CharField()}),
+                description='El usuario ya tiene un contenedor en creación',
             ),
         },
     )
     @transaction.atomic
     def create(self, request, *args, **kwargs):
+        """
+        La parte rápida de crear un contenedor: todo lo que vive en el schema
+        público. Dura milisegundos; lo lento lo hace `contenedor.tasks.crear_contenedor`.
+
+        Antes esto corría las 126 migraciones del tenant dentro de esta misma
+        transacción, y las FKs hacia `seg_usuario` dejaban esa tabla bloqueada para
+        escritura 10 s: nadie podía iniciar sesión mientras alguien creaba un
+        contenedor. El porqué completo, en `docs/creacion_contenedor.md`.
+        """
         serializador = CtnClienteSerializer(data=request.data)
         serializador.is_valid(raise_exception=True)
 
         schema_name = serializador.validated_data['schema_name']
         dominio = f'{schema_name}.{settings.TENANT_BASE_DOMAIN}'
 
-        if CtnDominio.objects.filter(domain=dominio).exists():
+        # Va interpolado en `CREATE SCHEMA` (ver `CtnCliente.SCHEMA_NAME_VALIDO`).
+        if not CtnCliente.SCHEMA_NAME_VALIDO.match(schema_name):
+            return Response(
+                {'detail': (
+                    f'"{schema_name}" no es un nombre de schema válido: solo letras '
+                    'minúsculas, números y guion bajo, empezando por una letra y sin '
+                    'el prefijo "pg_".'
+                )},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # `schema_exists` cubre un schema huérfano, que quedó sin su CtnCliente:
+        # reutilizarlo metería al contenedor nuevo los datos de otro.
+        if CtnDominio.objects.filter(domain=dominio).exists() or schema_exists(schema_name):
             return Response(
                 {'detail': f'El schema "{schema_name}" ya está registrado.'},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -151,20 +136,58 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        cliente = serializador.save(owner=request.user)
+        # Uno en creación por usuario. Se cuenta en la base y no en el throttle
+        # porque este sí tiene que valer con Redis caído. El lock sobre la fila del
+        # usuario pone en fila dos POST suyos simultáneos: sin él, los dos verían
+        # cero contenedores en creación y pasarían.
+        SegUsuario.objects.select_for_update().filter(pk=request.user.pk).first()
+        if CtnCliente.objects.filter(owner=request.user, estado=CtnCliente.ESTADO_CREANDO).exists():
+            return Response(
+                {'detail': 'Ya tienes un contenedor en creación. Espera a que termine.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        cliente = CtnCliente(
+            **serializador.validated_data,
+            owner=request.user,
+            estado=CtnCliente.ESTADO_CREANDO,
+        )
+        # En la instancia y no en la clase: `TenantTestCase`, el shell y el admin
+        # siguen creando el schema al guardar.
+        cliente.auto_create_schema = False
+        try:
+            # Savepoint propio: si el INSERT choca, la transacción de afuera sigue
+            # usable para responder.
+            with transaction.atomic():
+                cliente.save()
+        except IntegrityError:
+            # Dos POST con el mismo nombre a la vez: los dos pasaron la validación
+            # del serializer, y el índice único frena al segundo.
+            return Response(
+                {'detail': f'El schema "{schema_name}" ya está registrado.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # El schema vacío va acá y no en la tarea: `migrate_schemas` de cada deploy
+        # recorre todos los CtnCliente y se cae con uno que no tenga schema —por
+        # ejemplo, uno que quedó en `error` porque RabbitMQ no respondió—.
+        # `CREATE SCHEMA` no toca ninguna tabla, así que no bloquea nada.
+        with connection.cursor() as cursor:
+            cursor.execute(f'CREATE SCHEMA "{schema_name}"')
 
         CtnDominio.objects.create(domain=dominio, is_primary=True, tenant=cliente)
-        # add_user crea la membresía y, dentro del schema recién creado, los
-        # permisos del usuario. El owner no necesita grupos: is_superuser le
-        # basta para saltarse TienePermisoModelo, y aplica solo a este
-        # contenedor porque vive en su UserTenantPermissions, no en el usuario.
-        # Los accesos sí hay que pasarlos: por defecto son todos False y el owner
+
+        # La membresía sí va acá, aunque sus permisos (`UserTenantPermissions`)
+        # los crea la tarea: estos viven en el schema del tenant, que todavía no
+        # tiene tablas. Así el contenedor aparece en `lista-usuario` desde ya.
+        # El owner no necesita grupos —la tarea le da is_superuser, que se salta
+        # TienePermisoModelo—, pero sí los accesos: por defecto son todos False y
         # se quedaría sin ningún módulo en el menú de su propio contenedor.
-        cliente.add_user(
-            request.user,
-            accesos=dict.fromkeys(CAMPOS_ACCESO, True),
+        SegUsuarioCliente.objects.create(
+            usuario=request.user,
+            cliente=cliente,
             propietario=True,
-            is_superuser=True,
+            **dict.fromkeys(CAMPOS_ACCESO, True),
         )
 
         fecha_inicio = date.today()
@@ -179,11 +202,95 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         cliente.suscripcion = suscripcion
         cliente.save(update_fields=['suscripcion'])
 
-        # Después del COMMIT, no antes: el hilo abre su propia conexión y no vería
-        # ni el contenedor ni su schema mientras esta transacción siga abierta.
-        transaction.on_commit(lambda: lanzar_carga_de_catalogos(schema_name))
+        programar_creacion(cliente.pk)
 
-        return Response(CtnClienteSerializer(cliente).data, status=status.HTTP_201_CREATED)
+        return Response(CtnClienteSerializer(cliente).data, status=status.HTTP_202_ACCEPTED)
+
+    @extend_schema(
+        summary='Estado de creación del contenedor',
+        description=(
+            'Para consultar mientras el contenedor se crea. `paso` dice en qué va '
+            '(`esquema`, `migraciones`, `permisos`, `catalogos`) y solo viene en '
+            '`creando`; puede faltar aunque esté creando, porque se guarda en caché.'
+        ),
+        responses={200: inline_serializer('ClienteEstadoSerializer', {
+            'estado': serializers.ChoiceField(choices=CtnCliente.ESTADO_CHOICES),
+            'paso': serializers.CharField(allow_null=True),
+        })},
+    )
+    @action(detail=True, methods=['get'], url_path='estado')
+    def estado(self, request, pk=None):
+        cliente = self.get_object()
+        paso = None
+        if cliente.estado == CtnCliente.ESTADO_CREANDO:
+            paso = cache.get(clave_paso(cliente.pk))
+        return Response({'estado': cliente.estado, 'paso': paso})
+
+    @extend_schema(
+        summary='Reintentar la creación del contenedor',
+        description=(
+            'Vuelve a encolar la creación de un contenedor en `error`, o en `creando` '
+            'hace más de 30 minutos (la tarea se perdió). Retoma donde quedó: lo ya '
+            'migrado o cargado no se repite. Solo el owner.'
+        ),
+        request=None,
+        responses={
+            202: CtnClienteSerializer,
+            403: OpenApiResponse(
+                inline_serializer('ClienteReintentarForbiddenSerializer', {'detail': serializers.CharField()}),
+                description='No es el owner',
+            ),
+            409: OpenApiResponse(
+                inline_serializer('ClienteReintentarConflictoSerializer', {'detail': serializers.CharField()}),
+                description='El contenedor está listo o se sigue creando',
+            ),
+        },
+    )
+    @action(detail=True, methods=['post'], url_path='reintentar')
+    @transaction.atomic
+    def reintentar(self, request, pk=None):
+        # El filtro de `get_queryset` sin su `distinct`, que PostgreSQL no admite
+        # con FOR UPDATE. El lock pone en fila dos reintentos simultáneos.
+        cliente = CtnCliente.objects.select_for_update(of=('self',)).filter(
+            pk=pk, segusuariocliente__usuario=request.user,
+        ).first()
+        if cliente is None:
+            return Response(
+                {'detail': f'El cliente con id "{pk}" no existe.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Por owner y no por `es_superusuario`: esa consulta lee el schema del
+        # tenant, que en un contenedor fallido puede no tener tablas.
+        if cliente.owner_id != request.user.id:
+            return Response(
+                {'detail': 'Solo el owner del contenedor puede reintentar su creación.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        atascado = (
+            cliente.estado == CtnCliente.ESTADO_CREANDO
+            and cliente.fecha_creacion is not None
+            and cliente.fecha_creacion < timezone.now() - CREACION_ATASCADA
+        )
+        if cliente.estado != CtnCliente.ESTADO_ERROR and not atascado:
+            detalle = (
+                'El contenedor ya está listo.'
+                if cliente.estado == CtnCliente.ESTADO_LISTO
+                else 'El contenedor se está creando.'
+            )
+            return Response({'detail': detalle}, status=status.HTTP_409_CONFLICT)
+
+        # Reintentar uno atascado dos veces seguidas encola dos tareas, y no pasa
+        # nada: si coinciden, el candado de la tarea deja pasar solo a una, y si no,
+        # la segunda lo encuentra `listo` y no hace nada.
+        # `update` y no `save`: el `save` de django-tenants crea el schema en ese
+        # mismo llamado si no lo encuentra, y eso es justo lo que no va en el request.
+        CtnCliente.objects.filter(pk=cliente.pk).update(estado=CtnCliente.ESTADO_CREANDO)
+        cliente.estado = CtnCliente.ESTADO_CREANDO
+        programar_creacion(cliente.pk)
+
+        return Response(CtnClienteSerializer(cliente).data, status=status.HTTP_202_ACCEPTED)
 
     @extend_schema(
         summary='Actualizar contenedor',
@@ -193,10 +300,21 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 inline_serializer('ClienteForbiddenSerializer', {'detail': serializers.CharField()}),
                 description='Sin permisos de superusuario en el contenedor',
             ),
+            409: OpenApiResponse(
+                inline_serializer('ClienteNoListoSerializer', {'detail': serializers.CharField()}),
+                description='El contenedor no está listo',
+            ),
         },
     )
     def update(self, request, *args, **kwargs):
         cliente = self.get_object()
+        # `es_superusuario` lee el schema del tenant, que mientras se crea no
+        # tiene tablas.
+        if cliente.estado != CtnCliente.ESTADO_LISTO:
+            return Response(
+                {'detail': 'El contenedor todavía no está listo.'},
+                status=status.HTTP_409_CONFLICT,
+            )
         if not cliente.es_superusuario(request.user):
             return Response(
                 {'detail': 'Solo un superusuario del contenedor puede modificarlo.'},
@@ -206,12 +324,20 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary='Eliminar contenedor',
-        description='Elimina el cliente y su schema. Solo un superusuario del contenedor puede hacerlo.',
+        description=(
+            'Elimina el cliente y su schema. Solo un superusuario del contenedor puede '
+            'hacerlo; si la creación falló (`estado: error`), el owner. Uno en '
+            '`creando` no se puede eliminar hasta que termine.'
+        ),
         responses={
             204: None,
             403: OpenApiResponse(
                 inline_serializer('ClienteDeleteForbiddenSerializer', {'detail': serializers.CharField()}),
                 description='Sin permisos de superusuario en el contenedor',
+            ),
+            409: OpenApiResponse(
+                inline_serializer('ClienteDeleteCreandoSerializer', {'detail': serializers.CharField()}),
+                description='El contenedor se está creando',
             ),
         },
     )
@@ -224,10 +350,23 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # Borrarlo mientras la tarea corre sería tirarle el schema debajo.
+        if cliente.estado == CtnCliente.ESTADO_CREANDO:
+            return Response(
+                {'detail': 'El contenedor se está creando. Espera a que termine.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
         # La autorización se resuelve contra permissions_usertenantpermissions
         # del schema del contenedor (is_superuser), no contra owner_id: esa es
         # la fuente de verdad de permisos y es la que puebla add_user al crear.
-        if not cliente.es_superusuario(request.user):
+        # Salvo en uno fallido, donde ese schema puede no tener tablas: ahí,
+        # por owner.
+        if cliente.estado == CtnCliente.ESTADO_ERROR:
+            autorizado = cliente.owner_id == request.user.id
+        else:
+            autorizado = cliente.es_superusuario(request.user)
+        if not autorizado:
             return Response(
                 {'detail': 'Solo un superusuario del contenedor puede eliminarlo.'},
                 status=status.HTTP_403_FORBIDDEN,

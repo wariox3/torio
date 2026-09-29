@@ -41,7 +41,8 @@ Puntos clave específicos de este proyecto:
   primero en `MIDDLEWARE`):
   - Sin header (o con el nombre del schema público) → opera en el **schema público**
     (autenticación, registro de tenants, admin).
-  - Con header válido → ese tenant. Header inválido → 404.
+  - Con header válido → ese tenant. Header inválido → 404. Un contenedor que todavía
+    se está creando, o cuya creación falló, → 409 (§14).
   - **Implicación:** un único host de backend sirve a todos los tenants. **No**
     se necesitan subdominios comodín para resolver el tenant; el frontend envía
     `X-Tenant: <schema>` en cada petición. Nginx solo debe **pasar los headers**
@@ -541,9 +542,15 @@ sudo systemd-analyze security torio
 ## 8.1 Cola de tareas: RabbitMQ y worker de Celery
 
 Lo que no tiene que esperar a un request va por Celery, con RabbitMQ de broker. Hoy
-es una sola tarea: **notificar al adquiriente** cuando el webhook de rededoc avisa
-que la DIAN validó un documento (`general/tasks.py`). El webhook solo encola; el
-worker arma el PDF y lo manda a rededoc.
+son dos tareas, cada una en su cola:
+
+- **`notificar_documento`**: notificar al adquiriente cuando el webhook de rededoc avisa
+  que la DIAN validó un documento (`general/tasks.py`). El webhook solo encola; el
+  worker arma el PDF y lo manda a rededoc.
+- **`crear_contenedor`**: construir un contenedor nuevo —migraciones, permisos del owner
+  y catálogos, unos 20 s— después de que `POST /contenedor/cliente/` lo registró en
+  `creando` (`contenedor/tasks.py`, §14). Sin el worker, los contenedores nuevos **se
+  quedan en `creando`** hasta que arranque, y ahí se construyen solos.
 
 Sin el worker corriendo, la validación se guarda igual pero **las facturas no se
 notifican**: se quedan en la cola hasta que el worker arranque. Si el broker no
@@ -599,8 +606,11 @@ Environment=DJANGO_SETTINGS_MODULE=torioapp.settings.prod
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 
-# Dos procesos: las tareas son lentas (PDF y llamadas a rededoc), no intensivas en
-# CPU. `-O fair` reparte de a una, junto con el prefetch de 1 de los settings.
+# Dos procesos: las tareas son lentas (PDF, llamadas a rededoc, migraciones de un
+# contenedor nuevo), no intensivas en CPU. `-O fair` reparte de a una, junto con el
+# prefetch de 1 de los settings. Una ráfaga de altas de contenedores puede ocupar los
+# dos y demorar las notificaciones (no perderlas): si pasa seguido, se le da a
+# `crear_contenedor` un worker propio, quitándola de este `-Q`.
 # Sin gossip, mingle ni heartbeat: con un solo worker no hay con quién coordinarse,
 # y en CloudAMQP ese tráfico de control cuenta contra los mensajes del plan.
 # `-Q`: las colas que atiende. Cada tipo de tarea tiene la suya (`CELERY_TASK_ROUTES`),
@@ -608,14 +618,14 @@ Environment=PYTHONDONTWRITEBYTECODE=1
 # al sumar una tarea con cola propia, se agrega aquí o se le da su propio worker.
 ExecStart=/opt/torio/venv/bin/celery -A torioapp worker \
     --loglevel=info --concurrency=2 -O fair \
-    -Q notificar_documento,celery \
+    -Q notificar_documento,crear_contenedor,celery \
     --without-gossip --without-mingle --without-heartbeat
 
 Restart=always
 RestartSec=5
-# Deja terminar la tarea en curso antes de matar el proceso. Si se corta igual,
-# no se pierde: las tareas se confirman al terminar (`acks_late`) y RabbitMQ la
-# vuelve a entregar.
+# Deja terminar la tarea en curso antes de matar el proceso (un contenedor tarda
+# unos 20 s). Si se corta igual, no se pierde: las tareas se confirman al terminar
+# (`acks_late`), RabbitMQ la vuelve a entregar, y la creación retoma donde quedó.
 TimeoutStopSec=60
 UMask=0027
 
@@ -937,6 +947,11 @@ APP="sudo -u torio env DJANGO_SETTINGS_MODULE=torioapp.settings.prod"
 
 $APP git pull
 $APP venv/bin/pip install -r requirements.txt
+# Antes de migrar: `migrate` recorre todos los tenants, y no puede migrar el mismo
+# schema que un contenedor que el worker está creando. `stop` espera a que termine
+# la tarea en curso (TimeoutStopSec); las que lleguen mientras tanto —creaciones y
+# notificaciones— esperan en RabbitMQ.
+systemctl stop torio-celery
 $APP venv/bin/python manage.py migrate
 
 if [ "$1" = "--fixtures" ] || [ "$1" = "-f" ]; then
@@ -949,9 +964,8 @@ fi
 $APP venv/bin/python manage.py collectstatic --noinput
 
 systemctl reload torio
-# El worker no recarga código en caliente: hay que reiniciarlo. `restart` espera a
-# que termine la tarea en curso (TimeoutStopSec) antes de cortar.
-systemctl restart torio-celery
+# Arranca con el código nuevo: el worker no lo recarga en caliente.
+systemctl start torio-celery
 EOF
 
 chmod 700 /root/actualizar_torio.sh
@@ -984,8 +998,12 @@ dependen de esto: su alta siembra sus propios catálogos (§14).
 - **`reload`** recicla los workers sin cortar el servicio. Si la actualización cambia
   la versión de `gunicorn` o la unidad systemd, usa en su lugar
   `systemctl daemon-reload && systemctl restart torio`.
-- **`restart torio-celery`**: el worker de Celery (§8.1) carga el código al arrancar,
-  así que sin reiniciarlo seguiría corriendo las tareas con la versión anterior.
+- **`stop` / `start torio-celery`** (§8.1): el worker va detenido durante `migrate`,
+  que si no podría migrar a la vez el schema de un contenedor que se está creando; y
+  al arrancar carga el código nuevo. Si el script se corta después del `stop`
+  (`set -e`), **el worker queda detenido**: las notificaciones y los contenedores
+  nuevos esperan en RabbitMQ, sin perderse. Corrija y vuelva a correr el script, o
+  arránquelo a mano con `systemctl start torio-celery`.
 
 ---
 
@@ -1105,37 +1123,75 @@ de versionado/retención del bucket en Backblaze.
 ## 14. Alta de un nuevo tenant (en producción)
 
 **La vía normal es la API, no el servidor.** Un usuario registrado y verificado crea
-su contenedor desde el frontend, que llama a `POST /contenedor/cliente/`. Esa vista
-hace todo lo necesario para que el contenedor sirva:
+su contenedor desde el frontend, que llama a `POST /contenedor/cliente/`. El alta va
+en dos tiempos (diseño completo en `docs/creacion_contenedor.md`):
 
-1. crea el `CtnCliente` (y con él el schema, `auto_create_schema=True`) con el
-   usuario como `owner`;
+**En el request** (milisegundos, todo en el schema público), la vista:
+
+1. crea el `CtnCliente` en `estado = creando`, con el usuario como `owner`, y su
+   schema **vacío** (`CREATE SCHEMA`, sin migrar);
 2. crea su `CtnDominio` (`<schema>.<TENANT_BASE_DOMAIN>`);
-3. lo vincula como miembro propietario, `is_superuser` en ese contenedor y con todos
-   los módulos habilitados (`add_user`);
+3. crea la membresía del owner (`SegUsuarioCliente`, propietario, todos los módulos);
 4. le abre la suscripción de prueba (tipo 13, 15 días);
-5. tras el commit, siembra catálogos **y datos iniciales** en un hilo aparte
-   (`cargar_datos_tenant --schema <schema> --inicial`).
+5. tras el commit, encola `contenedor.tasks.crear_contenedor`, y responde **202**.
 
-> ⚠️ Crear solo el `CtnCliente` y su dominio **no basta**: sin suscripción,
-> `SuscripcionVigente` rechaza todas las peticiones al tenant; sin membresía,
-> `EsMiembroDelTenant` también; y sin `--inicial` faltan las semillas editables
-> (configuración, etc.).
+**En el worker** `torio-celery` (§8.1, unos 20 s), la tarea:
 
-**Si la carga del paso 5 falla o se corta**, el contenedor queda sin catálogos y solo
-queda registrado en el log (`Falló la carga de catálogos del contenedor ...`). Corre en
-un hilo del worker, así que un `reload` o una actualización (§10) en ese momento, o el reciclaje
-por `--max-requests`, pueden cortarla. Se completa a mano (es idempotente):
+6. corre las migraciones del tenant, **una transacción por migración**;
+7. crea los permisos del owner en el schema (`UserTenantPermissions`, `is_superuser`);
+8. siembra catálogos **y datos iniciales** (`cargar_datos_tenant --inicial`);
+9. marca el contenedor `listo`.
+
+Hasta el paso 9, cualquier petición con su `X-Tenant` responde **409**: nadie ve el
+contenedor vacío ni a medio sembrar. El front consulta
+`GET /contenedor/cliente/<id>/estado/` hasta que llega a `listo`.
+
+> ⚠️ Por qué no en el request: las migraciones crean FKs hacia `seg_usuario`, y cada
+> una deja esa tabla bloqueada para escritura hasta el COMMIT. En una sola
+> transacción eran 10 s en los que **nadie podía iniciar sesión** (el login actualiza
+> `last_login`). Migración por migración, la espera medida es de milisegundos.
+
+### Si la creación falla
+
+La tarea reintenta sola 3 veces (a los 30 s, 1 min y 2 min). Agotados los reintentos,
+el contenedor queda en **`estado = error`** y el detalle en el log del worker
+(`Falló la creación del contenedor ...`) y en Sentry. También queda en `error` si
+RabbitMQ no respondió al encolar.
+
+- **El owner lo resuelve solo desde el front:** `POST /contenedor/cliente/<id>/reintentar/`
+  lo vuelve a encolar, y la tarea **retoma donde quedó** (lo ya migrado o sembrado no
+  se repite). O lo elimina con `DELETE`, que en `error` autoriza por owner.
+- **Uno atascado en `creando`** más de 30 minutos (la tarea se perdió) también se
+  puede reintentar.
+
+Para ver los que no están listos:
 
 ```bash
 sudo -u torio DJANGO_SETTINGS_MODULE=torioapp.settings.prod \
-    /opt/torio/venv/bin/python /opt/torio/manage.py cargar_datos_tenant --schema acme --inicial
+    /opt/torio/venv/bin/python /opt/torio/manage.py shell -c "
+from contenedor.models import CtnCliente
+for c in CtnCliente.objects.exclude(estado='listo'):
+    print(c.pk, c.schema_name, c.estado, c.fecha_creacion)"
+```
+
+Y para terminar uno a mano, sin pasar por el worker (corre la misma tarea en ese
+proceso):
+
+```bash
+sudo -u torio DJANGO_SETTINGS_MODULE=torioapp.settings.prod \
+    /opt/torio/venv/bin/python /opt/torio/manage.py shell -c "
+from contenedor.models import CtnCliente
+from contenedor.tasks import crear_contenedor
+CtnCliente.objects.filter(schema_name='acme').update(estado='creando')
+crear_contenedor.apply(args=[CtnCliente.objects.get(schema_name='acme').pk])
+print(CtnCliente.objects.get(schema_name='acme').estado)"
 ```
 
 ### Alta desde el servidor (solo si no se puede por la API)
 
-Reproduce los mismos pasos de la vista. El propietario **debe existir** (registrado y
-verificado). Ajusta las constantes del principio:
+Reproduce los pasos del request y luego corre la tarea en el mismo proceso, así que
+no necesita el worker. El propietario **debe existir** (registrado y verificado).
+Ajusta las constantes del principio:
 
 ```bash
 sudo -u torio -s
@@ -1147,11 +1203,12 @@ $PY manage.py shell <<'PYEOF'
 from datetime import date, timedelta
 
 from django.conf import settings
-from django.db import transaction
+from django.db import connection, transaction
 
 from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion, CtnSuscripcionTipo
+from contenedor.tasks import crear_contenedor
 from contenedor.views.cliente import DIAS_PRUEBA, SUSCRIPCION_TIPO_PRUEBA_ID
-from seguridad.models import CAMPOS_ACCESO, SegUsuario
+from seguridad.models import CAMPOS_ACCESO, SegUsuario, SegUsuarioCliente
 
 SCHEMA = 'acme'
 NOMBRE = 'ACME S.A.'
@@ -1159,21 +1216,25 @@ CELULAR = '3001234567'
 CORREO = 'contacto@acme.com'
 PROPIETARIO = 'dueno@acme.com'   # debe estar registrado
 
+assert CtnCliente.SCHEMA_NAME_VALIDO.match(SCHEMA), 'nombre de schema inválido'
 propietario = SegUsuario.objects.get(email=PROPIETARIO)
 tipo = CtnSuscripcionTipo.objects.get(pk=SUSCRIPCION_TIPO_PRUEBA_ID)
 
 with transaction.atomic():
-    cliente = CtnCliente.objects.create(
-        schema_name=SCHEMA, nombre=NOMBRE, celular=CELULAR, correo=CORREO, owner=propietario,
+    cliente = CtnCliente(
+        schema_name=SCHEMA, nombre=NOMBRE, celular=CELULAR, correo=CORREO,
+        owner=propietario, estado=CtnCliente.ESTADO_CREANDO,
     )
+    cliente.auto_create_schema = False   # lo migra la tarea, no el save
+    cliente.save()
+    with connection.cursor() as cursor:
+        cursor.execute(f'CREATE SCHEMA "{SCHEMA}"')
     CtnDominio.objects.create(
         domain=f'{SCHEMA}.{settings.TENANT_BASE_DOMAIN}', tenant=cliente, is_primary=True,
     )
-    cliente.add_user(
-        propietario,
-        accesos=dict.fromkeys(CAMPOS_ACCESO, True),
-        propietario=True,
-        is_superuser=True,
+    SegUsuarioCliente.objects.create(
+        usuario=propietario, cliente=cliente, propietario=True,
+        **dict.fromkeys(CAMPOS_ACCESO, True),
     )
     hoy = date.today()
     cliente.suscripcion = CtnSuscripcion.objects.create(
@@ -1186,16 +1247,17 @@ with transaction.atomic():
     )
     cliente.save(update_fields=['suscripcion'])
 
-print(f'Contenedor {SCHEMA} creado, prueba hasta {cliente.suscripcion.fecha_fin}')
+# Fuera del atomic: migraciones, permisos del owner, catálogos y `listo`.
+crear_contenedor.apply(args=[cliente.pk])
+cliente.refresh_from_db()
+print(f'Contenedor {SCHEMA}: {cliente.estado}, prueba hasta {cliente.suscripcion.fecha_fin}')
 PYEOF
-
-# Catálogos + datos iniciales (--inicial es obligatorio en un alta)
-$PY manage.py cargar_datos_tenant --schema acme --inicial
 exit
 ```
 
-El `schema_name` debe ser único, empezar por letra minúscula y contener solo letras,
-dígitos y guion bajo. El frontend luego envía `X-Tenant: acme` en sus peticiones.
+El `schema_name` debe ser único, empezar por letra minúscula, contener solo letras
+minúsculas, dígitos y guion bajo, y no empezar por `pg_` (`CtnCliente.SCHEMA_NAME_VALIDO`).
+El frontend luego envía `X-Tenant: acme` en sus peticiones.
 
 ---
 
@@ -1209,5 +1271,6 @@ dígitos y guion bajo. El frontend luego envía `X-Tenant: acme` en sus peticion
 6. `cargar_geodata` + `cargar_datos_tenant` + `createsuperuser` (§6)
 7. `collectstatic` (§7)
 8. systemd `torio.service` endurecido + `enable --now` (§8)
-9. Nginx (proxy a `127.0.0.1:8060`) + TLS (§9)
-10. Firewall (solo 80/443, 22 restringido) + `check --deploy` + `systemd-analyze security` (§11)
+9. Worker de Celery `torio-celery` (§8.1) — sin él, las facturas no se notifican y los contenedores nuevos se quedan en `creando`
+10. Nginx (proxy a `127.0.0.1:8060`) + TLS (§9)
+11. Firewall (solo 80/443, 22 restringido) + `check --deploy` + `systemd-analyze security` (§11)

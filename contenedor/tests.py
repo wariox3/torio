@@ -6,10 +6,6 @@ dueño del contenedor, así que se cubren los dos caminos que crean membresías:
 crear un contenedor (marca al dueño) y aceptar una invitación (no lo marca).
 """
 
-import io
-from contextlib import redirect_stdout
-from unittest.mock import patch
-
 from django.contrib.auth.models import Group
 from django_tenants.test.cases import TenantTestCase
 from django_tenants.utils import get_public_schema_name, schema_context
@@ -26,10 +22,8 @@ from contenedor.views.cliente import (
     DIAS_PRUEBA,
     SUSCRIPCION_TIPO_PRUEBA_ID,
     CtnClienteViewSet,
-    _cargar_catalogos,
 )
 from contenedor.views.invitacion import CtnInvitacionViewSet
-from general.models import GenCiudad, GenContacto
 from seguridad.models import CAMPOS_ACCESO, SegUsuario, SegUsuarioCliente
 
 
@@ -38,6 +32,10 @@ class _ClienteViewSinPermisos(CtnClienteViewSet):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
     throttle_classes = []
+
+    def get_throttles(self):
+        # `create` suma su `ScopedRateThrottle` por encima de `throttle_classes`.
+        return []
 
 
 class _InvitacionViewSinPermisos(CtnInvitacionViewSet):
@@ -110,12 +108,9 @@ class PropietarioTests(TenantTestCase):
         # `/contenedor/cliente/` es ruta del schema público, y django-tenants
         # prohíbe crear un tenant desde dentro de otro. En producción lo resuelve
         # TenantHeaderMiddleware, que sin header X-Tenant fija el schema público.
-        #
-        # El redirect_stdout traga el volcado de `migrate_schemas`, que escribe
-        # aunque la vista no le pase verbosity.
-        with schema_context(get_public_schema_name()), redirect_stdout(io.StringIO()):
+        with schema_context(get_public_schema_name()):
             respuesta = _ClienteViewSinPermisos.as_view({'post': 'create'})(peticion)
-        self.assertEqual(respuesta.status_code, 201, respuesta.data)
+        self.assertEqual(respuesta.status_code, 202, respuesta.data)
 
         cliente = CtnCliente.objects.get(schema_name='nuevo')
         membresia = SegUsuarioCliente.objects.get(usuario=self.duenio, cliente=cliente)
@@ -142,9 +137,9 @@ class PropietarioTests(TenantTestCase):
         }, format='json')
         force_authenticate(peticion, user=self.duenio)
 
-        with schema_context(get_public_schema_name()), redirect_stdout(io.StringIO()):
+        with schema_context(get_public_schema_name()):
             respuesta = _ClienteViewSinPermisos.as_view({'post': 'create'})(peticion)
-        self.assertEqual(respuesta.status_code, 201, respuesta.data)
+        self.assertEqual(respuesta.status_code, 202, respuesta.data)
 
         cliente = CtnCliente.objects.get(schema_name='prueba')
         suscripcion = cliente.suscripcion
@@ -154,79 +149,6 @@ class PropietarioTests(TenantTestCase):
         self.assertEqual(
             (suscripcion.fecha_fin - suscripcion.fecha_inicio).days, DIAS_PRUEBA,
         )
-
-    def test_la_carga_de_catalogos_queda_encolada_para_despues_del_commit(self):
-        """
-        El request devuelve el contenedor sin catálogos: son 4.550 filas y la vista
-        las difiere a un hilo, que se lanza en el COMMIT y no antes —el hilo abre su
-        propia conexión y hasta el COMMIT no vería ni el contenedor ni su schema.
-
-        `TestCase` no commitea, así que el hilo no arranca: acá solo se comprueba
-        que el disparo quedó encolado y que el schema todavía está vacío.
-        """
-        peticion = self.factory.post('/contenedor/cliente/', {
-            'schema_name': 'diferido',
-            'nombre': 'Contenedor diferido',
-            'celular': '+573001112233',
-            'correo': 'diferido@ejemplo.com',
-        }, format='json')
-        force_authenticate(peticion, user=self.duenio)
-
-        with schema_context(get_public_schema_name()), redirect_stdout(io.StringIO()):
-            with self.captureOnCommitCallbacks() as pendientes:
-                respuesta = _ClienteViewSinPermisos.as_view({'post': 'create'})(peticion)
-
-        self.assertEqual(respuesta.status_code, 201, respuesta.data)
-        self.assertEqual(len(pendientes), 1)
-        with schema_context('diferido'):
-            self.assertFalse(GenCiudad.objects.exists())
-
-    def test_la_carga_diferida_siembra_catalogos_y_semillas(self):
-        """El trabajo del hilo, llamado en forma síncrona para poder observarlo."""
-        peticion = self.factory.post('/contenedor/cliente/', {
-            'schema_name': 'sembrado',
-            'nombre': 'Contenedor sembrado',
-            'celular': '+573001112233',
-            'correo': 'sembrado@ejemplo.com',
-        }, format='json')
-        force_authenticate(peticion, user=self.duenio)
-
-        with schema_context(get_public_schema_name()), redirect_stdout(io.StringIO()):
-            _ClienteViewSinPermisos.as_view({'post': 'create'})(peticion)
-            _cargar_catalogos('sembrado')
-
-        with schema_context('sembrado'):
-            self.assertTrue(GenCiudad.objects.exists())
-            # La semilla depende por FK de los catálogos: si el orden se rompiera,
-            # esta fila no existiría.
-            self.assertTrue(GenContacto.objects.filter(pk=1).exists())
-
-    def test_un_fallo_en_la_carga_no_tumba_el_hilo(self):
-        """
-        No hay estado ni reintento: si la carga falla, lo único que queda es el log.
-        Lo que sí importa es que la excepción no escape del hilo, donde nadie la
-        atrapa y terminaría como un traceback suelto en los logs de gunicorn.
-        """
-        peticion = self.factory.post('/contenedor/cliente/', {
-            'schema_name': 'fallido',
-            'nombre': 'Contenedor fallido',
-            'celular': '+573001112233',
-            'correo': 'fallido@ejemplo.com',
-        }, format='json')
-        force_authenticate(peticion, user=self.duenio)
-
-        with schema_context(get_public_schema_name()), redirect_stdout(io.StringIO()):
-            _ClienteViewSinPermisos.as_view({'post': 'create'})(peticion)
-            with patch(
-                'contenedor.views.cliente.call_command',
-                side_effect=RuntimeError('sin espacio en disco'),
-            ):
-                with self.assertLogs('contenedor.views.cliente', level='ERROR') as registro:
-                    _cargar_catalogos('fallido')
-
-        self.assertIn('sin espacio en disco', '\n'.join(registro.output))
-        with schema_context('fallido'):
-            self.assertFalse(GenCiudad.objects.exists())
 
     # ── Aceptar invitación ──────────────────────────────────────────────────
 
