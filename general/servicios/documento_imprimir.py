@@ -18,7 +18,7 @@ from utilidades.formatos.pagina import CanvasNumerado, MarcaDocumento, documento
 # Qué formato imprime cada tipo de documento. Está quemado a propósito y no sale
 # de `GenDocumentoTipo.formato`: mientras sean pocos los tipos con formato propio,
 # una columna configurable obliga a sembrarla en cada tenant y a mantenerla en el
-# fixture para que el egreso y el pago salgan bien, y basta que alguien la edite
+# catálogo para que el egreso y el pago salgan bien, y basta que alguien la edite
 # para que un comprobante se imprima con el formato equivocado.
 #
 # El día que sean muchos, esto pasa a ser un mapa por tipo o vuelve a la columna;

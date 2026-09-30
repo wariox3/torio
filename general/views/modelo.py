@@ -167,7 +167,7 @@ class GenModeloViewSet(
         description=(
             'Ver/crear/editar/eliminar del usuario autenticado sobre este modelo en el '
             'tenant actual. Solo los tipos Administrador y Movimiento se deciden por '
-            'permisos; los demás (Fixture, Detalle y Soporte) devuelven todo en true.'
+            'permisos; los demás (Catálogo, Detalle y Soporte) devuelven todo en true.'
         ),
         responses=_PermisoSerializer,
     )

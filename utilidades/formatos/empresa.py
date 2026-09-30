@@ -67,7 +67,7 @@ def configuracion_actual():
     """
     La `GenConfiguracion` del tenant, o `None` si todavía no existe.
 
-    El id 1 lo siembra el fixture de cada tenant, así que en la práctica está;
+    El id 1 lo siembra el catálogo de cada tenant, así que en la práctica está;
     pero un formato no debería reventar por un tenant a medio crear, y el import
     va adentro para que `utilidades` no dependa de una app en tiempo de carga.
     """

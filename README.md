@@ -124,7 +124,7 @@ Los endpoints de registro, recuperación y login están protegidos con **Cloudfl
 
 ## Datos iniciales
 
-El comando `cargar_geodata` carga datos de referencia desde `contenedor/fixtures/` de forma idempotente (`update_or_create`). Los archivos se procesan en orden numérico para respetar las dependencias de FK.
+El comando `cargar_geodata` carga datos de referencia desde `contenedor/catalogos/` de forma idempotente (`update_or_create`). Los archivos se procesan en orden numérico para respetar las dependencias de FK.
 
 ```bash
 python manage.py cargar_geodata
@@ -140,7 +140,7 @@ Salida esperada:
 05_plan.json (contenedor.CtnPlan) — creados: 11, actualizados: 0
 ```
 
-### Fixtures disponibles
+### Catálogos disponibles
 
 | Archivo | Modelo | Registros | Descripción |
 |---|---|---|---|
@@ -150,7 +150,7 @@ Salida esperada:
 | `04_identificacion.json` | `CtnIdentificacion` | 9 | Tipos de identificación DIAN |
 | `05_plan.json` | `CtnPlan` | 11 | Planes de suscripción |
 
-### Formato de fixture
+### Formato de catálogo
 
 Cada archivo JSON sigue esta estructura:
 

@@ -509,7 +509,7 @@ PERFIL_INVENTARIO_ENTRADA = _PerfilInventarioEntrada()
 PERFIL_INVENTARIO_SALIDA = _PerfilInventarioSalida()
 
 # Mapa explícito documento_tipo -> perfil. Los ids son los de
-# `general/fixtures/11_documento_tipo.json`, que es lo que siembra cada tenant.
+# `general/catalogos/11_documento_tipo.json`, que es lo que siembra cada tenant.
 #
 # Todo tipo que no esté acá se rechaza con 400: es preferible decir que la
 # estructura no está establecida a entregar una plantilla con columnas que no le

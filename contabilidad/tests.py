@@ -282,7 +282,7 @@ class _InformeBase(TenantTestCase):
         )
 
     def _contacto(self, numero_identificacion):
-        """El tenant de pruebas no carga fixtures: la cadena ciudad -> estado -> país va acá."""
+        """El tenant de pruebas no carga catálogos: la cadena ciudad -> estado -> país va acá."""
         pais, _ = GenPais.objects.get_or_create(id=250, nombre='Colombia', codigo='CO')
         estado, _ = GenEstado.objects.get_or_create(
             id=1, nombre='Antioquia', codigo='05', pais=pais,
@@ -1458,7 +1458,7 @@ class _ContabilizarBase(TenantTestCase):
         )
 
     def _crear_contacto(self):
-        """El tenant de pruebas no carga fixtures: la cadena ciudad -> estado -> país va acá."""
+        """El tenant de pruebas no carga catálogos: la cadena ciudad -> estado -> país va acá."""
         pais, _ = GenPais.objects.get_or_create(id=250, nombre='Colombia', codigo='CO')
         estado, _ = GenEstado.objects.get_or_create(id=1, nombre='Antioquia', codigo='05', pais=pais)
         ciudad, _ = GenCiudad.objects.get_or_create(id=1, nombre='Medellín', codigo='05001', estado=estado)
@@ -1760,7 +1760,7 @@ class ComprobanteDelAsientoTests(_ContabilizarBase):
             id=10, nombre='AJUSTE CONTABLE', codigo='AJU', permite_asiento=True,
         )
         # El ASIENTO es el único tipo contable sin comprobante propio, tal como
-        # queda con el fixture `general/fixtures/11_documento_tipo.json`.
+        # queda con el catálogo `general/catalogos/11_documento_tipo.json`.
         self.asiento_tipo = GenDocumentoTipo.objects.create(
             pk=contabilizar.DOCUMENTO_TIPO_ASIENTO, nombre='ASIENTO', operacion=1,
         )
@@ -1953,7 +1953,7 @@ class InconsistenciasMovimientoTests(TenantTestCase):
         return ConCentroCosto.objects.create(nombre='Norte', codigo='N')
 
     def _contacto(self):
-        """El tenant de pruebas no carga fixtures: la cadena ciudad -> estado -> país va acá."""
+        """El tenant de pruebas no carga catálogos: la cadena ciudad -> estado -> país va acá."""
         pais, _ = GenPais.objects.get_or_create(id=250, nombre='Colombia', codigo='CO')
         estado, _ = GenEstado.objects.get_or_create(id=1, nombre='Antioquia', codigo='05', pais=pais)
         ciudad, _ = GenCiudad.objects.get_or_create(id=1, nombre='Medellín', codigo='05001', estado=estado)
@@ -2524,7 +2524,7 @@ class CargarActivoTests(TenantTestCase):
 
     def test_el_contacto_del_documento_baja_a_la_linea(self):
         self._crear_activo(date(2025, 6, 1))
-        # El tenant de pruebas no carga fixtures: la cadena ciudad -> estado -> país va acá.
+        # El tenant de pruebas no carga catálogos: la cadena ciudad -> estado -> país va acá.
         pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
         estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
         ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)

@@ -27,8 +27,8 @@ from contabilidad.models import ConActivo
 from general.models import GenDocumento
 from general.servicios.documento_detalle import crear_detalle
 
-# Único tipo de documento que recibe el cargue. Mismo id del fixture
-# `general/fixtures/11_documento_tipo.json`.
+# Único tipo de documento que recibe el cargue. Mismo id del catálogo
+# `general/catalogos/11_documento_tipo.json`.
 DOCUMENTO_TIPO_DEPRECIACION = 23
 
 # La depreciación se liquida sobre mes comercial: todos los meses valen 30 días,

@@ -954,11 +954,11 @@ $APP venv/bin/pip install -r requirements.txt
 systemctl stop torio-celery
 $APP venv/bin/python manage.py migrate
 
-if [ "$1" = "--fixtures" ] || [ "$1" = "-f" ]; then
-    echo "Cargando fixtures..."
+if [ "$1" = "--catalogos" ] || [ "$1" = "-c" ]; then
+    echo "Cargando catálogos..."
     $APP venv/bin/python manage.py cargar_geodata
     $APP venv/bin/python manage.py cargar_datos_tenant
-    echo "Fixtures cargados"
+    echo "Catálogos cargados"
 fi
 
 $APP venv/bin/python manage.py collectstatic --noinput
@@ -975,15 +975,15 @@ Para actualizar:
 
 ```bash
 /root/actualizar_torio.sh              # código, dependencias, migraciones, estáticos
-/root/actualizar_torio.sh --fixtures   # lo mismo + recarga los fixtures (o -f)
+/root/actualizar_torio.sh --catalogos  # lo mismo + recarga los catálogos (o -c)
 ```
 
-Usa `--fixtures` cuando la actualización traiga cambios en:
+Usa `--catalogos` cuando la actualización traiga cambios en:
 
-- **catálogos** (`*/fixtures/*.json`): países, ciudades, tipos de documento, impuestos…
+- **catálogos** (`*/catalogos/*.json`): países, ciudades, tipos de documento, impuestos…
   Se cargan en el schema público y en **todos** los tenants;
 - **grupos y permisos** (`seguridad/grupos.py`): `cargar_geodata` también los
-  sincroniza, así que sin `--fixtures` los permisos nuevos no llegan a los grupos.
+  sincroniza, así que sin `--catalogos` los permisos nuevos no llegan a los grupos.
 
 Sin cambios de ese tipo no hace falta: la carga es idempotente, pero recorre todos los
 tenants y es el paso que más tarda a medida que crecen. Los contenedores nuevos no

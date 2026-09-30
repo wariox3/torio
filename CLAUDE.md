@@ -14,7 +14,7 @@ source /home/desarrollo/.venvs/torio/bin/activate
 python manage.py runserver                            # Start dev server
 python manage.py migrate                              # Apply migrations
 python manage.py makemigrations                       # Generate migrations
-python manage.py cargar_geodata                       # Load public-schema reference data from contenedor/fixtures/ (idempotent)
+python manage.py cargar_geodata                       # Load public-schema reference data from contenedor/catalogos/ (idempotent)
 python manage.py cargar_datos_tenant                  # Load tenant reference data into all tenant schemas (idempotent)
 python manage.py cargar_datos_tenant --schema demo    # Load tenant reference data into a specific schema
 python manage.py test                                 # Run all tests
@@ -49,17 +49,21 @@ Tenant isolation is covered by `contenedor/tests_aislamiento.py` (`python manage
 
 `SHARED_APPS` run in the public schema. `TENANT_APPS` run in each tenant's isolated schema.
 
-### Fixture system
+### Catalog system
 
-Two separate fixture loaders, both idempotent (`update_or_create`):
+Reference data lives in JSON files under each app's **`catalogos/`** directory (called
+`fixtures/` until 2026-09 — the whole ecosystem now says *catálogo*, and catalog models
+are `GenModelo.tipo = 'C'`). Two separate loaders, both idempotent (`update_or_create`):
 
 **Public schema** — `python manage.py cargar_geodata`
-- Reads from `contenedor/fixtures/*.json`
+- Reads from `contenedor/catalogos/*.json` and `seguridad/catalogos/*.json`
 - Loads into the public schema
 
 **Tenant schemas** — `python manage.py cargar_datos_tenant`
-- Reads from `general/fixtures/*.json`
-- Loads into every tenant schema (or one with `--schema <name>`)
+- Reads from `<app>/catalogos/*.json` (`CATALOGOS_DIRS`: general, contabilidad, humano, turno)
+- With `--inicial` (only at tenant creation) also `<app>/datos_inicial/*.json`
+  (`DATOS_INICIAL_DIRS`): tenant-editable seeds, loaded with `get_or_create`
+- Loads into every `listo` tenant schema (or one with `--schema <name>`)
 
 Both use the same JSON format:
 

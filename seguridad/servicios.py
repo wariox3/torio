@@ -38,7 +38,7 @@ def _resetear_secuencia():
     """
     Avanza la secuencia de `auth_group` tras insertar ids explícitos, o el
     próximo grupo que cree Django colisionaría. Mismo cuidado que toma
-    `cargar_datos_tenant` con los fixtures de id manual.
+    `cargar_datos_tenant` con los catálogos de id manual.
     """
     with connection.cursor() as cursor:
         cursor.execute(

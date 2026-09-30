@@ -691,7 +691,7 @@ class ModeloPermisoTests(TenantTestCase):
                 )
 
     def test_los_demas_tipos_no_se_restringen(self):
-        for tipo in (GenModelo.Tipo.FIXTURE, GenModelo.Tipo.DETALLE, GenModelo.Tipo.SOPORTE):
+        for tipo in (GenModelo.Tipo.CATALOGO, GenModelo.Tipo.DETALLE, GenModelo.Tipo.SOPORTE):
             with self.subTest(tipo=tipo):
                 self.assertEqual(
                     self._permiso(tipo),
@@ -730,11 +730,11 @@ class PermisoDeModeloCoherenteTests(SimpleTestCase):
         return getattr(getattr(getattr(viewset, 'serializer_class', None), 'Meta', None), 'model', None)
 
     def _viewsets_con_tipo(self):
-        """(etiqueta, tipo declarado en el fixture, ¿declara TienePermisoModelo?)"""
+        """(etiqueta, tipo declarado en el catálogo, ¿declara TienePermisoModelo?)"""
         import importlib
         import json
 
-        with open('general/fixtures/15_modelo.json') as archivo:
+        with open('general/catalogos/15_modelo.json') as archivo:
             tipos = {r['clase']: r['tipo'] for r in json.load(archivo)['data']}
 
         for modulo in self.MONTAJES:
@@ -779,7 +779,7 @@ class SubirArchivoTests(TenantTestCase):
     def setUp(self):
         self.modelo = GenModelo.objects.create(
             id=99001, app='general', clase='GenDocumentoTipo',
-            nombre='Documento tipo', tabla='gen_documento_tipo', tipo='F',
+            nombre='Documento tipo', tabla='gen_documento_tipo', tipo=GenModelo.Tipo.CATALOGO,
         )
         # El schema de prueba nace vacío: el id 1 que usa el default del modelo
         # lo trae `cargar_datos_tenant`, que acá no corre.
@@ -1404,7 +1404,7 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
     def setUp(self):
         GenParametro.objects.all().delete()
         self.configuracion = GenConfiguracion.objects.get_or_create(id=1)[0]
-        # El tenant de pruebas no carga los fixtures, así que el catálogo mínimo
+        # El tenant de pruebas no carga los catálogos, así que el catálogo mínimo
         # se arma acá: ciudad -> estado -> país es la cadena que usa el payload.
         pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
         estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
@@ -2027,22 +2027,22 @@ class CargarDatosTenantTests(TenantTestCase):
         )
 
     @staticmethod
-    def _fixtures():
+    def _catalogos():
         """[(modelo, filas del json)] de todos los archivos que carga el comando."""
         from general.management.commands.cargar_datos_tenant import (
-            FIXTURES_DIRS,
-            FIXTURES_INICIAL_DIRS,
+            CATALOGOS_DIRS,
+            DATOS_INICIAL_DIRS,
         )
 
         archivos = []
-        for carpeta in FIXTURES_DIRS + FIXTURES_INICIAL_DIRS:
+        for carpeta in CATALOGOS_DIRS + DATOS_INICIAL_DIRS:
             archivos += sorted(carpeta.glob('*.json'), key=lambda f: f.name)
         return [json.loads(a.read_text(encoding='utf-8')) for a in archivos]
 
     def _huella(self):
         """Contenido de todas las tablas sembradas, para comparar entre corridas."""
         huella = {}
-        for contenido in self._fixtures():
+        for contenido in self._catalogos():
             modelo = apps.get_model(contenido['model'])
             campos = [f.attname for f in modelo._meta.concrete_fields]
             huella[contenido['model']] = list(
@@ -2050,10 +2050,10 @@ class CargarDatosTenantTests(TenantTestCase):
             )
         return huella
 
-    def test_carga_todas_las_filas_de_todos_los_fixtures(self):
+    def test_carga_todas_las_filas_de_todos_los_catalogos(self):
         self._cargar()
 
-        for contenido in self._fixtures():
+        for contenido in self._catalogos():
             modelo = apps.get_model(contenido['model'])
             with self.subTest(modelo=contenido['model']):
                 self.assertEqual(modelo.objects.count(), len(contenido['data']))
@@ -2068,7 +2068,7 @@ class CargarDatosTenantTests(TenantTestCase):
         self._cargar()
 
         contenido = next(
-            c for c in self._fixtures() if c['model'] == 'general.GenDocumentoTipo'
+            c for c in self._catalogos() if c['model'] == 'general.GenDocumentoTipo'
         )
         for fila in contenido['data']:
             tipo = GenDocumentoTipo.objects.get(pk=fila['id'])
@@ -2113,7 +2113,7 @@ class _ImportarDetalleBaseTests(TenantTestCase):
             id=10, nombre='SALIDA ALMACEN', inventario=True, operacion_inventario=-1,
         )
         # Factura y compra importan con la estructura de la entrada; el signo de la
-        # operación sale de su tipo, como en el fixture.
+        # operación sale de su tipo, como en el catálogo.
         self.tipo_venta = GenDocumentoTipo.objects.create(
             id=1, nombre='FACTURA', venta=True, operacion_inventario=-1,
         )
@@ -2476,7 +2476,7 @@ class _ImportarDetalleContableBaseTests(_ImportarDetalleBaseTests):
         self.serializer = GenDocumentoDetalleImportarSerializer(self.asiento)
 
     def _contacto(self, numero_identificacion):
-        """El tenant de pruebas no carga fixtures: la cadena ciudad -> estado -> país va acá."""
+        """El tenant de pruebas no carga catálogos: la cadena ciudad -> estado -> país va acá."""
         pais, _ = GenPais.objects.get_or_create(id=250, nombre='Colombia', codigo='CO')
         estado, _ = GenEstado.objects.get_or_create(
             id=1, nombre='Antioquia', codigo='05', pais=pais,

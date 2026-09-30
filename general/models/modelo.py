@@ -6,7 +6,7 @@ class GenModelo(models.Model):
         ADMINISTRADOR = 'A', 'Administrador'
         MOVIMIENTO = 'M', 'Movimiento'
         DETALLE = 'D', 'Detalle'
-        FIXTURE = 'F', 'Fixture'
+        CATALOGO = 'C', 'Catálogo'
         SOPORTE = 'S', 'Soporte'
 
     # Tipos cuyo acceso se decide con permisos de modelo. Su viewset declara
@@ -14,8 +14,8 @@ class GenModelo(models.Model):
     # de `has_perm`, que es lo que el front usa para pintar los botones.
     #
     # Los demás quedan fuera por razones distintas:
-    #   - FIXTURE y DETALLE: catálogos compartidos, o filas que se manejan a través de su
-    #     documento padre.
+    #   - CATALOGO y DETALLE: catálogos compartidos, o filas que se manejan a través de
+    #     su documento padre.
     #   - SOPORTE: funcionalidades verticales, que atraviesan los módulos y no se
     #     restringen por rol. Un adjunto lo usa quien esté trabajando el documento, sin
     #     un permiso propio.

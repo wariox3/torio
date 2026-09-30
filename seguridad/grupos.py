@@ -24,7 +24,7 @@ VER = ('view',)
 
 # {id del Group: (nombre, {objetivo: (acciones,)})}
 #
-# El id se fija a propósito, igual que en los fixtures JSON del proyecto: es lo
+# El id se fija a propósito, igual que en los catálogos JSON del proyecto: es lo
 # que el front manda en `grupo_ids` al invitar, y tiene que significar lo mismo
 # en desarrollo, en pruebas y en producción. Si se crearan solo por nombre, cada
 # entorno les asignaría un id distinto.

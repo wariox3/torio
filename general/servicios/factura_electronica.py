@@ -177,7 +177,7 @@ FORMA_PAGO_CREDITO = '2'
 
 # `GenImpuestoTipo.codigo` → código DIAN del tributo. Sin tipo, o con uno que no
 # esté acá, el impuesto sale como IVA, que es lo que son todos los de venta que
-# trae el fixture (ninguno tiene tipo).
+# trae el catálogo (ninguno tiene tipo).
 TRIBUTOS = {'IVA': '01', 'ICA': '03', 'COM': '04'}
 TRIBUTO_POR_DEFECTO = '01'
 

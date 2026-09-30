@@ -64,7 +64,7 @@ class GenDocumentoTipoSerializer(serializers.ModelSerializer):
             'comprobante_nombre',
         ]
         # Solo se editan los cuatro de `GenDocumentoTipoActualizarSerializer`; el
-        # resto describe la naturaleza del tipo y viene del fixture.
+        # resto describe la naturaleza del tipo y viene del catálogo.
         read_only_fields = fields
 
 

@@ -29,7 +29,7 @@ class GenDocumentoTipoViewSet(
     viewsets.GenericViewSet,
 ):
     """
-    Catálogo normativo: los tipos los siembra `general/fixtures/11_documento_tipo.json`
+    Catálogo normativo: los tipos los siembra `general/catalogos/11_documento_tipo.json`
     y no se crean ni se borran por la API. Lo único que cada tenant configura es su
     numeración y las cuentas de cartera, y eso es lo que acepta el PATCH.
     """

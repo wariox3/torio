@@ -24,7 +24,7 @@ from seguridad.contexto import obtener_usuario_actual
 # en `gen_log` FKs que allí apuntan a otra fila o a ninguna.
 #
 # Hoy `cargar_datos_tenant` siembra los mismos ids fijos en todos los schemas y
-# el desajuste no se manifiesta, pero eso es una coincidencia del fixture, no una
+# el desajuste no se manifiesta, pero eso es una coincidencia del catálogo, no una
 # garantía del modelo de datos.
 _acciones_cache: dict[tuple[str, str], int] = {}
 _modelos_cache: dict[tuple[str, str], int] = {}
@@ -49,7 +49,7 @@ def _id_accion(codigo: str) -> int | None:
             _acciones_cache[clave] = GenAccion.objects.get(codigo=codigo).pk
         except GenAccion.DoesNotExist:
             # El fallo no se cachea a propósito: un tenant recién creado consulta
-            # antes de que corran sus fixtures, y cachear el None lo dejaría sin
+            # antes de que corran sus catálogos, y cachear el None lo dejaría sin
             # auditoría durante toda la vida del proceso.
             return None
     return _acciones_cache[clave]

@@ -871,7 +871,7 @@ def _es_obligatorio(campo):
 
     Las FKs NOT NULL entran aunque tengan `default`: varias apuntan por defecto al id 1
     de un catálogo (`GenArchivo.archivo_tipo`, por ejemplo) y en los contenedores de
-    prueba los fixtures no están cargados, así que ese id no existe y el default deja
+    prueba los catálogos no están cargados, así que ese id no existe y el default deja
     una FK colgando.
     """
     if campo.primary_key or campo.auto_created:
@@ -886,11 +886,11 @@ def endpoints_de_contenido():
     [(etiqueta, viewset, modelo, url)] de los endpoints con ruta de lista que devuelven
     datos del cliente.
 
-    Se excluyen los catálogos (`GenModelo.tipo == 'F'`): su contenido es el mismo en
+    Se excluyen los catálogos (`GenModelo.tipo == 'C'`): su contenido es el mismo en
     todos los contenedores porque sale del mismo JSON, así que un marcador ahí no
     distingue nada. Siguen cubiertos por el barrido de puerta.
     """
-    with open('general/fixtures/15_modelo.json') as archivo:
+    with open('general/catalogos/15_modelo.json') as archivo:
         tipos = {r['clase']: r['tipo'] for r in json.load(archivo)['data']}
 
     salida = []
@@ -900,7 +900,7 @@ def endpoints_de_contenido():
             modelo = qs.model if qs is not None else getattr(
                 getattr(getattr(viewset, 'serializer_class', None), 'Meta', None), 'model', None
             )
-            if modelo is None or tipos.get(modelo.__name__) == 'F':
+            if modelo is None or tipos.get(modelo.__name__) == 'C':
                 continue
             if not issubclass(viewset, mixins.ListModelMixin):
                 continue
@@ -1280,7 +1280,7 @@ class DescargaDeArchivosTests(AislamientoBase):
                 id=1, defaults={'codigo': 'general', 'nombre': 'General'},
             )
             # `GenModelo.id` es manual (BigIntegerField), no autoincremental:
-            # el 10004 es el que trae el fixture para GenItem.
+            # el 10004 es el que trae el catálogo para GenItem.
             modelo, _ = GenModelo.objects.get_or_create(
                 id=10004,
                 defaults={

@@ -11,22 +11,22 @@ from contenedor.models import CtnCliente
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
-FIXTURES_DIRS = [
-    BASE_DIR / 'general' / 'fixtures',
-    BASE_DIR / 'contabilidad' / 'fixtures',
-    BASE_DIR / 'humano' / 'fixtures',
-    BASE_DIR / 'turno' / 'fixtures',
+CATALOGOS_DIRS = [
+    BASE_DIR / 'general' / 'catalogos',
+    BASE_DIR / 'contabilidad' / 'catalogos',
+    BASE_DIR / 'humano' / 'catalogos',
+    BASE_DIR / 'turno' / 'catalogos',
 ]
 
 # Carpetas con datos semilla que se siembran únicamente al crear el tenant
 # (semántica get_or_create: nunca sobreescriben ediciones del tenant).
 # El orden de la lista define el orden de carga entre módulos: contabilidad
 # antes que general porque hay FKs cross-módulo (p.ej. GenSede -> ConCentroCosto).
-FIXTURES_INICIAL_DIRS = [
-    BASE_DIR / 'contabilidad' / 'fixtures_inicial',
-    BASE_DIR / 'general' / 'fixtures_inicial',
-    BASE_DIR / 'humano' / 'fixtures_inicial',
-    BASE_DIR / 'turno' / 'fixtures_inicial',
+DATOS_INICIAL_DIRS = [
+    BASE_DIR / 'contabilidad' / 'datos_inicial',
+    BASE_DIR / 'general' / 'datos_inicial',
+    BASE_DIR / 'humano' / 'datos_inicial',
+    BASE_DIR / 'turno' / 'datos_inicial',
 ]
 
 
@@ -35,7 +35,7 @@ class Command(BaseCommand):
 
     # Filas por sentencia. Postgres admite 65.535 parámetros por consulta, así que el
     # tope real depende del ancho de la tabla; 500 deja margen de sobra para la más
-    # ancha de los fixtures.
+    # ancha de los catálogos.
     TAMANO_LOTE = 500
 
     def add_arguments(self, parser):
@@ -47,27 +47,27 @@ class Command(BaseCommand):
         parser.add_argument(
             '--inicial',
             action='store_true',
-            help='Sembrar también los datos iniciales de fixtures_inicial/ '
+            help='Sembrar también los datos iniciales de datos_inicial/ '
             '(solo al crear el tenant; nunca sobreescriben ediciones).',
         )
 
     def handle(self, *args, **options):
-        # Primero los catálogos (fixtures/) y luego los datos semilla
-        # (fixtures_inicial/), para que estos puedan depender por FK de aquellos.
+        # Primero los catálogos (catalogos/) y luego los datos semilla
+        # (datos_inicial/), para que estos puedan depender por FK de aquellos.
         archivos = sorted(
-            ((f, False) for d in FIXTURES_DIRS for f in d.glob('*.json')),
+            ((f, False) for d in CATALOGOS_DIRS for f in d.glob('*.json')),
             key=lambda a: a[0].name,
         )
         if options.get('inicial'):
-            # Se cargan módulo por módulo en el orden de FIXTURES_INICIAL_DIRS
+            # Se cargan módulo por módulo en el orden de DATOS_INICIAL_DIRS
             # (no global por nombre) para respetar las FKs cross-módulo;
             # dentro de cada módulo, por nombre de archivo.
-            for d in FIXTURES_INICIAL_DIRS:
+            for d in DATOS_INICIAL_DIRS:
                 archivos += [
                     (f, True) for f in sorted(d.glob('*.json'), key=lambda f: f.name)
                 ]
         if not archivos:
-            self.stdout.write(self.style.WARNING('No se encontraron archivos JSON en fixtures/'))
+            self.stdout.write(self.style.WARNING('No se encontraron archivos JSON en catalogos/'))
             return
 
         schema = options.get('schema')
@@ -94,7 +94,7 @@ class Command(BaseCommand):
         actualizar_secuencia = contenido.get('actualizar_secuencia', False)
         # solo_crear: inserta la fila únicamente si no existe y nunca la
         # sobreescribe en ejecuciones posteriores (datos editables por el tenant).
-        # Los datos de fixtures_inicial/ siempre se tratan así.
+        # Los datos de datos_inicial/ siempre se tratan así.
         solo_crear = inicial or contenido.get('solo_crear', False)
 
         if solo_crear:
@@ -102,7 +102,7 @@ class Command(BaseCommand):
         else:
             creados, actualizados = self._volcar(modelo, contenido['data'])
 
-        # Los fixtures_inicial/ insertan ids explícitos en tablas con secuencia
+        # Los datos_inicial/ insertan ids explícitos en tablas con secuencia
         # (AutoField); hay que avanzar la secuencia o el próximo INSERT del ORM
         # colisiona con el id ya sembrado.
         if actualizar_secuencia or inicial:
@@ -120,7 +120,7 @@ class Command(BaseCommand):
     @staticmethod
     def _sembrar(modelo, filas):
         """
-        Semillas editables por el tenant (`fixtures_inicial/`): fila por fila con
+        Semillas editables por el tenant (`datos_inicial/`): fila por fila con
         `get_or_create`, que nunca sobreescribe y sí dispara los signals de auditoría.
 
         Son ocho filas en total, así que volcarlas en bloque no ahorraría nada y en
@@ -140,7 +140,7 @@ class Command(BaseCommand):
 
     def _volcar(self, modelo, filas):
         """
-        Catálogos (`fixtures/`): un `INSERT ... ON CONFLICT DO UPDATE` por lote en vez
+        Catálogos (`catalogos/`): un `INSERT ... ON CONFLICT DO UPDATE` por lote en vez
         de un `update_or_create` por fila.
 
         Son 4.550 filas en 46 archivos: fila por fila eran 9.000 consultas cada vez que
@@ -169,7 +169,7 @@ class Command(BaseCommand):
                 modelo.objects.bulk_create(
                     objetos,
                     update_conflicts=True,
-                    # El fixture nombra las FK por su columna (`estado_id`) y
+                    # El catálogo nombra las FK por su columna (`estado_id`) y
                     # `update_fields` espera el nombre del campo (`estado`).
                     update_fields=[nombre_de.get(clave, clave) for clave in claves],
                     unique_fields=[modelo._meta.pk.name],

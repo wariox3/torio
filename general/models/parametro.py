@@ -13,7 +13,7 @@ class GenParametro(models.Model):
     # Asistente de datos iniciales: mientras esté en True el front ofrece cargar
     # una plantilla o descartarla. Arranca encendido y lo apaga el back —al aplicar
     # una plantilla o al descartar—, nunca un PATCH del front. El default importa:
-    # `GenParametro` no tiene fixture y su fila la crea `SingletonMixin` al primer
+    # `GenParametro` no tiene catálogo y su fila la crea `SingletonMixin` al primer
     # acceso, así que un contenedor recién creado tiene que salir de ahí encendido.
     gen_asistente_datos_iniciales = models.BooleanField(default=True, db_default=True)
 

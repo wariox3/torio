@@ -5,21 +5,21 @@ from django.apps import apps
 from django.core.management.base import BaseCommand
 
 _BASE = Path(__file__).resolve().parent.parent.parent.parent
-FIXTURES_DIRS = [
-    _BASE / 'contenedor' / 'fixtures',
-    _BASE / 'seguridad' / 'fixtures',
+CATALOGOS_DIRS = [
+    _BASE / 'contenedor' / 'catalogos',
+    _BASE / 'seguridad' / 'catalogos',
 ]
 
 
 class Command(BaseCommand):
-    help = 'Carga datos del schema público desde los fixtures/ de contenedor y seguridad (idempotente)'
+    help = 'Carga datos del schema público desde los catalogos/ de contenedor y seguridad (idempotente)'
 
     def handle(self, *_args, **_options):
         archivos = sorted(
-            archivo for d in FIXTURES_DIRS for archivo in d.glob('*.json')
+            archivo for d in CATALOGOS_DIRS for archivo in d.glob('*.json')
         )
         if not archivos:
-            self.stdout.write(self.style.WARNING('No se encontraron archivos JSON en fixtures/'))
+            self.stdout.write(self.style.WARNING('No se encontraron archivos JSON en catalogos/'))
         for archivo in archivos:
             self._cargar(archivo)
 
@@ -28,7 +28,7 @@ class Command(BaseCommand):
     def _cargar_grupos(self):
         """
         Los grupos de permisos son datos fijos del producto, igual que el resto
-        de fixtures de este comando, pero no caben en el formato JSON de arriba:
+        de catálogos de este comando, pero no caben en el formato JSON de arriba:
         sus permisos son una M2M y los ids de `auth_permission` no son estables
         entre entornos. Se declaran en `seguridad/grupos.py` y se aplican acá
         para que cualquier entorno recién montado los tenga sin pasos extra.
