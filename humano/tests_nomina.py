@@ -11,6 +11,8 @@ from decimal import Decimal
 
 from django.core.management import call_command
 from django_tenants.test.cases import TenantTestCase
+from rest_framework import permissions
+from rest_framework.test import APIRequestFactory
 
 from general.models import (
     GenCiudad,
@@ -23,6 +25,7 @@ from general.models import (
     GenPais,
     GenTipoPersona,
 )
+from humano.formatos import FormatoProgramacion
 from humano.models import HumContrato, HumCredito, HumGrupo, HumProgramacion
 from humano.servicios import (
     ProgramacionError,
@@ -33,6 +36,7 @@ from humano.servicios import (
     generar_programacion,
 )
 from humano.servicios.nomina import porcentaje_fondo_solidaridad
+from humano.views.programacion import HumProgramacionViewSet
 
 SALARIO_MINIMO = Decimal('1423500')
 
@@ -252,3 +256,37 @@ class GenerarProgramacionTests(TenantTestCase):
         from humano.models import HumConcepto
 
         return HumConcepto.objects.filter(operacion=-1, adicional=True).exclude(pk=20).values_list('id', flat=True)[0]
+
+
+    # ---- imprimir ----
+
+    def test_imprimir_programacion_generada(self):
+        self._contrato()
+        programacion = generar_programacion(self._programacion())
+
+        contenido, nombre = FormatoProgramacion(programacion).pdf()
+
+        self.assertTrue(contenido.startswith(b'%PDF'))
+        self.assertEqual(nombre, f'programacion{programacion.id}.pdf')
+
+    def test_imprimir_sin_detalles_tambien_sale(self):
+        contenido, _ = FormatoProgramacion(self._programacion()).pdf()
+        self.assertTrue(contenido.startswith(b'%PDF'))
+
+    def test_endpoint_imprimir(self):
+        class Vista(HumProgramacionViewSet):
+            authentication_classes = []
+            permission_classes = [permissions.AllowAny]
+            throttle_classes = []
+
+        self._contrato()
+        programacion = generar_programacion(self._programacion())
+        vista = Vista.as_view({'post': 'imprimir'}, **Vista.imprimir.kwargs)
+        factory = APIRequestFactory()
+
+        respuesta = vista(factory.post('/', {'programacion_id': programacion.id}, format='json'))
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta['Content-Type'], 'application/pdf')
+        self.assertEqual(respuesta['Content-Disposition'], f'inline; filename="programacion{programacion.id}.pdf"')
+        self.assertEqual(vista(factory.post('/', {'programacion_id': 999999}, format='json')).status_code, 404)

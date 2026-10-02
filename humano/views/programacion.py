@@ -1,9 +1,12 @@
+from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
+from humano.formatos import FormatoProgramacion
 from humano.models import HumProgramacion
 from humano.serializers import (
     HumProgramacionExportarSerializer,
@@ -224,3 +227,22 @@ class HumProgramacionViewSet(
             return Response({'detail': e.detail}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(HumProgramacionSerializer(programacion).data, status=status.HTTP_200_OK)
+
+    @extend_schema(request=ProgramacionRequestSerializer, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+    @action(detail=False, methods=['post'], url_path='imprimir')
+    def imprimir(self, request):
+        """Resumen de la programación en PDF: un empleado por fila con su cuenta, banco y totales."""
+        serializer = ProgramacionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            programacion = HumProgramacion.objects.select_related('grupo', 'pago_tipo').get(
+                pk=serializer.validated_data['programacion_id'],
+            )
+        except HumProgramacion.DoesNotExist:
+            raise NotFound('Programación no encontrada.')
+
+        contenido, nombre = FormatoProgramacion(programacion).pdf()
+        response = HttpResponse(contenido, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{nombre}"'
+        return response
