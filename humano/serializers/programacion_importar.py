@@ -61,7 +61,7 @@ class HumProgramacionImportarSerializer(serializers.Serializer):
                     nombre=self._texto_o_none(datos.get('nombre')),
                     fecha_desde=fecha_desde,
                     fecha_hasta=fecha_hasta,
-                    **HumProgramacion.periodo(fecha_desde, fecha_hasta),
+                    **HumProgramacion.calcular_periodo(fecha_desde, fecha_hasta),
                     comentario=self._texto_o_none(datos.get('comentario')),
                     grupo=grupo,
                     pago_tipo=pago_tipo,

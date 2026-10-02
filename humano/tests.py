@@ -20,6 +20,7 @@ from humano.models import (
     HumGrupo,
     HumNovedad,
     HumPagoTipo,
+    HumPeriodo,
     HumProgramacion,
     HumProgramacionDetalle,
 )
@@ -441,6 +442,16 @@ class PeriodoProgramacionTests(TenantTestCase):
 
         self.assertEqual(programacion.fecha_hasta_periodo, date(2026, 3, 31))
         self.assertEqual(programacion.dias, 30)
+
+    def test_el_periodo_se_guarda(self):
+        # `HumProgramacion.periodo` es el FK: un método con ese nombre lo tapaba y
+        # el campo dejaba de existir para Django.
+        HumPeriodo.objects.create(id=1, codigo='Q', nombre='Quincenal', dias=15)
+
+        programacion = self._crear('2026-03-01', '2026-03-15', periodo=1)
+
+        programacion.refresh_from_db()
+        self.assertEqual(programacion.periodo_id, 1)
 
     def test_fecha_hasta_anterior_a_desde(self):
         serializer = HumProgramacionSerializer(data={

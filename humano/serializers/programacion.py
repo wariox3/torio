@@ -75,5 +75,5 @@ class HumProgramacionSerializer(serializers.ModelSerializer):
         fecha_hasta = attrs.get('fecha_hasta', getattr(self.instance, 'fecha_hasta', None))
         if fecha_hasta < fecha_desde:
             raise serializers.ValidationError('La fecha hasta no puede ser anterior a la fecha desde.')
-        attrs.update(HumProgramacion.periodo(fecha_desde, fecha_hasta))
+        attrs.update(HumProgramacion.calcular_periodo(fecha_desde, fecha_hasta))
         return attrs

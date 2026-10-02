@@ -1,8 +1,10 @@
 import ast
+import io
 from pathlib import Path
 
 from django.conf import settings
-from django.test import SimpleTestCase
+from django.core.management import call_command
+from django.test import SimpleTestCase, TestCase
 from rest_framework import serializers
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.test import APIRequestFactory
@@ -138,3 +140,21 @@ class RespuestasDeErrorTests(SimpleTestCase):
                     faltantes.append(f'{archivo.relative_to(RAIZ)}:{nodo.lineno}')
 
         self.assertEqual(faltantes, [], 'Respuestas de error sin `detail`')
+
+
+class MigracionesPendientesTests(TestCase):
+    """
+    Ningún modelo puede tener cambios sin su migración.
+
+    Si los tiene, `migrate` en producción avisa y no aplica nada, y el primero que
+    corra `makemigrations` allá genera una migración que nadie revisó. Así pasó
+    con `HumProgramacion.periodo`: un método con el mismo nombre tapó el FK, y
+    `makemigrations` proponía borrar la columna con sus datos.
+    """
+
+    def test_no_hay_cambios_sin_migracion(self):
+        salida = io.StringIO()
+        try:
+            call_command('makemigrations', check=True, dry_run=True, stdout=salida)
+        except SystemExit:
+            self.fail(f'Hay cambios en los modelos sin migración:\n{salida.getvalue()}')

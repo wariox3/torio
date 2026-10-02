@@ -57,7 +57,7 @@ class HumProgramacion(models.Model):
         verbose_name_plural = 'Programaciones'
 
     @staticmethod
-    def periodo(fecha_desde, fecha_hasta):
+    def calcular_periodo(fecha_desde, fecha_hasta):
         """
         Los campos que se derivan de las fechas: no los manda el usuario.
 
