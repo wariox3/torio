@@ -65,12 +65,13 @@ DOCUMENTO_TIPOS_NOTA_CREDITO = (
 )
 
 # Clases que llevan cartera: al aprobarse el documento queda con saldo pendiente
-# de cobro o de pago. Son las de venta (100-105), las de compra (300-304) y la
-# nómina (701), que queda por pagarle al empleado.
+# de cobro o de pago. Son las de venta (100-105), las de compra (300-304), la
+# nómina (701), que queda por pagarle al empleado, y la seguridad social (703),
+# que queda por pagarle a cada entidad.
 DOCUMENTO_CLASES_CON_CARTERA = (
     100, 101, 102, 104, 105,
     300, 301, 302, 303, 304,
-    701,
+    701, 703,
 )
 
 # El contrato de servicio no se copia tal cual: sus detalles se acotan al periodo

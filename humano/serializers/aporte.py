@@ -62,6 +62,11 @@ class HumAporteSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id',
+            'fecha_desde',
+            'fecha_hasta',
+            'fecha_hasta_periodo',
+            'anio_salud',
+            'mes_salud',
             'contratos',
             'empleados',
             'lineas',
@@ -85,6 +90,14 @@ class HumAporteSerializer(serializers.ModelSerializer):
             'estado_aprobado',
             'estado_generado',
         ]
+
+    def validate(self, attrs):
+        anio = attrs.get('anio', getattr(self.instance, 'anio', None))
+        mes = attrs.get('mes', getattr(self.instance, 'mes', None))
+        if not 1 <= mes <= 12:
+            raise serializers.ValidationError('El mes debe estar entre 1 y 12.')
+        attrs.update(HumAporte.calcular_fechas(anio, mes))
+        return attrs
 
 
 class HumAporteSeleccionarSerializer(serializers.ModelSerializer):

@@ -7,3 +7,13 @@ from .programacion import (
     eliminar_detalles,
     generar_programacion,
 )
+from .aporte import (
+    AporteError,
+    aprobar_aporte,
+    cargar_contratos_aporte,
+    desaprobar_aporte,
+    desgenerar_aporte,
+    generar_aporte,
+    recalcular_entidades,
+)
+from .pila import PilaError, generar_plano

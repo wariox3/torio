@@ -1,3 +1,6 @@
+import calendar
+from datetime import date
+
 from django.db import models
 
 
@@ -55,6 +58,27 @@ class HumAporte(models.Model):
         ordering = ['-id']
         verbose_name = 'Aporte'
         verbose_name_plural = 'Aportes'
+
+    @staticmethod
+    def calcular_fechas(anio, mes):
+        """
+        Las fechas del aporte salen del año y el mes: no las manda el usuario.
+
+        - `fecha_desde` el 1 y `fecha_hasta` el 30, porque la PILA liquida meses de
+          30 días; febrero termina en su último día.
+        - `fecha_hasta_periodo`: el último día real del mes (el 31 cuando lo tiene).
+        - `anio_salud`/`mes_salud`: salud se paga por el mes siguiente.
+        """
+        ultimo_dia = calendar.monthrange(anio, mes)[1]
+        fecha_hasta = date(anio, mes, ultimo_dia if mes == 2 else 30)
+        siguiente = date(anio + 1, 1, 1) if mes == 12 else date(anio, mes + 1, 1)
+        return {
+            'fecha_desde': date(anio, mes, 1),
+            'fecha_hasta': fecha_hasta,
+            'fecha_hasta_periodo': date(anio, mes, ultimo_dia),
+            'anio_salud': siguiente.year,
+            'mes_salud': siguiente.month,
+        }
 
     def __str__(self):
         return str(self.id)

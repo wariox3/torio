@@ -183,6 +183,13 @@ class GenDocumento(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_programacion_detalle_rel',
     )
+    # El aporte a seguridad social que generó el documento (uno por entidad).
+    aporte = models.ForeignKey(
+        'humano.HumAporte',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_aporte_rel',
+    )
     estrato = models.PositiveSmallIntegerField(
         null=True,
         validators=[MinValueValidator(1), MaxValueValidator(9)],

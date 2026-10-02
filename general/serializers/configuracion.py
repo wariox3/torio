@@ -16,6 +16,7 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
             'hum_factor',
             'hum_salario_minimo',
             'hum_auxilio_transporte',
+            'hum_licencia_no_remunerada_afecta_pension',
             'hum_entidad_riesgo',
             'hum_entidad_riesgo_nombre',
             'gen_empresa_numero_identificacion',

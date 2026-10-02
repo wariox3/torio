@@ -27,9 +27,6 @@ class HumAporteImportarSerializer(serializers.Serializer):
         ('anio', 'Año'),
         ('mes', 'Mes'),
         ('presentacion', 'Presentación'),
-        ('fecha_desde', 'Fecha desde'),
-        ('fecha_hasta', 'Fecha hasta'),
-        ('fecha_hasta_periodo', 'Fecha hasta periodo'),
         ('sucursal.id', 'Sucursal'),
         ('comentario', 'Comentario'),
     )
@@ -50,13 +47,16 @@ class HumAporteImportarSerializer(serializers.Serializer):
         for idx, datos in filas_validas:
             try:
                 sucursal = self._fk_opcional(datos.get('sucursal.id'), mapa_sucursal, 'Sucursal')
+                anio = self._entero(datos.get('anio'), 'Año')
+                mes = self._entero(datos.get('mes'), 'Mes')
+                if not 1 <= mes <= 12:
+                    raise ValueError('El mes debe estar entre 1 y 12.')
                 nuevos.append(HumAporte(
-                    anio=self._entero(datos.get('anio'), 'Año'),
-                    mes=self._entero(datos.get('mes'), 'Mes'),
+                    anio=anio,
+                    mes=mes,
                     presentacion=self._texto(datos.get('presentacion'), defecto='S')[:1] or 'S',
-                    fecha_desde=self._fecha(datos.get('fecha_desde'), 'Fecha desde'),
-                    fecha_hasta=self._fecha(datos.get('fecha_hasta'), 'Fecha hasta'),
-                    fecha_hasta_periodo=self._fecha(datos.get('fecha_hasta_periodo'), 'Fecha hasta periodo'),
+                    # Las fechas y el periodo de salud salen del año y el mes, igual que por la API.
+                    **HumAporte.calcular_fechas(anio, mes),
                     comentario=self._texto_o_none(datos.get('comentario')),
                     sucursal=sucursal,
                 ))
