@@ -76,4 +76,9 @@ class HumProgramacionSerializer(serializers.ModelSerializer):
         if fecha_hasta < fecha_desde:
             raise serializers.ValidationError('La fecha hasta no puede ser anterior a la fecha desde.')
         attrs.update(HumProgramacion.calcular_periodo(fecha_desde, fecha_hasta))
+
+        # Sin periodo, el del grupo: es el que define cada cuánto se le paga.
+        if attrs.get('periodo', getattr(self.instance, 'periodo', None)) is None:
+            grupo = attrs.get('grupo', getattr(self.instance, 'grupo', None))
+            attrs['periodo'] = grupo.periodo
         return attrs

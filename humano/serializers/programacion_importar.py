@@ -65,7 +65,8 @@ class HumProgramacionImportarSerializer(serializers.Serializer):
                     comentario=self._texto_o_none(datos.get('comentario')),
                     grupo=grupo,
                     pago_tipo=pago_tipo,
-                    periodo=periodo,
+                    # Sin periodo, el del grupo, igual que al crear por la API.
+                    periodo_id=periodo.id if periodo else grupo.periodo_id,
                 ))
             except Exception as e:
                 errores.append({'fila': idx, 'mensaje': str(e)})

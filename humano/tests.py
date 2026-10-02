@@ -453,6 +453,23 @@ class PeriodoProgramacionTests(TenantTestCase):
         programacion.refresh_from_db()
         self.assertEqual(programacion.periodo_id, 1)
 
+    def test_sin_periodo_toma_el_del_grupo(self):
+        self.grupo.periodo = HumPeriodo.objects.create(id=1, codigo='Q', nombre='Quincenal', dias=15)
+        self.grupo.save()
+
+        self.assertEqual(self._crear('2026-03-01', '2026-03-15').periodo_id, 1)
+        self.assertEqual(self._crear('2026-03-01', '2026-03-15', periodo=None).periodo_id, 1)
+
+    def test_el_periodo_enviado_manda_sobre_el_del_grupo(self):
+        self.grupo.periodo = HumPeriodo.objects.create(id=1, codigo='Q', nombre='Quincenal', dias=15)
+        self.grupo.save()
+        HumPeriodo.objects.create(id=2, codigo='M', nombre='Mensual', dias=30)
+
+        self.assertEqual(self._crear('2026-03-01', '2026-03-30', periodo=2).periodo_id, 2)
+
+    def test_grupo_sin_periodo_queda_sin_periodo(self):
+        self.assertIsNone(self._crear('2026-03-01', '2026-03-15').periodo_id)
+
     def test_fecha_hasta_anterior_a_desde(self):
         serializer = HumProgramacionSerializer(data={
             'fecha_desde': '2026-03-15', 'fecha_hasta': '2026-03-01', 'grupo': self.grupo.id, 'pago_tipo': 1,
