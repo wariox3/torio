@@ -10,6 +10,7 @@ from utilidades.mixins import FiltrosDinamicosMixin
 class ConConciliacionSoporteViewSet(
     FiltrosDinamicosMixin,
     mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
     serializer_class = ConConciliacionSoporteSerializer

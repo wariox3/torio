@@ -10,6 +10,7 @@ from utilidades.mixins import FiltrosDinamicosMixin
 class HumLiquidacionAdicionalViewSet(
     FiltrosDinamicosMixin,
     mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
     serializer_class = HumLiquidacionAdicionalSerializer

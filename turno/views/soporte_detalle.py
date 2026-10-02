@@ -10,6 +10,7 @@ from utilidades.mixins import FiltrosDinamicosMixin
 class TurSoporteDetalleViewSet(
     FiltrosDinamicosMixin,
     mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
     serializer_class = TurSoporteDetalleSerializer

@@ -10,6 +10,7 @@ from utilidades.mixins import FiltrosDinamicosMixin
 class HumAporteEntidadViewSet(
     FiltrosDinamicosMixin,
     mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
     serializer_class = HumAporteEntidadSerializer

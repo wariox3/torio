@@ -190,3 +190,48 @@ class FiltrosConIdTests(SimpleTestCase):
                         sin_id += [f'{clase.__name__}.{nombre}' for nombre in clase.campos_filtrables if nombre in fks]
 
         self.assertEqual(sorted(set(sin_id)), [], 'Estos filtros nombran un FK sin `_id`.')
+
+
+class ModelosConGetTests(SimpleTestCase):
+    """
+    Los modelos de `GenModelo` de tipo Administrador (A), Movimiento (M) y
+    Detalle (D) se pueden traer por id (`GET /<recurso>/<id>/`): son los que el
+    front abre para ver o editar un registro. Los catálogos (C) solo se eligen
+    con `seleccionar`.
+
+    Se lee del catálogo (`general/catalogos/15_modelo.json`) y no de la base,
+    porque es el que define qué modelos existen para el front.
+    """
+
+    def test_administrador_movimiento_y_detalle_tienen_get_por_id(self):
+        import json
+        from importlib import import_module
+
+        con_get = set()
+
+        def recorrer(patrones):
+            for patron in patrones:
+                if hasattr(patron, 'url_patterns'):
+                    recorrer(patron.url_patterns)
+                    continue
+                vista = getattr(patron.callback, 'cls', None)
+                if vista is None or 'retrieve' not in (getattr(patron.callback, 'actions', None) or {}).values():
+                    continue
+                queryset = getattr(vista, 'queryset', None)
+                modelo = queryset.model if queryset is not None else getattr(
+                    getattr(getattr(vista, 'serializer_class', None), 'Meta', None), 'model', None,
+                )
+                if modelo is not None:
+                    con_get.add(modelo.__name__)
+
+        for urlconf in ('torioapp.urls_tenant', 'torioapp.urls_public'):
+            recorrer(import_module(urlconf).urlpatterns)
+
+        catalogo = Path(settings.BASE_DIR) / 'general' / 'catalogos' / '15_modelo.json'
+        modelos = json.loads(catalogo.read_text(encoding='utf-8'))['data']
+        sin_get = sorted(
+            f"{fila['tipo']} {fila['clase']}" for fila in modelos
+            if fila['tipo'] in ('A', 'M', 'D') and fila['clase'] not in con_get
+        )
+
+        self.assertEqual(sin_get, [], 'Estos modelos de GenModelo no tienen GET por id.')
