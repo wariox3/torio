@@ -59,7 +59,7 @@ class HumGrupoViewSet(
     @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=HumGrupoSeleccionarSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)
     def seleccionar(self, request):
-        qs = HumGrupo.objects.order_by('nombre')
+        qs = HumGrupo.objects.select_related('periodo').order_by('nombre')
         search = request.query_params.get('search', '').strip()
         if search:
             qs = qs.filter(nombre__icontains=search)
