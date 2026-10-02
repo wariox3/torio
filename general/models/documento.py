@@ -176,6 +176,13 @@ class GenDocumento(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_contrato_rel',
     )
+    # El detalle de la programación de nómina que generó el documento.
+    programacion_detalle = models.ForeignKey(
+        'humano.HumProgramacionDetalle',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_programacion_detalle_rel',
+    )
     estrato = models.PositiveSmallIntegerField(
         null=True,
         validators=[MinValueValidator(1), MaxValueValidator(9)],

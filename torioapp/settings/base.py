@@ -205,7 +205,7 @@ REST_FRAMEWORK = {
         # Cada contenedor es un schema con 126 migraciones. Esto frena a quien los
         # cree en serie; el tope real —uno en creación por usuario— lo pone la vista
         # en la base, porque si Redis se cae este límite deja pasar todo.
-        'crear_contenedor': '5/hour',
+        'crear_contenedor': '10/hour',
     },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }

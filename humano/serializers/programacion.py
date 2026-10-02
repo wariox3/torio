@@ -59,6 +59,8 @@ class HumProgramacionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id',
+            'fecha_hasta_periodo',
+            'dias',
             'dias_reales',
             'contratos',
             'devengado',
@@ -67,3 +69,11 @@ class HumProgramacionSerializer(serializers.ModelSerializer):
             'estado_aprobado',
             'estado_generado',
         ]
+
+    def validate(self, attrs):
+        fecha_desde = attrs.get('fecha_desde', getattr(self.instance, 'fecha_desde', None))
+        fecha_hasta = attrs.get('fecha_hasta', getattr(self.instance, 'fecha_hasta', None))
+        if fecha_hasta < fecha_desde:
+            raise serializers.ValidationError('La fecha hasta no puede ser anterior a la fecha desde.')
+        attrs.update(HumProgramacion.periodo(fecha_desde, fecha_hasta))
+        return attrs

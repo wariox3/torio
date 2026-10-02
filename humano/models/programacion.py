@@ -1,4 +1,9 @@
+import calendar
+from datetime import timedelta
+
 from django.db import models
+
+from utilidades.fechas import dias_prestacionales
 
 
 class HumProgramacion(models.Model):
@@ -50,6 +55,25 @@ class HumProgramacion(models.Model):
         ordering = ['-id']
         verbose_name = 'Programación'
         verbose_name_plural = 'Programaciones'
+
+    @staticmethod
+    def periodo(fecha_desde, fecha_hasta):
+        """
+        Los campos que se derivan de las fechas: no los manda el usuario.
+
+        - `fecha_hasta_periodo`: el último día real del periodo. Una programación
+          que se paga hasta el 30 de un mes de 31 días cierra el periodo el 31.
+        - `dias_reales`: días calendario entre las fechas, ambas incluidas.
+        - `dias`: días en la convención 30/360, los que se liquidan.
+        """
+        fecha_hasta_periodo = fecha_hasta
+        if fecha_hasta.day == 30 and calendar.monthrange(fecha_hasta.year, fecha_hasta.month)[1] == 31:
+            fecha_hasta_periodo = fecha_hasta + timedelta(days=1)
+        return {
+            'fecha_hasta_periodo': fecha_hasta_periodo,
+            'dias_reales': (fecha_hasta - fecha_desde).days + 1,
+            'dias': dias_prestacionales(fecha_desde, fecha_hasta),
+        }
 
     def __str__(self):
         return self.nombre or str(self.id)

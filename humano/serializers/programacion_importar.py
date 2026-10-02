@@ -27,13 +27,12 @@ class HumProgramacionImportarSerializer(serializers.Serializer):
         ('nombre', 'Nombre'),
         ('fecha_desde', 'Fecha desde'),
         ('fecha_hasta', 'Fecha hasta'),
-        ('fecha_hasta_periodo', 'Fecha hasta periodo'),
         ('grupo.id', 'Grupo'),
         ('pago_tipo.id', 'Tipo pago'),
         ('periodo.id', 'Periodo'),
         ('comentario', 'Comentario'),
     )
-    campos_requeridos = {'fecha_desde', 'fecha_hasta', 'fecha_hasta_periodo', 'grupo.id', 'pago_tipo.id'}
+    campos_requeridos = {'fecha_desde', 'fecha_hasta', 'grupo.id', 'pago_tipo.id'}
 
     LIMITE_ERRORES = 100
     BATCH_BULK_CREATE = 500
@@ -54,11 +53,15 @@ class HumProgramacionImportarSerializer(serializers.Serializer):
                 grupo = self._fk_obligatorio(datos.get('grupo.id'), mapa_grupo, 'Grupo')
                 pago_tipo = self._fk_obligatorio(datos.get('pago_tipo.id'), mapa_pago_tipo, 'Tipo pago')
                 periodo = self._fk_opcional(datos.get('periodo.id'), mapa_periodo, 'Periodo')
+                fecha_desde = self._fecha(datos.get('fecha_desde'), 'Fecha desde')
+                fecha_hasta = self._fecha(datos.get('fecha_hasta'), 'Fecha hasta')
+                if fecha_hasta < fecha_desde:
+                    raise ValueError('La fecha hasta no puede ser anterior a la fecha desde.')
                 nuevos.append(HumProgramacion(
                     nombre=self._texto_o_none(datos.get('nombre')),
-                    fecha_desde=self._fecha(datos.get('fecha_desde'), 'Fecha desde'),
-                    fecha_hasta=self._fecha(datos.get('fecha_hasta'), 'Fecha hasta'),
-                    fecha_hasta_periodo=self._fecha(datos.get('fecha_hasta_periodo'), 'Fecha hasta periodo'),
+                    fecha_desde=fecha_desde,
+                    fecha_hasta=fecha_hasta,
+                    **HumProgramacion.periodo(fecha_desde, fecha_hasta),
                     comentario=self._texto_o_none(datos.get('comentario')),
                     grupo=grupo,
                     pago_tipo=pago_tipo,

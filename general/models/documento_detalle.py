@@ -152,6 +152,13 @@ class GenDocumentoDetalle(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_detalles_activo_rel',
     )
+    # La novedad (incapacidad, licencia, vacaciones) de la que sale la línea de nómina.
+    novedad = models.ForeignKey(
+        'humano.HumNovedad',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_detalles_novedad_rel',
+    )
 
     class Meta:
         db_table = 'gen_documento_detalle'
