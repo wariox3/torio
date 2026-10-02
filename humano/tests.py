@@ -475,3 +475,121 @@ class PeriodoProgramacionTests(TenantTestCase):
             'fecha_desde': '2026-03-15', 'fecha_hasta': '2026-03-01', 'grupo': self.grupo.id, 'pago_tipo': 1,
         })
         self.assertFalse(serializer.is_valid())
+
+
+class EditarProgramacionDetalleTests(TenantTestCase):
+    """PUT/PATCH de `programacion-detalle`: solo con la programación sin generar."""
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        from humano.views.programacion_detalle import HumProgramacionDetalleViewSet
+
+        class Vista(HumProgramacionDetalleViewSet):
+            authentication_classes = []
+            permission_classes = [permissions.AllowAny]
+            throttle_classes = []
+
+        self.vista = Vista.as_view({'patch': 'partial_update', 'put': 'update'})
+        self.crear = Vista.as_view({'post': 'create'})
+        self.factory = APIRequestFactory()
+
+        pais = GenPais.objects.create(id=1, nombre='Colombia')
+        ciudad = GenCiudad.objects.create(
+            id=1, nombre='Bogotá', estado=GenEstado.objects.create(id=1, nombre='Cundinamarca', pais=pais),
+        )
+        identificacion = GenIdentificacion.objects.create(id=1, nombre='CC')
+        tipo_persona = GenTipoPersona.objects.create(id=1, nombre='Natural')
+        contactos = [
+            GenContacto.objects.create(
+                numero_identificacion=numero, nombre_corto=numero, direccion='x', telefono='1', correo='e@e.com',
+                identificacion=identificacion, ciudad=ciudad, tipo_persona=tipo_persona, empleado=True,
+            )
+            for numero in ('1', '2')
+        ]
+        grupo = HumGrupo.objects.create(nombre='Grupo 1')
+        HumPagoTipo.objects.create(id=1, nombre='Nomina')
+        tipo = HumContratoTipo.objects.create(id=1, nombre='Indefinido')
+        self.contratos = [
+            HumContrato.objects.create(
+                fecha_desde=date(2026, 1, 1), fecha_hasta=date(2026, 1, 1), contrato_tipo=tipo,
+                contacto=contacto, grupo=grupo,
+            )
+            for contacto in contactos
+        ]
+        self.programacion = HumProgramacion.objects.create(
+            fecha_desde=date(2026, 3, 1), fecha_hasta=date(2026, 3, 15), fecha_hasta_periodo=date(2026, 3, 15),
+            grupo=grupo, pago_tipo_id=1,
+        )
+        self.detalle = HumProgramacionDetalle.objects.create(programacion=self.programacion, contrato=self.contratos[0])
+
+    def _patch(self, datos):
+        return self.vista(self.factory.patch('/', datos, format='json'), pk=self.detalle.pk)
+
+    def test_edita_las_horas(self):
+        respuesta = self._patch({'extra_diurna': 4, 'pago_auxilio_transporte': False})
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.detalle.refresh_from_db()
+        self.assertEqual(self.detalle.extra_diurna, 4)
+        self.assertFalse(self.detalle.pago_auxilio_transporte)
+
+    def test_put_completo(self):
+        datos = {'programacion': self.programacion.id, 'contrato': self.contratos[0].id, 'diurna': 80}
+
+        respuesta = self.vista(self.factory.put('/', datos, format='json'), pk=self.detalle.pk)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.detalle.refresh_from_db()
+        self.assertEqual(self.detalle.diurna, 80)
+
+    def test_no_cambia_de_contrato(self):
+        respuesta = self._patch({'contrato': self.contratos[1].id})
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('detail', respuesta.data)
+        self.detalle.refresh_from_db()
+        self.assertEqual(self.detalle.contrato_id, self.contratos[0].id)
+
+    def test_no_edita_con_la_programacion_generada(self):
+        HumProgramacion.objects.filter(pk=self.programacion.pk).update(estado_generado=True)
+
+        respuesta = self._patch({'extra_diurna': 4})
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.detalle.refresh_from_db()
+        self.assertEqual(self.detalle.extra_diurna, 0)
+
+    def test_crea_con_la_programacion_sin_generar(self):
+        datos = {'programacion': self.programacion.id, 'contrato': self.contratos[1].id}
+
+        respuesta = self.crear(self.factory.post('/', datos, format='json'))
+
+        self.assertEqual(respuesta.status_code, 201)
+
+    def test_no_crea_con_la_programacion_generada(self):
+        HumProgramacion.objects.filter(pk=self.programacion.pk).update(estado_generado=True)
+        datos = {'programacion': self.programacion.id, 'contrato': self.contratos[1].id}
+
+        respuesta = self.crear(self.factory.post('/', datos, format='json'))
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('detail', respuesta.data)
+        self.assertEqual(HumProgramacionDetalle.objects.count(), 1)
+
+    def test_el_backend_tampoco_crea_con_la_programacion_generada(self):
+        from django.core.exceptions import ValidationError
+
+        HumProgramacion.objects.filter(pk=self.programacion.pk).update(estado_generado=True)
+
+        with self.assertRaises(ValidationError):
+            HumProgramacionDetalle.objects.create(programacion=self.programacion, contrato=self.contratos[1])
+        with self.assertRaises(ValidationError):
+            HumProgramacionDetalle.objects.bulk_create([
+                HumProgramacionDetalle(programacion=self.programacion, contrato=self.contratos[1]),
+            ])
+        self.assertEqual(HumProgramacionDetalle.objects.count(), 1)

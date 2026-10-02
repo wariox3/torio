@@ -1,4 +1,32 @@
+from django.core.exceptions import ValidationError
 from django.db import models
+
+MENSAJE_PROGRAMACION_CERRADA = (
+    'La programación está generada o aprobada: desgenérela antes de modificar sus detalles.'
+)
+
+
+def validar_programaciones_abiertas(programacion_ids):
+    """
+    Ningún detalle nuevo entra a una programación generada o aprobada: sus
+    valores ya están en los documentos de nómina y quedarían descuadrados.
+    """
+    from humano.models.programacion import HumProgramacion
+
+    cerradas = HumProgramacion.objects.filter(id__in=programacion_ids).filter(
+        models.Q(estado_generado=True) | models.Q(estado_aprobado=True),
+    )
+    if cerradas.exists():
+        raise ValidationError(MENSAJE_PROGRAMACION_CERRADA)
+
+
+class HumProgramacionDetalleQuerySet(models.QuerySet):
+    def bulk_create(self, objs, *args, **kwargs):
+        # `bulk_create` no pasa por `save()`: la regla se repite acá para que
+        # tampoco el backend (`cargar_contratos`) pueda saltársela.
+        objs = list(objs)
+        validar_programaciones_abiertas({obj.programacion_id for obj in objs})
+        return super().bulk_create(objs, *args, **kwargs)
 
 
 class HumProgramacionDetalle(models.Model):
@@ -53,11 +81,18 @@ class HumProgramacionDetalle(models.Model):
         related_name='pogramaciones_detalles_contrato_rel',
     )
 
+    objects = HumProgramacionDetalleQuerySet.as_manager()
+
     class Meta:
         db_table = 'hum_programacion_detalle'
         ordering = ['-id']
         verbose_name = 'Programación detalle'
         verbose_name_plural = 'Programaciones detalles'
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            validar_programaciones_abiertas({self.programacion_id})
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f'{self.id} - {self.contrato_id}'

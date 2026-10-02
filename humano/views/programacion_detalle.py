@@ -11,6 +11,7 @@ class HumProgramacionDetalleViewSet(
     FiltrosDinamicosMixin,
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
     serializer_class = HumProgramacionDetalleSerializer

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from humano.models import HumProgramacionDetalle
+from humano.models.programacion_detalle import MENSAJE_PROGRAMACION_CERRADA
 
 
 class HumProgramacionDetalleSerializer(serializers.ModelSerializer):
@@ -66,3 +67,18 @@ class HumProgramacionDetalleSerializer(serializers.ModelSerializer):
             'contacto_numero_identificacion',
         ]
         read_only_fields = ['id']
+
+    def validate(self, attrs):
+        if self.instance is not None:
+            # Al editar, el detalle sigue siendo del mismo contrato en la misma
+            # programación: moverlo desordena `HumProgramacion.contratos`. Para eso
+            # se elimina y se vuelve a cargar.
+            for campo in ('programacion', 'contrato'):
+                if campo in attrs and attrs[campo] != getattr(self.instance, campo):
+                    raise serializers.ValidationError(f'No se puede cambiar el campo {campo} de un detalle.')
+        # Generada, sus valores ya están en los documentos de nómina: ni se crean
+        # ni se editan detalles.
+        programacion = attrs.get('programacion') or self.instance.programacion
+        if programacion.estado_aprobado or programacion.estado_generado:
+            raise serializers.ValidationError(MENSAJE_PROGRAMACION_CERRADA)
+        return attrs
