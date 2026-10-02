@@ -7,7 +7,7 @@ class GenCuentaBancoSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin y ExportarExcelMixin
     campos_filtrables = {
         'id', 'nombre', 'numero_cuenta',
-        'cuenta_banco_tipo', 'cuenta_banco_clase', 'cuenta',
+        'cuenta_banco_tipo_id', 'cuenta_banco_clase_id', 'cuenta_id',
     }
     select_related_lista = ('cuenta_banco_tipo', 'cuenta_banco_clase', 'cuenta')
     ordenamiento_default_lista = ('nombre',)

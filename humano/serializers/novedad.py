@@ -5,7 +5,7 @@ from humano.models import HumNovedad
 
 class HumNovedadSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'contrato', 'novedad_tipo', 'prorroga', 'fecha_desde', 'fecha_hasta'}
+    campos_filtrables = {'id', 'contrato_id', 'novedad_tipo_id', 'prorroga', 'fecha_desde', 'fecha_hasta'}
     select_related_lista = ('contrato', 'contrato__contacto', 'novedad_tipo', 'novedad_referencia')
     ordenamiento_default_lista = ('-id',)
 

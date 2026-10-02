@@ -6,7 +6,7 @@ from turno.models import TurSoporte
 class TurSoporteSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
     campos_filtrables = {
-        'id', 'fecha_desde', 'fecha_hasta', 'fecha_hasta_periodo', 'grupo',
+        'id', 'fecha_desde', 'fecha_hasta', 'fecha_hasta_periodo', 'grupo_id',
     }
     select_related_lista = (
         'grupo',

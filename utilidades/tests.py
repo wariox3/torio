@@ -158,3 +158,35 @@ class MigracionesPendientesTests(TestCase):
             call_command('makemigrations', check=True, dry_run=True, stdout=salida)
         except SystemExit:
             self.fail(f'Hay cambios en los modelos sin migración:\n{salida.getvalue()}')
+
+
+class FiltrosConIdTests(SimpleTestCase):
+    """
+    En `campos_filtrables` los FKs se nombran con `_id` (`contrato_id`, no
+    `contrato`), en todo el proyecto: el front no tiene que adivinar cuál mandar.
+    """
+
+    def test_los_fks_filtrables_llevan_id(self):
+        import importlib
+        import inspect
+        import pkgutil
+
+        sin_id = []
+        for app in ('general', 'humano', 'contabilidad', 'turno', 'inventario', 'seguridad', 'contenedor'):
+            for paquete in ('serializers', 'views'):
+                try:
+                    raiz = importlib.import_module(f'{app}.{paquete}')
+                except ModuleNotFoundError:
+                    continue
+                for modulo in pkgutil.iter_modules(raiz.__path__):
+                    contenido = importlib.import_module(f'{raiz.__name__}.{modulo.name}')
+                    for clase in vars(contenido).values():
+                        if not (inspect.isclass(clase) and 'campos_filtrables' in clase.__dict__):
+                            continue
+                        modelo = getattr(getattr(clase, 'Meta', None), 'model', None)
+                        if modelo is None:
+                            continue
+                        fks = {campo.name for campo in modelo._meta.fields if campo.is_relation}
+                        sin_id += [f'{clase.__name__}.{nombre}' for nombre in clase.campos_filtrables if nombre in fks]
+
+        self.assertEqual(sorted(set(sin_id)), [], 'Estos filtros nombran un FK sin `_id`.')

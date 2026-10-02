@@ -8,8 +8,8 @@ class TurPuestoSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin y ExportarExcelMixin
     campos_filtrables = {
         'id', 'nombre', 'estado_inactivo',
-        'contacto', 'contacto__nombre_corto', 'contacto__numero_identificacion',
-        'programador', 'ciudad', 'centro_costo',
+        'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion',
+        'programador_id', 'ciudad_id', 'centro_costo_id',
     }
     select_related_lista = ('contacto', 'programador', 'ciudad', 'centro_costo')
     ordenamiento_default_lista = ('nombre',)

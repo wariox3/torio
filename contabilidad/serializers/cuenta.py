@@ -8,7 +8,7 @@ class ConCuentaSerializer(serializers.ModelSerializer):
     campos_filtrables = {
         'id', 'codigo', 'nombre', 'nivel',
         'exige_base', 'exige_contacto', 'exige_centro_costo', 'permite_movimiento',
-        'cuenta_clase', 'cuenta_grupo', 'cuenta_cuenta', 'cuenta_subcuenta',
+        'cuenta_clase_id', 'cuenta_grupo_id', 'cuenta_cuenta_id', 'cuenta_subcuenta_id',
     }
     select_related_lista = (
         'cuenta_clase', 'cuenta_grupo', 'cuenta_cuenta', 'cuenta_subcuenta',

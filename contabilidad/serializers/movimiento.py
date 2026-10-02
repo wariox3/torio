@@ -7,8 +7,8 @@ class ConMovimientoSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
     campos_filtrables = {
         'id', 'numero', 'fecha', 'naturaleza', 'cierre', 'saldo_inicial',
-        'comprobante', 'cuenta', 'centro_costo', 'periodo', 'documento',
-        'contacto', 'contacto__nombre_corto', 'contacto__numero_identificacion',
+        'comprobante_id', 'cuenta_id', 'centro_costo_id', 'periodo_id', 'documento_id',
+        'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion',
     }
     select_related_lista = ('comprobante', 'cuenta', 'centro_costo', 'periodo', 'contacto', 'documento')
     ordenamiento_default_lista = ('-id',)

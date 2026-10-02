@@ -5,7 +5,7 @@ from humano.models import HumGrupo
 
 class HumGrupoSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'nombre', 'periodo'}
+    campos_filtrables = {'id', 'nombre', 'periodo_id'}
     select_related_lista = ('periodo',)
     ordenamiento_default_lista = ('nombre',)
 

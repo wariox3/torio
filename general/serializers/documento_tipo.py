@@ -14,7 +14,7 @@ class GenDocumentoTipoSerializer(serializers.ModelSerializer):
 
     # Config consumida por FiltrosDinamicosMixin
     campos_filtrables = {
-        'id', 'nombre', 'consecutivo', 'documento_clase', 'resolucion',
+        'id', 'nombre', 'consecutivo', 'documento_clase_id', 'resolucion_id',
         'venta', 'compra', 'cobrar', 'pagar',
     }
     ordenamiento_default_lista = ('nombre',)

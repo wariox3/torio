@@ -5,7 +5,7 @@ from humano.models import HumProgramacionDetalle
 
 class HumProgramacionDetalleSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'programacion', 'contrato', 'ingreso', 'retiro'}
+    campos_filtrables = {'id', 'programacion_id', 'contrato_id', 'ingreso', 'retiro'}
     select_related_lista = ('programacion', 'contrato', 'contrato__contacto')
     ordenamiento_default_lista = ('-id',)
 

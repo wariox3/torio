@@ -5,7 +5,7 @@ from contabilidad.models import ConConciliacion
 
 class ConConciliacionSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'fecha_desde', 'fecha_hasta', 'cuenta_banco'}
+    campos_filtrables = {'id', 'fecha_desde', 'fecha_hasta', 'cuenta_banco_id'}
     select_related_lista = ('cuenta_banco',)
     ordenamiento_default_lista = ('-id',)
 

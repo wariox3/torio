@@ -6,7 +6,7 @@ from humano.models import HumProgramacion
 class HumProgramacionSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
     campos_filtrables = {
-        'id', 'nombre', 'grupo', 'pago_tipo', 'periodo',
+        'id', 'nombre', 'grupo_id', 'pago_tipo_id', 'periodo_id',
         'estado_aprobado', 'estado_generado', 'fecha_desde', 'fecha_hasta',
     }
     select_related_lista = ('grupo', 'pago_tipo', 'periodo')

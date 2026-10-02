@@ -5,7 +5,7 @@ from turno.models import TurSoporteDetalle
 
 class TurSoporteDetalleSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'soporte', 'contrato'}
+    campos_filtrables = {'id', 'soporte_id', 'contrato_id'}
     select_related_lista = ('soporte', 'contrato', 'contrato__contacto')
     ordenamiento_default_lista = ('-id',)
 

@@ -5,7 +5,7 @@ from humano.models import HumAdicional
 
 class HumAdicionalSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'contrato', 'concepto', 'programacion', 'inactivo', 'permanente'}
+    campos_filtrables = {'id', 'contrato_id', 'concepto_id', 'programacion_id', 'inactivo', 'permanente'}
     select_related_lista = ('concepto', 'contrato', 'contrato__contacto', 'programacion')
     ordenamiento_default_lista = ('-id',)
 

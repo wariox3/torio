@@ -140,7 +140,16 @@ class GenModeloViewSet(
         nombres_filtrables = sorted(getattr(serializer_cls, 'campos_filtrables', set()))
         campos_filtrables = []
         for nombre in nombres_filtrables:
-            if nombre in fields:
+            # Los FKs se filtran por `xxx_id`, pero se etiquetan como el campo
+            # `xxx` del serializer: «Contrato», no «Contrato id».
+            if nombre not in fields and nombre.endswith('_id') and nombre[:-3] in fields:
+                field = fields[nombre[:-3]]
+                campos_filtrables.append({
+                    'nombre': nombre,
+                    'etiqueta': str(field.label or _etiqueta(nombre[:-3])),
+                    'tipo': _tipo_serializer_field(field),
+                })
+            elif nombre in fields:
                 field = fields[nombre]
                 campos_filtrables.append({
                     'nombre': nombre,

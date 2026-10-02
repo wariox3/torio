@@ -5,7 +5,7 @@ from humano.models import HumLiquidacion
 
 class HumLiquidacionSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'contrato', 'fecha', 'estado_aprobado', 'estado_generado'}
+    campos_filtrables = {'id', 'contrato_id', 'fecha', 'estado_aprobado', 'estado_generado'}
     select_related_lista = ('contrato', 'contrato__contacto')
     ordenamiento_default_lista = ('-id',)
 

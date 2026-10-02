@@ -5,7 +5,7 @@ from contabilidad.models import ConActivo
 
 class ConActivoSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'codigo', 'nombre', 'activo_grupo', 'metodo_depreciacion', 'centro_costo'}
+    campos_filtrables = {'id', 'codigo', 'nombre', 'activo_grupo_id', 'metodo_depreciacion_id', 'centro_costo_id'}
     select_related_lista = (
         'activo_grupo', 'metodo_depreciacion', 'cuenta_gasto', 'cuenta_depreciacion', 'centro_costo',
     )

@@ -6,7 +6,7 @@ from turno.models import TurPrototipo
 class TurPrototipoSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
     campos_filtrables = {
-        'id', 'fecha', 'fecha_inicio', 'posicion', 'contrato', 'documento_detalle', 'secuencia',
+        'id', 'fecha', 'fecha_inicio', 'posicion', 'contrato_id', 'documento_detalle_id', 'secuencia_id',
     }
     select_related_lista = (
         'contrato',
