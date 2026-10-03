@@ -150,6 +150,8 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'concepto_nombre',
             'devengado',
             'deduccion',
+            'base_cotizacion',
+            'base_prestacion',
             'base',
             'impuestos',
             'impuestos_ids',
@@ -188,4 +190,6 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'total',
             'devengado',
             'deduccion',
+            'base_cotizacion',
+            'base_prestacion',
         ]

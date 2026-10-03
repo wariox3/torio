@@ -1096,7 +1096,9 @@ class InformesNominaTests(TenantTestCase):
             permission_classes = [permissions.AllowAny]
             throttle_classes = []
 
-        type(self.de_la_programacion).objects.filter(pk=self.de_la_programacion.pk).update(deduccion=40)
+        type(self.de_la_programacion).objects.filter(pk=self.de_la_programacion.pk).update(
+            deduccion=40, base_cotizacion=900, base_prestacion=950,
+        )
 
         respuesta = VistaDetalle.as_view({'get': 'retrieve'})(self.factory.get('/'), pk=self.de_la_programacion.pk)
 
@@ -1105,3 +1107,5 @@ class InformesNominaTests(TenantTestCase):
         self.assertEqual(respuesta.data['concepto_nombre'], 'SALARIO')
         self.assertEqual(Decimal(respuesta.data['devengado']), 1000)
         self.assertEqual(Decimal(respuesta.data['deduccion']), 40)
+        self.assertEqual(Decimal(respuesta.data['base_cotizacion']), 900)
+        self.assertEqual(Decimal(respuesta.data['base_prestacion']), 950)
