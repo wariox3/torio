@@ -1090,6 +1090,7 @@ class InformesNominaTests(TenantTestCase):
 
     def test_get_de_documento_detalle_trae_concepto_y_valores_de_nomina(self):
         from general.views.documento_detalle import GenDocumentoDetalleViewSet
+        from humano.models import HumCredito
 
         class VistaDetalle(GenDocumentoDetalleViewSet):
             authentication_classes = []
@@ -1097,7 +1098,11 @@ class InformesNominaTests(TenantTestCase):
             throttle_classes = []
 
         type(self.de_la_programacion).objects.filter(pk=self.de_la_programacion.pk).update(
-            deduccion=40, base_cotizacion=900, base_prestacion=950,
+            deduccion=40, base_cotizacion=900, base_prestacion=950, hora=8333.33,
+            porcentaje=75,
+            credito=HumCredito.objects.create(
+                fecha_inicio=date(2026, 1, 1), contrato=self.de_la_programacion.documento.contrato,
+            ),
         )
 
         respuesta = VistaDetalle.as_view({'get': 'retrieve'})(self.factory.get('/'), pk=self.de_la_programacion.pk)
@@ -1109,3 +1114,7 @@ class InformesNominaTests(TenantTestCase):
         self.assertEqual(Decimal(respuesta.data['deduccion']), 40)
         self.assertEqual(Decimal(respuesta.data['base_cotizacion']), 900)
         self.assertEqual(Decimal(respuesta.data['base_prestacion']), 950)
+        self.assertEqual(Decimal(respuesta.data['hora']), Decimal('8333.33'))
+        self.assertEqual(Decimal(respuesta.data['porcentaje']), 75)
+        self.assertEqual(respuesta.data['credito_id'], respuesta.data['credito'])
+        self.assertIsNotNone(respuesta.data['credito_id'])

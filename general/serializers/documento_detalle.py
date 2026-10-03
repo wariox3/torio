@@ -142,12 +142,18 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             # `asignar_operacion` desde el tipo del documento.
             'operacion_inventario',
             'credito',
+            # El crédito que abona la línea de nómina (lo escribe la liquidación).
+            'credito_id',
             'activo',
             'activo_codigo',
             'activo_nombre',
             # Nómina: el concepto y sus valores los escribe la liquidación.
             'concepto_id',
             'concepto_nombre',
+            # Valor de una hora; las horas del concepto van en `cantidad`.
+            'hora',
+            # Porcentaje del concepto (recargo, aporte); no es `porcentaje_descuento`.
+            'porcentaje',
             'devengado',
             'deduccion',
             'base_cotizacion',
@@ -188,6 +194,9 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'impuesto',
             'impuesto_retencion',
             'total',
+            'credito_id',
+            'hora',
+            'porcentaje',
             'devengado',
             'deduccion',
             'base_cotizacion',
