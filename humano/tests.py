@@ -25,8 +25,8 @@ from humano.models import (
     HumProgramacion,
     HumProgramacionDetalle,
 )
-from humano.servicios import ProgramacionError, cargar_contratos, eliminar_detalles
 from humano.serializers import HumProgramacionSerializer
+from humano.servicios import ProgramacionError, cargar_contratos, eliminar_detalles
 from humano.views.contrato import HumContratoViewSet
 from utilidades.fechas import dias_prestacionales
 
@@ -802,3 +802,73 @@ class ImportarHorasProgramacionDetalleTests(TenantTestCase):
 
         self.assertEqual(respuesta.status_code, 200, respuesta.data)
         self.assertEqual(respuesta.data, {'creados': 2})
+
+
+class ExportarProgramacionDetalleTests(TenantTestCase):
+    """`programacion-detalle/excel/`: el exportar convencional, con los filtros de `lista`."""
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        from humano.views.programacion_detalle import HumProgramacionDetalleViewSet
+
+        class Vista(HumProgramacionDetalleViewSet):
+            authentication_classes = []
+            permission_classes = [permissions.AllowAny]
+            throttle_classes = []
+
+        self.excel = Vista.as_view({'post': 'excel'})
+        self.factory = APIRequestFactory()
+
+        pais = GenPais.objects.create(id=1, nombre='Colombia')
+        ciudad = GenCiudad.objects.create(
+            id=1, nombre='Bogotá', estado=GenEstado.objects.create(id=1, nombre='Cundinamarca', pais=pais),
+        )
+        grupo = HumGrupo.objects.create(nombre='Grupo 1')
+        HumPagoTipo.objects.create(id=1, nombre='Nomina')
+        contrato = HumContrato.objects.create(
+            fecha_desde=date(2026, 1, 1), fecha_hasta=date(2026, 1, 1), grupo=grupo,
+            contrato_tipo=HumContratoTipo.objects.create(id=1, nombre='Indefinido'),
+            contacto=GenContacto.objects.create(
+                numero_identificacion='123', nombre_corto='Beatriz', direccion='x', telefono='1',
+                correo='e@e.com', ciudad=ciudad, empleado=True,
+                identificacion=GenIdentificacion.objects.create(id=1, nombre='CC'),
+                tipo_persona=GenTipoPersona.objects.create(id=1, nombre='Natural'),
+            ),
+        )
+        self.programacion, otra = (
+            HumProgramacion.objects.create(
+                fecha_desde=date(2026, 3, 1), fecha_hasta=date(2026, 3, 15),
+                fecha_hasta_periodo=date(2026, 3, 15), grupo=grupo, pago_tipo_id=1,
+            )
+            for _ in range(2)
+        )
+        self.detalle = HumProgramacionDetalle.objects.create(
+            programacion=self.programacion, contrato=contrato, diurna=80, ingreso=True,
+        )
+        HumProgramacionDetalle.objects.create(programacion=otra, contrato=contrato)
+
+    def test_exporta_los_detalles_de_la_programacion_filtrada(self):
+        from openpyxl import load_workbook
+
+        filtros = [{'propiedad': 'programacion_id', 'operador': '=', 'valor': self.programacion.id}]
+
+        respuesta = self.excel(self.factory.post('/', {'filtros': filtros}, format='json'))
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIn('programacion_detalles.xlsx', respuesta['Content-Disposition'])
+        filas = list(load_workbook(io.BytesIO(respuesta.content)).active.iter_rows(values_only=True))
+        encabezados = filas[0]
+        self.assertEqual(encabezados[:5], ('ID', 'Programación', 'Contrato', 'Identificación', 'Empleado'))
+        self.assertEqual(len(filas), 2)
+        fila = dict(zip(encabezados, filas[1], strict=True))
+        self.assertEqual(fila['ID'], self.detalle.id)
+        self.assertEqual(fila['Identificación'], '123')
+        self.assertEqual(fila['Empleado'], 'Beatriz')
+        self.assertEqual(fila['Diurna'], 80)
+        self.assertEqual(fila['Ingreso'], 'Sí')
+        self.assertEqual(fila['Retiro'], 'No')

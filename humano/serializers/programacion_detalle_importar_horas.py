@@ -145,7 +145,7 @@ class HumProgramacionDetalleImportarHorasSerializer(serializers.Serializer):
     def _horas(valor, encabezado):
         """Una celda vacía es cero horas: así queda la columna al borrar su valor."""
         if valor is None or str(valor).strip() == '':
-            return Decimal('0')
+            return Decimal(0)
         try:
             horas = Decimal(str(valor).strip()).quantize(_TRES_DECIMALES)
         except (InvalidOperation, TypeError, ValueError):

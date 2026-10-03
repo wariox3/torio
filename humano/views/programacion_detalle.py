@@ -14,12 +14,21 @@ from rest_framework.response import Response
 from humano.models import HumProgramacion, HumProgramacionDetalle
 from humano.models.programacion_detalle import MENSAJE_PROGRAMACION_CERRADA
 from humano.serializers import (
+    HumProgramacionDetalleExportarSerializer,
     HumProgramacionDetalleImportarHorasSerializer,
     HumProgramacionDetalleSerializer,
 )
 from humano.serializers.programacion_detalle_importar_horas import CAMPOS_HORAS
-from utilidades.mixins import FiltrosDinamicosMixin, ImportarExcelMixin
-from utilidades.mixins.importar_excel import _FUENTE_ENCABEZADO, _FUENTE_NORMAL, _crear_workbook
+from utilidades.mixins import (
+    ExportarExcelMixin,
+    FiltrosDinamicosMixin,
+    ImportarExcelMixin,
+)
+from utilidades.mixins.importar_excel import (
+    _FUENTE_ENCABEZADO,
+    _FUENTE_NORMAL,
+    _crear_workbook,
+)
 from utilidades.throttles import ImportarUsuarioTenantThrottle
 
 _PROGRAMACION_PARAM = OpenApiParameter(
@@ -43,6 +52,7 @@ class ImportarHorasRequestSerializer(serializers.Serializer):
 @extend_schema(tags=['Programación detalle'])
 class HumProgramacionDetalleViewSet(
     FiltrosDinamicosMixin,
+    ExportarExcelMixin,
     ImportarExcelMixin,
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
@@ -50,6 +60,7 @@ class HumProgramacionDetalleViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = HumProgramacionDetalleSerializer
+    serializer_class_exportar = HumProgramacionDetalleExportarSerializer
 
     def get_queryset(self):
         return HumProgramacionDetalle.objects.select_related(

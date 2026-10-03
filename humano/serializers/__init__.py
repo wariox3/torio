@@ -47,6 +47,7 @@ from .pension import HumPensionSeleccionarSerializer
 from .periodo import HumPeriodoSeleccionarSerializer
 from .programacion import HumProgramacionSerializer
 from .programacion_detalle import HumProgramacionDetalleSerializer
+from .programacion_detalle_exportar import HumProgramacionDetalleExportarSerializer
 from .programacion_detalle_importar_horas import HumProgramacionDetalleImportarHorasSerializer
 from .programacion_exportar import HumProgramacionExportarSerializer
 from .programacion_importar import HumProgramacionImportarSerializer
