@@ -1,3 +1,4 @@
+import io
 from datetime import date
 from decimal import Decimal
 
@@ -593,3 +594,211 @@ class EditarProgramacionDetalleTests(TenantTestCase):
                 HumProgramacionDetalle(programacion=self.programacion, contrato=self.contratos[1]),
             ])
         self.assertEqual(HumProgramacionDetalle.objects.count(), 1)
+
+
+class ImportarHorasProgramacionDetalleTests(TenantTestCase):
+    """
+    `programacion-detalle/importar-horas/`: actualiza las horas de los detalles de
+    una programación abierta, todo o nada.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        from humano.views.programacion_detalle import HumProgramacionDetalleViewSet
+
+        class Vista(HumProgramacionDetalleViewSet):
+            authentication_classes = []
+            permission_classes = [permissions.AllowAny]
+            throttle_classes = []
+
+        self.importar = Vista.as_view({'post': 'importar'})
+        self.plantilla = Vista.as_view({'get': 'importar_ejemplo'})
+        self.factory = APIRequestFactory()
+
+        pais = GenPais.objects.create(id=1, nombre='Colombia')
+        ciudad = GenCiudad.objects.create(
+            id=1, nombre='Bogotá', estado=GenEstado.objects.create(id=1, nombre='Cundinamarca', pais=pais),
+        )
+        identificacion = GenIdentificacion.objects.create(id=1, nombre='CC')
+        tipo_persona = GenTipoPersona.objects.create(id=1, nombre='Natural')
+        grupo = HumGrupo.objects.create(nombre='Grupo 1')
+        HumPagoTipo.objects.create(id=1, nombre='Nomina')
+        tipo = HumContratoTipo.objects.create(id=1, nombre='Indefinido')
+        contratos = [
+            HumContrato.objects.create(
+                fecha_desde=date(2026, 1, 1), fecha_hasta=date(2026, 1, 1), contrato_tipo=tipo, grupo=grupo,
+                contacto=GenContacto.objects.create(
+                    numero_identificacion=numero, nombre_corto=nombre, direccion='x', telefono='1',
+                    correo='e@e.com', identificacion=identificacion, ciudad=ciudad,
+                    tipo_persona=tipo_persona, empleado=True,
+                ),
+            )
+            for numero, nombre in (('1', 'Beatriz'), ('2', 'Andrés'))
+        ]
+        self.programacion, self.otra = (
+            HumProgramacion.objects.create(
+                fecha_desde=date(2026, 3, 1), fecha_hasta=date(2026, 3, 15),
+                fecha_hasta_periodo=date(2026, 3, 15), grupo=grupo, pago_tipo_id=1,
+            )
+            for _ in range(2)
+        )
+        self.detalles = [
+            HumProgramacionDetalle.objects.create(programacion=self.programacion, contrato=contrato)
+            for contrato in contratos
+        ]
+        self.ajeno = HumProgramacionDetalle.objects.create(programacion=self.otra, contrato=contratos[0])
+
+    def _archivo(self, filas, encabezados=None):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from openpyxl import Workbook
+
+        from humano.serializers import HumProgramacionDetalleImportarHorasSerializer
+        from utilidades.mixins import ImportarExcelMixin
+
+        serializer = HumProgramacionDetalleImportarHorasSerializer(self.programacion)
+        wb = Workbook()
+        ws = wb.active
+        ws.append(encabezados or [
+            ImportarExcelMixin._encabezado_importar(campo, encabezado, serializer.campos_requeridos)
+            for campo, encabezado in serializer.campos_excel
+        ])
+        for fila in filas:
+            ws.append(fila)
+        buf = io.BytesIO()
+        wb.save(buf)
+        return SimpleUploadedFile(
+            'horas.xlsx', buf.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+
+    def _post(self, filas, programacion=None, **kwargs):
+        datos = {
+            'archivo': self._archivo(filas, **kwargs),
+            'programacion_id': (programacion or self.programacion).id,
+        }
+        return self.importar(self.factory.post('/', datos, format='multipart'))
+
+    @staticmethod
+    def _fila(detalle, *horas):
+        """ID, identificación, nombre y las 11 horas (las que falten van en 0)."""
+        horas = list(horas) + [0] * (11 - len(horas))
+        return [detalle.id, 'x', 'x', *horas]
+
+    def test_actualiza_las_horas(self):
+        respuesta = self._post([
+            self._fila(self.detalles[0], 80, 8, 0, 0, 2.5),
+            self._fila(self.detalles[1], 96),
+        ])
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data, {'creados': 2})
+        self.detalles[0].refresh_from_db()
+        self.assertEqual(self.detalles[0].diurna, 80)
+        self.assertEqual(self.detalles[0].nocturna, 8)
+        self.assertEqual(self.detalles[0].extra_diurna, Decimal('2.5'))
+        self.detalles[1].refresh_from_db()
+        self.assertEqual(self.detalles[1].diurna, 96)
+
+    def test_celda_vacia_es_cero(self):
+        HumProgramacionDetalle.objects.filter(pk=self.detalles[0].pk).update(nocturna=5)
+        fila = self._fila(self.detalles[0], 80)
+        fila[4] = None  # nocturna
+
+        respuesta = self._post([fila])
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.detalles[0].refresh_from_db()
+        self.assertEqual(self.detalles[0].nocturna, 0)
+
+    def test_no_importa_con_la_programacion_generada(self):
+        HumProgramacion.objects.filter(pk=self.programacion.pk).update(estado_generado=True)
+
+        respuesta = self._post([self._fila(self.detalles[0], 80)])
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('detail', respuesta.data)
+        self.detalles[0].refresh_from_db()
+        self.assertEqual(self.detalles[0].diurna, 0)
+
+    def test_programacion_inexistente_da_404(self):
+        respuesta = self.importar(self.factory.post(
+            '/', {'archivo': self._archivo([]), 'programacion_id': 999999}, format='multipart',
+        ))
+
+        self.assertEqual(respuesta.status_code, 404)
+
+    def test_detalle_de_otra_programacion_revierte_todo(self):
+        respuesta = self._post([
+            self._fila(self.detalles[0], 80),
+            self._fila(self.ajeno, 80),
+        ])
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data['fase'], 'negocio')
+        self.assertEqual(respuesta.data['errores'][0]['fila'], 3)
+        self.detalles[0].refresh_from_db()
+        self.assertEqual(self.detalles[0].diurna, 0)
+
+    def test_detalle_repetido(self):
+        respuesta = self._post([
+            self._fila(self.detalles[0], 80),
+            self._fila(self.detalles[0], 90),
+        ])
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data['errores'], [
+            {'fila': 3, 'mensaje': f'El detalle {self.detalles[0].id} ya viene en la fila 2.'},
+        ])
+
+    def test_horas_negativas(self):
+        respuesta = self._post([self._fila(self.detalles[0], -1)])
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data['fase'], 'negocio')
+        self.assertIn('Diurna no puede ser negativo', respuesta.data['errores'][0]['mensaje'])
+
+    def test_horas_que_no_son_numero(self):
+        respuesta = self._post([self._fila(self.detalles[0], 'ocho')])
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('Diurna', respuesta.data['errores'][0]['mensaje'])
+
+    def test_encabezados_que_no_coinciden(self):
+        respuesta = self._post([[self.detalles[0].id, 80]], encabezados=['ID *', 'Horas'])
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data['fase'], 'encabezados')
+
+    def test_la_plantilla_trae_los_detalles_de_la_programacion(self):
+        from openpyxl import load_workbook
+
+        HumProgramacionDetalle.objects.filter(pk=self.detalles[0].pk).update(diurna=80)
+
+        respuesta = self.plantilla(self.factory.get('/', {'programacion_id': self.programacion.id}))
+
+        self.assertEqual(respuesta.status_code, 200)
+        filas = list(load_workbook(io.BytesIO(respuesta.content)).active.iter_rows(values_only=True))
+        self.assertEqual(filas[0][:4], ('ID *', 'Identificación', 'Nombre', 'Diurna'))
+        # Ordenados por nombre y sin el detalle de la otra programación.
+        self.assertEqual([f[:4] for f in filas[1:]], [
+            (self.detalles[1].id, '2', 'Andrés', 0),
+            (self.detalles[0].id, '1', 'Beatriz', 80),
+        ])
+
+    def test_la_plantilla_sube_tal_cual(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        respuesta = self.plantilla(self.factory.get('/', {'programacion_id': self.programacion.id}))
+
+        archivo = SimpleUploadedFile('horas.xlsx', respuesta.content)
+        respuesta = self.importar(self.factory.post(
+            '/', {'archivo': archivo, 'programacion_id': self.programacion.id}, format='multipart',
+        ))
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data, {'creados': 2})
