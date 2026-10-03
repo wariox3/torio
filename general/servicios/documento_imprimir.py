@@ -10,6 +10,7 @@ from general.formatos import (
     FormatoDocumentoEgreso,
     FormatoDocumentoFactura,
     FormatoDocumentoGenerico,
+    FormatoDocumentoNomina,
     FormatoDocumentoPago,
 )
 from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
@@ -25,11 +26,20 @@ from utilidades.formatos.pagina import CanvasNumerado, MarcaDocumento, documento
 # el punto de entrada —`_clase_formato`— no cambia.
 DOCUMENTO_TIPO_PAGO = 4  # mismo id que `contabilizar.DOCUMENTO_TIPO_PAGO`
 DOCUMENTO_TIPO_EGRESO = 8  # mismo id que `contabilizar.DOCUMENTO_TIPO_EGRESO`
+# Los de la clase 701: todos se imprimen como desprendible del empleado.
+DOCUMENTO_TIPOS_NOMINA = (
+    14,  # NOMINA
+    20,  # PRIMA
+    21,  # CESANTIA
+    28,  # LIQUIDACION
+    33,  # INTERES CESANTIA
+)
 
 FORMATOS = {
     DOCUMENTO_TIPO_FACTURA_VENTA: FormatoDocumentoFactura,
     DOCUMENTO_TIPO_PAGO: FormatoDocumentoPago,
     DOCUMENTO_TIPO_EGRESO: FormatoDocumentoEgreso,
+    **{documento_tipo: FormatoDocumentoNomina for documento_tipo in DOCUMENTO_TIPOS_NOMINA},
 }
 
 

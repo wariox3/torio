@@ -190,6 +190,13 @@ class GenDocumento(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_aporte_rel',
     )
+    # La liquidación de contrato que generó el documento.
+    liquidacion = models.ForeignKey(
+        'humano.HumLiquidacion',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_liquidacion_rel',
+    )
     estrato = models.PositiveSmallIntegerField(
         null=True,
         validators=[MinValueValidator(1), MaxValueValidator(9)],

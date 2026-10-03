@@ -6,6 +6,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
+from general.models import GenDocumento
+from general.servicios import documento_imprimir
 from humano.formatos import FormatoProgramacion
 from humano.models import HumProgramacion
 from humano.serializers import (
@@ -245,4 +247,28 @@ class HumProgramacionViewSet(
         contenido, nombre = FormatoProgramacion(programacion).pdf()
         response = HttpResponse(contenido, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="{nombre}"'
+        return response
+
+    @extend_schema(request=ProgramacionRequestSerializer, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+    @action(detail=False, methods=['post'], url_path='imprimir-nominas')
+    def imprimir_nominas(self, request):
+        """Los desprendibles de la programación en un solo PDF, uno por página y por empleado."""
+        serializer = ProgramacionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            programacion = HumProgramacion.objects.get(pk=serializer.validated_data['programacion_id'])
+        except HumProgramacion.DoesNotExist:
+            raise NotFound('Programación no encontrada.')
+
+        # Sin el tope de 50 de `documento/imprimir/`: una programación imprime
+        # todos sus empleados de una vez.
+        documentos = (
+            GenDocumento.objects.filter(programacion_detalle__programacion=programacion)
+            .select_related('documento_tipo', 'contacto__banco', 'contrato__cargo', 'contrato__grupo')
+            .order_by('contacto__nombre_corto', 'id')
+        )
+        contenido, _ = documento_imprimir.imprimir(documentos)
+        response = HttpResponse(contenido, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="nominas_programacion{programacion.id}.pdf"'
         return response

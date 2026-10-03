@@ -1,14 +1,18 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
+from rest_framework.response import Response
 
-from humano.models import HumContrato
+from humano.models import HumContrato, HumMotivoTerminacion
 from humano.serializers import (
     HumContratoExportarSerializer,
     HumContratoImportarSerializer,
     HumContratoSeleccionarSerializer,
     HumContratoSerializer,
+    HumLiquidacionSerializer,
 )
+from humano.servicios import LiquidacionError, terminar_contrato
 from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import (
     ExportarExcelMixin,
@@ -29,6 +33,12 @@ _SELECCIONAR_PARAMS = [
     OpenApiParameter('habilitado_turno', bool, description='Filtrar por habilitado para turnos'),
     OpenApiParameter('empleado', bool, description='Filtrar por contacto empleado'),
 ]
+
+
+class TerminarContratoRequestSerializer(serializers.Serializer):
+    contrato_id = serializers.IntegerField()
+    fecha_terminacion = serializers.DateField()
+    motivo_terminacion_id = serializers.IntegerField()
 
 
 @extend_schema(tags=['Contrato'])
@@ -100,3 +110,27 @@ class HumContratoViewSet(
         pagina = self.paginate_queryset(qs)
         serializer = HumContratoSeleccionarSerializer(pagina, many=True)
         return self.get_paginated_response(serializer.data)
+
+    @extend_schema(request=TerminarContratoRequestSerializer, responses=HumLiquidacionSerializer)
+    @action(detail=False, methods=['post'], url_path='terminar')
+    def terminar(self, request):
+        """Termina el contrato y crea su liquidación ya calculada, que es lo que responde."""
+        serializer = TerminarContratoRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = serializer.validated_data
+
+        try:
+            contrato = HumContrato.objects.get(pk=datos['contrato_id'])
+        except HumContrato.DoesNotExist:
+            raise NotFound('Contrato no encontrado.')
+        try:
+            motivo_terminacion = HumMotivoTerminacion.objects.get(pk=datos['motivo_terminacion_id'])
+        except HumMotivoTerminacion.DoesNotExist:
+            return Response({'detail': 'El motivo de terminación no existe.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            liquidacion = terminar_contrato(contrato, datos['fecha_terminacion'], motivo_terminacion)
+        except LiquidacionError as e:
+            return Response({'detail': e.detail}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(HumLiquidacionSerializer(liquidacion).data, status=status.HTTP_200_OK)

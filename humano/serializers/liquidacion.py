@@ -2,6 +2,10 @@ from rest_framework import serializers
 
 from humano.models import HumLiquidacion
 
+MENSAJE_LIQUIDACION_CERRADA = (
+    'La liquidación está generada o aprobada: desgenérela antes de modificarla.'
+)
+
 
 class HumLiquidacionSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
@@ -57,6 +61,12 @@ class HumLiquidacionSerializer(serializers.ModelSerializer):
             'estado_aprobado',
             'estado_generado',
         ]
+
+    def validate(self, attrs):
+        # Generada, sus valores ya están en el documento: editarla los descuadraría.
+        if self.instance is not None and (self.instance.estado_generado or self.instance.estado_aprobado):
+            raise serializers.ValidationError(MENSAJE_LIQUIDACION_CERRADA)
+        return attrs
 
 
 class HumLiquidacionSeleccionarSerializer(serializers.ModelSerializer):
