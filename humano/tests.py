@@ -1056,3 +1056,52 @@ class InformesNominaTests(TenantTestCase):
 
             self.assertEqual(respuesta.status_code, 200, respuesta.data)
             self.assertEqual([fila['id'] for fila in respuesta.data['results']], [documento.id])
+
+    def test_get_de_documento_trae_totales_de_nomina_de_solo_lectura(self):
+        from general.models import GenDocumento
+        from general.views.documento import GenDocumentoViewSet
+
+        class VistaDocumento(GenDocumentoViewSet):
+            authentication_classes = []
+            permission_classes = [permissions.AllowAny]
+            throttle_classes = []
+
+        documento = self.de_la_programacion.documento
+        GenDocumento.objects.filter(pk=documento.pk).update(
+            devengado=1000, deduccion=80, base_cotizacion=900, base_prestacion=950,
+        )
+
+        respuesta = VistaDocumento.as_view({'get': 'retrieve'})(self.factory.get('/'), pk=documento.pk)
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(
+            {campo: Decimal(respuesta.data[campo]) for campo in (
+                'devengado', 'deduccion', 'base_cotizacion', 'base_prestacion',
+            )},
+            {'devengado': 1000, 'deduccion': 80, 'base_cotizacion': 900, 'base_prestacion': 950},
+        )
+
+        VistaDocumento.as_view({'patch': 'partial_update'})(
+            self.factory.patch('/', {'devengado': 1, 'base_cotizacion': 1}, format='json'), pk=documento.pk,
+        )
+        documento.refresh_from_db()
+        self.assertEqual(documento.devengado, 1000)
+        self.assertEqual(documento.base_cotizacion, 900)
+
+    def test_get_de_documento_detalle_trae_concepto_y_valores_de_nomina(self):
+        from general.views.documento_detalle import GenDocumentoDetalleViewSet
+
+        class VistaDetalle(GenDocumentoDetalleViewSet):
+            authentication_classes = []
+            permission_classes = [permissions.AllowAny]
+            throttle_classes = []
+
+        type(self.de_la_programacion).objects.filter(pk=self.de_la_programacion.pk).update(deduccion=40)
+
+        respuesta = VistaDetalle.as_view({'get': 'retrieve'})(self.factory.get('/'), pk=self.de_la_programacion.pk)
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data['concepto_id'], 1)
+        self.assertEqual(respuesta.data['concepto_nombre'], 'SALARIO')
+        self.assertEqual(Decimal(respuesta.data['devengado']), 1000)
+        self.assertEqual(Decimal(respuesta.data['deduccion']), 40)

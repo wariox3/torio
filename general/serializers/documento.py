@@ -124,6 +124,11 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'pago',
             'pendiente',
             'salario',
+            # Nómina: IBC (`base_cotizacion`) e IBP (`base_prestacion`).
+            'devengado',
+            'deduccion',
+            'base_cotizacion',
+            'base_prestacion',
             'horas',
             'horas_diurnas',
             'horas_nocturnas',
@@ -155,6 +160,11 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             # Suma de los `GenDocumentoPago` no anulados; solo lo escribe
             # `servicios.documento_pago`.
             'pago',
+            # Totales de la nómina: los calcula la liquidación.
+            'devengado',
+            'deduccion',
+            'base_cotizacion',
+            'base_prestacion',
             'estado_aprobado',
             'estado_anulado',
             'estado_contabilizado',
