@@ -26,6 +26,8 @@ from .documento_detalle_importar import GenDocumentoDetalleImportarSerializer
 from .documento_detalle_informe import (
     GenDocumentoDetalleInformeExportarSerializer,
     GenDocumentoDetalleInformeSerializer,
+    GenDocumentoDetalleNominaInformeExportarSerializer,
+    GenDocumentoDetalleNominaInformeSerializer,
 )
 from .documento_detalle_pendiente import GenDocumentoDetallePendienteSerializer
 from .documento_exportar import GenDocumentoExportarSerializer

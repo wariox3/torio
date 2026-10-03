@@ -872,3 +872,122 @@ class ExportarProgramacionDetalleTests(TenantTestCase):
         self.assertEqual(fila['Diurna'], 80)
         self.assertEqual(fila['Ingreso'], 'Sí')
         self.assertEqual(fila['Retiro'], 'No')
+
+
+class InformeNominaDetalleTests(TenantTestCase):
+    """
+    Informe `nomina_detalle` de `documento-detalle-informe`: los conceptos de todas
+    las nóminas (aprobadas o no) y nada más, filtrable por programación.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        from general.models import GenDocumento, GenDocumentoClase, GenDocumentoDetalle, GenDocumentoTipo
+        from general.views.documento_detalle_informe import GenDocumentoDetalleInformeViewSet
+        from humano.models import HumConcepto
+
+        class Vista(GenDocumentoDetalleInformeViewSet):
+            authentication_classes = []
+            permission_classes = [permissions.AllowAny]
+            throttle_classes = []
+
+        self.lista = Vista.as_view({'post': 'lista'})
+        self.excel = Vista.as_view({'post': 'excel'})
+        self.factory = APIRequestFactory()
+
+        pais = GenPais.objects.create(id=1, nombre='Colombia')
+        ciudad = GenCiudad.objects.create(
+            id=1, nombre='Bogotá', estado=GenEstado.objects.create(id=1, nombre='Cundinamarca', pais=pais),
+        )
+        contacto = GenContacto.objects.create(
+            numero_identificacion='123', nombre_corto='Beatriz', direccion='x', telefono='1',
+            correo='e@e.com', ciudad=ciudad, empleado=True,
+            identificacion=GenIdentificacion.objects.create(id=1, nombre='CC'),
+            tipo_persona=GenTipoPersona.objects.create(id=1, nombre='Natural'),
+        )
+        grupo = HumGrupo.objects.create(nombre='Grupo 1')
+        HumPagoTipo.objects.create(id=1, nombre='Nomina')
+        contrato = HumContrato.objects.create(
+            fecha_desde=date(2026, 1, 1), fecha_hasta=date(2026, 1, 1), grupo=grupo, contacto=contacto,
+            contrato_tipo=HumContratoTipo.objects.create(id=1, nombre='Indefinido'),
+        )
+        self.programacion, otra = (
+            HumProgramacion.objects.create(
+                fecha_desde=date(2026, 3, 1), fecha_hasta=date(2026, 3, 15),
+                fecha_hasta_periodo=date(2026, 3, 15), grupo=grupo, pago_tipo_id=1,
+            )
+            for _ in range(2)
+        )
+        nomina = GenDocumentoTipo.objects.create(
+            id=14, nombre='NOMINA', documento_clase=GenDocumentoClase.objects.create(id=701, nombre='Nomina'),
+        )
+        factura = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura'),
+        )
+        concepto = HumConcepto.objects.create(id=1, nombre='SALARIO')
+
+        def detalle(tipo, programacion=None, **campos):
+            documento = GenDocumento.objects.create(
+                documento_tipo=tipo, fecha=date(2026, 3, 1), fecha_hasta=date(2026, 3, 15),
+                contacto=contacto, contrato=contrato,
+                programacion_detalle=HumProgramacionDetalle.objects.create(
+                    programacion=programacion, contrato=contrato,
+                ) if programacion else None,
+            )
+            return GenDocumentoDetalle.objects.create(documento=documento, concepto=concepto, **campos)
+
+        self.de_la_programacion = detalle(nomina, self.programacion, devengado=1000, dias=15)
+        self.de_otra = detalle(nomina, otra)
+        detalle(factura)
+
+    def _post(self, vista, filtros=None):
+        datos = {'informe': 'nomina_detalle', 'filtros': filtros or []}
+        return vista(self.factory.post('/', datos, format='json'))
+
+    def test_solo_trae_detalles_de_nomina(self):
+        respuesta = self._post(self.lista)
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        ids = {fila['id'] for fila in respuesta.data['results']}
+        self.assertEqual(ids, {self.de_la_programacion.id, self.de_otra.id})
+
+    def test_filtra_por_programacion(self):
+        filtros = [{
+            'propiedad': 'documento__programacion_detalle__programacion_id',
+            'operador': '=', 'valor': self.programacion.id,
+        }]
+
+        respuesta = self._post(self.lista, filtros)
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual([fila['id'] for fila in respuesta.data['results']], [self.de_la_programacion.id])
+        fila = respuesta.data['results'][0]
+        self.assertEqual(fila['contacto_numero_identificacion'], '123')
+        self.assertEqual(fila['concepto_nombre'], 'SALARIO')
+
+    def test_excel_con_las_columnas_del_informe(self):
+        from openpyxl import load_workbook
+
+        filtros = [{
+            'propiedad': 'documento__programacion_detalle__programacion_id',
+            'operador': '=', 'valor': self.programacion.id,
+        }]
+
+        respuesta = self._post(self.excel, filtros)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIn('nomina_detalles.xlsx', respuesta['Content-Disposition'])
+        filas = list(load_workbook(io.BytesIO(respuesta.content)).active.iter_rows(values_only=True))
+        self.assertEqual(len(filas), 2)
+        fila = dict(zip(filas[0], filas[1], strict=True))
+        self.assertEqual(fila['ID'], self.de_la_programacion.id)
+        self.assertEqual(fila['Identificación'], '123')
+        self.assertEqual(fila['Empleado'], 'Beatriz')
+        self.assertEqual(fila['Nombre concepto'], 'SALARIO')
+        self.assertEqual(fila['Días'], 15)
+        self.assertEqual(fila['Devengado'], 1000)
