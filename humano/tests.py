@@ -1118,3 +1118,143 @@ class InformesNominaTests(TenantTestCase):
         self.assertEqual(Decimal(respuesta.data['porcentaje']), 75)
         self.assertEqual(respuesta.data['credito_id'], respuesta.data['credito'])
         self.assertIsNotNone(respuesta.data['credito_id'])
+
+
+class ImportarAdicionalTests(TenantTestCase):
+    """
+    `adicional/importar/`: el front dice si el archivo es de adicionales libres
+    (`permanente=true`) o de una programación (`permanente=false` +
+    `programacion_id`), y ese modo vale para todas las filas.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        from humano.models import HumConcepto
+        from humano.views.adicional import HumAdicionalViewSet
+
+        class Vista(HumAdicionalViewSet):
+            authentication_classes = []
+            permission_classes = [permissions.AllowAny]
+            throttle_classes = []
+
+        self.importar = Vista.as_view({'post': 'importar'})
+        self.plantilla = Vista.as_view({'get': 'importar_ejemplo'})
+        self.factory = APIRequestFactory()
+
+        pais = GenPais.objects.create(id=1, nombre='Colombia')
+        ciudad = GenCiudad.objects.create(
+            id=1, nombre='Bogotá', estado=GenEstado.objects.create(id=1, nombre='Cundinamarca', pais=pais),
+        )
+        grupo = HumGrupo.objects.create(nombre='Grupo 1')
+        HumPagoTipo.objects.create(id=1, nombre='Nomina')
+        self.contrato = HumContrato.objects.create(
+            fecha_desde=date(2026, 1, 1), fecha_hasta=date(2026, 1, 1), grupo=grupo,
+            contrato_tipo=HumContratoTipo.objects.create(id=1, nombre='Indefinido'),
+            contacto=GenContacto.objects.create(
+                numero_identificacion='123', nombre_corto='Beatriz', direccion='x', telefono='1',
+                correo='e@e.com', ciudad=ciudad, empleado=True,
+                identificacion=GenIdentificacion.objects.create(id=1, nombre='CC'),
+                tipo_persona=GenTipoPersona.objects.create(id=1, nombre='Natural'),
+            ),
+        )
+        self.concepto = HumConcepto.objects.create(id=1, nombre='BONIFICACION', adicional=True)
+        self.programacion = HumProgramacion.objects.create(
+            fecha_desde=date(2026, 3, 1), fecha_hasta=date(2026, 3, 15),
+            fecha_hasta_periodo=date(2026, 3, 15), grupo=grupo, pago_tipo_id=1,
+        )
+
+    def _archivo(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from openpyxl import Workbook
+
+        from humano.serializers import HumAdicionalImportarSerializer
+        from utilidades.mixins import ImportarExcelMixin
+
+        serializer = HumAdicionalImportarSerializer(permanente=True)
+        wb = Workbook()
+        ws = wb.active
+        ws.append([
+            ImportarExcelMixin._encabezado_importar(campo, encabezado, serializer.campos_requeridos)
+            for campo, encabezado in serializer.campos_excel
+        ])
+        ws.append([self.contrato.id, self.concepto.id, 50000, 0, 'No', 'Bono'])
+        buf = io.BytesIO()
+        wb.save(buf)
+        return SimpleUploadedFile('adicionales.xlsx', buf.getvalue())
+
+    def _post(self, **datos):
+        datos = {'archivo': self._archivo(), **datos}
+        return self.importar(self.factory.post('/', datos, format='multipart'))
+
+    def test_importa_libres_como_permanentes_sin_programacion(self):
+        from humano.models import HumAdicional
+
+        respuesta = self._post(permanente='true')
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data, {'creados': 1})
+        adicional = HumAdicional.objects.get()
+        self.assertTrue(adicional.permanente)
+        self.assertIsNone(adicional.programacion_id)
+        self.assertEqual(adicional.valor, 50000)
+
+    def test_importa_en_la_programacion(self):
+        from humano.models import HumAdicional
+
+        respuesta = self._post(permanente='false', programacion_id=self.programacion.id)
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        adicional = HumAdicional.objects.get()
+        self.assertFalse(adicional.permanente)
+        self.assertEqual(adicional.programacion_id, self.programacion.id)
+
+    def test_sin_modo_da_400(self):
+        from humano.models import HumAdicional
+
+        respuesta = self._post()
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('permanente', respuesta.data['detail'])
+        self.assertFalse(HumAdicional.objects.exists())
+
+    def test_no_permanente_sin_programacion_da_400(self):
+        respuesta = self._post(permanente='false')
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('programacion_id', respuesta.data)
+
+    def test_permanente_con_programacion_da_400(self):
+        respuesta = self._post(permanente='true', programacion_id=self.programacion.id)
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('programacion_id', respuesta.data)
+
+    def test_programacion_inexistente_da_404(self):
+        respuesta = self._post(permanente='false', programacion_id=999999)
+
+        self.assertEqual(respuesta.status_code, 404)
+
+    def test_programacion_generada_da_400(self):
+        from humano.models import HumAdicional
+
+        HumProgramacion.objects.filter(pk=self.programacion.pk).update(estado_generado=True)
+
+        respuesta = self._post(permanente='false', programacion_id=self.programacion.id)
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('detail', respuesta.data)
+        self.assertFalse(HumAdicional.objects.exists())
+
+    def test_la_plantilla_no_trae_la_columna_permanente(self):
+        from openpyxl import load_workbook
+
+        respuesta = self.plantilla(self.factory.get('/'))
+
+        self.assertEqual(respuesta.status_code, 200)
+        encabezados = next(load_workbook(io.BytesIO(respuesta.content)).active.iter_rows(values_only=True))
+        self.assertNotIn('Permanente', encabezados)

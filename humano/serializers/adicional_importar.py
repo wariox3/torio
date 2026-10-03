@@ -2,7 +2,8 @@ from decimal import Decimal, InvalidOperation
 
 from rest_framework import serializers
 
-from humano.models import HumAdicional, HumConcepto, HumContrato
+from humano.models import HumAdicional, HumConcepto, HumContrato, HumProgramacion
+from humano.models.programacion_detalle import MENSAJE_PROGRAMACION_CERRADA
 
 
 class HumAdicionalImportarSerializer(serializers.Serializer):
@@ -10,8 +11,12 @@ class HumAdicionalImportarSerializer(serializers.Serializer):
     Define la estructura del Excel de importación de adicionales y la lógica de
     creación bulk.
 
-    Es consumido por `ImportarExcelMixin` a través del atributo
-    `serializer_class_importar` del ViewSet.
+    Es consumido por `ImportarExcelMixin`, construido por el ViewSet con lo que
+    manda el front (ver `HumAdicionalViewSet.importar`): o son adicionales libres
+    (`permanente=True`, sin programación) o son de una programación
+    (`permanente=False`). El modo vale para todo el archivo y no viaja en el
+    Excel: un adicional no permanente sin programación nunca lo recoge la
+    liquidación, y uno permanente por error se paga en todas las nóminas.
 
     Contrato esperado por el mixin:
         model:                clase del modelo
@@ -29,7 +34,6 @@ class HumAdicionalImportarSerializer(serializers.Serializer):
         ('valor', 'Valor'),
         ('horas', 'Horas'),
         ('aplica_dia_laborado', 'Aplica día laborado'),
-        ('permanente', 'Permanente'),
         ('detalle', 'Detalle'),
     )
     campos_requeridos = {'contrato.id', 'concepto.id'}
@@ -37,9 +41,25 @@ class HumAdicionalImportarSerializer(serializers.Serializer):
     LIMITE_ERRORES = 100
     BATCH_BULK_CREATE = 500
 
+    def __init__(self, *, permanente, programacion=None, **kwargs):
+        super().__init__(**kwargs)
+        self.permanente = permanente
+        self.programacion = programacion
+
     def procesar_lote(self, filas_validas):
         if not filas_validas:
             return 0, []
+
+        programacion = None
+        if self.programacion is not None:
+            # Se relee bloqueada: entre validarla en el ViewSet y llegar acá pudo
+            # generarse en otra petición.
+            try:
+                programacion = HumProgramacion.objects.select_for_update().get(pk=self.programacion.pk)
+            except HumProgramacion.DoesNotExist:
+                return 0, [{'mensaje': 'La programación ya no existe.'}]
+            if programacion.estado_generado or programacion.estado_aprobado:
+                return 0, [{'mensaje': MENSAJE_PROGRAMACION_CERRADA}]
 
         mapa_contrato = self._mapa_fk(filas_validas, 'contrato.id', HumContrato)
         mapa_concepto = self._mapa_fk(filas_validas, 'concepto.id', HumConcepto)
@@ -55,8 +75,9 @@ class HumAdicionalImportarSerializer(serializers.Serializer):
                     valor=self._decimal(datos.get('valor'), 'Valor'),
                     horas=self._decimal(datos.get('horas'), 'Horas'),
                     aplica_dia_laborado=self._si_no(datos.get('aplica_dia_laborado')),
-                    permanente=self._si_no(datos.get('permanente')),
+                    permanente=self.permanente,
                     detalle=self._texto_o_none(datos.get('detalle')),
+                    programacion=programacion,
                     contrato=contrato,
                     concepto=concepto,
                 ))
