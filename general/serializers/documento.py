@@ -24,6 +24,9 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         # tener que enumerar los ids de tipo que caen de cada lado.
         'documento_tipo__pagar', 'documento_tipo__cobrar',
         'documento_tipo__venta', 'documento_tipo__compra',
+        # Nóminas generadas por una programación: el renglón del empleado o la
+        # programación completa.
+        'programacion_detalle_id', 'programacion_detalle__programacion_id',
     }
     select_related_lista = ('documento_tipo', 'documento_tipo__cuenta_cobrar', 'documento_tipo__cuenta_pagar', 'contacto', 'contacto__precio', 'sector', 'sede', 'centro_costo', 'plazo_pago', 'metodo_pago', 'forma_pago', 'comprobante', 'cuenta_banco',
                              'almacen', 'asesor')

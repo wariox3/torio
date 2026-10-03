@@ -1035,3 +1035,24 @@ class InformesNominaTests(TenantTestCase):
         self.assertEqual(fila['Empleado'], 'Beatriz')
         self.assertEqual(fila['Grupo'], 'Grupo 1')
         self.assertEqual(fila['Aprobado'], 'No')
+
+    def test_lista_de_documentos_filtra_por_programacion(self):
+        from general.views.documento import GenDocumentoViewSet
+
+        class VistaLista(GenDocumentoViewSet):
+            authentication_classes = []
+            permission_classes = [permissions.AllowAny]
+            throttle_classes = []
+
+        lista = VistaLista.as_view({'post': 'lista'})
+        documento = self.de_la_programacion.documento
+
+        for propiedad, valor in (
+            ('programacion_detalle__programacion_id', self.programacion.id),
+            ('programacion_detalle_id', documento.programacion_detalle_id),
+        ):
+            filtros = [{'propiedad': propiedad, 'operador': '=', 'valor': valor}]
+            respuesta = lista(self.factory.post('/', {'filtros': filtros}, format='json'))
+
+            self.assertEqual(respuesta.status_code, 200, respuesta.data)
+            self.assertEqual([fila['id'] for fila in respuesta.data['results']], [documento.id])
