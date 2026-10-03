@@ -874,10 +874,11 @@ class ExportarProgramacionDetalleTests(TenantTestCase):
         self.assertEqual(fila['Retiro'], 'No')
 
 
-class InformeNominaDetalleTests(TenantTestCase):
+class InformesNominaTests(TenantTestCase):
     """
-    Informe `nomina_detalle` de `documento-detalle-informe`: los conceptos de todas
-    las nóminas (aprobadas o no) y nada más, filtrable por programación.
+    Informes `nomina` (`documento-informe`) y `nomina_detalle`
+    (`documento-detalle-informe`): todas las nóminas, aprobadas o no, y nada más,
+    filtrables por programación.
     """
 
     @classmethod
@@ -887,8 +888,16 @@ class InformeNominaDetalleTests(TenantTestCase):
         tenant.correo = 'test@test.com'
 
     def setUp(self):
-        from general.models import GenDocumento, GenDocumentoClase, GenDocumentoDetalle, GenDocumentoTipo
-        from general.views.documento_detalle_informe import GenDocumentoDetalleInformeViewSet
+        from general.models import (
+            GenDocumento,
+            GenDocumentoClase,
+            GenDocumentoDetalle,
+            GenDocumentoTipo,
+        )
+        from general.views.documento_detalle_informe import (
+            GenDocumentoDetalleInformeViewSet,
+        )
+        from general.views.documento_informe import GenDocumentoInformeViewSet
         from humano.models import HumConcepto
 
         class Vista(GenDocumentoDetalleInformeViewSet):
@@ -896,8 +905,15 @@ class InformeNominaDetalleTests(TenantTestCase):
             permission_classes = [permissions.AllowAny]
             throttle_classes = []
 
+        class VistaDocumento(GenDocumentoInformeViewSet):
+            authentication_classes = []
+            permission_classes = [permissions.AllowAny]
+            throttle_classes = []
+
         self.lista = Vista.as_view({'post': 'lista'})
         self.excel = Vista.as_view({'post': 'excel'})
+        self.lista_documento = VistaDocumento.as_view({'post': 'lista'})
+        self.excel_documento = VistaDocumento.as_view({'post': 'excel'})
         self.factory = APIRequestFactory()
 
         pais = GenPais.objects.create(id=1, nombre='Colombia')
@@ -945,8 +961,8 @@ class InformeNominaDetalleTests(TenantTestCase):
         self.de_otra = detalle(nomina, otra)
         detalle(factura)
 
-    def _post(self, vista, filtros=None):
-        datos = {'informe': 'nomina_detalle', 'filtros': filtros or []}
+    def _post(self, vista, filtros=None, informe='nomina_detalle'):
+        datos = {'informe': informe, 'filtros': filtros or []}
         return vista(self.factory.post('/', datos, format='json'))
 
     def test_solo_trae_detalles_de_nomina(self):
@@ -991,3 +1007,31 @@ class InformeNominaDetalleTests(TenantTestCase):
         self.assertEqual(fila['Nombre concepto'], 'SALARIO')
         self.assertEqual(fila['Días'], 15)
         self.assertEqual(fila['Devengado'], 1000)
+
+    def test_nomina_solo_trae_documentos_de_nomina(self):
+        respuesta = self._post(self.lista_documento, informe='nomina')
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        ids = {fila['id'] for fila in respuesta.data['results']}
+        self.assertEqual(ids, {self.de_la_programacion.documento_id, self.de_otra.documento_id})
+
+    def test_nomina_excel_filtrado_por_programacion(self):
+        from openpyxl import load_workbook
+
+        filtros = [{
+            'propiedad': 'programacion_detalle__programacion_id',
+            'operador': '=', 'valor': self.programacion.id,
+        }]
+
+        respuesta = self._post(self.excel_documento, filtros, informe='nomina')
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIn('nominas.xlsx', respuesta['Content-Disposition'])
+        filas = list(load_workbook(io.BytesIO(respuesta.content)).active.iter_rows(values_only=True))
+        self.assertEqual(len(filas), 2)
+        fila = dict(zip(filas[0], filas[1], strict=True))
+        self.assertEqual(fila['ID'], self.de_la_programacion.documento_id)
+        self.assertEqual(fila['Identificación'], '123')
+        self.assertEqual(fila['Empleado'], 'Beatriz')
+        self.assertEqual(fila['Grupo'], 'Grupo 1')
+        self.assertEqual(fila['Aprobado'], 'No')

@@ -35,6 +35,8 @@ from .documento_importar import GenDocumentoImportarSerializer
 from .documento_informe import (
     GenDocumentoInformeExportarSerializer,
     GenDocumentoInformeSerializer,
+    GenDocumentoNominaInformeExportarSerializer,
+    GenDocumentoNominaInformeSerializer,
 )
 from .documento_pago import GenDocumentoPagoSerializer
 from .documento_tipo import (

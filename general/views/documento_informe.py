@@ -7,6 +7,8 @@ from general.models import GenDocumento
 from general.serializers import (
     GenDocumentoInformeExportarSerializer,
     GenDocumentoInformeSerializer,
+    GenDocumentoNominaInformeExportarSerializer,
+    GenDocumentoNominaInformeSerializer,
 )
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin
 
@@ -30,6 +32,13 @@ INFORMES = {
             estado_aprobado=True,
             estado_anulado=False,
         ),
+    },
+    # Todas las nóminas, aprobadas o no: así se revisa una programación generada
+    # antes de aprobarla. El estado queda como filtro (`estado_aprobado`).
+    'nomina': {
+        'filtro': Q(documento_tipo__documento_clase_id=701),  # Nómina
+        'serializer': GenDocumentoNominaInformeSerializer,
+        'exportar': GenDocumentoNominaInformeExportarSerializer,
     },
 }
 
