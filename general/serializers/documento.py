@@ -24,6 +24,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         # tener que enumerar los ids de tipo que caen de cada lado.
         'documento_tipo__pagar', 'documento_tipo__cobrar',
         'documento_tipo__venta', 'documento_tipo__compra',
+        'documento_tipo__documento_clase_id',
         # Nóminas generadas por una programación: el renglón del empleado o la
         # programación completa.
         'programacion_detalle_id', 'programacion_detalle__programacion_id',
