@@ -13,7 +13,10 @@ class HumLiquidacionSerializer(serializers.ModelSerializer):
     select_related_lista = ('contrato', 'contrato__contacto')
     ordenamiento_default_lista = ('-id',)
 
-    contrato_nombre = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, default=None)
+    contrato_contacto_numero_identificacion = serializers.CharField(
+        source='contrato.contacto.numero_identificacion', read_only=True, default=None,
+    )
+    contrato_contacto_nombre_corto = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, default=None)
 
     class Meta:
         model = HumLiquidacion
@@ -42,7 +45,8 @@ class HumLiquidacionSerializer(serializers.ModelSerializer):
             'estado_generado',
             'comentario',
             'contrato',
-            'contrato_nombre',
+            'contrato_contacto_numero_identificacion',
+            'contrato_contacto_nombre_corto',
         ]
         read_only_fields = [
             'id',

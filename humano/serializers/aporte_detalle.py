@@ -9,10 +9,10 @@ class HumAporteDetalleSerializer(serializers.ModelSerializer):
     select_related_lista = ('aporte_contrato', 'aporte_contrato__contrato__contacto')
     ordenamiento_default_lista = ('-id',)
 
-    aporte_contrato__contacto_numero_identificacion = serializers.CharField(
+    aporte_contrato_contrato_contacto_numero_identificacion = serializers.CharField(
         source='aporte_contrato.contrato.contacto.numero_identificacion', read_only=True, default=None,
     )
-    aporte_contrato__contacto_nombre_corto = serializers.CharField(
+    aporte_contrato_contrato_contacto_nombre_corto = serializers.CharField(
         source='aporte_contrato.contrato.contacto.nombre_corto', read_only=True, default=None,
     )
     aporte_contrato_salario = serializers.DecimalField(
@@ -79,8 +79,8 @@ class HumAporteDetalleSerializer(serializers.ModelSerializer):
             'variacion_centro_trabajo',
             'salario_integral',
             'aporte_contrato',
-            'aporte_contrato__contacto_numero_identificacion',
-            'aporte_contrato__contacto_nombre_corto',
+            'aporte_contrato_contrato_contacto_numero_identificacion',
+            'aporte_contrato_contrato_contacto_nombre_corto',
             'aporte_contrato_salario',
         ]
         read_only_fields = ['id']
