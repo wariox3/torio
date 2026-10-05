@@ -12,7 +12,7 @@ class HumAporteContratoSerializer(serializers.ModelSerializer):
     )
     ordenamiento_default_lista = ('-id',)
 
-    contrato_nombre = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, default=None)
+    contacto_nombre_corto = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, default=None)
 
     class Meta:
         model = HumAporteContrato
@@ -44,7 +44,7 @@ class HumAporteContratoSerializer(serializers.ModelSerializer):
             'error_terminacion',
             'aporte',
             'contrato',
-            'contrato_nombre',
+            'contacto_nombre_corto',
             'ciudad_labora',
             'entidad_salud',
             'entidad_pension',
