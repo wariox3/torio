@@ -12,7 +12,7 @@ from general.servicios import crear_detalle
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
     campos_filtrables = {
-        'id', 'numero', 'fecha', 'fecha_vence', 'documento_tipo_id', 'contacto_id',
+        'id', 'numero', 'fecha', 'fecha_vence', 'documento_tipo_id', 'contacto_id', 'contrato_id',
         'contacto__nombre_corto', 'contacto__numero_identificacion',
         'centro_costo_id', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado',
         # Los pendientes por notificar son `estado_electronico=True` y
