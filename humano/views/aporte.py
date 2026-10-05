@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
+from humano.formatos import FormatoAporte
 from humano.models import HumAporte
 from humano.serializers import (
     HumAporteExportarSerializer,
@@ -227,4 +228,21 @@ class HumAporteViewSet(
 
         response = HttpResponse(contenido, content_type='text/plain; charset=windows-1252')
         response['Content-Disposition'] = f'attachment; filename="{nombre}"'
+        return response
+
+    @extend_schema(request=AporteRequestSerializer, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+    @action(detail=False, methods=['post'], url_path='imprimir')
+    def imprimir(self, request):
+        """Resumen del aporte en PDF: una fila por línea con sus días, IBC y cotizaciones."""
+        serializer = AporteRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            aporte = HumAporte.objects.select_related('sucursal').get(pk=serializer.validated_data['aporte_id'])
+        except HumAporte.DoesNotExist:
+            raise NotFound('Aporte no encontrado.')
+
+        contenido, nombre = FormatoAporte(aporte).pdf()
+        response = HttpResponse(contenido, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{nombre}"'
         return response

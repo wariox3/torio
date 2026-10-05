@@ -6,7 +6,10 @@ from humano.models import HumAporteContrato
 class HumAporteContratoSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
     campos_filtrables = {'id', 'aporte_id', 'contrato_id', 'ingreso', 'retiro'}
-    select_related_lista = ('aporte', 'contrato', 'contrato__contacto')
+    select_related_lista = (
+        'aporte', 'contrato', 'contrato__contacto', 'ciudad_labora', 'entidad_salud', 'entidad_pension',
+        'entidad_caja', 'entidad_riesgo', 'entidad_sena', 'entidad_icbf', 'riesgo',
+    )
     ordenamiento_default_lista = ('-id',)
 
     contrato_nombre = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, default=None)

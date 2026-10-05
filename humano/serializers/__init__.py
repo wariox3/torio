@@ -4,8 +4,11 @@ from .adicional_importar import HumAdicionalImportarSerializer
 from .adicional_seleccionar import HumAdicionalSeleccionarSerializer
 from .aporte import HumAporteSeleccionarSerializer, HumAporteSerializer
 from .aporte_contrato import HumAporteContratoSerializer
+from .aporte_contrato_exportar import HumAporteContratoExportarSerializer
 from .aporte_detalle import HumAporteDetalleSerializer
+from .aporte_detalle_exportar import HumAporteDetalleExportarSerializer
 from .aporte_entidad import HumAporteEntidadSerializer
+from .aporte_entidad_exportar import HumAporteEntidadExportarSerializer
 from .aporte_exportar import HumAporteExportarSerializer
 from .aporte_importar import HumAporteImportarSerializer
 from .cargo import HumCargoSerializer

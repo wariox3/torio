@@ -358,6 +358,58 @@ class AporteTests(TenantTestCase):
         with self.assertRaises(PilaError):
             generar_plano(self._aporte())
 
+    def test_imprimir(self):
+        from humano.views.aporte import HumAporteViewSet
+
+        class Vista(HumAporteViewSet):
+            authentication_classes = []
+            permission_classes = [permissions.AllowAny]
+            throttle_classes = []
+
+        self._nomina_de_marzo()
+        aporte = self._aporte()
+        cargar_contratos_aporte(aporte)
+        generar_aporte(aporte)
+        vista = Vista.as_view({'post': 'imprimir'}, **Vista.imprimir.kwargs)
+
+        respuesta = vista(APIRequestFactory().post('/', {'aporte_id': aporte.id}, format='json'))
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta['Content-Type'], 'application/pdf')
+        self.assertTrue(respuesta.content.startswith(b'%PDF'))
+
+    def test_excel_de_contratos_detalles_y_entidades(self):
+        from openpyxl import load_workbook
+
+        from humano.views.aporte_contrato import HumAporteContratoViewSet
+        from humano.views.aporte_detalle import HumAporteDetalleViewSet
+        from humano.views.aporte_entidad import HumAporteEntidadViewSet
+
+        self._nomina_de_marzo()
+        aporte = self._aporte()
+        cargar_contratos_aporte(aporte)
+        generar_aporte(aporte)
+
+        casos = (
+            (HumAporteContratoViewSet, 'aporte_id', 'Empleado', 1),
+            (HumAporteDetalleViewSet, 'aporte_contrato__aporte_id', 'Empleado', HumAporteDetalle.objects.count()),
+            (HumAporteEntidadViewSet, 'aporte_id', 'Nombre', HumAporteEntidad.objects.count()),
+        )
+        for clase, propiedad, columna, filas in casos:
+            with self.subTest(clase.__name__):
+                vista = type('Vista', (clase,), {
+                    'authentication_classes': [], 'permission_classes': [permissions.AllowAny],
+                    'throttle_classes': [],
+                }).as_view({'post': 'excel'})
+                filtro = {'propiedad': propiedad, 'operador': '=', 'valor': aporte.id}
+
+                respuesta = vista(APIRequestFactory().post('/', {'filtros': [filtro]}, format='json'))
+
+                self.assertEqual(respuesta.status_code, 200)
+                hoja = load_workbook(io.BytesIO(respuesta.content)).active
+                self.assertIn(columna, [celda.value for celda in hoja[1]])
+                self.assertEqual(hoja.max_row - 1, filas)
+
     def test_endpoint_plano_operador(self):
         from humano.views.aporte import HumAporteViewSet
 
