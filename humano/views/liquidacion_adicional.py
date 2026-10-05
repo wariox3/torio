@@ -15,6 +15,7 @@ class HumLiquidacionAdicionalViewSet(
     FiltrosDinamicosMixin,
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
@@ -27,6 +28,11 @@ class HumLiquidacionAdicionalViewSet(
 
     def perform_create(self, serializer):
         # El adicional mueve los totales de la liquidación.
+        with transaction.atomic():
+            adicional = serializer.save()
+            actualizar_totales(adicional.liquidacion_id)
+
+    def perform_update(self, serializer):
         with transaction.atomic():
             adicional = serializer.save()
             actualizar_totales(adicional.liquidacion_id)

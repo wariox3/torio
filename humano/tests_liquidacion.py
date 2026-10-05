@@ -25,6 +25,7 @@ from general.models import (
 from humano.models import HumContrato, HumGrupo, HumLiquidacion, HumLiquidacionAdicional, HumMotivoTerminacion
 from humano.servicios import (
     LiquidacionError,
+    actualizar_totales,
     aprobar_liquidacion,
     desaprobar_liquidacion,
     desgenerar_liquidacion,
@@ -235,7 +236,9 @@ class LiquidacionApiTests(LiquidacionBase):
         self.generar = abierta(HumLiquidacionViewSet).as_view({'post': 'generar'})
         self.editar = abierta(HumLiquidacionViewSet).as_view({'patch': 'partial_update', 'delete': 'destroy'})
         self.adicional = abierta(HumLiquidacionAdicionalViewSet).as_view({'post': 'create'})
-        self.adicional_detalle = abierta(HumLiquidacionAdicionalViewSet).as_view({'delete': 'destroy'})
+        self.adicional_detalle = abierta(HumLiquidacionAdicionalViewSet).as_view(
+            {'patch': 'partial_update', 'delete': 'destroy'},
+        )
 
     def _post(self, vista, datos, **kwargs):
         return vista(self.factory.post('/', datos, format='json'), **kwargs)
@@ -271,6 +274,46 @@ class LiquidacionApiTests(LiquidacionBase):
         self.assertEqual(respuesta.status_code, 204)
         liquidacion.refresh_from_db()
         self.assertEqual((liquidacion.adicion, liquidacion.total), (Decimal('0'), Decimal('2766000')))
+
+    def test_editar_un_adicional_mueve_los_totales(self):
+        liquidacion = self._terminar()
+        adicional = self._adicional(liquidacion, adicional=100000)
+        actualizar_totales(liquidacion.id)
+
+        respuesta = self.adicional_detalle(
+            self.factory.patch('/', {'adicional': '250000'}, format='json'), pk=adicional.id,
+        )
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        liquidacion.refresh_from_db()
+        self.assertEqual((liquidacion.adicion, liquidacion.total), (Decimal('250000'), Decimal('3016000')))
+
+    def test_no_se_edita_un_adicional_de_una_liquidacion_generada(self):
+        liquidacion = self._terminar()
+        adicional = self._adicional(liquidacion, adicional=100000)
+        generar_liquidacion(liquidacion)
+
+        respuesta = self.adicional_detalle(
+            self.factory.patch('/', {'adicional': '250000'}, format='json'), pk=adicional.id,
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+        adicional.refresh_from_db()
+        self.assertEqual(adicional.adicional, Decimal('100000'))
+
+    def test_no_se_mueve_un_adicional_a_otra_liquidacion(self):
+        liquidacion = self._terminar()
+        adicional = self._adicional(liquidacion, adicional=100000)
+        otra = HumLiquidacion.objects.create(
+            contrato=liquidacion.contrato, fecha=liquidacion.fecha,
+            fecha_desde=liquidacion.fecha_desde, fecha_hasta=liquidacion.fecha_hasta,
+        )
+
+        respuesta = self.adicional_detalle(
+            self.factory.patch('/', {'liquidacion': otra.id}, format='json'), pk=adicional.id,
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
 
     def test_no_entran_adicionales_a_una_liquidacion_generada(self):
         liquidacion = generar_liquidacion(self._terminar())
