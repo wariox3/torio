@@ -1,5 +1,5 @@
 """
-Pruebas del aporte a seguridad social: cargar contratos, generar, aprobar,
+Pruebas del aporte a seguridad social: cargar y eliminar contratos, generar, aprobar,
 desaprobar y el plano PILA.
 
 El aporte sale de la nómina aprobada del mes, así que cada prueba arma esa
@@ -40,6 +40,7 @@ from humano.servicios import (
     cargar_contratos_aporte,
     desaprobar_aporte,
     desgenerar_aporte,
+    eliminar_contrato_aporte,
     generar_aporte,
     generar_plano,
     generar_programacion,
@@ -187,6 +188,52 @@ class AporteTests(TenantTestCase):
 
         self.assertEqual(cargar_contratos_aporte(aporte), 0)
         self.assertEqual(HumAporteContrato.objects.filter(aporte=aporte).count(), 1)
+
+    # ---- eliminar contrato ----
+
+    def test_eliminar_contrato_recuenta_el_aporte(self):
+        aporte = self._aporte()
+        cargar_contratos_aporte(aporte)
+
+        eliminar_contrato_aporte(HumAporteContrato.objects.get(aporte=aporte))
+
+        self.assertFalse(HumAporteContrato.objects.filter(aporte=aporte).exists())
+        aporte.refresh_from_db()
+        self.assertEqual((aporte.contratos, aporte.empleados), (0, 0))
+
+    def test_no_elimina_contrato_con_el_aporte_generado(self):
+        self._nomina_de_marzo()
+        aporte = self._aporte()
+        cargar_contratos_aporte(aporte)
+        generar_aporte(aporte)
+
+        with self.assertRaises(AporteError):
+            eliminar_contrato_aporte(HumAporteContrato.objects.get(aporte=aporte))
+        self.assertTrue(HumAporteContrato.objects.filter(aporte=aporte).exists())
+
+    def test_endpoint_eliminar_contrato(self):
+        from humano.views.aporte_contrato import HumAporteContratoViewSet
+
+        class Vista(HumAporteContratoViewSet):
+            authentication_classes = []
+            permission_classes = [permissions.AllowAny]
+            throttle_classes = []
+
+        self._nomina_de_marzo()
+        aporte = self._aporte()
+        cargar_contratos_aporte(aporte)
+        aporte_contrato = HumAporteContrato.objects.get(aporte=aporte)
+        vista = Vista.as_view({'delete': 'destroy'})
+
+        generar_aporte(aporte)
+        respuesta = vista(APIRequestFactory().delete('/'), pk=aporte_contrato.pk)
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('detail', respuesta.data)
+
+        desgenerar_aporte(aporte)
+        respuesta = vista(APIRequestFactory().delete('/'), pk=aporte_contrato.pk)
+        self.assertEqual(respuesta.status_code, 204)
+        self.assertFalse(HumAporteContrato.objects.filter(pk=aporte_contrato.pk).exists())
 
     # ---- generar ----
 

@@ -2,7 +2,7 @@
 El aporte a seguridad social (PILA) de un mes: qué contratos entran, cuánto se
 cotiza a cada subsistema y los documentos por pagar a cada entidad.
 
-Ciclo: `cargar_contratos_aporte` → `generar_aporte` → `aprobar_aporte`, y sus
+Ciclo: `cargar_contratos_aporte` (y `eliminar_contrato_aporte`) → `generar_aporte` → `aprobar_aporte`, y sus
 reversas `desgenerar_aporte` y `desaprobar_aporte`. La base sale de la nómina
 **aprobada** del mes (documentos clase 701): una programación generada pero sin
 aprobar todavía puede cambiar.
@@ -200,12 +200,28 @@ def cargar_contratos_aporte(aporte):
                 riesgo_id=contrato.riesgo_id,
             ))
         HumAporteContrato.objects.bulk_create(aporte_contratos)
-
-        cargados = HumAporteContrato.objects.filter(aporte=aporte)
-        aporte.contratos = cargados.count()
-        aporte.empleados = cargados.values('contrato__contacto_id').distinct().count()
-        aporte.save(update_fields=['contratos', 'empleados'])
+        _contar_contratos(aporte)
     return len(aporte_contratos)
+
+
+def eliminar_contrato_aporte(aporte_contrato):
+    """
+    Quita un contrato del aporte. Solo mientras el aporte no esté generado: una
+    vez generado, los detalles y los totales salen de sus contratos.
+    """
+    with transaction.atomic():
+        aporte = _bloquear(aporte_contrato.aporte)
+        if aporte.estado_generado:
+            raise AporteError('El aporte está generado: desgenérelo antes de eliminar contratos.')
+        aporte_contrato.delete()
+        _contar_contratos(aporte)
+
+
+def _contar_contratos(aporte):
+    cargados = HumAporteContrato.objects.filter(aporte=aporte)
+    aporte.contratos = cargados.count()
+    aporte.empleados = cargados.values('contrato__contacto_id').distinct().count()
+    aporte.save(update_fields=['contratos', 'empleados'])
 
 
 # ----------------------------------------------------------- generar ----

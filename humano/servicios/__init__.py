@@ -13,6 +13,7 @@ from .aporte import (
     cargar_contratos_aporte,
     desaprobar_aporte,
     desgenerar_aporte,
+    eliminar_contrato_aporte,
     generar_aporte,
     recalcular_entidades,
 )
