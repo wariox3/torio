@@ -72,6 +72,7 @@ from general.serializers import (
     GenPrecioDetalleImportarSerializer,
 )
 from general.servicios import archivo as archivo_servicio
+from general.servicios import cartera as cartera_servicio
 from general.servicios import documento as documento_servicio
 from general.servicios import documento_imprimir, factura_electronica, logotipo
 from general.servicios import documento_pago as documento_pago_servicio
@@ -3899,6 +3900,203 @@ class ValidarAprobacionTests(TenantTestCase):
             documento_servicio.aprobar(nota.id)
 
         self.assertIn('pendiente', str(caso.exception))
+
+
+class CarteraTests(TenantTestCase):
+    """
+    `cartera.validar` / `cartera.regenerar` reconstruyen `pago`, `afectado` y
+    `pendiente` desde su origen. Lo que importa fijar es que el cálculo desde cero
+    dé lo mismo que dejan aprobar y los pagos al aplicarse por incrementos: si no,
+    regenerar "corregiría" documentos sanos.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test cartera'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'cartera@test.com'
+
+    def setUp(self):
+        self.tipo_factura = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', cobrar=True,
+            documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
+        )
+        self.tipo_nota = GenDocumentoTipo.objects.create(
+            id=2, nombre='NOTA CRÉDITO DE VENTA', cobrar=True,
+            documento_clase=GenDocumentoClase.objects.create(id=101, nombre='Nota crédito venta'),
+        )
+        self.tipo_recibo = GenDocumentoTipo.objects.create(
+            id=4, nombre='PAGO',
+            documento_clase=GenDocumentoClase.objects.create(id=200, nombre='Pago'),
+        )
+        self.tipo_compra = GenDocumentoTipo.objects.create(
+            id=5, nombre='COMPRA', pagar=True,
+            documento_clase=GenDocumentoClase.objects.create(id=300, nombre='Compra'),
+        )
+        self.item = GenItem.objects.create(nombre='Servicio')
+        self.cuenta_banco = GenCuentaBanco.objects.create(
+            nombre='Bancolombia',
+            cuenta=ConCuenta.objects.create(
+                codigo='111005', nombre='Bancos', permite_movimiento=True,
+            ),
+            cuenta_banco_tipo=GenCuentaBancoTipo.objects.create(nombre='Ahorros'),
+        )
+
+    def _documento(self, total, tipo=None, **overrides):
+        documento = GenDocumento.objects.create(
+            documento_tipo=tipo or self.tipo_factura, fecha=date(2026, 1, 15),
+            total=Decimal(total), **overrides,
+        )
+        GenDocumentoDetalle.objects.create(
+            documento=documento, item=self.item, cantidad=Decimal('1'),
+            precio=Decimal(total), total=Decimal(total),
+        )
+        return documento
+
+    def _aprobado(self, total, tipo=None, **overrides):
+        """Aprobado directo en la base, con la cartera que dejaría aprobar."""
+        return self._documento(
+            total, tipo=tipo, estado_aprobado=True, pendiente=Decimal(total), **overrides,
+        )
+
+    def _recibo(self, afectado, valor, aprobado=True):
+        recibo = GenDocumento.objects.create(
+            documento_tipo=self.tipo_recibo, fecha=date(2026, 1, 20),
+            estado_aprobado=aprobado,
+        )
+        GenDocumentoDetalle.objects.create(
+            documento=recibo, tipo_registro='C', naturaleza='C',
+            precio=Decimal(valor), documento_afectado=afectado,
+        )
+        return recibo
+
+    def _desfasar(self, documento, **valores):
+        """Toca la cartera por fuera, como lo haría un camino que falló a medias."""
+        GenDocumento.objects.filter(pk=documento.pk).update(**valores)
+
+    def _refrescado(self, documento):
+        return GenDocumento.objects.get(pk=documento.pk)
+
+    # ---- documentos sanos ----
+
+    def test_un_documento_aprobado_por_el_flujo_real_no_tiene_diferencias(self):
+        factura = self._documento('1000')
+        documento_pago_servicio.registrar(factura.pk, self.cuenta_banco, Decimal('300'))
+        documento_servicio.aprobar(factura.pk)
+
+        resultado = cartera_servicio.validar('cobrar')
+
+        self.assertEqual(resultado['revisados'], 1)
+        self.assertEqual(resultado['inconsistentes'], 0)
+        self.assertEqual(self._refrescado(factura).pendiente, Decimal('700'))
+
+    def test_regenerar_no_toca_lo_que_cuadra(self):
+        self._aprobado('1000')
+
+        resultado = cartera_servicio.regenerar('cobrar')
+
+        self.assertEqual(resultado['corregidos'], 0)
+
+    # ---- reconstrucción ----
+
+    def test_detecta_y_corrige_un_pendiente_desfasado(self):
+        factura = self._aprobado('1000')
+        self._desfasar(factura, pendiente=Decimal('999'))
+
+        validacion = cartera_servicio.validar('cobrar')
+
+        self.assertEqual(validacion['inconsistentes'], 1)
+        self.assertEqual(validacion['diferencias'], [{
+            'documento_id': factura.id, 'numero': None,
+            'documento_tipo_id': self.tipo_factura.id, 'campo': 'pendiente',
+            'actual': Decimal('999'), 'esperado': Decimal('1000'),
+        }])
+        # Validar no escribe.
+        self.assertEqual(self._refrescado(factura).pendiente, Decimal('999'))
+
+        regeneracion = cartera_servicio.regenerar('cobrar')
+
+        self.assertEqual(regeneracion['corregidos'], 1)
+        self.assertEqual(self._refrescado(factura).pendiente, Decimal('1000'))
+        self.assertEqual(cartera_servicio.validar('cobrar')['inconsistentes'], 0)
+
+    def test_el_pago_sale_de_los_pagos_no_anulados(self):
+        factura = self._aprobado('1000')
+        GenDocumentoPago.objects.create(
+            documento=factura, cuenta_banco=self.cuenta_banco, pago=Decimal('300'),
+        )
+        GenDocumentoPago.objects.create(
+            documento=factura, cuenta_banco=self.cuenta_banco, pago=Decimal('200'),
+            estado_anulado=True,
+        )
+        self._desfasar(factura, pago=Decimal('500'))
+
+        cartera_servicio.regenerar('cobrar')
+
+        factura = self._refrescado(factura)
+        self.assertEqual(factura.pago, Decimal('300'))
+        self.assertEqual(factura.pendiente, Decimal('700'))
+
+    def test_el_afectado_cuenta_los_recibos_aprobados_por_su_precio(self):
+        factura = self._aprobado('1000')
+        self._recibo(factura, '400')
+        # Sin aprobar no ha afectado nada todavía.
+        self._recibo(factura, '100', aprobado=False)
+
+        cartera_servicio.regenerar('cobrar')
+
+        factura = self._refrescado(factura)
+        self.assertEqual(factura.afectado, Decimal('400'))
+        self.assertEqual(factura.pendiente, Decimal('600'))
+
+    def test_la_nota_credito_descarga_su_referencia_y_a_si_misma(self):
+        factura = self._aprobado('1000')
+        nota = self._aprobado('250', tipo=self.tipo_nota, documento_referencia=factura)
+        self._desfasar(factura, afectado=0, pendiente=Decimal('1000'))
+        self._desfasar(nota, afectado=0, pendiente=Decimal('250'))
+
+        cartera_servicio.regenerar('cobrar')
+
+        factura = self._refrescado(factura)
+        nota = self._refrescado(nota)
+        self.assertEqual((factura.afectado, factura.pendiente), (Decimal('250'), Decimal('750')))
+        self.assertEqual((nota.afectado, nota.pendiente), (Decimal('250'), Decimal('0')))
+
+    def test_sin_aprobar_o_anulado_no_tiene_pendiente(self):
+        borrador = self._documento('1000', pendiente=Decimal('1000'))
+        anulado = self._documento(
+            '0', estado_aprobado=True, estado_anulado=True, pendiente=Decimal('50'),
+        )
+
+        cartera_servicio.regenerar('cobrar')
+
+        self.assertEqual(self._refrescado(borrador).pendiente, Decimal('0'))
+        self.assertEqual(self._refrescado(anulado).pendiente, Decimal('0'))
+
+    # ---- lado de la cartera ----
+
+    def test_cada_lado_solo_revisa_sus_documentos(self):
+        factura = self._aprobado('1000')
+        compra = self._aprobado('800', tipo=self.tipo_compra)
+        self._desfasar(factura, pendiente=Decimal('1'))
+        self._desfasar(compra, pendiente=Decimal('1'))
+
+        resultado = cartera_servicio.regenerar('pagar')
+
+        self.assertEqual(resultado['revisados'], 1)
+        self.assertEqual(self._refrescado(compra).pendiente, Decimal('800'))
+        self.assertEqual(self._refrescado(factura).pendiente, Decimal('1'))
+
+    def test_un_tipo_que_no_es_cobrar_ni_pagar_se_rechaza(self):
+        vista = _DocumentoViewSinPermisos.as_view({'post': 'cartera_validar'})
+        peticion = APIRequestFactory().post(
+            '/general/documento/cartera-validar/', {'tipo': 'todo'}, format='json',
+        )
+
+        respuesta = vista(peticion)
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('cobrar', respuesta.data['detail'])
 
 
 class CalcularRedondeoTests(TenantTestCase):

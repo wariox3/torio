@@ -21,11 +21,12 @@ from general.serializers import (
     GenDocumentoImportarSerializer,
     GenDocumentoSerializer,
 )
+from general.servicios import cartera as cartera_servicio
 from general.servicios import contabilizar as contabilizar_servicio
 from general.servicios import documento as documento_servicio
 from general.servicios import documento_imprimir
 from general.servicios import factura_electronica as factura_electronica_servicio
-from seguridad.permissions import TienePermisoModelo
+from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente, TienePermisoModelo
 from utilidades.filtros import aplicar_filtros
 from utilidades.mixins import (
     ExportarExcelMixin,
@@ -179,6 +180,51 @@ class GenDocumentoViewSet(
             documento_tipo_origen_id=tipo_origen.pk if tipo_origen else None,
         )
         return Response({'generados': len(generados)}, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        summary='Validar la cartera',
+        description=(
+            'Recalcula desde su origen `pago`, `afectado` y `pendiente` de los '
+            'documentos de cuentas por cobrar (`tipo: "cobrar"`) o por pagar '
+            '(`tipo: "pagar"`) y los compara contra lo guardado. No escribe nada.\n\n'
+            'Responde `{"revisados", "inconsistentes", "diferencias"}`, con una fila '
+            'por cada campo que difiere: `documento_id`, `numero`, `documento_tipo_id`, '
+            '`campo`, `actual` y `esperado`.'
+        ),
+        request=OpenApiTypes.OBJECT,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(
+        detail=False, methods=['post'], url_path='cartera-validar',
+        permission_classes=[EsMiembroDelTenant, SuscripcionVigente],
+    )
+    def cartera_validar(self, request):
+        tipo = request.data.get('tipo')
+        if tipo not in cartera_servicio.TIPOS:
+            raise ValidationError({'detail': 'El tipo debe ser "cobrar" o "pagar".'})
+        return Response(cartera_servicio.validar(tipo), status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Regenerar la cartera',
+        description=(
+            'Igual que `cartera-validar`, pero corrige los documentos que difieren '
+            'con el valor recalculado. Lo puede correr cualquier miembro del '
+            'contenedor; un documento que ya cuadra no se toca.\n\n'
+            'Responde lo mismo que `cartera-validar` más `corregidos`. Las '
+            '`diferencias` muestran el valor que había antes de corregir.'
+        ),
+        request=OpenApiTypes.OBJECT,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(
+        detail=False, methods=['post'], url_path='cartera-regenerar',
+        permission_classes=[EsMiembroDelTenant, SuscripcionVigente],
+    )
+    def cartera_regenerar(self, request):
+        tipo = request.data.get('tipo')
+        if tipo not in cartera_servicio.TIPOS:
+            raise ValidationError({'detail': 'El tipo debe ser "cobrar" o "pagar".'})
+        return Response(cartera_servicio.regenerar(tipo), status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'])
     def aprobar(self, request):
