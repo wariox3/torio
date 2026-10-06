@@ -30,7 +30,8 @@ class GenDocumentoImpuestoSerializer(serializers.ModelSerializer):
 class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
     campos_filtrables = {'id', 'documento_id', 'documento__documento_tipo__documento_clase_id', 'documento__contrato_id', 'documento__fecha', 'documento_detalle_afectado_id', 'documento_afectado_id', 'item_id', 'tipo_registro', 'naturaleza', 'cuenta_id', 'centro_costo_id', 'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion', 'modalidad_id', 'almacen_id', 'credito_id', 'activo_id', 'afectado', 'pendiente'}
     select_related_lista = ('item', 'modalidad', 'cuenta', 'centro_costo', 'contacto', 'puesto', 'almacen',
-                            'activo', 'documento_afectado__documento_tipo', 'concepto')
+                            'activo', 'documento__documento_tipo', 'documento_afectado__documento_tipo',
+                            'concepto')
     ordenamiento_default_lista = ('-id',)
 
     documento = serializers.PrimaryKeyRelatedField(
@@ -45,6 +46,9 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
         queryset=GenDocumento.objects.all(),
         required=False,
         allow_null=True,
+    )
+    documento_documento_tipo_nombre = serializers.CharField(
+        source='documento.documento_tipo.nombre', read_only=True, default=None,
     )
     # Datos del documento que cruza esta línea, para que el front liste las
     # afectaciones sin ir a buscarlos documento por documento.
@@ -99,6 +103,7 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'documento',
+            'documento_documento_tipo_nombre',
             'documento_detalle_afectado',
             'documento_afectado',
             'documento_afectado_numero',
