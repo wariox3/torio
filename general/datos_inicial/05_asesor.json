@@ -1,0 +1,6 @@
+{
+  "model": "general.GenAsesor",
+  "data": [
+    { "id": 1, "nombre_corto": "General", "celular": "0", "correo": "asesor@ejemplo.com" }
+  ]
+}
