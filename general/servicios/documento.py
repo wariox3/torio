@@ -18,6 +18,7 @@ from general.models import (
 from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
 from general.servicios.supervigilancia import LiquidadorSupervigilancia
 from inventario.models import InvExistencia
+from utilidades.moneda import redondear_moneda
 
 
 def sincronizar_impuestos(detalle, impuestos):
@@ -718,7 +719,7 @@ def _mover_inventario(detalle, signo, promedia_costo, congela_costo):
         )
         if promedio is not None:
             item.costo_promedio = promedio
-        item.costo_total = item.costo_promedio * item.existencia
+        item.costo_total = redondear_moneda(item.costo_promedio * item.existencia)
         campos_item += ['costo_promedio', 'costo_total']
     item.save(update_fields=campos_item)
 
@@ -934,11 +935,14 @@ def generar_recurrente(
     - **Contrato de servicio (34)**: no se copia tal cual. Sus detalles se recortan
       a la ventana del periodo y se les recalculan horas, diurnas, nocturnas y días
       contando el calendario real con sus festivos. Un contrato sin ningún detalle
-      vigente en el periodo se salta, y el que sí genera avanza su propia fecha al
-      mes siguiente, que es lo que lo deja listo para la próxima corrida.
+      vigente en el periodo se salta.
     - **Factura recurrente (16 y 32)**: se copia entera —mismas cantidades, mismos
-      precios, mismos impuestos— y solo se mueven las fechas. La plantilla queda
-      intacta.
+      precios, mismos impuestos— y solo se mueven las fechas.
+
+    En los dos caminos la fecha de la plantilla marca hasta dónde ya se generó: se
+    toma la que tenga fecha hasta el último día de `anio`/`mes`, y la que genera
+    avanza al primer día del mes siguiente, así que volver a pedir el mismo periodo
+    ya no la toma. Es lo único que se le toca a la plantilla.
 
     El documento nuevo nace sin numerar y sin aprobar. La fecha difiere según el
     camino: el contrato genera al cierre del periodo (último día de `anio`/`mes`)
@@ -1049,59 +1053,65 @@ def generar_recurrente(
     if documento_ids:
         qs = qs.filter(id__in=documento_ids)
 
-    documentos = list(
-        qs
-        .select_related('plazo_pago')
-        .prefetch_related(
-            # El orden de los detalles es el de la factura impresa, así que se
-            # clonan ascendente. `GenDocumentoDetalle.Meta.ordering` es `-id`, que
-            # dejaría el documento nuevo con las líneas al revés.
-            Prefetch(
-                'documentos_detalles_documento_rel',
-                queryset=GenDocumentoDetalle.objects.order_by('id').prefetch_related(
-                    Prefetch(
-                        'documentos_impuestos_documento_detalle_rel',
-                        queryset=GenDocumentoImpuesto.objects.order_by('id'),
-                    ),
-                ),
-            ),
-        )
-        .order_by('id')
-    )
-
-    if documento_ids:
-        encontrados = {documento.id for documento in documentos}
-        faltantes = [str(id_) for id_ in documento_ids if id_ not in encontrados]
-        if faltantes:
-            raise NotFound(f'No existen los documentos: {", ".join(faltantes)}.')
-
-    if not documentos:
-        raise ValidationError({'detail': 'No hay documentos para generar.'})
-
-    no_recurrentes = [
-        str(documento.id)
-        for documento in documentos
-        if documento.documento_tipo_id not in DOCUMENTO_TIPOS_RECURRENTES
-    ]
-    if no_recurrentes:
-        raise ValidationError({
-            'documento_ids': (
-                f'Los documentos {", ".join(no_recurrentes)} no son recurrentes. '
-                f'Solo se generan desde los tipos {DOCUMENTO_TIPOS_RECURRENTES}.'
-            ),
-        })
-
     tipo_destino = GenDocumentoTipo.objects.get(pk=documento_tipo_destino_id)
 
     generados = []
     with transaction.atomic():
-        for origen in documentos:
-            if origen.documento_tipo_id == DOCUMENTO_TIPO_CONTRATO_SERVICIO:
-                # Un contrato ya fechado después del periodo es uno que otra corrida
-                # ya avanzó: no se vuelve a generar.
-                if origen.fecha > fecha:
-                    continue
+        # Las plantillas se leen bloqueadas: la fecha de cada una es lo que dice si
+        # el periodo ya se generó, y sin bloqueo dos corridas a la vez (un doble
+        # clic) la leerían igual y generarían las dos. Con él, la segunda espera y
+        # ve la fecha ya avanzada. `of=('self',)` para no bloquear el plazo de pago.
+        documentos = list(
+            qs
+            .select_related('plazo_pago')
+            .select_for_update(of=('self',))
+            .prefetch_related(
+                # El orden de los detalles es el de la factura impresa, así que se
+                # clonan ascendente. `GenDocumentoDetalle.Meta.ordering` es `-id`, que
+                # dejaría el documento nuevo con las líneas al revés.
+                Prefetch(
+                    'documentos_detalles_documento_rel',
+                    queryset=GenDocumentoDetalle.objects.order_by('id').prefetch_related(
+                        Prefetch(
+                            'documentos_impuestos_documento_detalle_rel',
+                            queryset=GenDocumentoImpuesto.objects.order_by('id'),
+                        ),
+                    ),
+                ),
+            )
+            .order_by('id')
+        )
 
+        if documento_ids:
+            encontrados = {documento.id for documento in documentos}
+            faltantes = [str(id_) for id_ in documento_ids if id_ not in encontrados]
+            if faltantes:
+                raise NotFound(f'No existen los documentos: {", ".join(faltantes)}.')
+
+        if not documentos:
+            raise ValidationError({'detail': 'No hay documentos para generar.'})
+
+        no_recurrentes = [
+            str(documento.id)
+            for documento in documentos
+            if documento.documento_tipo_id not in DOCUMENTO_TIPOS_RECURRENTES
+        ]
+        if no_recurrentes:
+            raise ValidationError({
+                'documento_ids': (
+                    f'Los documentos {", ".join(no_recurrentes)} no son recurrentes. '
+                    f'Solo se generan desde los tipos {DOCUMENTO_TIPOS_RECURRENTES}.'
+                ),
+            })
+
+        for origen in documentos:
+            # Una plantilla fechada después del periodo es una que otra corrida ya
+            # avanzó: no se vuelve a generar. `fecha` es opcional en el documento, y
+            # una plantilla sin ella nunca se ha generado.
+            if origen.fecha is not None and origen.fecha > fecha:
+                continue
+
+            if origen.documento_tipo_id == DOCUMENTO_TIPO_CONTRATO_SERVICIO:
                 # Solo los detalles cuyo rango se solapa con el periodo, ya acotados a él.
                 detalles = []
                 for detalle in origen.documentos_detalles_documento_rel.all():
@@ -1133,14 +1143,10 @@ def generar_recurrente(
                         _clonar(impuesto, _EXCLUIR_IMPUESTO, {
                             'documento_detalle_id': nuevo_detalle.id,
                         }).save()
-
-                # El contrato avanza al mes siguiente: queda listo para la próxima corrida.
-                origen.fecha = fecha_origen
-                origen.save(update_fields=['fecha'])
             else:
                 # La factura recurrente se emite hoy, no al cierre del periodo: es
                 # una factura de verdad y su fecha es la del día en que se saca.
-                # `anio`/`mes` solo acotan el camino del contrato.
+                # `anio`/`mes` solo deciden qué plantillas se toman.
                 hoy = timezone.localdate()
                 # El plazo es opcional en el documento; sin él el clon vence el mismo día.
                 dias_plazo = origen.plazo_pago.dias if origen.plazo_pago_id else 0
@@ -1169,9 +1175,14 @@ def generar_recurrente(
             nuevo.save()
             generados.append(nuevo)
 
+            # La plantilla avanza al mes siguiente: queda marcada como generada para
+            # este periodo y lista para la próxima corrida.
+            origen.fecha = fecha_origen
+            origen.save(update_fields=['fecha'])
+
     if not generados:
         raise ValidationError(
-            {'detail': 'Ningún documento tiene detalles vigentes en el periodo.'}
+            {'detail': 'No hay documentos pendientes por generar en el periodo.'}
         )
 
     return generados

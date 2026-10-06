@@ -20,6 +20,7 @@ from humano.models import (
     HumConfiguracionProvision,
 )
 from seguridad.contexto import obtener_usuario_actual
+from utilidades.moneda import redondear_moneda
 
 CERO = Decimal('0')
 DEBITO = 'D'
@@ -447,7 +448,8 @@ def _movimientos_item(documento, detalle, comun):
         # El costo de venta solo lo mueven los tipos de venta que mueven
         # inventario; una nota débito no saca mercancía y no tiene costo que llevar.
         if tipo.operacion_inventario and detalle.costo > 0:
-            costo_total = detalle.costo * detalle.cantidad
+            # `costo` es unitario y guarda 6 decimales; lo que va al mayor es dinero.
+            costo_total = redondear_moneda(detalle.costo * detalle.cantidad)
             movimientos.append(_movimiento(
                 comun, item.cuenta_costo_venta, 1, costo_total, 'COSTO VENTA',
                 f'El item «{item.nombre}»: la cuenta de costo de venta',

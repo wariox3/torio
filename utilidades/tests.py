@@ -1,5 +1,6 @@
 import ast
 import io
+from decimal import Decimal
 from pathlib import Path
 
 from django.conf import settings
@@ -11,8 +12,22 @@ from rest_framework.test import APIRequestFactory
 from rest_framework.views import APIView
 
 from utilidades.excepciones import con_detail, manejador_excepciones
+from utilidades.moneda import redondear_moneda
 
 RAIZ = Path(settings.BASE_DIR)
+
+
+class RedondearMonedaTests(SimpleTestCase):
+    def test_deja_centavos(self):
+        self.assertEqual(redondear_moneda(Decimal('2261.0342')), Decimal('2261.03'))
+
+    def test_la_mitad_sube(self):
+        """`quantize` solo usaría redondeo bancario y dejaría 0.12."""
+        self.assertEqual(redondear_moneda(Decimal('0.125')), Decimal('0.13'))
+        self.assertEqual(redondear_moneda(Decimal('-0.125')), Decimal('-0.13'))
+
+    def test_sin_valor_es_cero(self):
+        self.assertEqual(redondear_moneda(None), Decimal('0.00'))
 
 
 class ConDetailTests(SimpleTestCase):

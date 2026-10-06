@@ -24,6 +24,7 @@ from general.servicios.documento import (
     DOCUMENTO_CLASES_CON_CARTERA,
     DOCUMENTO_TIPOS_NOTA_CREDITO,
 )
+from utilidades.moneda import redondear_moneda
 
 
 def _documento_bloqueado(documento_id):
@@ -94,7 +95,7 @@ def registrar(documento_id, cuenta_banco, pago):
         _validar_cuenta_banco(cuenta_banco)
 
         nuevo = GenDocumentoPago.objects.create(
-            documento=documento, cuenta_banco=cuenta_banco, pago=pago,
+            documento=documento, cuenta_banco=cuenta_banco, pago=redondear_moneda(pago),
         )
         documento.save(update_fields=_actualizar_pago(documento))
     return nuevo
@@ -109,7 +110,7 @@ def actualizar(pago_id, datos):
             _validar_cuenta_banco(datos['cuenta_banco'])
             pago.cuenta_banco = datos['cuenta_banco']
         if 'pago' in datos:
-            pago.pago = datos['pago']
+            pago.pago = redondear_moneda(datos['pago'])
         pago.save(update_fields=['cuenta_banco', 'pago'])
         documento.save(update_fields=_actualizar_pago(documento))
     return pago

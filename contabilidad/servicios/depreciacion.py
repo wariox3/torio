@@ -17,7 +17,7 @@ periodo. Por eso el cargue exige un documento sin detalles: si se pudiera
 recargar sobre uno ya cargado, el mismo periodo quedaría depreciado dos veces.
 """
 import calendar
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 from django.db.models import Q
@@ -26,6 +26,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from contabilidad.models import ConActivo
 from general.models import GenDocumento
 from general.servicios.documento_detalle import crear_detalle
+from utilidades.moneda import redondear_moneda
 
 # Único tipo de documento que recibe el cargue. Mismo id del catálogo
 # `general/catalogos/11_documento_tipo.json`.
@@ -133,9 +134,14 @@ def _dias_a_depreciar(activo, fecha_desde, fecha_hasta):
 def _valor_a_depreciar(activo, dias):
     """Lo que deprecia el activo por esos días, sin pasarse del saldo que le queda."""
     if dias == DIAS_PERIODO:
-        depreciar = activo.depreciacion_periodo
+        # La cuota del activo guarda 6 decimales (es valor de compra / meses); lo
+        # que se deprecia es dinero y va en centavos.
+        depreciar = redondear_moneda(activo.depreciacion_periodo)
     else:
         # La cuota es en pesos enteros: el prorrateo por días no puede dejar
-        # centavos que después no cuadren contra el saldo.
-        depreciar = Decimal(round(activo.depreciacion_periodo / DIAS_PERIODO * dias))
+        # centavos que después no cuadren contra el saldo. `round()` sería
+        # redondeo bancario (0.5 → 0); acá la mitad sube.
+        depreciar = (activo.depreciacion_periodo / DIAS_PERIODO * dias).quantize(
+            Decimal('1'), rounding=ROUND_HALF_UP,
+        )
     return min(depreciar, activo.depreciacion_saldo)

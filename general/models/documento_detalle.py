@@ -2,6 +2,8 @@ from decimal import Decimal
 
 from django.db import models
 
+from utilidades.moneda import redondear_moneda
+
 
 class GenDocumentoDetalle(models.Model):
     # Marcas cuya línea es un apunte contable: el valor va en `precio` y no hay
@@ -194,18 +196,23 @@ class GenDocumentoDetalle(models.Model):
         El corte va acá y no en `crear_detalle` porque `calcular()` se llama
         desde varios lados (el POST, el PATCH, el masivo, el importador) y la
         invariante tiene que valer para todos.
+
+        Todo valor en dinero queda en centavos (`redondear_moneda`): el de cada
+        impuesto se redondea por línea, así que el total del documento es la suma
+        exacta de lo que se ve impreso. En la línea contable lo único en dinero es
+        el `precio` digitado, y se redondea igual.
         """
         if self.es_contable():
+            self.precio = redondear_moneda(self.precio)
             return
 
         cantidad = self.cantidad or Decimal('0')
         precio = self.precio or Decimal('0')
         porcentaje = self.porcentaje_descuento or Decimal('0')
         cien = Decimal('100')
-        cuant = Decimal('0.000001')
 
-        self.subtotal = cantidad * precio
-        self.descuento = (self.subtotal * porcentaje / cien).quantize(cuant)
+        self.subtotal = redondear_moneda(cantidad * precio)
+        self.descuento = redondear_moneda(self.subtotal * porcentaje / cien)
         self.total_bruto = self.subtotal - self.descuento
         self.base_impuesto = self.total_bruto
 
@@ -213,8 +220,8 @@ class GenDocumentoDetalle(models.Model):
         impuesto_retencion = Decimal('0')
         if self.pk:
             for documento_impuesto in self.documentos_impuestos_documento_detalle_rel.select_related('impuesto'):
-                base = (self.total_bruto * (documento_impuesto.porcentaje_base or Decimal('0')) / cien).quantize(cuant)
-                total = (base * (documento_impuesto.porcentaje or Decimal('0')) / cien).quantize(cuant)
+                base = redondear_moneda(self.total_bruto * (documento_impuesto.porcentaje_base or Decimal('0')) / cien)
+                total = redondear_moneda(base * (documento_impuesto.porcentaje or Decimal('0')) / cien)
                 documento_impuesto.base = base
                 documento_impuesto.total = total
                 documento_impuesto.save(update_fields=['base', 'total'])

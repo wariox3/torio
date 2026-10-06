@@ -1,6 +1,8 @@
 from datetime import time
 from decimal import Decimal
 
+from utilidades.moneda import redondear_moneda
+
 
 class LiquidadorSupervigilancia:
     """
@@ -90,7 +92,7 @@ class LiquidadorSupervigilancia:
             'total_dias': total_dias,
             'horas_diurnas': horas_diurnas.quantize(centavos),
             'horas_nocturnas': horas_nocturnas.quantize(centavos),
-            'valor_hora_diurna': valor_hora_diurna.quantize(centavos),
-            'valor_hora_nocturna': valor_hora_nocturna.quantize(centavos),
-            'precio_minimo': precio_minimo.quantize(centavos),
+            'valor_hora_diurna': redondear_moneda(valor_hora_diurna),
+            'valor_hora_nocturna': redondear_moneda(valor_hora_nocturna),
+            'precio_minimo': redondear_moneda(precio_minimo),
         }

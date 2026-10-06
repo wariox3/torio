@@ -313,7 +313,7 @@ class GenerarDocumentoTests(TenantTestCase):
 class GenerarRecurrenteTests(TenantTestCase):
     """
     `generar_recurrente` por el camino de la factura recurrente (tipos 16 y 32):
-    la plantilla se copia entera y no se toca. El camino del contrato de servicio
+    la plantilla se copia entera y solo avanza su fecha. El camino del contrato de servicio
     (tipo 34), que recorta al periodo y recalcula horas, lo cubre
     `GenerarDocumentoTests`.
     """
@@ -437,12 +437,12 @@ class GenerarRecurrenteTests(TenantTestCase):
 
         self.assertEqual(nuevo.resolucion_id, self.resolucion.id)
 
-    def test_la_plantilla_queda_intacta(self):
-        """Se vuelve a usar el periodo que viene: nada de lo suyo puede moverse."""
+    def test_de_la_plantilla_solo_avanza_la_fecha(self):
+        """Se vuelve a usar el periodo que viene: nada más de lo suyo puede moverse."""
         self._generar()
 
         self.plantilla.refresh_from_db()
-        self.assertEqual(self.plantilla.fecha, date(2020, 1, 1))
+        self.assertEqual(self.plantilla.fecha, date(2026, 10, 1))
         self.assertEqual(self.plantilla.numero, 999)
         self.assertTrue(self.plantilla.estado_aprobado)
         self.assertEqual(self.plantilla.documentos_detalles_documento_rel.count(), 2)
@@ -486,6 +486,53 @@ class GenerarRecurrenteTests(TenantTestCase):
 
         self.assertEqual(nuevo.fecha, timezone.localdate())
 
+    # ----------------------------------------------- periodo ya generado ----
+
+    def test_la_plantilla_avanza_al_primer_dia_del_mes_siguiente(self):
+        """Creada a mitad de mes, al generarse ese mes queda en el día 1 del siguiente."""
+        self.plantilla.fecha = date(2026, 10, 6)
+        self.plantilla.save(update_fields=['fecha'])
+
+        self._generar(anio=2026, mes=10)
+
+        self.plantilla.refresh_from_db()
+        self.assertEqual(self.plantilla.fecha, date(2026, 11, 1))
+
+    def test_generar_dos_veces_el_mismo_periodo_no_duplica(self):
+        """
+        La fecha avanzada es la marca de "ya generado": la segunda corrida del mismo
+        mes no encuentra nada pendiente.
+        """
+        self._generar(anio=2026, mes=10)
+
+        with self.assertRaises(ValidationError) as caso:
+            self._generar(anio=2026, mes=10)
+
+        self.assertIn('pendientes', str(caso.exception))
+        self.assertEqual(
+            GenDocumento.objects.filter(documento_referencia=self.plantilla).count(), 1,
+        )
+
+    def test_una_plantilla_fechada_despues_del_periodo_se_salta(self):
+        """Solo se toma la que tiene fecha hasta el último día del mes pedido."""
+        otra = self._plantilla(self.tipo_venta, fecha=date(2026, 11, 1))
+
+        generados = self._generar(documentos=[self.plantilla, otra], anio=2026, mes=10)
+
+        self.assertEqual([g.documento_referencia_id for g in generados], [self.plantilla.id])
+        otra.refresh_from_db()
+        self.assertEqual(otra.fecha, date(2026, 11, 1))
+
+    def test_una_plantilla_sin_fecha_se_genera(self):
+        """`fecha` es opcional: sin ella la plantilla nunca se ha generado."""
+        self.plantilla.fecha = None
+        self.plantilla.save(update_fields=['fecha'])
+
+        self._generar(anio=2026, mes=10)
+
+        self.plantilla.refresh_from_db()
+        self.assertEqual(self.plantilla.fecha, date(2026, 11, 1))
+
     # --------------------------------------------------------- validación ----
 
     def test_un_tipo_no_recurrente_se_rechaza(self):
@@ -526,13 +573,15 @@ class GenerarRecurrenteTests(TenantTestCase):
         # La factura se emite hoy; el contrato cierra el periodo.
         self.assertEqual(por_origen[self.plantilla.id].fecha, timezone.localdate())
         self.assertEqual(por_origen[contrato.id].fecha, date(2026, 9, 30))
-        # Solo el contrato recalcula horas y avanza su propia fecha.
+        # Solo el contrato recalcula horas; los dos avanzan su fecha.
         detalle = por_origen[contrato.id].documentos_detalles_documento_rel.get()
         self.assertEqual(detalle.fecha_desde, date(2026, 9, 1))
         self.assertEqual(detalle.fecha_hasta, date(2026, 9, 30))
         self.assertGreater(detalle.horas, 0)
         contrato.refresh_from_db()
         self.assertEqual(contrato.fecha, date(2026, 10, 1))
+        self.plantilla.refresh_from_db()
+        self.assertEqual(self.plantilla.fecha, date(2026, 10, 1))
 
     def test_si_el_contrato_aborta_tampoco_queda_la_factura_copiada(self):
         """
@@ -3207,6 +3256,15 @@ class DocumentoPagoTests(TenantTestCase):
 
         self.assertEqual(self._refrescado().pago, Decimal('450'))
 
+    def test_el_pago_digitado_queda_en_centavos(self):
+        """Un pago con fracciones de centavo dejaría un residuo eterno en cartera."""
+        pago = self._registrar('300.125')
+        self.assertEqual(pago.pago, Decimal('300.13'))
+
+        documento_pago_servicio.actualizar(pago.pk, {'pago': Decimal('450.004')})
+
+        self.assertEqual(self._refrescado().pago, Decimal('450.00'))
+
     def test_un_tipo_que_no_cobra_no_recibe_pagos(self):
         """Contabilizar solo lleva al banco los pagos de los tipos que cobran."""
         compra = self._documento('1000', tipo=GenDocumentoTipo.objects.create(
@@ -3841,6 +3899,80 @@ class ValidarAprobacionTests(TenantTestCase):
             documento_servicio.aprobar(nota.id)
 
         self.assertIn('pendiente', str(caso.exception))
+
+
+class CalcularRedondeoTests(TenantTestCase):
+    """
+    `GenDocumentoDetalle.calcular()` deja todo valor en dinero en centavos; el
+    precio unitario y la cantidad conservan sus 6 decimales.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.documento = GenDocumento.objects.create(
+            documento_tipo=GenDocumentoTipo.objects.create(id=1, nombre='FACTURA'),
+            fecha=date(2026, 10, 6),
+        )
+        self.iva = GenImpuesto.objects.create(
+            nombre='IVA', nombre_extendido='IVA 19%', porcentaje=Decimal('19'),
+        )
+
+    def _detalle(self, impuesto=None, **datos):
+        detalle = GenDocumentoDetalle.objects.create(documento=self.documento, **datos)
+        if impuesto:
+            GenDocumentoImpuesto.objects.create(
+                documento_detalle=detalle, impuesto=impuesto,
+                porcentaje=impuesto.porcentaje, porcentaje_base=Decimal('100'),
+            )
+        detalle.calcular()
+        detalle.save()
+        detalle.refresh_from_db()
+        return detalle
+
+    def test_el_iva_queda_en_centavos(self):
+        """11900.18 x 19% = 2261.0342: se guarda 2261.03 y el total cuadra con lo impreso."""
+        detalle = self._detalle(
+            self.iva, cantidad=Decimal('1'), precio=Decimal('11900.18'),
+        )
+
+        self.assertEqual(detalle.impuesto, Decimal('2261.03'))
+        self.assertEqual(
+            detalle.documentos_impuestos_documento_detalle_rel.get().total, Decimal('2261.03'),
+        )
+        self.assertEqual(detalle.total, Decimal('14161.21'))
+
+    def test_subtotal_y_descuento_en_centavos_con_la_mitad_hacia_arriba(self):
+        detalle = self._detalle(
+            cantidad=Decimal('3'), precio=Decimal('10.041667'),
+            porcentaje_descuento=Decimal('10'),
+        )
+
+        # 3 x 10.041667 = 30.125001 → 30.13; 10% de 30.13 = 3.013 → 3.01.
+        self.assertEqual(detalle.subtotal, Decimal('30.13'))
+        self.assertEqual(detalle.descuento, Decimal('3.01'))
+        self.assertEqual(detalle.total, Decimal('27.12'))
+        # El precio unitario no se toca.
+        self.assertEqual(detalle.precio, Decimal('10.041667'))
+
+    def test_el_total_del_documento_es_la_suma_de_las_lineas_redondeadas(self):
+        for _ in range(3):
+            self._detalle(self.iva, cantidad=Decimal('1'), precio=Decimal('11900.18'))
+
+        self.documento.recalcular_totales()
+
+        self.assertEqual(self.documento.impuesto, Decimal('6783.09'))
+        self.assertEqual(self.documento.total, Decimal('42483.63'))
+
+    def test_la_linea_contable_redondea_el_precio_digitado(self):
+        detalle = self._detalle(tipo_registro='C', precio=Decimal('100.555'))
+
+        self.assertEqual(detalle.precio, Decimal('100.56'))
+        self.assertEqual(detalle.total, Decimal('0'))
 
 
 class EfectosAprobarTests(TenantTestCase):
