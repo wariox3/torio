@@ -186,10 +186,10 @@ class GenDocumentoViewSet(
         description=(
             'Recalcula desde su origen `pago`, `afectado` y `pendiente` de los '
             'documentos de cuentas por cobrar (`tipo: "cobrar"`) o por pagar '
-            '(`tipo: "pagar"`) y los compara contra lo guardado. No escribe nada.\n\n'
-            'Responde `{"revisados", "inconsistentes", "diferencias"}`, con una fila '
-            'por cada campo que difiere: `documento_id`, `numero`, `documento_tipo_id`, '
-            '`campo`, `actual` y `esperado`.'
+            '(`tipo: "pagar"`) y corrige los que no coinciden con lo guardado; los '
+            'que cuadran no se tocan. Lo puede correr cualquier miembro del '
+            'contenedor.\n\n'
+            'Responde `{"ejecutado": true}` cuando el proceso termina.'
         ),
         request=OpenApiTypes.OBJECT,
         responses=OpenApiTypes.OBJECT,
@@ -202,29 +202,37 @@ class GenDocumentoViewSet(
         tipo = request.data.get('tipo')
         if tipo not in cartera_servicio.TIPOS:
             raise ValidationError({'detail': 'El tipo debe ser "cobrar" o "pagar".'})
-        return Response(cartera_servicio.validar(tipo), status=status.HTTP_200_OK)
+        cartera_servicio.validar(tipo)
+        return Response({'ejecutado': True}, status=status.HTTP_200_OK)
 
     @extend_schema(
-        summary='Regenerar la cartera',
+        summary='Resumen de la cartera',
         description=(
-            'Igual que `cartera-validar`, pero corrige los documentos que difieren '
-            'con el valor recalculado. Lo puede correr cualquier miembro del '
-            'contenedor; un documento que ya cuadra no se toca.\n\n'
-            'Responde lo mismo que `cartera-validar` más `corregidos`. Las '
-            '`diferencias` muestran el valor que había antes de corregir.'
+            'Cifras del tablero de cuentas por cobrar (`tipo: "cobrar"`) o por pagar '
+            '(`tipo: "pagar"`), sobre los mismos documentos de los informes '
+            '`cobrar_pendiente` y `pagar_pendiente`. Un documento sin `fecha_vence` '
+            'vence en su `fecha`.\n\n'
+            '- `total`, `documentos`, `vencido` y `por_vencer_7` (vence entre hoy y '
+            'dentro de 7 días).\n'
+            '- `dso`: días de cartera, `total` / ventas netas de los últimos 90 días '
+            '× 90; `null` sin ventas en esa ventana.\n'
+            '- `antiguedad`: saldo y documentos por días vencidos (`al_dia`, `1_30`, '
+            '`31_60`, `61_90`, `mas_90`).\n'
+            '- `top_contactos`: los 10 con más saldo, con lo vencido de cada uno.\n'
+            '- `mas_vencidos`: los 10 documentos con más días vencidos.'
         ),
         request=OpenApiTypes.OBJECT,
         responses=OpenApiTypes.OBJECT,
     )
     @action(
-        detail=False, methods=['post'], url_path='cartera-regenerar',
+        detail=False, methods=['post'], url_path='cartera-resumen',
         permission_classes=[EsMiembroDelTenant, SuscripcionVigente],
     )
-    def cartera_regenerar(self, request):
+    def cartera_resumen(self, request):
         tipo = request.data.get('tipo')
         if tipo not in cartera_servicio.TIPOS:
             raise ValidationError({'detail': 'El tipo debe ser "cobrar" o "pagar".'})
-        return Response(cartera_servicio.regenerar(tipo), status=status.HTTP_200_OK)
+        return Response(cartera_servicio.resumen(tipo), status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'])
     def aprobar(self, request):

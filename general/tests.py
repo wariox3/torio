@@ -3904,10 +3904,10 @@ class ValidarAprobacionTests(TenantTestCase):
 
 class CarteraTests(TenantTestCase):
     """
-    `cartera.validar` / `cartera.regenerar` reconstruyen `pago`, `afectado` y
-    `pendiente` desde su origen. Lo que importa fijar es que el cálculo desde cero
-    dé lo mismo que dejan aprobar y los pagos al aplicarse por incrementos: si no,
-    regenerar "corregiría" documentos sanos.
+    `cartera.validar` reconstruye `pago`, `afectado` y `pendiente` desde su origen y
+    corrige lo que difiere. Lo que importa fijar es que el cálculo desde cero dé lo
+    mismo que dejan aprobar y los pagos al aplicarse por incrementos: si no,
+    "corregiría" documentos sanos.
     """
 
     @classmethod
@@ -3979,23 +3979,17 @@ class CarteraTests(TenantTestCase):
 
     # ---- documentos sanos ----
 
-    def test_un_documento_aprobado_por_el_flujo_real_no_tiene_diferencias(self):
+    def test_un_documento_aprobado_por_el_flujo_real_no_se_corrige(self):
         factura = self._documento('1000')
         documento_pago_servicio.registrar(factura.pk, self.cuenta_banco, Decimal('300'))
         documento_servicio.aprobar(factura.pk)
 
-        resultado = cartera_servicio.validar('cobrar')
+        with mock.patch.object(GenDocumento.objects, 'bulk_update') as bulk_update:
+            cartera_servicio.validar('cobrar')
 
-        self.assertEqual(resultado['revisados'], 1)
-        self.assertEqual(resultado['inconsistentes'], 0)
-        self.assertEqual(self._refrescado(factura).pendiente, Decimal('700'))
-
-    def test_regenerar_no_toca_lo_que_cuadra(self):
-        self._aprobado('1000')
-
-        resultado = cartera_servicio.regenerar('cobrar')
-
-        self.assertEqual(resultado['corregidos'], 0)
+        bulk_update.assert_called_once_with([], cartera_servicio.CAMPOS_CARTERA)
+        factura = self._refrescado(factura)
+        self.assertEqual((factura.pago, factura.pendiente), (Decimal('300'), Decimal('700')))
 
     # ---- reconstrucción ----
 
@@ -4003,22 +3997,9 @@ class CarteraTests(TenantTestCase):
         factura = self._aprobado('1000')
         self._desfasar(factura, pendiente=Decimal('999'))
 
-        validacion = cartera_servicio.validar('cobrar')
+        cartera_servicio.validar('cobrar')
 
-        self.assertEqual(validacion['inconsistentes'], 1)
-        self.assertEqual(validacion['diferencias'], [{
-            'documento_id': factura.id, 'numero': None,
-            'documento_tipo_id': self.tipo_factura.id, 'campo': 'pendiente',
-            'actual': Decimal('999'), 'esperado': Decimal('1000'),
-        }])
-        # Validar no escribe.
-        self.assertEqual(self._refrescado(factura).pendiente, Decimal('999'))
-
-        regeneracion = cartera_servicio.regenerar('cobrar')
-
-        self.assertEqual(regeneracion['corregidos'], 1)
         self.assertEqual(self._refrescado(factura).pendiente, Decimal('1000'))
-        self.assertEqual(cartera_servicio.validar('cobrar')['inconsistentes'], 0)
 
     def test_el_pago_sale_de_los_pagos_no_anulados(self):
         factura = self._aprobado('1000')
@@ -4031,7 +4012,7 @@ class CarteraTests(TenantTestCase):
         )
         self._desfasar(factura, pago=Decimal('500'))
 
-        cartera_servicio.regenerar('cobrar')
+        cartera_servicio.validar('cobrar')
 
         factura = self._refrescado(factura)
         self.assertEqual(factura.pago, Decimal('300'))
@@ -4043,7 +4024,7 @@ class CarteraTests(TenantTestCase):
         # Sin aprobar no ha afectado nada todavía.
         self._recibo(factura, '100', aprobado=False)
 
-        cartera_servicio.regenerar('cobrar')
+        cartera_servicio.validar('cobrar')
 
         factura = self._refrescado(factura)
         self.assertEqual(factura.afectado, Decimal('400'))
@@ -4055,7 +4036,7 @@ class CarteraTests(TenantTestCase):
         self._desfasar(factura, afectado=0, pendiente=Decimal('1000'))
         self._desfasar(nota, afectado=0, pendiente=Decimal('250'))
 
-        cartera_servicio.regenerar('cobrar')
+        cartera_servicio.validar('cobrar')
 
         factura = self._refrescado(factura)
         nota = self._refrescado(nota)
@@ -4068,7 +4049,7 @@ class CarteraTests(TenantTestCase):
             '0', estado_aprobado=True, estado_anulado=True, pendiente=Decimal('50'),
         )
 
-        cartera_servicio.regenerar('cobrar')
+        cartera_servicio.validar('cobrar')
 
         self.assertEqual(self._refrescado(borrador).pendiente, Decimal('0'))
         self.assertEqual(self._refrescado(anulado).pendiente, Decimal('0'))
@@ -4081,16 +4062,188 @@ class CarteraTests(TenantTestCase):
         self._desfasar(factura, pendiente=Decimal('1'))
         self._desfasar(compra, pendiente=Decimal('1'))
 
-        resultado = cartera_servicio.regenerar('pagar')
+        cartera_servicio.validar('pagar')
 
-        self.assertEqual(resultado['revisados'], 1)
         self.assertEqual(self._refrescado(compra).pendiente, Decimal('800'))
         self.assertEqual(self._refrescado(factura).pendiente, Decimal('1'))
+
+    def test_la_vista_solo_responde_que_corrio(self):
+        factura = self._aprobado('1000')
+        self._desfasar(factura, pendiente=Decimal('1'))
+        vista = _DocumentoViewSinPermisos.as_view({'post': 'cartera_validar'})
+        peticion = APIRequestFactory().post(
+            '/general/documento/cartera-validar/', {'tipo': 'cobrar'}, format='json',
+        )
+
+        respuesta = vista(peticion)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, {'ejecutado': True})
+        self.assertEqual(self._refrescado(factura).pendiente, Decimal('1000'))
 
     def test_un_tipo_que_no_es_cobrar_ni_pagar_se_rechaza(self):
         vista = _DocumentoViewSinPermisos.as_view({'post': 'cartera_validar'})
         peticion = APIRequestFactory().post(
             '/general/documento/cartera-validar/', {'tipo': 'todo'}, format='json',
+        )
+
+        respuesta = vista(peticion)
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('cobrar', respuesta.data['detail'])
+
+
+class CarteraResumenTests(TenantTestCase):
+    """
+    `cartera.resumen`: las cifras del tablero. Se fija `hoy` para que los rangos
+    de antigüedad no dependan del día en que corre la prueba.
+    """
+
+    HOY = date(2026, 10, 6)
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test resumen'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'resumen@test.com'
+
+    def setUp(self):
+        self.tipo_factura = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', cobrar=True,
+            documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
+        )
+        self.tipo_nota = GenDocumentoTipo.objects.create(
+            id=2, nombre='NOTA CRÉDITO DE VENTA', cobrar=True,
+            documento_clase=GenDocumentoClase.objects.create(id=101, nombre='Nota crédito venta'),
+        )
+        self.tipo_compra = GenDocumentoTipo.objects.create(
+            id=5, nombre='COMPRA', pagar=True,
+            documento_clase=GenDocumentoClase.objects.create(id=300, nombre='Compra'),
+        )
+        pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
+        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        self.ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        self.identificacion = GenIdentificacion.objects.create(id=6, nombre='NIT', codigo='31')
+        self.tipo_persona = GenTipoPersona.objects.create(id=1, nombre='Jurídica')
+        self.cliente_a = self._contacto('A', '900')
+        self.cliente_b = self._contacto('B', '800')
+
+    def _contacto(self, nombre, numero):
+        return GenContacto.objects.create(
+            numero_identificacion=numero, nombre_corto=nombre, ciudad=self.ciudad,
+            identificacion=self.identificacion, tipo_persona=self.tipo_persona,
+            direccion='calle 1', telefono='1', correo='t@t.com',
+        )
+
+    def _factura(self, pendiente, dias_vencido, contacto=None, tipo=None, **overrides):
+        """`dias_vencido` negativo es una factura que todavía no vence."""
+        datos = {
+            'documento_tipo': tipo or self.tipo_factura,
+            'contacto': contacto or self.cliente_a,
+            'fecha': self.HOY - timedelta(days=max(dias_vencido, 0) + 30),
+            'fecha_vence': self.HOY - timedelta(days=dias_vencido),
+            'total': Decimal(pendiente),
+            'pendiente': Decimal(pendiente),
+            'estado_aprobado': True,
+        }
+        datos.update(overrides)
+        return GenDocumento.objects.create(**datos)
+
+    def _resumen(self, tipo='cobrar'):
+        return cartera_servicio.resumen(tipo, hoy=self.HOY)
+
+    def _antiguedad(self, resumen):
+        return {fila['rango']: (fila['valor'], fila['documentos']) for fila in resumen['antiguedad']}
+
+    def test_indicadores(self):
+        self._factura('100', dias_vencido=-30)   # al día
+        self._factura('200', dias_vencido=-3)    # vence en 3 días
+        self._factura('300', dias_vencido=0)     # vence hoy: todavía no está vencida
+        self._factura('400', dias_vencido=1)
+
+        resumen = self._resumen()
+
+        self.assertEqual(resumen['total'], Decimal('1000'))
+        self.assertEqual(resumen['documentos'], 4)
+        self.assertEqual(resumen['vencido'], Decimal('400'))
+        self.assertEqual(resumen['por_vencer_7'], Decimal('500'))
+
+    def test_antiguedad_por_rangos_con_sus_bordes(self):
+        for dias in (0, 1, 30, 31, 60, 61, 90, 91):
+            self._factura('10', dias_vencido=dias)
+
+        antiguedad = self._antiguedad(self._resumen())
+
+        self.assertEqual(antiguedad, {
+            'al_dia': (Decimal('10'), 1),
+            '1_30': (Decimal('20'), 2),
+            '31_60': (Decimal('20'), 2),
+            '61_90': (Decimal('20'), 2),
+            'mas_90': (Decimal('10'), 1),
+        })
+
+    def test_sin_fecha_vence_vence_en_su_fecha(self):
+        self._factura('50', dias_vencido=0, fecha=self.HOY - timedelta(days=10), fecha_vence=None)
+
+        resumen = self._resumen()
+
+        self.assertEqual(resumen['vencido'], Decimal('50'))
+        self.assertEqual(self._antiguedad(resumen)['1_30'], (Decimal('50'), 1))
+
+    def test_solo_cuenta_lo_que_listan_los_informes(self):
+        """Sin pendiente, sin aprobar, anulado o del otro lado: no entra."""
+        self._factura('100', dias_vencido=5)
+        self._factura('0', dias_vencido=5)
+        self._factura('100', dias_vencido=5, estado_aprobado=False)
+        self._factura('100', dias_vencido=5, estado_anulado=True)
+        self._factura('100', dias_vencido=5, tipo=self.tipo_compra)
+
+        self.assertEqual(self._resumen()['total'], Decimal('100'))
+        self.assertEqual(self._resumen('pagar')['total'], Decimal('100'))
+
+    def test_dso_contra_las_ventas_netas_de_notas_credito(self):
+        # 1000 facturado en la ventana, 100 devuelto por nota: ventas netas 900.
+        self._factura('450', dias_vencido=-10, total=Decimal('1000'),
+                      fecha=self.HOY - timedelta(days=5))
+        self._factura('0', dias_vencido=-10, tipo=self.tipo_nota, total=Decimal('100'),
+                      fecha=self.HOY - timedelta(days=5))
+        # Fuera de la ventana de 90 días: no cuenta como venta.
+        self._factura('0', dias_vencido=0, total=Decimal('5000'),
+                      fecha=self.HOY - timedelta(days=120))
+
+        # 450 / 900 x 90 = 45 días.
+        self.assertEqual(self._resumen()['dso'], 45)
+
+    def test_sin_ventas_no_hay_dso(self):
+        self.assertIsNone(self._resumen()['dso'])
+
+    def test_top_contactos_por_saldo(self):
+        self._factura('100', dias_vencido=-5, contacto=self.cliente_a)
+        self._factura('300', dias_vencido=10, contacto=self.cliente_b)
+        self._factura('50', dias_vencido=-5, contacto=self.cliente_b)
+
+        top = self._resumen()['top_contactos']
+
+        self.assertEqual(
+            [(f['contacto_nombre_corto'], f['saldo'], f['vencido'], f['documentos']) for f in top],
+            [('B', Decimal('350'), Decimal('300'), 2), ('A', Decimal('100'), Decimal('0'), 1)],
+        )
+
+    def test_mas_vencidos_primero_los_mas_antiguos(self):
+        reciente = self._factura('10', dias_vencido=3)
+        antigua = self._factura('20', dias_vencido=45)
+        self._factura('30', dias_vencido=-1)  # no vencida
+
+        mas_vencidos = self._resumen()['mas_vencidos']
+
+        self.assertEqual([f['id'] for f in mas_vencidos], [antigua.id, reciente.id])
+        self.assertEqual(mas_vencidos[0]['dias_vencido'], 45)
+        self.assertEqual(mas_vencidos[0]['documento_tipo_nombre'], 'FACTURA')
+
+    def test_un_tipo_que_no_es_cobrar_ni_pagar_se_rechaza(self):
+        vista = _DocumentoViewSinPermisos.as_view({'post': 'cartera_resumen'})
+        peticion = APIRequestFactory().post(
+            '/general/documento/cartera-resumen/', {}, format='json',
         )
 
         respuesta = vista(peticion)
