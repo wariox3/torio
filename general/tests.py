@@ -4095,8 +4095,8 @@ class CarteraTests(TenantTestCase):
 
 class CarteraResumenTests(TenantTestCase):
     """
-    `cartera.resumen`: las cifras del tablero. Se fija `hoy` para que los rangos
-    de antigüedad no dependan del día en que corre la prueba.
+    `cartera.resumen`: los totales del tablero. Se fija `hoy` para que lo vencido
+    no dependa del día en que corre la prueba.
     """
 
     HOY = date(2026, 10, 6)
@@ -4112,34 +4112,15 @@ class CarteraResumenTests(TenantTestCase):
             id=1, nombre='FACTURA', cobrar=True,
             documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
         )
-        self.tipo_nota = GenDocumentoTipo.objects.create(
-            id=2, nombre='NOTA CRÉDITO DE VENTA', cobrar=True,
-            documento_clase=GenDocumentoClase.objects.create(id=101, nombre='Nota crédito venta'),
-        )
         self.tipo_compra = GenDocumentoTipo.objects.create(
             id=5, nombre='COMPRA', pagar=True,
             documento_clase=GenDocumentoClase.objects.create(id=300, nombre='Compra'),
         )
-        pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
-        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
-        self.ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
-        self.identificacion = GenIdentificacion.objects.create(id=6, nombre='NIT', codigo='31')
-        self.tipo_persona = GenTipoPersona.objects.create(id=1, nombre='Jurídica')
-        self.cliente_a = self._contacto('A', '900')
-        self.cliente_b = self._contacto('B', '800')
 
-    def _contacto(self, nombre, numero):
-        return GenContacto.objects.create(
-            numero_identificacion=numero, nombre_corto=nombre, ciudad=self.ciudad,
-            identificacion=self.identificacion, tipo_persona=self.tipo_persona,
-            direccion='calle 1', telefono='1', correo='t@t.com',
-        )
-
-    def _factura(self, pendiente, dias_vencido, contacto=None, tipo=None, **overrides):
+    def _factura(self, pendiente, dias_vencido, tipo=None, **overrides):
         """`dias_vencido` negativo es una factura que todavía no vence."""
         datos = {
             'documento_tipo': tipo or self.tipo_factura,
-            'contacto': contacto or self.cliente_a,
             'fecha': self.HOY - timedelta(days=max(dias_vencido, 0) + 30),
             'fecha_vence': self.HOY - timedelta(days=dias_vencido),
             'total': Decimal(pendiente),
@@ -4152,43 +4133,31 @@ class CarteraResumenTests(TenantTestCase):
     def _resumen(self, tipo='cobrar'):
         return cartera_servicio.resumen(tipo, hoy=self.HOY)
 
-    def _antiguedad(self, resumen):
-        return {fila['rango']: (fila['valor'], fila['documentos']) for fila in resumen['antiguedad']}
-
-    def test_indicadores(self):
-        self._factura('100', dias_vencido=-30)   # al día
-        self._factura('200', dias_vencido=-3)    # vence en 3 días
-        self._factura('300', dias_vencido=0)     # vence hoy: todavía no está vencida
+    def test_totales_pendiente_vencido_y_vigente(self):
+        self._factura('100', dias_vencido=-30)
+        self._factura('300', dias_vencido=0)     # vence hoy: todavía vigente
         self._factura('400', dias_vencido=1)
+        self._factura('200', dias_vencido=45)
 
         resumen = self._resumen()
 
-        self.assertEqual(resumen['total'], Decimal('1000'))
-        self.assertEqual(resumen['documentos'], 4)
-        self.assertEqual(resumen['vencido'], Decimal('400'))
-        self.assertEqual(resumen['por_vencer_7'], Decimal('500'))
+        self.assertEqual(resumen['total_pendiente'], Decimal('1000'))
+        self.assertEqual(resumen['total_pendiente_vencido'], Decimal('600'))
+        self.assertEqual(resumen['total_pendiente_vigente'], Decimal('400'))
 
-    def test_antiguedad_por_rangos_con_sus_bordes(self):
-        for dias in (0, 1, 30, 31, 60, 61, 90, 91):
-            self._factura('10', dias_vencido=dias)
+    def test_sin_documentos_los_totales_son_cero(self):
+        resumen = self._resumen()
 
-        antiguedad = self._antiguedad(self._resumen())
-
-        self.assertEqual(antiguedad, {
-            'al_dia': (Decimal('10'), 1),
-            '1_30': (Decimal('20'), 2),
-            '31_60': (Decimal('20'), 2),
-            '61_90': (Decimal('20'), 2),
-            'mas_90': (Decimal('10'), 1),
-        })
+        self.assertEqual(
+            (resumen['total_pendiente'], resumen['total_pendiente_vencido'],
+             resumen['total_pendiente_vigente']),
+            (Decimal('0'), Decimal('0'), Decimal('0')),
+        )
 
     def test_sin_fecha_vence_vence_en_su_fecha(self):
         self._factura('50', dias_vencido=0, fecha=self.HOY - timedelta(days=10), fecha_vence=None)
 
-        resumen = self._resumen()
-
-        self.assertEqual(resumen['vencido'], Decimal('50'))
-        self.assertEqual(self._antiguedad(resumen)['1_30'], (Decimal('50'), 1))
+        self.assertEqual(self._resumen()['total_pendiente_vencido'], Decimal('50'))
 
     def test_solo_cuenta_lo_que_listan_los_informes(self):
         """Sin pendiente, sin aprobar, anulado o del otro lado: no entra."""
@@ -4198,53 +4167,22 @@ class CarteraResumenTests(TenantTestCase):
         self._factura('100', dias_vencido=5, estado_anulado=True)
         self._factura('100', dias_vencido=5, tipo=self.tipo_compra)
 
-        self.assertEqual(self._resumen()['total'], Decimal('100'))
-        self.assertEqual(self._resumen('pagar')['total'], Decimal('100'))
+        self.assertEqual(self._resumen()['total_pendiente'], Decimal('100'))
+        self.assertEqual(self._resumen('pagar')['total_pendiente'], Decimal('100'))
 
-    def test_dso_contra_las_ventas_netas_de_notas_credito(self):
-        # 1000 facturado en la ventana, 100 devuelto por nota: ventas netas 900.
-        self._factura('450', dias_vencido=-10, total=Decimal('1000'),
-                      fecha=self.HOY - timedelta(days=5))
-        self._factura('0', dias_vencido=-10, tipo=self.tipo_nota, total=Decimal('100'),
-                      fecha=self.HOY - timedelta(days=5))
-        # Fuera de la ventana de 90 días: no cuenta como venta.
-        self._factura('0', dias_vencido=0, total=Decimal('5000'),
-                      fecha=self.HOY - timedelta(days=120))
+    def test_la_vista_lee_el_tipo_de_la_url(self):
+        self._factura('100', dias_vencido=5)
+        vista = _DocumentoViewSinPermisos.as_view({'get': 'cartera_resumen'})
+        peticion = APIRequestFactory().get('/general/documento/cartera-resumen/', {'tipo': 'cobrar'})
 
-        # 450 / 900 x 90 = 45 días.
-        self.assertEqual(self._resumen()['dso'], 45)
+        respuesta = vista(peticion)
 
-    def test_sin_ventas_no_hay_dso(self):
-        self.assertIsNone(self._resumen()['dso'])
-
-    def test_top_contactos_por_saldo(self):
-        self._factura('100', dias_vencido=-5, contacto=self.cliente_a)
-        self._factura('300', dias_vencido=10, contacto=self.cliente_b)
-        self._factura('50', dias_vencido=-5, contacto=self.cliente_b)
-
-        top = self._resumen()['top_contactos']
-
-        self.assertEqual(
-            [(f['contacto_nombre_corto'], f['saldo'], f['vencido'], f['documentos']) for f in top],
-            [('B', Decimal('350'), Decimal('300'), 2), ('A', Decimal('100'), Decimal('0'), 1)],
-        )
-
-    def test_mas_vencidos_primero_los_mas_antiguos(self):
-        reciente = self._factura('10', dias_vencido=3)
-        antigua = self._factura('20', dias_vencido=45)
-        self._factura('30', dias_vencido=-1)  # no vencida
-
-        mas_vencidos = self._resumen()['mas_vencidos']
-
-        self.assertEqual([f['id'] for f in mas_vencidos], [antigua.id, reciente.id])
-        self.assertEqual(mas_vencidos[0]['dias_vencido'], 45)
-        self.assertEqual(mas_vencidos[0]['documento_tipo_nombre'], 'FACTURA')
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data['total_pendiente'], Decimal('100'))
 
     def test_un_tipo_que_no_es_cobrar_ni_pagar_se_rechaza(self):
-        vista = _DocumentoViewSinPermisos.as_view({'post': 'cartera_resumen'})
-        peticion = APIRequestFactory().post(
-            '/general/documento/cartera-resumen/', {}, format='json',
-        )
+        vista = _DocumentoViewSinPermisos.as_view({'get': 'cartera_resumen'})
+        peticion = APIRequestFactory().get('/general/documento/cartera-resumen/', {'tipo': 'todo'})
 
         respuesta = vista(peticion)
 

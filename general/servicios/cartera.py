@@ -25,11 +25,10 @@ afectación (`documento_detalle_afectado`), que no alimenta la del documento y n
 se toca acá.
 """
 from collections import defaultdict
-from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Count, F, Q, Sum
+from django.db.models import Q, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -148,163 +147,35 @@ def validar(tipo):
 
 # ------------------------------------------------------------------ resumen ----
 
-# Rangos de antigüedad: (clave, días vencidos desde, hasta). `None` es abierto.
-RANGOS_ANTIGUEDAD = (
-    ('al_dia', None, 0),
-    ('1_30', 1, 30),
-    ('31_60', 31, 60),
-    ('61_90', 61, 90),
-    ('mas_90', 91, None),
-)
-
-# Ventana de ventas (o compras) contra la que se miden los días de cartera.
-DIAS_DSO = 90
-
-LIMITE_LISTAS = 10
-
-
-def _pendientes(tipo):
+def resumen(tipo, hoy=None):
     """
-    Lo mismo que listan los informes `cobrar_pendiente` y `pagar_pendiente`: así
-    el front puede abrir el informe desde cualquier cifra del resumen y ver
-    exactamente los documentos que la suman.
+    Totales del tablero de cartera de un lado (`cobrar` o `pagar`), en un solo
+    `aggregate`.
 
-    `vence` es `fecha_vence`, o `fecha` si no la tiene: un documento sin plazo
-    vence el mismo día, como lo fecha `generar_recurrente`.
+    Los documentos son los mismos que listan los informes `cobrar_pendiente` y
+    `pagar_pendiente`, así que cada total cuadra con lo que muestra el informe.
+    Vence en `fecha_vence`, o en `fecha` si no la tiene: un documento sin plazo
+    vence el mismo día, como lo fecha `generar_recurrente`. Vencido es lo que vence
+    antes de hoy; vigente, hoy o después. Los dos suman el total.
     """
-    return GenDocumento.objects.filter(
+    hoy = hoy or timezone.localdate()
+    vencidos = Q(vence__lt=hoy)
+
+    agregados = GenDocumento.objects.filter(
         pendiente__gt=0,
         estado_aprobado=True,
         estado_anulado=False,
         **{TIPOS[tipo]: True},
-    ).annotate(vence=Coalesce('fecha_vence', 'fecha')).order_by()
-
-
-def _filtro_rango(hoy, desde, hasta):
-    """Q de los documentos con entre `desde` y `hasta` días vencidos."""
-    filtro = Q()
-    if desde is not None:
-        filtro &= Q(vence__lte=hoy - timedelta(days=desde))
-    if hasta is not None:
-        filtro &= Q(vence__gte=hoy - timedelta(days=hasta))
-    return filtro
-
-
-def _ventas(tipo, hoy):
-    """
-    Lo facturado (o comprado) en los últimos `DIAS_DSO` días, neto de notas
-    crédito: una nota devuelve venta, no la suma.
-    """
-    totales = GenDocumento.objects.filter(
-        estado_aprobado=True,
-        estado_anulado=False,
-        documento_tipo__documento_clase_id__in=DOCUMENTO_CLASES_CON_CARTERA,
-        fecha__gt=hoy - timedelta(days=DIAS_DSO),
-        fecha__lte=hoy,
-        **{TIPOS[tipo]: True},
-    ).aggregate(
-        brutas=Sum('total', filter=~Q(documento_tipo_id__in=DOCUMENTO_TIPOS_NOTA_CREDITO)),
-        notas=Sum('total', filter=Q(documento_tipo_id__in=DOCUMENTO_TIPOS_NOTA_CREDITO)),
+    ).annotate(vence=Coalesce('fecha_vence', 'fecha')).aggregate(
+        total_pendiente=Sum('pendiente'),
+        total_pendiente_vencido=Sum('pendiente', filter=vencidos),
+        total_pendiente_vigente=Sum('pendiente', filter=~vencidos),
     )
-    return (totales['brutas'] or Decimal('0')) - (totales['notas'] or Decimal('0'))
 
-
-def resumen(tipo, hoy=None):
-    """
-    Cifras del tablero de cartera de un lado (`cobrar` o `pagar`).
-
-    Todo se agrega en la base: los indicadores y la antigüedad salen de un solo
-    `aggregate`, y cada lista de una consulta más.
-    """
-    hoy = hoy or timezone.localdate()
-    pendientes = _pendientes(tipo)
-    vencidos = Q(vence__lt=hoy)
-
-    agregados = pendientes.aggregate(
-        total=Sum('pendiente'),
-        documentos=Count('id'),
-        vencido=Sum('pendiente', filter=vencidos),
-        por_vencer_7=Sum(
-            'pendiente', filter=Q(vence__gte=hoy, vence__lte=hoy + timedelta(days=7)),
-        ),
-        **{
-            f'rango_{clave}': Sum('pendiente', filter=_filtro_rango(hoy, desde, hasta))
-            for clave, desde, hasta in RANGOS_ANTIGUEDAD
-        },
-        **{
-            f'cantidad_{clave}': Count('id', filter=_filtro_rango(hoy, desde, hasta))
-            for clave, desde, hasta in RANGOS_ANTIGUEDAD
-        },
-    )
     cero = Decimal('0')
-    total = agregados['total'] or cero
-
-    # Días que tarda en promedio en cobrarse (o pagarse) lo facturado. Sin ventas
-    # en la ventana no hay contra qué medir.
-    ventas = _ventas(tipo, hoy)
-    dso = round(total / ventas * DIAS_DSO) if ventas > 0 else None
-
-    top_contactos = list(
-        pendientes
-        .values('contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion')
-        .annotate(
-            saldo=Sum('pendiente'),
-            vencido=Coalesce(Sum('pendiente', filter=vencidos), cero),
-            documentos=Count('id'),
-        )
-        .order_by('-saldo', 'contacto_id')[:LIMITE_LISTAS]
-    )
-
-    mas_vencidos = list(
-        pendientes
-        .filter(vencidos)
-        .values(
-            'id', 'numero', 'fecha', 'vence', 'pendiente',
-            'documento_tipo__nombre', 'contacto_id', 'contacto__nombre_corto',
-        )
-        .order_by('vence', 'id')[:LIMITE_LISTAS]
-    )
-
     return {
         'fecha': hoy,
-        'total': total,
-        'documentos': agregados['documentos'],
-        'vencido': agregados['vencido'] or cero,
-        'por_vencer_7': agregados['por_vencer_7'] or cero,
-        'dso': dso,
-        'antiguedad': [
-            {
-                'rango': clave,
-                'dias_desde': desde,
-                'dias_hasta': hasta,
-                'valor': agregados[f'rango_{clave}'] or cero,
-                'documentos': agregados[f'cantidad_{clave}'],
-            }
-            for clave, desde, hasta in RANGOS_ANTIGUEDAD
-        ],
-        'top_contactos': [
-            {
-                'contacto_id': fila['contacto_id'],
-                'contacto_nombre_corto': fila['contacto__nombre_corto'],
-                'contacto_numero_identificacion': fila['contacto__numero_identificacion'],
-                'saldo': fila['saldo'],
-                'vencido': fila['vencido'],
-                'documentos': fila['documentos'],
-            }
-            for fila in top_contactos
-        ],
-        'mas_vencidos': [
-            {
-                'id': fila['id'],
-                'numero': fila['numero'],
-                'documento_tipo_nombre': fila['documento_tipo__nombre'],
-                'contacto_id': fila['contacto_id'],
-                'contacto_nombre_corto': fila['contacto__nombre_corto'],
-                'fecha': fila['fecha'],
-                'fecha_vence': fila['vence'],
-                'dias_vencido': (hoy - fila['vence']).days,
-                'pendiente': fila['pendiente'],
-            }
-            for fila in mas_vencidos
-        ],
+        'total_pendiente': agregados['total_pendiente'] or cero,
+        'total_pendiente_vencido': agregados['total_pendiente_vencido'] or cero,
+        'total_pendiente_vigente': agregados['total_pendiente_vigente'] or cero,
     }

@@ -208,28 +208,28 @@ class GenDocumentoViewSet(
     @extend_schema(
         summary='Resumen de la cartera',
         description=(
-            'Cifras del tablero de cuentas por cobrar (`tipo: "cobrar"`) o por pagar '
-            '(`tipo: "pagar"`), sobre los mismos documentos de los informes '
+            'Cifras del tablero de cuentas por cobrar (`?tipo=cobrar`) o por pagar '
+            '(`?tipo=pagar`), sobre los mismos documentos de los informes '
             '`cobrar_pendiente` y `pagar_pendiente`. Un documento sin `fecha_vence` '
             'vence en su `fecha`.\n\n'
-            '- `total`, `documentos`, `vencido` y `por_vencer_7` (vence entre hoy y '
-            'dentro de 7 días).\n'
-            '- `dso`: días de cartera, `total` / ventas netas de los últimos 90 días '
-            '× 90; `null` sin ventas en esa ventana.\n'
-            '- `antiguedad`: saldo y documentos por días vencidos (`al_dia`, `1_30`, '
-            '`31_60`, `61_90`, `mas_90`).\n'
-            '- `top_contactos`: los 10 con más saldo, con lo vencido de cada uno.\n'
-            '- `mas_vencidos`: los 10 documentos con más días vencidos.'
+            '- `total_pendiente`, `total_pendiente_vencido` (vence antes de hoy) y '
+            '`total_pendiente_vigente` (vence hoy o después); los dos últimos suman '
+            'el primero.'
         ),
-        request=OpenApiTypes.OBJECT,
+        parameters=[
+            OpenApiParameter(
+                'tipo', OpenApiTypes.STR, required=True, enum=['cobrar', 'pagar'],
+                description='Lado de la cartera.',
+            ),
+        ],
         responses=OpenApiTypes.OBJECT,
     )
     @action(
-        detail=False, methods=['post'], url_path='cartera-resumen',
+        detail=False, methods=['get'], url_path='cartera-resumen',
         permission_classes=[EsMiembroDelTenant, SuscripcionVigente],
     )
     def cartera_resumen(self, request):
-        tipo = request.data.get('tipo')
+        tipo = request.query_params.get('tipo')
         if tipo not in cartera_servicio.TIPOS:
             raise ValidationError({'detail': 'El tipo debe ser "cobrar" o "pagar".'})
         return Response(cartera_servicio.resumen(tipo), status=status.HTTP_200_OK)
