@@ -80,6 +80,13 @@ class Rededoc:
             archivos={'archivo': (nombre, archivo, 'application/x-pkcs12')},
         )
 
+    def consultar_certificados(self, emisor_id):
+        """
+        Los certificados de un emisor. `GET /api/emisores/certificado/?emisor={id}`.
+        Rededoc deja uno solo por emisor, pero responde como listado.
+        """
+        return self._peticion('GET', '/api/emisores/certificado/', parametros={'emisor': emisor_id})
+
     def crear_documento(self, datos: dict):
         """
         Crea un documento electrónico (factura, nota…) del emisor.

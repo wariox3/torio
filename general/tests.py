@@ -1667,6 +1667,16 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
         self.assertEqual(caso.exception.status, 400)
         self.cliente.actualizar_emisor.assert_not_called()
 
+    def test_certificado_consultar_pide_los_del_emisor_guardado(self):
+        self.cliente.consultar_certificados.return_value = {
+            'error': False, 'status': 200, 'datos': {'count': 1, 'results': [{'id': 5}]},
+        }
+
+        datos = factura_electronica.certificado_consultar(cliente=self.cliente)
+
+        self.cliente.consultar_certificados.assert_called_once_with(77)
+        self.assertEqual(datos, {'count': 1, 'results': [{'id': 5}]})
+
     def test_sin_emisor_es_404_y_no_llama_a_rededoc(self):
         GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
 
@@ -1674,6 +1684,7 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
             'emisor_consultar': lambda: factura_electronica.emisor_consultar(cliente=self.cliente),
             'emisor_actualizar': lambda: factura_electronica.emisor_actualizar(cliente=self.cliente),
             'emisor_desvincular': factura_electronica.emisor_desvincular,
+            'certificado_consultar': lambda: factura_electronica.certificado_consultar(cliente=self.cliente),
         }
         for nombre, llamada in llamadas.items():
             with self.subTest(funcion=nombre):
@@ -1683,6 +1694,7 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
 
         self.cliente.consultar_emisor.assert_not_called()
         self.cliente.actualizar_emisor.assert_not_called()
+        self.cliente.consultar_certificados.assert_not_called()
 
     def test_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
         for status_rededoc, esperado in ((400, 400), (0, 502)):

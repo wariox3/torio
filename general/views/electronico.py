@@ -52,6 +52,16 @@ class GenElectronicoViewSet(viewsets.GenericViewSet):
 
         return Response(status=status.HTTP_200_OK)
 
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=['get'], url_path='certificado-consultar')
+    def certificado_consultar(self, request):
+        try:
+            datos = servicio.certificado_consultar()
+        except servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+
+        return Response(datos, status=status.HTTP_200_OK)
+
     @extend_schema(
         request={'multipart/form-data': {
             'type': 'object',

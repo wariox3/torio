@@ -188,6 +188,16 @@ def emisor_desvincular() -> GenParametro:
     return parametro
 
 
+def certificado_consultar(cliente: Rededoc = None) -> dict:
+    """Los certificados del emisor de `gen_rededoc_emisor`, tal como los tiene rededoc."""
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+    respuesta = cliente.consultar_certificados(emisor_id)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    return respuesta['datos']
+
+
 def cargar_certificado(archivo, clave, cliente: Rededoc = None) -> dict:
     """
     Manda a rededoc el certificado de firma del emisor y devuelve su respuesta.
