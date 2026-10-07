@@ -78,6 +78,16 @@ class GenElectronicoViewSet(viewsets.GenericViewSet):
 
         return Response(datos, status=status.HTTP_200_OK)
 
+    @extend_schema(request=None, responses=None)
+    @action(detail=False, methods=['post'], url_path='certificado-eliminar')
+    def certificado_eliminar(self, request):
+        try:
+            servicio.certificado_eliminar()
+        except servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+
+        return Response(status=status.HTTP_200_OK)
+
     @extend_schema(
         request={'multipart/form-data': {
             'type': 'object',
@@ -89,10 +99,10 @@ class GenElectronicoViewSet(viewsets.GenericViewSet):
         }},
         responses=None,
     )
-    @action(detail=False, methods=['post'], url_path='cargar-certificado')
-    def cargar_certificado(self, request):
+    @action(detail=False, methods=['post'], url_path='certificado-cargar')
+    def certificado_cargar(self, request):
         try:
-            servicio.cargar_certificado(request.FILES.get('archivo'), request.data.get('clave'))
+            servicio.certificado_cargar(request.FILES.get('archivo'), request.data.get('clave'))
         except servicio.ErrorFacturaElectronica as e:
             return Response(e.cuerpo, status=e.status)
 

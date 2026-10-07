@@ -87,6 +87,13 @@ class Rededoc:
         """
         return self._peticion('GET', '/api/emisores/certificado/', parametros={'emisor': emisor_id})
 
+    def eliminar_certificado(self, certificado_id):
+        """
+        Da de baja un certificado y borra su .p12. `DELETE /api/emisores/certificado/{id}/`
+        responde 204 sin cuerpo.
+        """
+        return self._peticion('DELETE', f'/api/emisores/certificado/{certificado_id}/')
+
     def crear_documento(self, datos: dict):
         """
         Crea un documento electrónico (factura, nota…) del emisor.

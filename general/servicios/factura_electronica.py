@@ -223,7 +223,38 @@ def certificado_consultar(cliente: Rededoc = None) -> dict:
     return respuesta['datos']
 
 
-def cargar_certificado(archivo, clave, cliente: Rededoc = None) -> dict:
+def certificado_eliminar(cliente: Rededoc = None) -> GenParametro:
+    """
+    Borra en rededoc el certificado del emisor de `gen_rededoc_emisor`.
+
+    El id del certificado no lo manda el front: se busca entre los del emisor
+    guardado. Con la API key de torio se puede borrar el de cualquier emisor,
+    así que aceptar un id del request dejaría a un tenant borrar el de otro.
+    """
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+
+    respuesta = cliente.consultar_certificados(emisor_id)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    # Rededoc pagina el listado; con un solo certificado por emisor cabe en la
+    # primera página.
+    certificados = (respuesta['datos'] or {}).get('results') or []
+    if not certificados:
+        raise ErrorFacturaElectronica('El emisor no tiene certificado cargado.', status=404)
+
+    for certificado in certificados:
+        respuesta = cliente.eliminar_certificado(certificado['id'])
+        if respuesta['error']:
+            raise _error_rededoc(respuesta)
+
+    parametro = GenParametro.objects.get(id=1)
+    parametro.gen_certificado_vence = None
+    parametro.save(update_fields=['gen_certificado_vence'])
+    return parametro
+
+
+def certificado_cargar(archivo, clave, cliente: Rededoc = None) -> dict:
     """
     Manda a rededoc el certificado de firma del emisor y devuelve su respuesta.
 

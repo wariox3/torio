@@ -1783,6 +1783,59 @@ class FacturaElectronicaEmisorReasignarTests(TenantTestCase):
                     servicio.assert_not_called()
 
 
+class FacturaElectronicaCertificadoEliminarTests(TenantTestCase):
+    """
+    Borrar el certificado del emisor guardado. No sale a la red: se reemplaza el
+    cliente.
+    """
+
+    def setUp(self):
+        GenParametro.objects.all().delete()
+        GenParametro.objects.create(id=1, gen_rededoc_emisor=77, gen_certificado_vence=date(2027, 1, 1))
+        self.cliente = mock.Mock(spec=rededoc_servicio.Rededoc)
+        self.cliente.consultar_certificados.return_value = {
+            'error': False, 'status': 200, 'datos': {'count': 1, 'results': [{'id': 5, 'emisor': 77}]},
+        }
+        self.cliente.eliminar_certificado.return_value = {'error': False, 'status': 204, 'datos': {'mensaje': ''}}
+
+    def test_borra_el_certificado_del_emisor_guardado_y_limpia_el_vencimiento(self):
+        factura_electronica.certificado_eliminar(cliente=self.cliente)
+
+        self.cliente.consultar_certificados.assert_called_once_with(77)
+        self.cliente.eliminar_certificado.assert_called_once_with(5)
+        self.assertIsNone(GenParametro.objects.get(id=1).gen_certificado_vence)
+
+    def test_sin_certificado_es_404_y_no_borra_nada(self):
+        self.cliente.consultar_certificados.return_value = {
+            'error': False, 'status': 200, 'datos': {'count': 0, 'results': []},
+        }
+
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.certificado_eliminar(cliente=self.cliente)
+
+        self.assertEqual(caso.exception.status, 404)
+        self.cliente.eliminar_certificado.assert_not_called()
+
+    def test_sin_emisor_es_404_y_no_llama_a_rededoc(self):
+        GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
+
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.certificado_eliminar(cliente=self.cliente)
+
+        self.assertEqual(caso.exception.status, 404)
+        self.cliente.consultar_certificados.assert_not_called()
+        self.cliente.eliminar_certificado.assert_not_called()
+
+    def test_si_rededoc_falla_al_borrar_conserva_el_vencimiento(self):
+        self.cliente.eliminar_certificado.return_value = {'error': True, 'status': 0, 'datos': {'mensaje': 'timeout'}}
+
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.certificado_eliminar(cliente=self.cliente)
+
+        self.assertEqual(caso.exception.status, 502)
+        self.assertEqual(GenParametro.objects.get(id=1).gen_certificado_vence, date(2027, 1, 1))
+
+
 class FacturaElectronicaCertificadoTests(TenantTestCase):
     """
     La carga del certificado. No sale a la red: se reemplaza el cliente.
@@ -1807,7 +1860,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
 
     def test_manda_emisor_archivo_y_clave_a_rededoc(self):
         cliente = self._cliente()
-        datos = factura_electronica.cargar_certificado(self._archivo(), 'secreta', cliente=cliente)
+        datos = factura_electronica.certificado_cargar(self._archivo(), 'secreta', cliente=cliente)
 
         args, kwargs = cliente.cargar_certificado.call_args
         self.assertEqual(args[0], 77)                      # el emisor guardado, no uno del front
@@ -1816,7 +1869,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
         self.assertEqual(datos, {'vigente_hasta': '2027-01-31'})
 
     def test_guarda_el_vencimiento_que_devuelve_rededoc(self):
-        factura_electronica.cargar_certificado(self._archivo(), 'secreta', cliente=self._cliente())
+        factura_electronica.certificado_cargar(self._archivo(), 'secreta', cliente=self._cliente())
 
         self.assertEqual(
             GenParametro.objects.get(id=1).gen_certificado_vence, date(2027, 1, 31),
@@ -1824,7 +1877,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
 
     def test_si_rededoc_no_manda_vencimiento_el_campo_queda_vacio(self):
         cliente = self._cliente({'error': False, 'status': 200, 'datos': {}})
-        factura_electronica.cargar_certificado(self._archivo(), 'secreta', cliente=cliente)
+        factura_electronica.certificado_cargar(self._archivo(), 'secreta', cliente=cliente)
 
         self.assertIsNone(GenParametro.objects.get(id=1).gen_certificado_vence)
 
@@ -1833,7 +1886,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
         GenParametro.objects.filter(id=1).update(gen_certificado_vence=date(2026, 12, 31))
         cliente = self._cliente({'error': True, 'status': 400, 'datos': {'detail': 'Clave mala.'}})
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica):
-            factura_electronica.cargar_certificado(self._archivo(), 'mala', cliente=cliente)
+            factura_electronica.certificado_cargar(self._archivo(), 'mala', cliente=cliente)
 
         self.assertEqual(
             GenParametro.objects.get(id=1).gen_certificado_vence, date(2026, 12, 31),
@@ -1848,7 +1901,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
         for (archivo, clave), esperado in faltantes:
             with self.subTest(falta=esperado):
                 with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-                    factura_electronica.cargar_certificado(archivo, clave, cliente=cliente)
+                    factura_electronica.certificado_cargar(archivo, clave, cliente=cliente)
                 self.assertIn(esperado, caso.exception.cuerpo['detail'])
                 self.assertEqual(caso.exception.status, 400)
 
@@ -1859,7 +1912,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
         GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
         cliente = self._cliente()
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-            factura_electronica.cargar_certificado(self._archivo(), 'secreta', cliente=cliente)
+            factura_electronica.certificado_cargar(self._archivo(), 'secreta', cliente=cliente)
 
         self.assertIn('crear el emisor', caso.exception.cuerpo['detail'])
         self.assertEqual(caso.exception.status, 400)
@@ -1868,7 +1921,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
     def test_rechaza_una_extension_que_no_es_de_certificado(self):
         cliente = self._cliente()
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-            factura_electronica.cargar_certificado(
+            factura_electronica.certificado_cargar(
                 self._archivo(nombre='contrato.pdf'), 'secreta', cliente=cliente,
             )
 
@@ -1877,7 +1930,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
 
     def test_acepta_pfx_y_no_distingue_mayusculas(self):
         cliente = self._cliente()
-        factura_electronica.cargar_certificado(
+        factura_electronica.certificado_cargar(
             self._archivo(nombre='FIRMA.PFX'), 'secreta', cliente=cliente,
         )
         cliente.cargar_certificado.assert_called_once()
@@ -1886,7 +1939,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
         cliente = self._cliente()
         grande = self._archivo(tamano=factura_electronica.TAMANO_MAXIMO_CERTIFICADO + 1)
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-            factura_electronica.cargar_certificado(grande, 'secreta', cliente=cliente)
+            factura_electronica.certificado_cargar(grande, 'secreta', cliente=cliente)
 
         self.assertIn('límite', caso.exception.cuerpo['detail'])
         cliente.cargar_certificado.assert_not_called()
@@ -1896,7 +1949,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
         cuerpo = {'detail': 'La clave no corresponde al certificado.', 'errores': {}}
         cliente = self._cliente({'error': True, 'status': 400, 'datos': cuerpo})
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-            factura_electronica.cargar_certificado(self._archivo(), 'mala', cliente=cliente)
+            factura_electronica.certificado_cargar(self._archivo(), 'mala', cliente=cliente)
 
         self.assertEqual(caso.exception.cuerpo, cuerpo)
         self.assertEqual(caso.exception.status, 400)
@@ -1904,7 +1957,7 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
     def test_si_rededoc_no_responde_es_502(self):
         cliente = self._cliente({'error': True, 'status': 0, 'datos': {'mensaje': 'timeout'}})
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-            factura_electronica.cargar_certificado(self._archivo(), 'secreta', cliente=cliente)
+            factura_electronica.certificado_cargar(self._archivo(), 'secreta', cliente=cliente)
 
         self.assertEqual(caso.exception.status, 502)
 
