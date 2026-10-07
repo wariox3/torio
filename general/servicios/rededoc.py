@@ -50,12 +50,21 @@ class Rededoc:
     def crear_emisor(self, datos: dict):
         """
         Da de alta un emisor. `POST /api/emisores/emisor/`.
-
-        No se manda `cuenta`: rededoc cuelga el emisor de la cuenta de la
-        integración que autentica, o sea de nuestra API key. Mandarla sería la
-        única forma de colgarlo de la cuenta equivocada.
         """
         return self._peticion('POST', '/api/emisores/emisor/', datos=datos)
+
+    def consultar_emisor(self, emisor_id):
+        """El emisor tal como lo tiene rededoc. `GET /api/emisores/emisor/{id}/`."""
+        return self._peticion('GET', f'/api/emisores/emisor/{emisor_id}/')
+
+    def actualizar_emisor(self, emisor_id, datos: dict):
+        """
+        Edita un emisor. `PATCH /api/emisores/emisor/{id}/`.
+
+        Rededoc solo deja cambiar razón social, tipo de organización, dirección,
+        ubicación y correo; cualquier otro campo responde 400.
+        """
+        return self._peticion('PATCH', f'/api/emisores/emisor/{emisor_id}/', datos=datos)
 
     def cargar_certificado(self, emisor_id, archivo, clave: str, nombre: str = 'certificado.p12'):
         """

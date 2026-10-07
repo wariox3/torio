@@ -45,66 +45,145 @@ class ErrorFacturaElectronica(Exception):
         self.status = status
 
 
-def crear_emisor(cliente: Rededoc = None) -> GenParametro:
+def _emisor_id() -> int:
+    """El id del emisor del tenant en rededoc; 404 si no tiene emisor configurado."""
+    parametro, _ = GenParametro.objects.get_or_create(id=1)
+    if not parametro.gen_rededoc_emisor:
+        raise ErrorFacturaElectronica(
+            'La empresa no tiene emisor configurado en el servicio de facturación electrónica.',
+            status=404,
+        )
+    return parametro.gen_rededoc_emisor
+
+
+def _error_rededoc(respuesta):
+    """
+    502 cuando rededoc no respondió o falló por dentro; 400 cuando rechazó los
+    datos, que es algo que el usuario puede corregir.
+    """
+    status = 400 if 400 <= respuesta['status'] < 500 else 502
+    return ErrorFacturaElectronica(respuesta['datos'], status=status)
+
+
+def _datos_actualizables(configuracion: GenConfiguracion) -> dict:
+    """
+    Los campos del emisor que rededoc deja cambiar, leídos de `GenConfiguracion`.
+    Los usan el alta y la actualización, para que las dos manden lo mismo.
+
+    Se nombra el que falta para que el usuario sepa qué llenar en configuración.
+    """
+    if not configuracion.gen_empresa_razon_social:
+        raise ErrorFacturaElectronica('Falta la razón social de la empresa.')
+    if not configuracion.gen_empresa_tipo_persona:
+        raise ErrorFacturaElectronica('Falta el tipo de organización de la empresa.')
+    if not configuracion.gen_empresa_direccion:
+        raise ErrorFacturaElectronica('Falta la dirección de la empresa.')
+    if not configuracion.gen_empresa_ciudad:
+        raise ErrorFacturaElectronica('Falta la ciudad de la empresa.')
+    if not configuracion.gen_empresa_correo:
+        raise ErrorFacturaElectronica('Falta el correo de la empresa.')
+
+    ciudad = configuracion.gen_empresa_ciudad
+    estado = ciudad.estado
+    return {
+        'razon_social': configuracion.gen_empresa_razon_social,
+        'tipo_organizacion': configuracion.gen_empresa_tipo_persona_id,
+        'direccion': configuracion.gen_empresa_direccion,
+        # País, departamento y municipio van por id: rededoc usa el mismo
+        # catálogo geográfico que torio.
+        'pais': estado.pais_id,
+        'departamento': estado.id,
+        'municipio': ciudad.id,
+        'correo': configuracion.gen_empresa_correo,
+    }
+
+
+def emisor_crear(cliente: Rededoc = None) -> GenParametro:
     """
     Crea el emisor del tenant en rededoc y guarda su id en `GenParametro`.
 
-    No se consulta antes si el NIT ya tiene emisor: la unicidad la valida rededoc,
-    que es quien la conoce. Si ya está registrado, rededoc rechaza la creación y
-    ese mensaje es el que sube al front.
+    Si el tenant ya tiene un emisor guardado no se llama a rededoc: para crear
+    otro primero hay que desvincular el actual. Lo que no se consulta es si el
+    NIT ya tiene emisor en rededoc: esa unicidad la valida rededoc, que es quien
+    la conoce, y su mensaje es el que sube al front.
     """
+    parametro, _ = GenParametro.objects.get_or_create(id=1)
+    if parametro.gen_rededoc_emisor:
+        raise ErrorFacturaElectronica('El emisor ya está registrado.')
+
     cliente = cliente or Rededoc()
     configuracion, _ = GenConfiguracion.objects.get_or_create(id=1)
 
-    # Los campos que rededoc exige, en el orden en que aparecen en el payload. Se
-    # nombra el que falta para que el usuario sepa qué llenar en configuración.
-    if not configuracion.gen_empresa_razon_social:
-        raise ErrorFacturaElectronica('Falta la razón social de la empresa.')
-    if not configuracion.gen_empresa_numero_identificacion:
-        raise ErrorFacturaElectronica('Falta el número de identificación de la empresa.')
+    # La identificación se fija en el alta y rededoc no deja cambiarla después,
+    # por eso no está en `_datos_actualizables`.
     if not configuracion.gen_empresa_identificacion:
         raise ErrorFacturaElectronica('Falta el tipo de identificación de la empresa.')
-    if not configuracion.gen_empresa_tipo_persona:
-        raise ErrorFacturaElectronica('Falta el tipo de organización de la empresa.')
-    if not configuracion.gen_empresa_ciudad:
-        raise ErrorFacturaElectronica('Falta la ciudad de la empresa.')
-    if not configuracion.gen_empresa_direccion:
-        raise ErrorFacturaElectronica('Falta la dirección de la empresa.')
- 
-    ciudad = configuracion.gen_empresa_ciudad
-    estado = ciudad.estado
-    pais = estado.pais
+    if not configuracion.gen_empresa_numero_identificacion:
+        raise ErrorFacturaElectronica('Falta el número de identificación de la empresa.')
 
     payload = {
-        'razon_social': configuracion.gen_empresa_razon_social,
-        'nombre_comercial': configuracion.gen_empresa_nombre_corto,
-        'tipo_identificacion': configuracion.gen_empresa_identificacion_id,
+        'cuenta': 1,
+        # El tipo de identificación va por su código DIAN (NIT = 31), que en
+        # rededoc es también su id.
+        'tipo_identificacion': int(configuracion.gen_empresa_identificacion.codigo),
         'numero_identificacion': configuracion.gen_empresa_numero_identificacion,
-        'digito_verificacion': configuracion.gen_empresa_digito_verificacion or '',
-        'tipo_organizacion': configuracion.gen_empresa_tipo_persona_id,
-        'pais': pais.codigo,
-        'departamento': estado.codigo,
-        'municipio': ciudad.codigo,
-        'direccion': configuracion.gen_empresa_direccion,
+        **_datos_actualizables(configuracion),
         'telefono': configuracion.gen_empresa_telefono or '',
-        'correo': configuracion.gen_empresa_correo or '',
         # El tenant de torio. Rededoc lo guarda en el emisor y lo devuelve como
         # `cliente` en cada aviso del webhook: es como el webhook sabe a qué
         # schema entrar (ver docs/webhook_rededoc.md §5).
-        'referencia_externa': connection.tenant.id,
+        'referencia_externa': str(connection.tenant.id),
     }
 
     respuesta = cliente.crear_emisor(payload)
     if respuesta['error']:
-        # 502 cuando rededoc no respondió o falló por dentro; 400 cuando rechazó
-        # los datos, que es algo que el usuario puede corregir en configuración
-        # (o el emisor ya existe, y rededoc lo dice en su propio mensaje).
-        status = 400 if 400 <= respuesta['status'] < 500 else 502
-        raise ErrorFacturaElectronica(respuesta['datos'], status=status)
+        raise _error_rededoc(respuesta)
     emisor_id = (respuesta['datos'] or {}).get('id')
 
-    parametro, _ = GenParametro.objects.get_or_create(id=1)
     parametro.gen_rededoc_emisor = emisor_id
+    parametro.save(update_fields=['gen_rededoc_emisor'])
+    return parametro
+
+
+def emisor_consultar(cliente: Rededoc = None) -> dict:
+    """El emisor de `gen_rededoc_emisor` tal como lo tiene rededoc."""
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+    respuesta = cliente.consultar_emisor(emisor_id)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    return respuesta['datos']
+
+
+def emisor_actualizar(cliente: Rededoc = None) -> dict:
+    """
+    Manda a rededoc el PATCH del emisor de `gen_rededoc_emisor` con los campos
+    actualizables de `GenConfiguracion`, igual que el alta, y devuelve el emisor
+    actualizado.
+    """
+    emisor_id = _emisor_id()
+    configuracion, _ = GenConfiguracion.objects.get_or_create(id=1)
+    payload = _datos_actualizables(configuracion)
+
+    cliente = cliente or Rededoc()
+    respuesta = cliente.actualizar_emisor(emisor_id, payload)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    return respuesta['datos']
+
+
+def emisor_desvincular() -> GenParametro:
+    """
+    Borra `gen_rededoc_emisor`. El emisor sigue existiendo en rededoc: solo deja
+    de estar asociado a este tenant, y con eso se puede volver a crear uno.
+    """
+    parametro, _ = GenParametro.objects.get_or_create(id=1)
+    if not parametro.gen_rededoc_emisor:
+        raise ErrorFacturaElectronica(
+            'La empresa no tiene emisor configurado en el servicio de facturación electrónica.',
+            status=404,
+        )
+    parametro.gen_rededoc_emisor = None
     parametro.save(update_fields=['gen_rededoc_emisor'])
     return parametro
 

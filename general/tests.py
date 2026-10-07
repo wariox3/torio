@@ -82,7 +82,7 @@ from general.views.configuracion import GenConfiguracionViewSet
 from general.views.documento import GenDocumentoViewSet
 from general.views.documento_detalle import GenDocumentoDetalleViewSet
 from general.views.documento_pago import GenDocumentoPagoViewSet
-from general.views.factura_electronica import GenFacturaElectronicaViewSet
+from general.views.electronico import GenElectronicoViewSet
 from general.views.modelo import GenModeloViewSet
 from general.views.parametro import GenParametroViewSet
 from general.views.precio_detalle import GenPrecioDetalleViewSet
@@ -1306,7 +1306,7 @@ class _ParametroViewSinPermisos(GenParametroViewSet):
     throttle_classes = []
 
 
-class _FacturaElectronicaViewSinPermisos(GenFacturaElectronicaViewSet):
+class _ElectronicoViewSinPermisos(GenElectronicoViewSet):
     """Sin auth ni permisos: acá se prueba la traducción a HTTP, no la membresía."""
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
@@ -1485,40 +1485,33 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
     def test_guarda_el_id_del_emisor_y_no_activa_la_facturacion(self):
         """Tener emisor no es estar activo: `gen_factura_electronica_activa` va aparte."""
         cliente = self._cliente()
-        parametro = factura_electronica.crear_emisor(cliente=cliente)
+        parametro = factura_electronica.emisor_crear(cliente=cliente)
 
         self.assertEqual(parametro.gen_rededoc_emisor, 77)
         self.assertEqual(GenParametro.objects.get(id=1).gen_rededoc_emisor, 77)
         self.assertIs(GenParametro.objects.get(id=1).gen_factura_electronica_activa, False)
 
-    def test_el_payload_sale_de_la_configuracion_y_no_lleva_cuenta(self):
-        """
-        `cuenta` la resuelve rededoc a partir de la API key de la integración;
-        mandarla sería la única forma de colgar el emisor de otra cuenta.
-        """
+    def test_el_payload_sale_de_la_configuracion(self):
         cliente = self._cliente()
-        factura_electronica.crear_emisor(cliente=cliente)
+        factura_electronica.emisor_crear(cliente=cliente)
 
         payload = cliente.crear_emisor.call_args.args[0]
-        self.assertNotIn('cuenta', payload)
+        self.assertEqual(payload['cuenta'], 1)
         # El tenant: rededoc lo devuelve como `cliente` en los avisos del webhook.
-        self.assertEqual(payload['referencia_externa'], self.tenant.id)
+        self.assertEqual(payload['referencia_externa'], str(self.tenant.id))
         self.assertEqual(payload['razon_social'], 'Semantica Digital S.A.S')
         self.assertEqual(payload['numero_identificacion'], '901192048')
-        self.assertEqual(payload['digito_verificacion'], '8')
         self.assertEqual(payload['direccion'], 'Calle 10 # 20-30')
-        # Códigos, no PK: las de nuestro catálogo no significan nada en rededoc.
-        self.assertEqual(payload['municipio'], '05001')
-        self.assertEqual(payload['departamento'], '05')
-        self.assertEqual(payload['pais'], 'CO')
-
-    def test_el_nombre_comercial_sale_del_nombre_corto(self):
-        self.configuracion.gen_empresa_nombre_corto = 'Semantica'
-        self.configuracion.save()
-        cliente = self._cliente()
-        factura_electronica.crear_emisor(cliente=cliente)
-
-        self.assertEqual(cliente.crear_emisor.call_args.args[0]['nombre_comercial'], 'Semantica')
+        self.assertEqual(payload['telefono'], '3205015059')
+        self.assertEqual(payload['correo'], 'contacto@ejemplo.com')
+        # Tipo de identificación por código DIAN; el resto por id.
+        self.assertEqual(payload['tipo_identificacion'], 31)
+        self.assertEqual(payload['tipo_organizacion'], 1)
+        self.assertEqual(payload['municipio'], 1)
+        self.assertEqual(payload['departamento'], 1)
+        self.assertEqual(payload['pais'], 250)
+        self.assertNotIn('nombre_comercial', payload)
+        self.assertNotIn('digito_verificacion', payload)
 
     def test_si_falta_un_dato_dice_cual_y_no_llama_a_rededoc(self):
         cliente = self._cliente()
@@ -1529,6 +1522,7 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
             'gen_empresa_tipo_persona': (None, 'tipo de organización'),
             'gen_empresa_ciudad': (None, 'ciudad'),
             'gen_empresa_direccion': (None, 'dirección'),
+            'gen_empresa_correo': ('', 'correo'),
         }
         for campo, (vacio, esperado) in faltantes.items():
             with self.subTest(campo=campo):
@@ -1537,7 +1531,7 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
                 self.configuracion.save()
 
                 with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-                    factura_electronica.crear_emisor(cliente=cliente)
+                    factura_electronica.emisor_crear(cliente=cliente)
 
                 self.assertEqual(caso.exception.status, 400)
                 self.assertIn(esperado, caso.exception.cuerpo['detail'])
@@ -1557,7 +1551,7 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
             'datos': {'detail': 'Ya existe un emisor con ese número de identificación.'},
         })
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-            factura_electronica.crear_emisor(cliente=cliente)
+            factura_electronica.emisor_crear(cliente=cliente)
 
         self.assertEqual(caso.exception.cuerpo, {
             'detail': 'Ya existe un emisor con ese número de identificación.',
@@ -1570,7 +1564,7 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
             'error': True, 'status': 400, 'datos': {'razon_social': ['Requerido']},
         })
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-            factura_electronica.crear_emisor(cliente=cliente)
+            factura_electronica.emisor_crear(cliente=cliente)
 
         self.assertEqual(caso.exception.status, 400)
         self.assertFalse(GenParametro.objects.filter(gen_rededoc_emisor__isnull=False).exists())
@@ -1584,7 +1578,7 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
         cuerpo = {'detail': 'No se pudo validar el NIT contra el RUES.', 'errores': {}}
         cliente = self._cliente(crear={'error': True, 'status': 503, 'datos': cuerpo})
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-            factura_electronica.crear_emisor(cliente=cliente)
+            factura_electronica.emisor_crear(cliente=cliente)
 
         self.assertEqual(caso.exception.cuerpo, cuerpo)
         self.assertEqual(caso.exception.status, 502)
@@ -1594,7 +1588,7 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
             'error': True, 'status': 400, 'datos': {'razon_social': ['Requerido']},
         })
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-            factura_electronica.crear_emisor(cliente=cliente)
+            factura_electronica.emisor_crear(cliente=cliente)
 
         # Sube sin envolver, con el `detail` que exige el estándar de errores.
         self.assertEqual(caso.exception.cuerpo, {
@@ -1605,10 +1599,105 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
     def test_si_rededoc_no_responde_es_502_y_no_guarda_el_emisor(self):
         cliente = self._cliente(crear={'error': True, 'status': 0, 'datos': {'mensaje': 'timeout'}})
         with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-            factura_electronica.crear_emisor(cliente=cliente)
+            factura_electronica.emisor_crear(cliente=cliente)
 
         self.assertEqual(caso.exception.status, 502)
         self.assertFalse(GenParametro.objects.filter(gen_rededoc_emisor__isnull=False).exists())
+
+
+class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
+    """
+    Consulta, actualización y desvinculación del emisor. No sale a la red: se
+    reemplaza el cliente.
+    """
+
+    def setUp(self):
+        GenParametro.objects.all().delete()
+        GenParametro.objects.create(id=1, gen_rededoc_emisor=77)
+        self.cliente = mock.Mock(spec=rededoc_servicio.Rededoc)
+
+    def test_crear_con_emisor_guardado_es_error_y_no_llama_a_rededoc(self):
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.emisor_crear(cliente=self.cliente)
+
+        self.assertEqual(caso.exception.status, 400)
+        self.assertEqual(caso.exception.cuerpo['detail'], 'El emisor ya está registrado.')
+        self.cliente.crear_emisor.assert_not_called()
+
+    def test_consultar_pide_el_emisor_guardado(self):
+        self.cliente.consultar_emisor.return_value = {'error': False, 'status': 200, 'datos': {'id': 77}}
+
+        datos = factura_electronica.emisor_consultar(cliente=self.cliente)
+
+        self.cliente.consultar_emisor.assert_called_once_with(77)
+        self.assertEqual(datos, {'id': 77})
+
+    def test_actualizar_hace_patch_al_emisor_guardado_con_la_configuracion(self):
+        configuracion = GenConfiguracion.objects.get_or_create(id=1)[0]
+        pais = GenPais.objects.create(id=46, nombre='Colombia', codigo='CO')
+        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        configuracion.gen_empresa_ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        configuracion.gen_empresa_tipo_persona = GenTipoPersona.objects.create(id=1, nombre='Jurídica')
+        configuracion.gen_empresa_razon_social = 'Semantica Digital S.A.S'
+        configuracion.gen_empresa_direccion = 'Calle 10 # 20-30'
+        configuracion.gen_empresa_correo = 'contacto@ejemplo.com'
+        configuracion.gen_empresa_numero_identificacion = '900111222'
+        configuracion.save()
+        self.cliente.actualizar_emisor.return_value = {'error': False, 'status': 200, 'datos': {'id': 77}}
+
+        factura_electronica.emisor_actualizar(cliente=self.cliente)
+
+        # Solo lo que rededoc deja cambiar: la identificación se fija en el alta.
+        self.cliente.actualizar_emisor.assert_called_once_with(77, {
+            'razon_social': 'Semantica Digital S.A.S',
+            'tipo_organizacion': 1,
+            'direccion': 'Calle 10 # 20-30',
+            'pais': 46,
+            'departamento': 1,
+            'municipio': 1,
+            'correo': 'contacto@ejemplo.com',
+        })
+
+    def test_actualizar_si_falta_un_dato_no_llama_a_rededoc(self):
+        GenConfiguracion.objects.get_or_create(id=1)
+
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.emisor_actualizar(cliente=self.cliente)
+
+        self.assertEqual(caso.exception.status, 400)
+        self.cliente.actualizar_emisor.assert_not_called()
+
+    def test_sin_emisor_es_404_y_no_llama_a_rededoc(self):
+        GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
+
+        llamadas = {
+            'emisor_consultar': lambda: factura_electronica.emisor_consultar(cliente=self.cliente),
+            'emisor_actualizar': lambda: factura_electronica.emisor_actualizar(cliente=self.cliente),
+            'emisor_desvincular': factura_electronica.emisor_desvincular,
+        }
+        for nombre, llamada in llamadas.items():
+            with self.subTest(funcion=nombre):
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    llamada()
+                self.assertEqual(caso.exception.status, 404)
+
+        self.cliente.consultar_emisor.assert_not_called()
+        self.cliente.actualizar_emisor.assert_not_called()
+
+    def test_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
+        for status_rededoc, esperado in ((400, 400), (0, 502)):
+            with self.subTest(status_rededoc=status_rededoc):
+                self.cliente.consultar_emisor.return_value = {
+                    'error': True, 'status': status_rededoc, 'datos': {'detail': 'No.'},
+                }
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    factura_electronica.emisor_consultar(cliente=self.cliente)
+                self.assertEqual(caso.exception.status, esperado)
+
+    def test_desvincular_borra_el_emisor_y_permite_crear_otro(self):
+        factura_electronica.emisor_desvincular()
+
+        self.assertIsNone(GenParametro.objects.get(id=1).gen_rededoc_emisor)
 
 
 class FacturaElectronicaCertificadoTests(TenantTestCase):
@@ -1754,14 +1843,14 @@ class FacturaElectronicaVistaTests(TenantTestCase):
         self.factory = APIRequestFactory()
 
     def _llamar(self, vista_clase=None):
-        vista = (vista_clase or _FacturaElectronicaViewSinPermisos).as_view({'post': 'crear_emisor'})
-        peticion = self.factory.post('/general/factura-electronica/crear-emisor/')
+        vista = (vista_clase or _ElectronicoViewSinPermisos).as_view({'post': 'emisor_crear'})
+        peticion = self.factory.post('/general/electronico/emisor-crear/')
         force_authenticate(peticion, user=SegUsuario(id=1))
         return vista(peticion)
 
     def test_una_creacion_correcta_responde_200(self):
         parametro = GenParametro(id=1, gen_rededoc_emisor=77)
-        with mock.patch.object(factura_electronica, 'crear_emisor', return_value=parametro):
+        with mock.patch.object(factura_electronica, 'emisor_crear', return_value=parametro):
             respuesta = self._llamar()
 
         self.assertEqual(respuesta.status_code, 200)
@@ -1770,7 +1859,7 @@ class FacturaElectronicaVistaTests(TenantTestCase):
         error = factura_electronica.ErrorFacturaElectronica(
             {'detail': 'Faltan datos', 'errores': {'campos': ['Razón social']}}, status=400,
         )
-        with mock.patch.object(factura_electronica, 'crear_emisor', side_effect=error):
+        with mock.patch.object(factura_electronica, 'emisor_crear', side_effect=error):
             respuesta = self._llamar()
 
         self.assertEqual(respuesta.status_code, 400)
@@ -1780,7 +1869,7 @@ class FacturaElectronicaVistaTests(TenantTestCase):
 
     def test_un_mensaje_propio_del_servicio_sale_como_detail(self):
         error = factura_electronica.ErrorFacturaElectronica('Falta la ciudad de la empresa.')
-        with mock.patch.object(factura_electronica, 'crear_emisor', side_effect=error):
+        with mock.patch.object(factura_electronica, 'emisor_crear', side_effect=error):
             respuesta = self._llamar()
 
         self.assertEqual(respuesta.status_code, 400)
@@ -1788,7 +1877,7 @@ class FacturaElectronicaVistaTests(TenantTestCase):
 
     def test_un_502_del_servicio_llega_como_502(self):
         error = factura_electronica.ErrorFacturaElectronica('Sin respuesta', status=502)
-        with mock.patch.object(factura_electronica, 'crear_emisor', side_effect=error):
+        with mock.patch.object(factura_electronica, 'emisor_crear', side_effect=error):
             respuesta = self._llamar()
         self.assertEqual(respuesta.status_code, 502)
 
