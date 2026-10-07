@@ -12,9 +12,12 @@ _SELECCIONAR_PARAMS = [
     OpenApiParameter('pension', bool, description='Filtrar por entidad de pensión'),
     OpenApiParameter('cesantias', bool, description='Filtrar por entidad de cesantías'),
     OpenApiParameter('caja', bool, description='Filtrar por caja de compensación'),
+    OpenApiParameter('riesgo', bool, description='Filtrar por administradora de riesgos laborales'),
+    OpenApiParameter('sena', bool, description='Filtrar por SENA'),
+    OpenApiParameter('icbf', bool, description='Filtrar por ICBF'),
 ]
 
-_FILTROS_BOOLEANOS = ['salud', 'pension', 'cesantias', 'caja']
+_FILTROS_BOOLEANOS = ['salud', 'pension', 'cesantias', 'caja', 'riesgo', 'sena', 'icbf']
 
 
 @extend_schema(tags=['Entidad'])
