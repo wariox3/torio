@@ -22,13 +22,17 @@ class GenDocumentoDetallePendienteSerializer(serializers.ModelSerializer):
         'documento__numero',
         'documento__fecha',
         'documento__contacto_id',
+        'documento__documento_tipo_id',
     }
-    select_related_lista = ('documento', 'documento__contacto', 'item')
+    select_related_lista = ('documento', 'documento__documento_tipo', 'documento__contacto', 'item')
     prefetch_related_lista = ('item__items_impuestos_item_rel__impuesto',)
     ordenamiento_default_lista = ('-documento__fecha', '-id')
 
     documento_numero = serializers.IntegerField(source='documento.numero', read_only=True)
     documento_fecha = serializers.DateField(source='documento.fecha', read_only=True)
+    documento_documento_tipo_nombre = serializers.CharField(
+        source='documento.documento_tipo.nombre', read_only=True, default=None,
+    )
     contacto_id = serializers.IntegerField(source='documento.contacto_id', read_only=True)
     contacto_nombre_corto = serializers.CharField(
         source='documento.contacto.nombre_corto', read_only=True, default=None,
@@ -51,6 +55,7 @@ class GenDocumentoDetallePendienteSerializer(serializers.ModelSerializer):
             'documento',
             'documento_numero',
             'documento_fecha',
+            'documento_documento_tipo_nombre',
             'contacto_id',
             'contacto_nombre_corto',
             'item_id',
