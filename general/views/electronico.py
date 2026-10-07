@@ -1,16 +1,20 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from general.servicios import factura_electronica as servicio
 
 
+class EmisorReasignarRequestSerializer(serializers.Serializer):
+    emisor = serializers.IntegerField(min_value=1, help_text='Id del emisor en rededoc.')
+
+
 @extend_schema(tags=['Electronico'])
 class GenElectronicoViewSet(viewsets.GenericViewSet):
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     @extend_schema(request=None, responses=None)
     @action(detail=False, methods=['post'], url_path='emisor-crear')
@@ -41,6 +45,18 @@ class GenElectronicoViewSet(viewsets.GenericViewSet):
             return Response(e.cuerpo, status=e.status)
 
         return Response(datos, status=status.HTTP_200_OK)
+
+    @extend_schema(request=EmisorReasignarRequestSerializer, responses=None)
+    @action(detail=False, methods=['post'], url_path='emisor-reasignar')
+    def emisor_reasignar(self, request):
+        serializer = EmisorReasignarRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            servicio.emisor_reasignar(serializer.validated_data['emisor'])
+        except servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+
+        return Response(status=status.HTTP_200_OK)
 
     @extend_schema(request=None, responses=None)
     @action(detail=False, methods=['post'], url_path='emisor-desvincular')

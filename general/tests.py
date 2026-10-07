@@ -1712,6 +1712,77 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
         self.assertIsNone(GenParametro.objects.get(id=1).gen_rededoc_emisor)
 
 
+class FacturaElectronicaEmisorReasignarTests(TenantTestCase):
+    """
+    Reasignar el emisor: solo uno cuya `referencia_externa` en rededoc sea este
+    tenant. No sale a la red: se reemplaza el cliente.
+    """
+
+    def setUp(self):
+        GenParametro.objects.all().delete()
+        GenParametro.objects.create(id=1, gen_rededoc_emisor=77)
+        self.cliente = mock.Mock(spec=rededoc_servicio.Rededoc)
+
+    def _rededoc_responde(self, status_rededoc=200, datos=None):
+        self.cliente.consultar_emisor.return_value = {
+            'error': status_rededoc >= 400 or status_rededoc == 0,
+            'status': status_rededoc, 'datos': datos or {},
+        }
+
+    def test_asigna_un_emisor_de_este_tenant(self):
+        self._rededoc_responde(datos={'id': 88, 'referencia_externa': str(self.tenant.id)})
+
+        factura_electronica.emisor_reasignar(88, cliente=self.cliente)
+
+        self.cliente.consultar_emisor.assert_called_once_with(88)
+        self.assertEqual(GenParametro.objects.get(id=1).gen_rededoc_emisor, 88)
+
+    def test_un_emisor_ajeno_o_inexistente_es_400_y_no_cambia_nada(self):
+        casos = {
+            'de otro tenant': (200, {'id': 88, 'referencia_externa': str(self.tenant.id + 1)}),
+            'sin referencia': (200, {'id': 88, 'referencia_externa': None}),
+            'no existe': (404, {'detail': 'No encontrado.'}),
+        }
+        for nombre, (status_rededoc, datos) in casos.items():
+            with self.subTest(caso=nombre):
+                self._rededoc_responde(status_rededoc, datos)
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    factura_electronica.emisor_reasignar(88, cliente=self.cliente)
+
+                self.assertEqual(caso.exception.status, 400)
+                self.assertEqual(
+                    caso.exception.cuerpo['detail'], 'El emisor no existe o no pertenece a esta empresa.',
+                )
+                self.assertEqual(GenParametro.objects.get(id=1).gen_rededoc_emisor, 77)
+
+    def test_si_rededoc_no_responde_es_502(self):
+        self._rededoc_responde(0, {'mensaje': 'timeout'})
+
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.emisor_reasignar(88, cliente=self.cliente)
+
+        self.assertEqual(caso.exception.status, 502)
+        self.assertEqual(GenParametro.objects.get(id=1).gen_rededoc_emisor, 77)
+
+    def test_la_vista_recibe_el_emisor_en_json(self):
+        vista = _ElectronicoViewSinPermisos.as_view({'post': 'emisor_reasignar'})
+        factory = APIRequestFactory()
+
+        for cuerpo, esperado in (({'emisor': 88}, 200), ({}, 400), ({'emisor': 'x'}, 400)):
+            with self.subTest(cuerpo=cuerpo):
+                peticion = factory.post('/general/electronico/emisor-reasignar/', cuerpo, format='json')
+                force_authenticate(peticion, user=SegUsuario(id=1))
+                with mock.patch.object(factura_electronica, 'emisor_reasignar') as servicio:
+                    respuesta = vista(peticion)
+
+                self.assertEqual(respuesta.status_code, esperado)
+                if esperado == 200:
+                    servicio.assert_called_once_with(88)
+                else:
+                    self.assertIn('detail', respuesta.data)
+                    servicio.assert_not_called()
+
+
 class FacturaElectronicaCertificadoTests(TenantTestCase):
     """
     La carga del certificado. No sale a la red: se reemplaza el cliente.

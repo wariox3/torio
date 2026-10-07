@@ -172,6 +172,31 @@ def emisor_actualizar(cliente: Rededoc = None) -> dict:
     return respuesta['datos']
 
 
+def emisor_reasignar(emisor_id: int, cliente: Rededoc = None) -> GenParametro:
+    """
+    Asocia al tenant un emisor que ya existe en rededoc, guardándolo en
+    `gen_rededoc_emisor`.
+
+    Todos los emisores cuelgan de la misma API key de torio, así que el id solo
+    no prueba nada: se asigna únicamente si en rededoc su `referencia_externa`
+    es este tenant. Si no, el emisor de otra empresa quedaría a un número
+    adivinado de distancia. Que no exista y que sea ajeno responden lo mismo,
+    para no revelar qué emisores hay.
+    """
+    cliente = cliente or Rededoc()
+    respuesta = cliente.consultar_emisor(emisor_id)
+    if respuesta['error'] and respuesta['status'] != 404:
+        raise _error_rededoc(respuesta)
+    referencia = None if respuesta['error'] else (respuesta['datos'] or {}).get('referencia_externa')
+    if referencia is None or str(referencia) != str(connection.tenant.id):
+        raise ErrorFacturaElectronica('El emisor no existe o no pertenece a esta empresa.')
+
+    parametro, _ = GenParametro.objects.get_or_create(id=1)
+    parametro.gen_rededoc_emisor = emisor_id
+    parametro.save(update_fields=['gen_rededoc_emisor'])
+    return parametro
+
+
 def emisor_desvincular() -> GenParametro:
     """
     Borra `gen_rededoc_emisor`. El emisor sigue existiendo en rededoc: solo deja
