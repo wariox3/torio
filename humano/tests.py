@@ -27,6 +27,7 @@ from humano.models import (
 )
 from humano.serializers import HumProgramacionSerializer
 from humano.servicios import ProgramacionError, cargar_contratos, eliminar_detalles
+from humano.servicios import contrato as contrato_servicio
 from humano.views.contrato import HumContratoViewSet
 from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente
 from utilidades.fechas import dias_prestacionales
@@ -183,14 +184,39 @@ class ValidacionContratoTests(TenantTestCase):
         )
 
         self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.data, {'contratos': 3, 'contratos_activos': 2, 'contratos_terminados': 1})
-
-    def test_resumen_sin_contratos_responde_ceros(self):
-        respuesta = _ContratoViewSinPermisos.as_view({'get': 'resumen'})(
-            self.factory.get('/humano/contrato/resumen/'),
+        self.assertEqual(
+            {k: respuesta.data[k] for k in ('contratos', 'contratos_activos', 'contratos_terminados')},
+            {'contratos': 3, 'contratos_activos': 2, 'contratos_terminados': 1},
         )
 
-        self.assertEqual(respuesta.data, {'contratos': 0, 'contratos_activos': 0, 'contratos_terminados': 0})
+    def test_resumen_sin_contratos_responde_ceros(self):
+        datos = contrato_servicio.resumen(hoy=date(2026, 10, 8))
+
+        self.assertEqual(datos, {
+            'fecha': date(2026, 10, 8), 'contratos': 0, 'contratos_activos': 0, 'contratos_terminados': 0,
+            'ingresos_mes': 0, 'retiros_mes': 0,
+        })
+
+    def test_resumen_cuenta_ingresos_y_retiros_del_mes(self):
+        hoy = date(2026, 10, 8)
+        # Ingreso del mes, activo.
+        self._crear_contrato(fecha_desde=date(2026, 10, 1), fecha_hasta=date(2026, 10, 1), estado_terminado=False)
+        # Ingreso y retiro del mismo mes.
+        self._crear_contrato(contacto=self.contacto2, fecha_desde=date(2026, 10, 2), fecha_hasta=date(2026, 10, 31))
+        # Retiro del mes de un contrato que empezó antes.
+        self._crear_contrato(fecha_desde=date(2026, 1, 1), fecha_hasta=date(2026, 10, 5))
+        # Termina en el mes pero sigue activo: un fijo con fecha de fin, no es retiro.
+        self._crear_contrato(fecha_desde=date(2026, 4, 1), fecha_hasta=date(2026, 10, 20), estado_terminado=False)
+        # Fuera del mes: septiembre del mismo año y octubre de otro año.
+        self._crear_contrato(fecha_desde=date(2026, 9, 30), fecha_hasta=date(2026, 9, 30))
+        self._crear_contrato(fecha_desde=date(2025, 10, 1), fecha_hasta=date(2025, 10, 31))
+
+        datos = contrato_servicio.resumen(hoy=hoy)
+
+        self.assertEqual(datos['fecha'], hoy)
+        self.assertEqual(datos['ingresos_mes'], 2)
+        self.assertEqual(datos['retiros_mes'], 2)
+        self.assertEqual(datos['contratos'], 6)
 
     def test_resumen_no_exige_el_permiso_del_modelo(self):
         """Es el tablero de inicio: lo ve cualquier miembro con suscripción, como `cartera-resumen`."""

@@ -120,7 +120,9 @@ class HumContratoViewSet(
             'Cantidades del tablero de inicio de humano:\n\n'
             '- `contratos`: todos los contratos.\n'
             '- `contratos_activos`: los que no están terminados.\n'
-            '- `contratos_terminados`: los terminados.\n\n'
+            '- `contratos_terminados`: los terminados.\n'
+            '- `ingresos_mes`: contratos que empiezan en el mes de `fecha` (hoy).\n'
+            '- `retiros_mes`: contratos terminados cuya `fecha_hasta` cae en ese mes.\n\n'
             'Activos y terminados suman `contratos`.'
         ),
         responses=OpenApiTypes.OBJECT,
