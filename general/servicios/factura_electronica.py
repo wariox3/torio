@@ -849,3 +849,41 @@ def recepcion_documento(filtros: dict, hoy=None, cliente: Rededoc = None) -> dic
         'hasta': filtros.get('hasta'),
         'results': datos.get('results', []),
     }
+
+# Tipo de contenido con el que sale cada extensión hacia rededoc.
+EXTENSIONES_RECEPCION = {'.zip': 'application/zip', '.xml': 'application/xml'}
+TAMANO_MAXIMO_RECEPCION = 10 * 1024 * 1024  # el mismo límite de rededoc
+
+
+def recepcion_documento_cargar(archivo, cliente: Rededoc = None) -> tuple:
+    """
+    Manda a la recepción del emisor de `gen_rededoc_emisor` los documentos de un
+    ZIP o XML, y devuelve `(datos, status)` de rededoc: 201 si creó alguno, 200 si
+    todos ya estaban registrados. El cuerpo, `{creados, repetidos, rechazados}`,
+    pasa tal cual.
+
+    Extensión y tamaño se revisan acá para no reenviar 10 MB que rededoc va a
+    rechazar; lo demás (archivo dañado, sin documentos, de otro receptor) lo
+    valida rededoc y su mensaje es el que sube al front. El archivo no se guarda
+    de este lado.
+    """
+    if archivo is None:
+        raise ErrorFacturaElectronica('Falta el archivo.')
+    nombre = archivo.name or ''
+    extension = next((e for e in EXTENSIONES_RECEPCION if nombre.lower().endswith(e)), None)
+    if extension is None:
+        raise ErrorFacturaElectronica('El archivo debe ser un .zip o un .xml.')
+    if archivo.size > TAMANO_MAXIMO_RECEPCION:
+        raise ErrorFacturaElectronica(
+            'El archivo supera el límite de {} MB.'.format(TAMANO_MAXIMO_RECEPCION // (1024 * 1024)),
+        )
+
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+    archivo.seek(0)
+    respuesta = cliente.cargar_documentos_recibidos(
+        emisor_id, archivo, nombre, EXTENSIONES_RECEPCION[extension],
+    )
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    return respuesta['datos'], respuesta['status']

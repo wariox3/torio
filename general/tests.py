@@ -1282,6 +1282,21 @@ class RededocTests(SimpleTestCase):
         self.assertEqual((metodo, url), ('GET', 'https://api.rededoc.uk/api/recepcion/documento/'))
         self.assertEqual(peticion.call_args.kwargs['params'], parametros)
 
+    def test_cargar_documentos_recibidos_va_en_multipart_con_timeout_largo(self):
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(201, {'creados': []}),
+        ) as peticion:
+            resultado = rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k').cargar_documentos_recibidos(
+                77, b'PK', 'factura.zip', 'application/zip',
+            )
+
+        metodo, url = peticion.call_args.args
+        self.assertEqual((metodo, url), ('POST', 'https://api.rededoc.uk/api/recepcion/documento/cargar/'))
+        self.assertEqual(peticion.call_args.kwargs['data'], {'emisor': 77})
+        self.assertEqual(peticion.call_args.kwargs['files'], {'archivo': ('factura.zip', b'PK', 'application/zip')})
+        self.assertEqual(peticion.call_args.kwargs['timeout'], rededoc_servicio.Rededoc.TIMEOUT_CARGAR)
+        self.assertEqual(resultado['status'], 201)
+
     def test_la_llave_viaja_en_el_header_authorization(self):
         with mock.patch.object(
             rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {}),
@@ -2167,6 +2182,93 @@ class FacturaElectronicaCertificadoTests(TenantTestCase):
         self.assertIn('archivo', kwargs['archivos'])
 
 
+class FacturaElectronicaRecepcionCargarTests(TenantTestCase):
+    """La carga de documentos recibidos. No sale a la red: se reemplaza el cliente."""
+
+    def setUp(self):
+        GenParametro.objects.all().delete()
+        GenParametro.objects.create(id=1, gen_rededoc_emisor=77)
+        self.cliente = mock.Mock(spec=rededoc_servicio.Rededoc)
+
+    def _archivo(self, nombre='factura.zip', contenido=b'PK\x03\x04', tamano=None):
+        archivo = SimpleUploadedFile(nombre, contenido)
+        if tamano is not None:
+            archivo.size = tamano
+        return archivo
+
+    def _cargar(self, archivo):
+        return factura_electronica.recepcion_documento_cargar(archivo, cliente=self.cliente)
+
+    def test_manda_el_emisor_guardado_con_el_tipo_de_cada_extension(self):
+        for nombre, tipo in (('Factura.ZIP', 'application/zip'), ('factura.xml', 'application/xml')):
+            with self.subTest(nombre=nombre):
+                self.cliente.reset_mock()
+                self.cliente.cargar_documentos_recibidos.return_value = {
+                    'error': False, 'status': 201, 'datos': {'creados': [{'id': 'a'}], 'repetidos': [], 'rechazados': []},
+                }
+                archivo = self._archivo(nombre)
+
+                self._cargar(archivo)
+
+                self.cliente.cargar_documentos_recibidos.assert_called_once_with(77, archivo, nombre, tipo)
+
+    def test_devuelve_cuerpo_y_status_de_rededoc(self):
+        for status_rededoc in (201, 200):
+            with self.subTest(status_rededoc=status_rededoc):
+                cuerpo = {'creados': [], 'repetidos': [{'id': 'a'}], 'rechazados': []}
+                self.cliente.cargar_documentos_recibidos.return_value = {
+                    'error': False, 'status': status_rededoc, 'datos': cuerpo,
+                }
+
+                self.assertEqual(self._cargar(self._archivo()), (cuerpo, status_rededoc))
+
+    def test_valida_archivo_extension_y_tamano_sin_llamar_a_rededoc(self):
+        casos = {
+            'sin archivo': (None, 'Falta el archivo.'),
+            'otra extensión': (self._archivo('factura.pdf'), 'El archivo debe ser un .zip o un .xml.'),
+            'sin extensión': (self._archivo('factura'), 'El archivo debe ser un .zip o un .xml.'),
+            'muy grande': (self._archivo(tamano=10 * 1024 * 1024 + 1), 'El archivo supera el límite de 10 MB.'),
+        }
+        for nombre, (archivo, mensaje) in casos.items():
+            with self.subTest(caso=nombre):
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    self._cargar(archivo)
+
+                self.assertEqual(caso.exception.status, 400)
+                self.assertEqual(caso.exception.cuerpo['detail'], mensaje)
+        self.cliente.cargar_documentos_recibidos.assert_not_called()
+
+    def test_justo_en_el_limite_se_acepta(self):
+        self.cliente.cargar_documentos_recibidos.return_value = {'error': False, 'status': 200, 'datos': {}}
+
+        self._cargar(self._archivo(tamano=10 * 1024 * 1024))
+
+        self.cliente.cargar_documentos_recibidos.assert_called_once()
+
+    def test_sin_emisor_es_404_y_no_llama_a_rededoc(self):
+        GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
+
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            self._cargar(self._archivo())
+
+        self.assertEqual(caso.exception.status, 404)
+        self.cliente.cargar_documentos_recibidos.assert_not_called()
+
+    def test_un_rechazo_de_rededoc_sube_su_mensaje_y_una_caida_es_502(self):
+        for status_rededoc, esperado in ((400, 400), (0, 502)):
+            with self.subTest(status_rededoc=status_rededoc):
+                self.cliente.cargar_documentos_recibidos.return_value = {
+                    'error': True, 'status': status_rededoc,
+                    'datos': {'detail': 'Todos los documentos son de otro receptor.'},
+                }
+
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    self._cargar(self._archivo())
+
+                self.assertEqual(caso.exception.status, esperado)
+                self.assertEqual(caso.exception.cuerpo['detail'], 'Todos los documentos son de otro receptor.')
+
+
 class FacturaElectronicaVistaTests(TenantTestCase):
     """La vista: solo traduce el servicio a HTTP."""
 
@@ -2365,6 +2467,34 @@ class FacturaElectronicaVistaTests(TenantTestCase):
                 else:
                     self.assertIn('detail', respuesta.data)
                     servicio.assert_not_called()
+
+    def test_recepcion_documento_cargar_responde_con_el_status_del_servicio(self):
+        vista = _ElectronicoViewSinPermisos.as_view({'post': 'recepcion_documento_cargar'})
+        for codigo in (201, 200):
+            with self.subTest(codigo=codigo):
+                peticion = self.factory.post(
+                    '/general/electronico/recepcion-documento-cargar/',
+                    {'archivo': SimpleUploadedFile('factura.zip', b'PK')}, format='multipart',
+                )
+                force_authenticate(peticion, user=SegUsuario(id=1))
+                with mock.patch.object(
+                    factura_electronica, 'recepcion_documento_cargar', return_value=({'creados': []}, codigo),
+                ) as servicio:
+                    respuesta = vista(peticion)
+
+                self.assertEqual(respuesta.status_code, codigo)
+                self.assertEqual(respuesta.data, {'creados': []})
+                self.assertEqual(servicio.call_args.args[0].name, 'factura.zip')
+
+    def test_recepcion_documento_cargar_sin_archivo_responde_400_con_detail(self):
+        vista = _ElectronicoViewSinPermisos.as_view({'post': 'recepcion_documento_cargar'})
+        peticion = self.factory.post('/general/electronico/recepcion-documento-cargar/', {}, format='multipart')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+
+        respuesta = vista(peticion)
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data, {'detail': 'Falta el archivo.'})
 
 
 class _PrecioDetalleViewSinPermisos(GenPrecioDetalleViewSet):

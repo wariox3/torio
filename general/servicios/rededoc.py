@@ -160,6 +160,24 @@ class Rededoc:
             timeout=self.TIMEOUT_NOTIFICAR,
         )
 
+    # Rededoc procesa el archivo en la misma llamada —descomprime, lee cada XML y
+    # registra los documentos—, y uno de 10 MB con muchos documentos no cabe en el
+    # timeout general.
+    TIMEOUT_CARGAR = 60
+
+    def cargar_documentos_recibidos(self, emisor_id, archivo, nombre: str, tipo_contenido: str):
+        """
+        Registra en la recepción de un emisor los documentos de un ZIP o XML.
+        `POST /api/recepcion/documento/cargar/`, en multipart con `emisor` y `archivo`.
+        Responde 201 si creó alguno y 200 si todos ya estaban registrados.
+        """
+        return self._peticion(
+            'POST', '/api/recepcion/documento/cargar/',
+            datos={'emisor': emisor_id},
+            archivos={'archivo': (nombre, archivo, tipo_contenido)},
+            timeout=self.TIMEOUT_CARGAR,
+        )
+
     # --- Interno -----------------------------------------------------------
 
     def _headers(self):

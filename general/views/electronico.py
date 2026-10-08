@@ -232,6 +232,30 @@ class GenElectronicoViewSet(viewsets.GenericViewSet):
         return Response(datos, status=status.HTTP_200_OK)
 
     @extend_schema(
+        summary='Cargar documentos recibidos',
+        description=(
+            'Registra en la recepción del emisor de la empresa los documentos de un ZIP '
+            'del proveedor o de un XML suelto (hasta 10 MB). El emisor no se manda: sale '
+            'de `gen_rededoc_emisor`. Responde `{creados, repetidos, rechazados}` con 201 '
+            'si creó alguno, o 200 si todos ya estaban registrados.'
+        ),
+        request={'multipart/form-data': {
+            'type': 'object',
+            'properties': {'archivo': {'type': 'string', 'format': 'binary'}},
+            'required': ['archivo'],
+        }},
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['post'], url_path='recepcion-documento-cargar')
+    def recepcion_documento_cargar(self, request):
+        try:
+            datos, codigo = servicio.recepcion_documento_cargar(request.FILES.get('archivo'))
+        except servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+
+        return Response(datos, status=codigo)
+
+    @extend_schema(
         request={'multipart/form-data': {
             'type': 'object',
             'properties': {
