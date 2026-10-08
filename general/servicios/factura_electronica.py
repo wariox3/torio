@@ -9,8 +9,8 @@ emisor a nombre de otra empresa.
 
 El emisor queda en `GenParametro`, que es de solo lectura para el tenant: es un
 hecho verificado contra rededoc, no algo que el cliente afirme. Crear el emisor
-no activa la facturación electrónica; `gen_factura_electronica_activa` se maneja
-aparte.
+no habilita la emisión: hasta que se termine el asistente
+(`gen_asistente_electronico`) no se emite.
 """
 
 from decimal import ROUND_HALF_UP, Decimal
@@ -211,6 +211,18 @@ def emisor_desvincular() -> GenParametro:
         )
     parametro.gen_rededoc_emisor = None
     parametro.save(update_fields=['gen_rededoc_emisor'])
+    return parametro
+
+
+def asistente_terminar() -> GenParametro:
+    """
+    Apaga `gen_asistente_electronico`: el tenant terminó el asistente de
+    facturación electrónica y desde ahí puede emitir. Repetirlo deja todo igual.
+    """
+    parametro, _ = GenParametro.objects.get_or_create(id=1)
+    if parametro.gen_asistente_electronico:
+        parametro.gen_asistente_electronico = False
+        parametro.save(update_fields=['gen_asistente_electronico'])
     return parametro
 
 
@@ -454,8 +466,8 @@ def emitir(documento_ids, cliente: Rededoc = None) -> list:
 def _parametro_habilitado():
     """El `GenParametro` de una empresa que puede usar la facturación electrónica."""
     parametro = GenParametro.objects.filter(id=1).first()
-    if parametro is None or not parametro.gen_factura_electronica_activa:
-        raise ErrorFacturaElectronica('La empresa no se ha activado para facturar electrónicamente.')
+    if parametro is None or parametro.gen_asistente_electronico:
+        raise ErrorFacturaElectronica('La empresa no ha terminado el asistente de facturación electrónica.')
     if not parametro.gen_rededoc_emisor:
         raise ErrorFacturaElectronica('La empresa no tiene emisor en el servicio de facturación electrónica.')
     return parametro

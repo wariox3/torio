@@ -3,7 +3,10 @@ from django.db import models
 
 class GenParametro(models.Model):
     id = models.BigIntegerField(primary_key=True, default=1, db_default=1)
-    gen_factura_electronica_activa = models.BooleanField(default=False, db_default=False)
+    # Asistente de facturación electrónica: mientras esté en True el tenant no
+    # puede emitir (`factura_electronica._parametro_habilitado`). Lo apaga el
+    # back con `electronico/asistente-terminar/`, nunca un PATCH del front.
+    gen_asistente_electronico = models.BooleanField(default=True, db_default=True)
     gen_rededoc_emisor = models.BigIntegerField(null=True)
     # La escribe `servicios.factura_electronica.certificado_cargar` con lo que
     # responde rededoc. Es una copia informativa: el dueño del certificado es

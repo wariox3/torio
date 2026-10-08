@@ -109,6 +109,14 @@ class GenElectronicoViewSet(viewsets.GenericViewSet):
         return Response(status=status.HTTP_200_OK)
 
     @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=['post'], url_path='asistente-terminar')
+    def asistente_terminar(self, request):
+        parametro = servicio.asistente_terminar()
+        return Response(
+            {'gen_asistente_electronico': parametro.gen_asistente_electronico}, status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
     @action(detail=False, methods=['get'], url_path='certificado-consultar')
     def certificado_consultar(self, request):
         try:
