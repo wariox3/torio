@@ -58,6 +58,35 @@ class SoftwareActualizarRequestSerializer(serializers.Serializer):
             raise serializers.ValidationError('Envíe al menos uno de: identificador, pin, test_set_id.')
         return attrs
 
+
+class RecepcionDocumentoQuerySerializer(serializers.Serializer):
+    desde = serializers.DateField(required=False, help_text='Fecha de emisión desde (AAAA-MM-DD), inclusive.')
+    hasta = serializers.DateField(required=False, help_text='Fecha de emisión hasta (AAAA-MM-DD), inclusive.')
+    page = serializers.IntegerField(min_value=1, default=1)
+    page_size = serializers.IntegerField(
+        min_value=1, max_value=servicio.RECEPCION_PAGINA_MAXIMA, default=servicio.RECEPCION_PAGINA,
+    )
+    search = serializers.CharField(
+        max_length=150, required=False,
+        help_text='CUFE completo, NIT del proveedor por el comienzo, o número y razón social en cualquier parte.',
+    )
+    documento_tipo = serializers.ChoiceField(choices=servicio.RECEPCION_DOCUMENTO_TIPOS, required=False)
+    proveedor = serializers.RegexField(
+        r'^\d{1,20}$', required=False, error_messages={'invalid': 'El NIT va solo con dígitos, sin DV.'},
+        help_text='NIT exacto del proveedor, sin DV.',
+    )
+    correo = serializers.IntegerField(min_value=1, required=False, help_text='Id del correo de recepción.')
+    ordering = serializers.ChoiceField(
+        choices=[orden for campo in servicio.RECEPCION_ORDENES for orden in (campo, f'-{campo}')],
+        required=False, help_text='Con - delante es descendente. Por defecto, los más recientes primero.',
+    )
+
+    def validate(self, attrs):
+        if attrs.get('desde') and attrs.get('hasta') and attrs['desde'] > attrs['hasta']:
+            raise serializers.ValidationError('La fecha desde no puede ser mayor que la fecha hasta.')
+        return attrs
+
+
 @extend_schema(tags=['Electronico'])
 class GenElectronicoViewSet(viewsets.GenericViewSet):
     parser_classes = [JSONParser, MultiPartParser, FormParser]
@@ -179,6 +208,28 @@ class GenElectronicoViewSet(viewsets.GenericViewSet):
             return Response(e.cuerpo, status=e.status)
 
         return Response(respuesta, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Documentos recibidos de proveedores',
+        description=(
+            'La bandeja de recepción del emisor de la empresa en rededoc. El emisor no se '
+            'manda: sale de `gen_rededoc_emisor`. Sin `desde` ni `hasta` consulta el mes en '
+            'curso. Responde `count`, `page`, `page_size`, el rango aplicado (`desde`, '
+            '`hasta`) y `results`; se pagina con `page`.'
+        ),
+        parameters=[RecepcionDocumentoQuerySerializer],
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['get'], url_path='recepcion-documento')
+    def recepcion_documento(self, request):
+        serializer = RecepcionDocumentoQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        try:
+            datos = servicio.recepcion_documento(serializer.validated_data)
+        except servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+
+        return Response(datos, status=status.HTTP_200_OK)
 
     @extend_schema(
         request={'multipart/form-data': {

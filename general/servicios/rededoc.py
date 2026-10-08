@@ -116,6 +116,14 @@ class Rededoc:
         """
         return self._peticion('PATCH', f'/api/emisores/software/{software_id}/', datos=datos)
 
+    def consultar_documentos_recibidos(self, parametros: dict):
+        """
+        Los documentos que los proveedores le mandaron a un emisor, paginados.
+        `GET /api/recepcion/documento/`. Sin `emisor` responde todos los que alcanza
+        la llave, así que quien llama lo manda siempre.
+        """
+        return self._peticion('GET', '/api/recepcion/documento/', parametros=parametros)
+
     def eliminar_certificado(self, certificado_id):
         """
         Da de baja un certificado y borra su .p12. `DELETE /api/emisores/certificado/{id}/`

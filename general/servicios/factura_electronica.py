@@ -13,9 +13,11 @@ no habilita la emisión: hasta que se termine el asistente
 (`gen_asistente_electronico_venta`) no se emite.
 """
 
+import calendar
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import connection
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 
@@ -795,3 +797,55 @@ def notificar(documento_ids, cliente: Rededoc = None) -> list:
         documento.save(update_fields=['estado_electronico_notificado'])
         notificados.append(documento.id)
     return notificados
+
+
+# ------------------------------------------------------------ recepción ----
+
+RECEPCION_DOCUMENTO_TIPOS = ('factura_venta', 'nota_credito', 'nota_debito')
+RECEPCION_ORDENES = ('fecha_emision', 'numero', 'total_a_pagar', 'creado_en')
+RECEPCION_PAGINA = 25
+RECEPCION_PAGINA_MAXIMA = 100
+
+
+def recepcion_documento(filtros: dict, hoy=None, cliente: Rededoc = None) -> dict:
+    """
+    La bandeja de documentos recibidos de proveedores del emisor de
+    `gen_rededoc_emisor`.
+
+    El `emisor` lo pone el back y nunca el front: la llave de torio alcanza a
+    todos los emisores, y sin `emisor` rededoc responde los de todas las empresas.
+    Sin `desde` ni `hasta` se consulta el mes de `hoy`, para no traer todo el
+    histórico; con uno solo, el rango queda abierto del otro lado.
+
+    `next` y `previous` de rededoc no salen: son URL de su API, con el emisor
+    puesto. El front pagina con `page` y `count`.
+    """
+    emisor_id = _emisor_id()
+    hoy = hoy or timezone.localdate()
+    filtros = dict(filtros)
+    if not filtros.get('desde') and not filtros.get('hasta'):
+        filtros['desde'] = hoy.replace(day=1)
+        filtros['hasta'] = hoy.replace(day=calendar.monthrange(hoy.year, hoy.month)[1])
+    filtros.setdefault('page', 1)
+    filtros.setdefault('page_size', RECEPCION_PAGINA)
+
+    parametros = {
+        clave: valor.isoformat() if clave in ('desde', 'hasta') else valor
+        for clave, valor in filtros.items()
+        if valor not in (None, '')
+    }
+    parametros['emisor'] = emisor_id
+
+    cliente = cliente or Rededoc()
+    respuesta = cliente.consultar_documentos_recibidos(parametros)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    datos = respuesta['datos'] or {}
+    return {
+        'count': datos.get('count', 0),
+        'page': filtros['page'],
+        'page_size': filtros['page_size'],
+        'desde': filtros.get('desde'),
+        'hasta': filtros.get('hasta'),
+        'results': datos.get('results', []),
+    }

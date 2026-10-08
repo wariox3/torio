@@ -1271,6 +1271,17 @@ class RededocTests(SimpleTestCase):
         self.assertEqual((metodo, url), ('PATCH', 'https://api.rededoc.uk/api/emisores/software/3/'))
         self.assertEqual(peticion.call_args.kwargs['json'], {'pin': '999'})
 
+    def test_consultar_documentos_recibidos_pasa_los_parametros(self):
+        parametros = {'emisor': 77, 'desde': '2026-10-01', 'page': 2}
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {'count': 0, 'results': []}),
+        ) as peticion:
+            rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k').consultar_documentos_recibidos(parametros)
+
+        metodo, url = peticion.call_args.args
+        self.assertEqual((metodo, url), ('GET', 'https://api.rededoc.uk/api/recepcion/documento/'))
+        self.assertEqual(peticion.call_args.kwargs['params'], parametros)
+
     def test_la_llave_viaja_en_el_header_authorization(self):
         with mock.patch.object(
             rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {}),
@@ -1789,6 +1800,69 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
         self.assertEqual(caso.exception.status, 502)
         self.cliente.actualizar_software.assert_not_called()
 
+    def _recepcion(self, filtros, hoy=date(2026, 10, 8)):
+        return factura_electronica.recepcion_documento(filtros, hoy=hoy, cliente=self.cliente)
+
+    def test_recepcion_manda_el_emisor_guardado_y_el_mes_en_curso_por_defecto(self):
+        self.cliente.consultar_documentos_recibidos.return_value = {
+            'error': False, 'status': 200,
+            'datos': {
+                'count': 47, 'next': 'https://api.rededoc.uk/api/recepcion/documento/?emisor=77&page=2',
+                'previous': None, 'results': [{'id': 'abc'}],
+            },
+        }
+
+        datos = self._recepcion({})
+
+        self.cliente.consultar_documentos_recibidos.assert_called_once_with({
+            'emisor': 77, 'desde': '2026-10-01', 'hasta': '2026-10-31', 'page': 1, 'page_size': 25,
+        })
+        # Ni `next` ni `previous`: son URL de la API de rededoc.
+        self.assertEqual(datos, {
+            'count': 47, 'page': 1, 'page_size': 25,
+            'desde': date(2026, 10, 1), 'hasta': date(2026, 10, 31), 'results': [{'id': 'abc'}],
+        })
+
+    def test_recepcion_el_mes_por_defecto_respeta_febrero_bisiesto(self):
+        self.cliente.consultar_documentos_recibidos.return_value = {'error': False, 'status': 200, 'datos': {}}
+
+        datos = self._recepcion({}, hoy=date(2028, 2, 10))
+
+        self.assertEqual((datos['desde'], datos['hasta']), (date(2028, 2, 1), date(2028, 2, 29)))
+        self.assertEqual((datos['count'], datos['results']), (0, []))
+
+    def test_recepcion_pasa_los_filtros_y_con_una_sola_fecha_deja_el_rango_abierto(self):
+        self.cliente.consultar_documentos_recibidos.return_value = {'error': False, 'status': 200, 'datos': {}}
+
+        self._recepcion({
+            'desde': date(2026, 9, 15), 'page': 3, 'page_size': 100, 'search': 'Andina',
+            'documento_tipo': 'nota_credito', 'proveedor': '800111222', 'correo': 9, 'ordering': '-total_a_pagar',
+        })
+
+        self.cliente.consultar_documentos_recibidos.assert_called_once_with({
+            'emisor': 77, 'desde': '2026-09-15', 'page': 3, 'page_size': 100, 'search': 'Andina',
+            'documento_tipo': 'nota_credito', 'proveedor': '800111222', 'correo': 9, 'ordering': '-total_a_pagar',
+        })
+
+    def test_recepcion_no_deja_que_un_emisor_del_filtro_reemplace_el_guardado(self):
+        self.cliente.consultar_documentos_recibidos.return_value = {'error': False, 'status': 200, 'datos': {}}
+
+        self._recepcion({'emisor': 88})
+
+        self.assertEqual(self.cliente.consultar_documentos_recibidos.call_args.args[0]['emisor'], 77)
+
+    def test_recepcion_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
+        for status_rededoc, esperado in ((400, 400), (0, 502)):
+            with self.subTest(status_rededoc=status_rededoc):
+                self.cliente.consultar_documentos_recibidos.return_value = {
+                    'error': True, 'status': status_rededoc, 'datos': {'detail': 'Falló'},
+                }
+
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    self._recepcion({})
+
+                self.assertEqual(caso.exception.status, esperado)
+
     def test_sin_emisor_es_404_y_no_llama_a_rededoc(self):
         GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
 
@@ -1800,6 +1874,7 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
             'software_consultar': lambda: factura_electronica.software_consultar(cliente=self.cliente),
             'software_crear': lambda: factura_electronica.software_crear('facturacion', 'sw', '1', 'ts', cliente=self.cliente),
             'software_actualizar': lambda: factura_electronica.software_actualizar(3, {'pin': '1'}, cliente=self.cliente),
+            'recepcion_documento': lambda: factura_electronica.recepcion_documento({}, cliente=self.cliente),
         }
         for nombre, llamada in llamadas.items():
             with self.subTest(funcion=nombre):
@@ -1814,6 +1889,7 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
         self.cliente.crear_software.assert_not_called()
         self.cliente.consultar_un_software.assert_not_called()
         self.cliente.actualizar_software.assert_not_called()
+        self.cliente.consultar_documentos_recibidos.assert_not_called()
 
     def test_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
         for status_rededoc, esperado in ((400, 400), (0, 502)):
@@ -2252,6 +2328,43 @@ class FacturaElectronicaVistaTests(TenantTestCase):
                 self.assertEqual(respuesta.status_code, 400)
                 self.assertIn('detail', respuesta.data)
         self.assertFalse(GenParametro.objects.exists())
+
+    def test_recepcion_documento_valida_la_query(self):
+        vista = _ElectronicoViewSinPermisos.as_view({'get': 'recepcion_documento'})
+        validos = (
+            ({}, {'page': 1, 'page_size': 25}),
+            ({'desde': '2026-10-01', 'hasta': '2026-10-01', 'page': '2', 'page_size': '100'},
+             {'desde': date(2026, 10, 1), 'hasta': date(2026, 10, 1), 'page': 2, 'page_size': 100}),
+            ({'documento_tipo': 'factura_venta', 'proveedor': '800111222', 'correo': '4', 'ordering': '-numero',
+              'search': 'a1b2'},
+             {'documento_tipo': 'factura_venta', 'proveedor': '800111222', 'correo': 4, 'ordering': '-numero',
+              'search': 'a1b2', 'page': 1, 'page_size': 25}),
+        )
+        invalidos = (
+            {'desde': '2026-10-31', 'hasta': '2026-10-01'},
+            {'desde': '01/10/2026'},
+            {'page': '0'},
+            {'page_size': '101'},
+            {'documento_tipo': 'factura_compra'},
+            {'proveedor': '800111222-1'},
+            {'correo': 'x'},
+            {'ordering': 'proveedor_razon_social'},
+            {'search': 'x' * 151},
+        )
+        casos = [(query, 200, filtros) for query, filtros in validos] + [(query, 400, None) for query in invalidos]
+        for query, esperado, filtros in casos:
+            with self.subTest(query=query):
+                peticion = self.factory.get('/general/electronico/recepcion-documento/', query)
+                force_authenticate(peticion, user=SegUsuario(id=1))
+                with mock.patch.object(factura_electronica, 'recepcion_documento', return_value={'count': 0}) as servicio:
+                    respuesta = vista(peticion)
+
+                self.assertEqual(respuesta.status_code, esperado)
+                if esperado == 200:
+                    servicio.assert_called_once_with(filtros)
+                else:
+                    self.assertIn('detail', respuesta.data)
+                    servicio.assert_not_called()
 
 
 class _PrecioDetalleViewSinPermisos(GenPrecioDetalleViewSet):
