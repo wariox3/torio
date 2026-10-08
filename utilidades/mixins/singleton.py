@@ -15,7 +15,13 @@ consta cuánto está trayendo ni cuándo empezó a doler.
 Quien de verdad necesite todo lo pide entero y explícito
 (`?campos=a,b,c,...`): sigue siendo posible, pero es una decisión visible en el
 llamado y no el camino de menor resistencia.
+
+Además de las columnas, `campos` acepta los campos de solo lectura del serializer
+que leen de un relacionado (`source='ven_item_administracion.nombre'`): salen en
+la misma consulta, con un JOIN. Qué se puede pedir lo dice el serializer, no una
+convención de nombres.
 """
+from django.db.models import F
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
@@ -35,6 +41,18 @@ class SingletonMixin:
         instancia, _ = self.modelo_singleton.objects.get_or_create(id=self.id_singleton)
         return instancia
 
+    def _campos_relacionados(self):
+        """
+        Los campos del serializer que se leen de un relacionado, con su ruta del
+        ORM: `{'ven_item_administracion_nombre': 'ven_item_administracion__nombre'}`.
+        Solo los de solo lectura con `source` anidado; los demás son columnas.
+        """
+        return {
+            nombre: campo.source.replace('.', '__')
+            for nombre, campo in self.get_serializer_class()().fields.items()
+            if campo.read_only and '.' in (campo.source or '')
+        }
+
     @extend_schema(
         parameters=[
             OpenApiParameter(
@@ -42,7 +60,9 @@ class SingletonMixin:
                 description=(
                     'Campos separados por coma, ej: gen_uvt,hum_salario_minimo. '
                     'Obligatorio: no hay lectura completa, y pedir todo exige '
-                    'nombrarlo todo.'
+                    'nombrarlo todo. Además de las columnas acepta los campos de '
+                    'un relacionado que expone el serializer, ej: '
+                    'ven_item_administracion_nombre.'
                 ),
             ),
         ],
@@ -59,8 +79,9 @@ class SingletonMixin:
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        permitidos = {f.name for f in self.modelo_singleton._meta.concrete_fields}
-        invalidos = [c for c in solicitados if c not in permitidos]
+        columnas = {f.name for f in self.modelo_singleton._meta.concrete_fields}
+        relacionados = self._campos_relacionados()
+        invalidos = [c for c in solicitados if c not in columnas and c not in relacionados]
         if invalidos:
             return Response(
                 {'detail': f'Campos no válidos: {", ".join(invalidos)}'},
@@ -70,5 +91,8 @@ class SingletonMixin:
         self._obtener_instancia()  # garantiza que la fila exista
         # quita duplicados preservando el orden solicitado
         unicos = list(dict.fromkeys(solicitados))
-        datos = self.modelo_singleton.objects.filter(id=self.id_singleton).values(*unicos).first()
-        return Response(datos)
+        datos = self.modelo_singleton.objects.filter(id=self.id_singleton).values(
+            *(c for c in unicos if c in columnas),
+            **{c: F(relacionados[c]) for c in unicos if c not in columnas},
+        ).first()
+        return Response({c: datos[c] for c in unicos})

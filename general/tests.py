@@ -1508,6 +1508,46 @@ class GenConfiguracionViewTests(TenantTestCase):
 
         self.assertFalse(hasattr(_ConfiguracionViewSinPermisos, 'obtener'))
 
+    def _campos(self, campos):
+        vista = _ConfiguracionViewSinPermisos.as_view({'get': 'campos'})
+        peticion = self.factory.get('/general/configuracion/campos/', {'campos': campos})
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return vista(peticion)
+
+    def test_campos_lee_el_nombre_de_un_relacionado_que_expone_el_serializer(self):
+        item = GenItem.objects.create(nombre='Administración AIU')
+        GenConfiguracion.objects.update_or_create(id=1, defaults={'ven_item_administracion': item})
+
+        respuesta = self._campos(
+            'ven_item_utilidad_nombre,ven_item_administracion,gen_uvt,ven_item_administracion_nombre,'
+            'ven_item_administracion_nombre',
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        # En el orden pedido, sin repetidos, y un FK vacío da su nombre en null.
+        self.assertEqual(list(respuesta.data), [
+            'ven_item_utilidad_nombre', 'ven_item_administracion', 'gen_uvt', 'ven_item_administracion_nombre',
+        ])
+        self.assertEqual(respuesta.data['ven_item_administracion'], item.id)
+        self.assertEqual(respuesta.data['ven_item_administracion_nombre'], 'Administración AIU')
+        self.assertIsNone(respuesta.data['ven_item_utilidad_nombre'])
+
+    def test_campos_lee_hum_entidad_riesgo_nombre_aunque_no_haya_fila(self):
+        GenConfiguracion.objects.all().delete()
+
+        respuesta = self._campos('hum_entidad_riesgo_nombre')
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, {'hum_entidad_riesgo_nombre': None})
+
+    def test_campos_rechaza_un_relacionado_que_el_serializer_no_declara(self):
+        for campo in ('ven_item_administracion__nombre', 'ven_item_administracion_codigo', 'gen_uvt_nombre'):
+            with self.subTest(campo=campo):
+                respuesta = self._campos(f'gen_uvt,{campo}')
+
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertEqual(respuesta.data, {'detail': f'Campos no válidos: {campo}'})
+
     def test_actualizar_sigue_escribiendo(self):
         vista = _ConfiguracionViewSinPermisos.as_view({'patch': 'actualizar'})
         peticion = self.factory.patch('/general/configuracion/actualizar/', {'gen_uvt': '47065'})
