@@ -56,6 +56,19 @@ class GenConfiguracion(models.Model):
         'general.GenTipoPersona', null=True, on_delete=models.PROTECT,
         related_name='configuraciones_empresa_tipo_persona_rel',
     )
+    # Ítems de la factura AIU (administración, imprevistos y utilidad).
+    ven_item_administracion = models.ForeignKey(
+        'general.GenItem', null=True, on_delete=models.PROTECT,
+        related_name='configuraciones_item_administracion_rel',
+    )
+    ven_item_imprevisto = models.ForeignKey(
+        'general.GenItem', null=True, on_delete=models.PROTECT,
+        related_name='configuraciones_item_imprevisto_rel',
+    )
+    ven_item_utilidad = models.ForeignKey(
+        'general.GenItem', null=True, on_delete=models.PROTECT,
+        related_name='configuraciones_item_utilidad_rel',
+    )
 
     class Meta:
         db_table = 'gen_configuracion'
