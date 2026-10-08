@@ -1,3 +1,4 @@
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -13,7 +14,8 @@ from humano.serializers import (
     HumLiquidacionSerializer,
 )
 from humano.servicios import LiquidacionError, terminar_contrato
-from seguridad.permissions import TienePermisoModelo
+from humano.servicios import contrato as contrato_servicio
+from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente, TienePermisoModelo
 from utilidades.mixins import (
     ExportarExcelMixin,
     FiltrosDinamicosMixin,
@@ -112,6 +114,24 @@ class HumContratoViewSet(
         return self.get_paginated_response(serializer.data)
 
     @extend_schema(request=TerminarContratoRequestSerializer, responses=HumLiquidacionSerializer)
+    @extend_schema(
+        summary='Resumen de los contratos',
+        description=(
+            'Cantidades del tablero de inicio de humano:\n\n'
+            '- `contratos`: todos los contratos.\n'
+            '- `contratos_activos`: los que no están terminados.\n'
+            '- `contratos_terminados`: los terminados.\n\n'
+            'Activos y terminados suman `contratos`.'
+        ),
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(
+        detail=False, methods=['get'], url_path='resumen',
+        permission_classes=[EsMiembroDelTenant, SuscripcionVigente],
+    )
+    def resumen(self, request):
+        return Response(contrato_servicio.resumen(), status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['post'], url_path='terminar')
     def terminar(self, request):
         """Termina el contrato y crea su liquidación ya calculada, que es lo que responde."""

@@ -28,6 +28,7 @@ from humano.models import (
 from humano.serializers import HumProgramacionSerializer
 from humano.servicios import ProgramacionError, cargar_contratos, eliminar_detalles
 from humano.views.contrato import HumContratoViewSet
+from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente
 from utilidades.fechas import dias_prestacionales
 
 
@@ -171,6 +172,31 @@ class ValidacionContratoTests(TenantTestCase):
         contrato.refresh_from_db()
         self.assertEqual(contrato.salario, 100)
 
+
+    def test_resumen_cuenta_activos_y_terminados(self):
+        self._crear_contrato()
+        self._crear_contrato(contacto=self.contacto2, estado_terminado=False)
+        self._crear_contrato(fecha_desde=date(2026, 7, 1), fecha_hasta=date(2026, 12, 31), estado_terminado=False)
+
+        respuesta = _ContratoViewSinPermisos.as_view({'get': 'resumen'})(
+            self.factory.get('/humano/contrato/resumen/'),
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, {'contratos': 3, 'contratos_activos': 2, 'contratos_terminados': 1})
+
+    def test_resumen_sin_contratos_responde_ceros(self):
+        respuesta = _ContratoViewSinPermisos.as_view({'get': 'resumen'})(
+            self.factory.get('/humano/contrato/resumen/'),
+        )
+
+        self.assertEqual(respuesta.data, {'contratos': 0, 'contratos_activos': 0, 'contratos_terminados': 0})
+
+    def test_resumen_no_exige_el_permiso_del_modelo(self):
+        """Es el tablero de inicio: lo ve cualquier miembro con suscripción, como `cartera-resumen`."""
+        self.assertEqual(
+            HumContratoViewSet.resumen.kwargs['permission_classes'], [EsMiembroDelTenant, SuscripcionVigente],
+        )
 
 class CargarContratosTests(TenantTestCase):
     """`cargar_contratos`: un detalle por contrato del grupo según el tipo de pago."""
