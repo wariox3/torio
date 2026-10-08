@@ -124,6 +124,14 @@ class Rededoc:
         """
         return self._peticion('GET', '/api/recepcion/documento/', parametros=parametros)
 
+    def consultar_correos_recibidos(self, parametros: dict):
+        """
+        Los correos y cargas manuales de la recepción de un emisor, paginados.
+        `GET /api/recepcion/correo/`. Igual que los documentos: sin `emisor`
+        responde todos los que alcanza la llave.
+        """
+        return self._peticion('GET', '/api/recepcion/correo/', parametros=parametros)
+
     def eliminar_certificado(self, certificado_id):
         """
         Da de baja un certificado y borra su .p12. `DELETE /api/emisores/certificado/{id}/`

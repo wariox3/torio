@@ -87,6 +87,28 @@ class RecepcionDocumentoQuerySerializer(serializers.Serializer):
         return attrs
 
 
+
+class RecepcionCorreoQuerySerializer(serializers.Serializer):
+    desde = serializers.DateField(required=False, help_text='Recibido desde (AAAA-MM-DD), inclusive.')
+    hasta = serializers.DateField(required=False, help_text='Recibido hasta (AAAA-MM-DD), inclusive.')
+    page = serializers.IntegerField(min_value=1, default=1)
+    page_size = serializers.IntegerField(
+        min_value=1, max_value=servicio.RECEPCION_PAGINA_MAXIMA, default=servicio.RECEPCION_PAGINA,
+    )
+    search = serializers.CharField(max_length=150, required=False, help_text='Remitente, asunto o Message-ID.')
+    estado = serializers.ChoiceField(choices=servicio.RECEPCION_CORREO_ESTADOS, required=False)
+    origen = serializers.ChoiceField(choices=servicio.RECEPCION_CORREO_ORIGENES, required=False)
+    ordering = serializers.ChoiceField(
+        choices=[orden for campo in servicio.RECEPCION_CORREO_ORDENES for orden in (campo, f'-{campo}')],
+        required=False, help_text='Con - delante es descendente. Por defecto, los más recientes primero.',
+    )
+
+    def validate(self, attrs):
+        if attrs.get('desde') and attrs.get('hasta') and attrs['desde'] > attrs['hasta']:
+            raise serializers.ValidationError('La fecha desde no puede ser mayor que la fecha hasta.')
+        return attrs
+
+
 @extend_schema(tags=['Electronico'])
 class GenElectronicoViewSet(viewsets.GenericViewSet):
     parser_classes = [JSONParser, MultiPartParser, FormParser]
@@ -226,6 +248,29 @@ class GenElectronicoViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         try:
             datos = servicio.recepcion_documento(serializer.validated_data)
+        except servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+
+        return Response(datos, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Correos recibidos',
+        description=(
+            'Los correos y cargas manuales que llegaron a la recepción del emisor de la '
+            'empresa en rededoc. El emisor no se manda: sale de `gen_rededoc_emisor`. Sin '
+            '`desde` ni `hasta` consulta el mes en curso, sobre la fecha de recepción. '
+            'Responde `count`, `page`, `page_size`, el rango aplicado y `results`; en cada '
+            'correo, `documentos` trae solo los del emisor de la empresa.'
+        ),
+        parameters=[RecepcionCorreoQuerySerializer],
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['get'], url_path='recepcion-correo')
+    def recepcion_correo(self, request):
+        serializer = RecepcionCorreoQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        try:
+            datos = servicio.recepcion_correo(serializer.validated_data)
         except servicio.ErrorFacturaElectronica as e:
             return Response(e.cuerpo, status=e.status)
 

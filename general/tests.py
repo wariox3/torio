@@ -1297,6 +1297,17 @@ class RededocTests(SimpleTestCase):
         self.assertEqual(peticion.call_args.kwargs['timeout'], rededoc_servicio.Rededoc.TIMEOUT_CARGAR)
         self.assertEqual(resultado['status'], 201)
 
+    def test_consultar_correos_recibidos_pasa_los_parametros(self):
+        parametros = {'emisor': 77, 'origen': 'carga'}
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {'count': 0, 'results': []}),
+        ) as peticion:
+            rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k').consultar_correos_recibidos(parametros)
+
+        metodo, url = peticion.call_args.args
+        self.assertEqual((metodo, url), ('GET', 'https://api.rededoc.uk/api/recepcion/correo/'))
+        self.assertEqual(peticion.call_args.kwargs['params'], parametros)
+
     def test_la_llave_viaja_en_el_header_authorization(self):
         with mock.patch.object(
             rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {}),
@@ -1878,6 +1889,71 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
 
                 self.assertEqual(caso.exception.status, esperado)
 
+    def _correos(self, filtros, hoy=date(2026, 10, 8)):
+        return factura_electronica.recepcion_correo(filtros, hoy=hoy, cliente=self.cliente)
+
+    def test_recepcion_correo_manda_el_emisor_guardado_y_el_mes_en_curso_por_defecto(self):
+        self.cliente.consultar_correos_recibidos.return_value = {
+            'error': False, 'status': 200,
+            'datos': {'count': 3, 'next': 'https://api.rededoc.uk/x?page=2', 'previous': None, 'results': []},
+        }
+
+        datos = self._correos({'emisor': 88})
+
+        self.cliente.consultar_correos_recibidos.assert_called_once_with({
+            'emisor': 77, 'desde': '2026-10-01', 'hasta': '2026-10-31', 'page': 1, 'page_size': 25,
+        })
+        self.assertEqual(datos, {
+            'count': 3, 'page': 1, 'page_size': 25,
+            'desde': date(2026, 10, 1), 'hasta': date(2026, 10, 31), 'results': [],
+        })
+
+    def test_recepcion_correo_pasa_los_filtros(self):
+        self.cliente.consultar_correos_recibidos.return_value = {'error': False, 'status': 200, 'datos': {}}
+
+        self._correos({
+            'hasta': date(2026, 10, 5), 'page': 2, 'page_size': 50, 'search': 'proveedor@',
+            'estado': 'error', 'origen': 'correo', 'ordering': 'estado',
+        })
+
+        self.cliente.consultar_correos_recibidos.assert_called_once_with({
+            'emisor': 77, 'hasta': '2026-10-05', 'page': 2, 'page_size': 50, 'search': 'proveedor@',
+            'estado': 'error', 'origen': 'correo', 'ordering': 'estado',
+        })
+
+    def test_recepcion_correo_deja_solo_los_documentos_del_emisor_y_oculta_lo_de_rededoc(self):
+        self.cliente.consultar_correos_recibidos.return_value = {
+            'error': False, 'status': 200,
+            'datos': {'count': 2, 'results': [
+                {
+                    'id': 1, 'emisor': 77, 'asunto': 'Factura', 'estado': 'procesado',
+                    'raw_key': 'inbound/2026/10/abc.eml', 'usuario': 'torio@rededoc.co',
+                    'documentos': [{'id': 'a', 'emisor': 77}, {'id': 'b', 'emisor': 88}, {'id': 'c', 'emisor': '77'}],
+                },
+                {'id': 2, 'emisor': 77, 'asunto': 'Sin nada', 'raw_key': 'x', 'usuario': None, 'documentos': None},
+            ]},
+        }
+
+        datos = self._correos({})
+
+        self.assertEqual(datos['results'], [
+            {'id': 1, 'emisor': 77, 'asunto': 'Factura', 'estado': 'procesado',
+             'documentos': [{'id': 'a', 'emisor': 77}, {'id': 'c', 'emisor': '77'}]},
+            {'id': 2, 'emisor': 77, 'asunto': 'Sin nada', 'documentos': []},
+        ])
+
+    def test_recepcion_correo_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
+        for status_rededoc, esperado in ((400, 400), (0, 502)):
+            with self.subTest(status_rededoc=status_rededoc):
+                self.cliente.consultar_correos_recibidos.return_value = {
+                    'error': True, 'status': status_rededoc, 'datos': {'detail': 'Falló'},
+                }
+
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    self._correos({})
+
+                self.assertEqual(caso.exception.status, esperado)
+
     def test_sin_emisor_es_404_y_no_llama_a_rededoc(self):
         GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
 
@@ -1890,6 +1966,7 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
             'software_crear': lambda: factura_electronica.software_crear('facturacion', 'sw', '1', 'ts', cliente=self.cliente),
             'software_actualizar': lambda: factura_electronica.software_actualizar(3, {'pin': '1'}, cliente=self.cliente),
             'recepcion_documento': lambda: factura_electronica.recepcion_documento({}, cliente=self.cliente),
+            'recepcion_correo': lambda: factura_electronica.recepcion_correo({}, cliente=self.cliente),
         }
         for nombre, llamada in llamadas.items():
             with self.subTest(funcion=nombre):
@@ -1905,6 +1982,7 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
         self.cliente.consultar_un_software.assert_not_called()
         self.cliente.actualizar_software.assert_not_called()
         self.cliente.consultar_documentos_recibidos.assert_not_called()
+        self.cliente.consultar_correos_recibidos.assert_not_called()
 
     def test_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
         for status_rededoc, esperado in ((400, 400), (0, 502)):
@@ -2495,6 +2573,40 @@ class FacturaElectronicaVistaTests(TenantTestCase):
 
         self.assertEqual(respuesta.status_code, 400)
         self.assertEqual(respuesta.data, {'detail': 'Falta el archivo.'})
+
+    def test_recepcion_correo_valida_la_query(self):
+        vista = _ElectronicoViewSinPermisos.as_view({'get': 'recepcion_correo'})
+        validos = (
+            ({}, {'page': 1, 'page_size': 25}),
+            ({'desde': '2026-10-01', 'hasta': '2026-10-31', 'estado': 'confirmacion_reenvio', 'origen': 'carga',
+              'ordering': '-recibido_en', 'search': 'asunto', 'page': '3', 'page_size': '10'},
+             {'desde': date(2026, 10, 1), 'hasta': date(2026, 10, 31), 'estado': 'confirmacion_reenvio',
+              'origen': 'carga', 'ordering': '-recibido_en', 'search': 'asunto', 'page': 3, 'page_size': 10}),
+        )
+        invalidos = (
+            {'desde': '2026-10-31', 'hasta': '2026-10-01'},
+            {'hasta': '2026-13-01'},
+            {'page': '-1'},
+            {'page_size': '0'},
+            {'estado': 'leido'},
+            {'origen': 'api'},
+            {'ordering': 'asunto'},
+            {'search': 'x' * 151},
+        )
+        casos = [(query, 200, filtros) for query, filtros in validos] + [(query, 400, None) for query in invalidos]
+        for query, esperado, filtros in casos:
+            with self.subTest(query=query):
+                peticion = self.factory.get('/general/electronico/recepcion-correo/', query)
+                force_authenticate(peticion, user=SegUsuario(id=1))
+                with mock.patch.object(factura_electronica, 'recepcion_correo', return_value={'count': 0}) as servicio:
+                    respuesta = vista(peticion)
+
+                self.assertEqual(respuesta.status_code, esperado)
+                if esperado == 200:
+                    servicio.assert_called_once_with(filtros)
+                else:
+                    self.assertIn('detail', respuesta.data)
+                    servicio.assert_not_called()
 
 
 class _PrecioDetalleViewSinPermisos(GenPrecioDetalleViewSet):

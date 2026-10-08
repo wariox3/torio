@@ -807,18 +807,26 @@ RECEPCION_PAGINA = 25
 RECEPCION_PAGINA_MAXIMA = 100
 
 
-def recepcion_documento(filtros: dict, hoy=None, cliente: Rededoc = None) -> dict:
+RECEPCION_CORREO_ESTADOS = (
+    'pendiente', 'procesado', 'sin_documentos', 'error', 'empresa_desconocida', 'confirmacion_reenvio',
+)
+RECEPCION_CORREO_ORIGENES = ('correo', 'carga')
+RECEPCION_CORREO_ORDENES = ('recibido_en', 'estado')
+# Del correo de rededoc no salen: `raw_key` es la clave del MIME en su R2, y
+# `usuario` el de rededoc que subió la carga, que con la llave de torio es
+# siempre la cuenta de servicio de torio.
+RECEPCION_CORREO_OCULTOS = ('raw_key', 'usuario')
+
+
+def _consulta_recepcion(filtros: dict, hoy) -> tuple:
     """
-    La bandeja de documentos recibidos de proveedores del emisor de
-    `gen_rededoc_emisor`.
+    Lo que comparten las bandejas de recepción: devuelve los filtros completos y
+    los parámetros para rededoc.
 
     El `emisor` lo pone el back y nunca el front: la llave de torio alcanza a
     todos los emisores, y sin `emisor` rededoc responde los de todas las empresas.
     Sin `desde` ni `hasta` se consulta el mes de `hoy`, para no traer todo el
     histórico; con uno solo, el rango queda abierto del otro lado.
-
-    `next` y `previous` de rededoc no salen: son URL de su API, con el emisor
-    puesto. El front pagina con `page` y `count`.
     """
     emisor_id = _emisor_id()
     hoy = hoy or timezone.localdate()
@@ -835,20 +843,65 @@ def recepcion_documento(filtros: dict, hoy=None, cliente: Rededoc = None) -> dic
         if valor not in (None, '')
     }
     parametros['emisor'] = emisor_id
+    return filtros, parametros
 
-    cliente = cliente or Rededoc()
-    respuesta = cliente.consultar_documentos_recibidos(parametros)
-    if respuesta['error']:
-        raise _error_rededoc(respuesta)
-    datos = respuesta['datos'] or {}
+
+def _bandeja(filtros: dict, datos: dict, resultados: list) -> dict:
+    """
+    La respuesta de una bandeja. `next` y `previous` de rededoc no salen: son URL
+    de su API, con el emisor puesto. El front pagina con `page` y `count`.
+    """
     return {
         'count': datos.get('count', 0),
         'page': filtros['page'],
         'page_size': filtros['page_size'],
         'desde': filtros.get('desde'),
         'hasta': filtros.get('hasta'),
-        'results': datos.get('results', []),
+        'results': resultados,
     }
+
+
+def recepcion_documento(filtros: dict, hoy=None, cliente: Rededoc = None) -> dict:
+    """
+    La bandeja de documentos recibidos de proveedores del emisor de
+    `gen_rededoc_emisor`. El rango va sobre la fecha de emisión.
+    """
+    filtros, parametros = _consulta_recepcion(filtros, hoy)
+    cliente = cliente or Rededoc()
+    respuesta = cliente.consultar_documentos_recibidos(parametros)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    datos = respuesta['datos'] or {}
+    return _bandeja(filtros, datos, datos.get('results', []))
+
+
+def recepcion_correo(filtros: dict, hoy=None, cliente: Rededoc = None) -> dict:
+    """
+    Los correos (y cargas manuales) que llegaron a la recepción del emisor de
+    `gen_rededoc_emisor`. El rango va sobre la fecha en que se recibieron.
+
+    Un correo puede traer documentos de varios receptores, y rededoc deja dentro
+    los que alcanza la llave, que en torio son los de todas las empresas: acá se
+    quedan solo los del emisor del tenant.
+    """
+    filtros, parametros = _consulta_recepcion(filtros, hoy)
+    emisor_id = parametros['emisor']
+    cliente = cliente or Rededoc()
+    respuesta = cliente.consultar_correos_recibidos(parametros)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    datos = respuesta['datos'] or {}
+    correos = [
+        {
+            **{campo: valor for campo, valor in correo.items() if campo not in RECEPCION_CORREO_OCULTOS},
+            'documentos': [
+                documento for documento in correo.get('documentos') or []
+                if str(documento.get('emisor')) == str(emisor_id)
+            ],
+        }
+        for correo in datos.get('results', [])
+    ]
+    return _bandeja(filtros, datos, correos)
 
 # Tipo de contenido con el que sale cada extensión hacia rededoc.
 EXTENSIONES_RECEPCION = {'.zip': 'application/zip', '.xml': 'application/xml'}
