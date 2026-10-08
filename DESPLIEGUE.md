@@ -945,16 +945,62 @@ cd /opt/torio
 
 APP="sudo -u torio env DJANGO_SETTINGS_MODULE=torioapp.settings.prod"
 
-$APP git pull
-$APP venv/bin/pip install -r requirements.txt
-# Antes de migrar: `migrate` recorre todos los tenants, y no puede migrar el mismo
-# schema que un contenedor que el worker está creando. `stop` espera a que termine
-# la tarea en curso (TimeoutStopSec); las que lleguen mientras tanto —creaciones y
-# notificaciones— esperan en RabbitMQ.
-systemctl stop torio-celery
-$APP venv/bin/python manage.py migrate
+REQUIREMENTS=0
+MIGRAR=0
+CATALOGOS=0
+for opcion in "$@"; do
+    case "$opcion" in
+        -r|--requirements) REQUIREMENTS=1 ;;
+        -m|--migrate)      MIGRAR=1 ;;
+        -c|--catalogos)    CATALOGOS=1 ;;
+        -f|--full)         REQUIREMENTS=1; MIGRAR=1; CATALOGOS=1 ;;
+        *) echo "Opción desconocida: $opcion (usa -r/--requirements, -m/--migrate, -c/--catalogos, -f/--full)"; exit 1 ;;
+    esac
+done
 
-if [ "$1" = "--catalogos" ] || [ "$1" = "-c" ]; then
+ANTES=$($APP git rev-parse HEAD)
+$APP git pull
+
+# --- Controles, con los servicios todavía arriba ---------------------------------
+# Si alguno falla no se detuvo nada: el servicio sigue con el código anterior en
+# memoria, y basta con volver a correr con la opción que falta.
+if [ "$REQUIREMENTS" = 0 ] && ! $APP git diff --quiet "$ANTES" HEAD -- requirements.txt; then
+    echo "requirements.txt cambió: vuelve a correr con -r. No se detuvo nada."
+    exit 1
+fi
+# Sin -m no se migra, pero tampoco se arranca código que espera columnas que la base
+# no tiene: eso es un 500 en todo lo que las toque. `--check` no aplica nada; sale con
+# error si algún schema tiene migraciones pendientes. Con -r se revisa más abajo:
+# `--check` importa el código, y un paquete nuevo todavía no está instalado.
+migraciones_al_dia() {
+    $APP venv/bin/python manage.py migrate --check > /dev/null
+}
+if [ "$MIGRAR" = 0 ] && [ "$REQUIREMENTS" = 0 ] && ! migraciones_al_dia; then
+    echo "Hay migraciones pendientes: vuelve a correr con -m. No se detuvo nada."
+    exit 1
+fi
+
+# --- Actualización, con los servicios detenidos -----------------------------------
+# Los dos: la API para que ninguna petición corra contra código o tablas a medio
+# cambiar, y el worker porque `migrate` no puede migrar el mismo schema que un
+# contenedor que se está creando. `stop` espera a que termine la tarea en curso
+# (TimeoutStopSec); las que lleguen mientras tanto esperan en RabbitMQ.
+systemctl stop torio torio-celery
+trap 'echo "Falló un paso: torio y torio-celery quedaron DETENIDOS. Corrige el error y vuelve a correr el script."' ERR
+
+if [ "$REQUIREMENTS" = 1 ]; then
+    $APP venv/bin/pip install -r requirements.txt
+    if [ "$MIGRAR" = 0 ] && ! migraciones_al_dia; then
+        echo "Hay migraciones pendientes: torio y torio-celery quedaron DETENIDOS. Vuelve a correr con -r -m."
+        exit 1
+    fi
+fi
+
+if [ "$MIGRAR" = 1 ]; then
+    $APP venv/bin/python manage.py migrate
+fi
+
+if [ "$CATALOGOS" = 1 ]; then
     echo "Cargando catálogos..."
     $APP venv/bin/python manage.py cargar_geodata
     $APP venv/bin/python manage.py cargar_datos_tenant
@@ -963,9 +1009,9 @@ fi
 
 $APP venv/bin/python manage.py collectstatic --noinput
 
-systemctl reload torio
-# Arranca con el código nuevo: el worker no lo recarga en caliente.
-systemctl start torio-celery
+systemctl start torio torio-celery
+trap - ERR
+echo "Actualización terminada: torio y torio-celery arriba."
 EOF
 
 chmod 700 /root/actualizar_torio.sh
@@ -974,9 +1020,29 @@ chmod 700 /root/actualizar_torio.sh
 Para actualizar:
 
 ```bash
-/root/actualizar_torio.sh              # código, dependencias, migraciones, estáticos
-/root/actualizar_torio.sh --catalogos  # lo mismo + recarga los catálogos (o -c)
+/root/actualizar_torio.sh           # código y estáticos
+/root/actualizar_torio.sh -r        # + dependencias de requirements.txt (o --requirements)
+/root/actualizar_torio.sh -m        # + migraciones (o --migrate)
+/root/actualizar_torio.sh -c        # + recarga los catálogos (o --catalogos)
+/root/actualizar_torio.sh -r -m -c  # todo; el orden de las opciones no importa
+/root/actualizar_torio.sh -f        # lo mismo que -r -m -c (o --full)
 ```
+
+El script **detiene `torio` y `torio-celery` al empezar la actualización y los vuelve
+a arrancar al terminar**: mientras corre, la API no responde (Nginx devuelve 502) y las
+tareas esperan en RabbitMQ. Lo que más tarda es `-m`, que recorre todos los tenants, y
+`-c`, que también; sin ellas es cosa de segundos.
+
+Usa `-r` cuando la actualización cambie `requirements.txt`, y `-m` cuando traiga
+migraciones (`*/migrations/*.py` nuevas). Si hace falta alguna de las dos y no la
+pasas, el script lo detecta **antes de detener los servicios** («requirements.txt
+cambió» o «Hay migraciones pendientes»): el servicio sigue con el código anterior en
+memoria y basta con volver a correrlo con la opción que falta. La única excepción es
+`-r` sin `-m` con migraciones pendientes: eso solo se puede saber después de instalar
+los paquetes, así que en ese caso los servicios ya están detenidos y el mensaje lo dice. El de dependencias compara
+`requirements.txt` antes y después del `git pull` de esa misma corrida; si una corrida
+anterior se cortó después del pull, pasa `-r` igual, porque esta ya no ve el cambio.
+Sin migraciones no hace falta `-m`, y así no se detiene el worker.
 
 Usa `--catalogos` cuando la actualización traiga cambios en:
 
@@ -989,21 +1055,24 @@ Sin cambios de ese tipo no hace falta: la carga es idempotente, pero recorre tod
 tenants y es el paso que más tarda a medida que crecen. Los contenedores nuevos no
 dependen de esto: su alta siembra sus propios catálogos (§14).
 
-- **`set -e`**: si un paso falla, el script se detiene y no recarga el servicio.
-  Corrige el error y vuelve a correrlo; todos los pasos se pueden repetir.
+- **`set -e`**: si un paso falla, el script se detiene. Si ya había detenido los
+  servicios, **los deja detenidos** y lo avisa: arrancarlos con el código a medio
+  actualizar sería un 500 en todo. Corrige el error y vuelve a correrlo; todos los pasos
+  se pueden repetir.
 - **`env DJANGO_SETTINGS_MODULE=...`** es necesario: `sudo` borra las variables de
   entorno, y sin ella `manage.py` usa los settings de desarrollo.
 - **`migrate`** migra el schema público y todos los tenants (en este proyecto es
-  `migrate_schemas`).
-- **`reload`** recicla los workers sin cortar el servicio. Si la actualización cambia
-  la versión de `gunicorn` o la unidad systemd, usa en su lugar
-  `systemctl daemon-reload && systemctl restart torio`.
-- **`stop` / `start torio-celery`** (§8.1): el worker va detenido durante `migrate`,
-  que si no podría migrar a la vez el schema de un contenedor que se está creando; y
-  al arrancar carga el código nuevo. Si el script se corta después del `stop`
-  (`set -e`), **el worker queda detenido**: las notificaciones y los contenedores
-  nuevos esperan en RabbitMQ, sin perderse. Corrija y vuelva a correr el script, o
-  arránquelo a mano con `systemctl start torio-celery`.
+  `migrate_schemas`). Con `-c` y sin `-m`, un catálogo de un modelo nuevo falla porque
+  su tabla todavía no existe; en ese caso van las dos opciones juntas.
+- **`stop` / `start torio torio-celery`**: los dos arrancan con el código nuevo. El
+  worker (§8.1) además tiene que estar detenido durante `migrate`, que si no podría
+  migrar a la vez el schema de un contenedor que se está creando. Si el script se corta
+  después del `stop`, **los dos quedan detenidos**: la API responde 502 y las
+  notificaciones y los contenedores nuevos esperan en RabbitMQ, sin perderse. Corrija y
+  vuelva a correr el script; arrancarlos a mano (`systemctl start torio torio-celery`)
+  solo si el código que quedó en disco ya está completo (dependencias y migraciones).
+- Si la actualización cambia la unidad systemd, corre `systemctl daemon-reload` antes
+  del script.
 
 ---
 
