@@ -31,6 +31,8 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
             'gen_empresa_ciudad',
             'gen_empresa_tipo_persona',
             'gen_emitir_automaticamente',
+            'ven_factura_informacion_superior',
+            'ven_factura_informacion_inferior',
         ]
         # `gen_empresa_logotipo` no está en `fields` a propósito. Es un PNG en base64
     # de decenas de KB —hoy pesa 70 veces más que todos los demás campos juntos—

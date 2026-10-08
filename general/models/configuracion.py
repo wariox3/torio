@@ -38,6 +38,9 @@ class GenConfiguracion(models.Model):
     # Guarda el PNG en base64 *sin* el prefijo `data:`; lo escribe únicamente
     # `servicios/logotipo.py`, que es quien garantiza el formato.
     gen_empresa_logotipo = models.TextField(null=True)
+    # Texto libre que la empresa quiere en la factura de venta, arriba y abajo.
+    ven_factura_informacion_superior = models.TextField(null=True)
+    ven_factura_informacion_inferior = models.TextField(null=True)
     gen_empresa_identificacion = models.ForeignKey(
         'general.GenIdentificacion', null=True, on_delete=models.PROTECT,
         related_name='configuraciones_empresa_identificacion_rel',
