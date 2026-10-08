@@ -1261,6 +1261,16 @@ class RededocTests(SimpleTestCase):
         self.assertEqual((metodo, url), ('POST', 'https://api.rededoc.uk/api/emisores/software/'))
         self.assertEqual(peticion.call_args.kwargs['json'], datos)
 
+    def test_actualizar_software_hace_patch_sobre_su_id(self):
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {'id': 3}),
+        ) as peticion:
+            rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k').actualizar_software(3, {'pin': '999'})
+
+        metodo, url = peticion.call_args.args
+        self.assertEqual((metodo, url), ('PATCH', 'https://api.rededoc.uk/api/emisores/software/3/'))
+        self.assertEqual(peticion.call_args.kwargs['json'], {'pin': '999'})
+
     def test_la_llave_viaja_en_el_header_authorization(self):
         with mock.patch.object(
             rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {}),
@@ -1741,6 +1751,43 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
         self.assertEqual(caso.exception.status, 400)
         self.assertEqual(caso.exception.cuerpo['detail'], cuerpo['detail'])
 
+    def test_software_actualizar_verifica_el_emisor_y_manda_solo_lo_recibido(self):
+        self.cliente.consultar_un_software.return_value = {
+            'error': False, 'status': 200, 'datos': {'id': 3, 'emisor': 77, 'tipo': 'facturacion'},
+        }
+        self.cliente.actualizar_software.return_value = {'error': False, 'status': 200, 'datos': {'id': 3}}
+
+        datos = factura_electronica.software_actualizar(3, {'pin': '999'}, cliente=self.cliente)
+
+        self.cliente.consultar_un_software.assert_called_once_with(3)
+        self.cliente.actualizar_software.assert_called_once_with(3, {'pin': '999'})
+        self.assertEqual(datos, {'id': 3})
+
+    def test_software_actualizar_ajeno_o_inexistente_es_404_y_no_hace_patch(self):
+        casos = {
+            'de otro emisor': {'error': False, 'status': 200, 'datos': {'id': 3, 'emisor': 88}},
+            'inexistente': {'error': True, 'status': 404, 'datos': {'detail': 'No encontrado.'}},
+        }
+        for nombre, consulta in casos.items():
+            with self.subTest(caso=nombre):
+                self.cliente.consultar_un_software.return_value = consulta
+
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    factura_electronica.software_actualizar(3, {'pin': '999'}, cliente=self.cliente)
+
+                self.assertEqual(caso.exception.status, 404)
+                self.assertEqual(caso.exception.cuerpo['detail'], 'El software no existe.')
+        self.cliente.actualizar_software.assert_not_called()
+
+    def test_software_actualizar_con_rededoc_caido_es_502_y_no_hace_patch(self):
+        self.cliente.consultar_un_software.return_value = {'error': True, 'status': 0, 'datos': {'mensaje': 'x'}}
+
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.software_actualizar(3, {'pin': '999'}, cliente=self.cliente)
+
+        self.assertEqual(caso.exception.status, 502)
+        self.cliente.actualizar_software.assert_not_called()
+
     def test_sin_emisor_es_404_y_no_llama_a_rededoc(self):
         GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
 
@@ -1751,6 +1798,7 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
             'certificado_consultar': lambda: factura_electronica.certificado_consultar(cliente=self.cliente),
             'software_consultar': lambda: factura_electronica.software_consultar(cliente=self.cliente),
             'software_crear': lambda: factura_electronica.software_crear('facturacion', 'sw', '1', 'ts', cliente=self.cliente),
+            'software_actualizar': lambda: factura_electronica.software_actualizar(3, {'pin': '1'}, cliente=self.cliente),
         }
         for nombre, llamada in llamadas.items():
             with self.subTest(funcion=nombre):
@@ -1763,6 +1811,8 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
         self.cliente.consultar_certificados.assert_not_called()
         self.cliente.consultar_software.assert_not_called()
         self.cliente.crear_software.assert_not_called()
+        self.cliente.consultar_un_software.assert_not_called()
+        self.cliente.actualizar_software.assert_not_called()
 
     def test_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
         for status_rededoc, esperado in ((400, 400), (0, 502)):
@@ -2138,6 +2188,35 @@ class FacturaElectronicaVistaTests(TenantTestCase):
                 self.assertEqual(respuesta.status_code, esperado)
                 if esperado == 201:
                     servicio.assert_called_once_with(**completo)
+                    self.assertEqual(respuesta.data, {'id': 3})
+                else:
+                    self.assertIn('detail', respuesta.data)
+                    servicio.assert_not_called()
+
+    def test_software_actualizar_exige_id_y_al_menos_un_campo(self):
+        vista = _ElectronicoViewSinPermisos.as_view({'patch': 'software_actualizar'})
+        uuid_valido = '94966156-8084-428b-b1b1-a903a053aed1'
+        casos = (
+            ({'id': 3, 'pin': '999'}, 200, {'pin': '999'}),
+            ({'id': 3, 'identificador': uuid_valido, 'test_set_id': uuid_valido},
+             200, {'identificador': uuid_valido, 'test_set_id': uuid_valido}),
+            ({'id': 3}, 400, None),
+            ({'pin': '999'}, 400, None),
+            ({'id': 0, 'pin': '999'}, 400, None),
+            ({'id': 3, 'identificador': 'sw'}, 400, None),
+            ({'id': 3, 'test_set_id': 'ts'}, 400, None),
+            ({'id': 3, 'pin': ''}, 400, None),
+        )
+        for cuerpo, esperado, datos in casos:
+            with self.subTest(cuerpo=cuerpo):
+                peticion = self.factory.patch('/general/electronico/software-actualizar/', cuerpo, format='json')
+                force_authenticate(peticion, user=SegUsuario(id=1))
+                with mock.patch.object(factura_electronica, 'software_actualizar', return_value={'id': 3}) as servicio:
+                    respuesta = vista(peticion)
+
+                self.assertEqual(respuesta.status_code, esperado)
+                if esperado == 200:
+                    servicio.assert_called_once_with(3, datos)
                     self.assertEqual(respuesta.data, {'id': 3})
                 else:
                     self.assertIn('detail', respuesta.data)

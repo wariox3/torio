@@ -105,6 +105,17 @@ class Rededoc:
         """
         return self._peticion('POST', '/api/emisores/software/', datos=datos)
 
+    def consultar_un_software(self, software_id):
+        """Un registro de software DIAN. `GET /api/emisores/software/{id}/`."""
+        return self._peticion('GET', f'/api/emisores/software/{software_id}/')
+
+    def actualizar_software(self, software_id, datos: dict):
+        """
+        Actualiza parcialmente un software DIAN. `PATCH /api/emisores/software/{id}/`.
+        Rededoc no devuelve el `pin`.
+        """
+        return self._peticion('PATCH', f'/api/emisores/software/{software_id}/', datos=datos)
+
     def eliminar_certificado(self, certificado_id):
         """
         Da de baja un certificado y borra su .p12. `DELETE /api/emisores/certificado/{id}/`

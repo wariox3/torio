@@ -261,6 +261,30 @@ def software_crear(tipo: str, identificador: str, pin: str, test_set_id: str,
     return respuesta['datos']
 
 
+def software_actualizar(software_id: int, datos: dict, cliente: Rededoc = None) -> dict:
+    """
+    Actualiza en rededoc un software DIAN del emisor de `gen_rededoc_emisor`.
+
+    El id viene del front, y todos los emisores cuelgan de la misma API key de
+    torio: rededoc aceptaría el PATCH sobre el software de otra empresa. Por eso
+    antes se consulta y se exige que su `emisor` sea el del tenant. Que no exista
+    y que sea ajeno responden lo mismo, para no revelar qué softwares hay.
+    """
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+    respuesta = cliente.consultar_un_software(software_id)
+    if respuesta['error'] and respuesta['status'] != 404:
+        raise _error_rededoc(respuesta)
+    emisor_software = None if respuesta['error'] else (respuesta['datos'] or {}).get('emisor')
+    if emisor_software is None or str(emisor_software) != str(emisor_id):
+        raise ErrorFacturaElectronica('El software no existe.', status=404)
+
+    respuesta = cliente.actualizar_software(software_id, datos)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    return respuesta['datos']
+
+
 def certificado_eliminar(cliente: Rededoc = None) -> GenParametro:
     """
     Borra en rededoc el certificado del emisor de `gen_rededoc_emisor`.

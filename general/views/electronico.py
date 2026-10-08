@@ -34,6 +34,24 @@ class SoftwareCrearRequestSerializer(serializers.Serializer):
     )
 
 
+
+class SoftwareActualizarRequestSerializer(serializers.Serializer):
+    id = serializers.IntegerField(min_value=1, help_text='Id del software en rededoc.')
+    identificador = serializers.RegexField(
+        UUID_DIAN, required=False, error_messages={'invalid': UUID_DIAN_INVALIDO},
+        help_text='SoftwareID asignado por la DIAN.',
+    )
+    pin = serializers.CharField(max_length=100, required=False, help_text='PIN del software asignado por la DIAN.')
+    test_set_id = serializers.RegexField(
+        UUID_DIAN, required=False, error_messages={'invalid': UUID_DIAN_INVALIDO},
+        help_text='TestSetId entregado por la DIAN.',
+    )
+
+    def validate(self, attrs):
+        if not attrs.keys() - {'id'}:
+            raise serializers.ValidationError('Envíe al menos uno de: identificador, pin, test_set_id.')
+        return attrs
+
 @extend_schema(tags=['Electronico'])
 class GenElectronicoViewSet(viewsets.GenericViewSet):
     parser_classes = [JSONParser, MultiPartParser, FormParser]
@@ -133,6 +151,20 @@ class GenElectronicoViewSet(viewsets.GenericViewSet):
             return Response(e.cuerpo, status=e.status)
 
         return Response(datos, status=status.HTTP_201_CREATED)
+
+    @extend_schema(request=SoftwareActualizarRequestSerializer, responses=OpenApiTypes.OBJECT)
+    @action(detail=False, methods=['patch'], url_path='software-actualizar')
+    def software_actualizar(self, request):
+        serializer = SoftwareActualizarRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = dict(serializer.validated_data)
+        software_id = datos.pop('id')
+        try:
+            respuesta = servicio.software_actualizar(software_id, datos)
+        except servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+
+        return Response(respuesta, status=status.HTTP_200_OK)
 
     @extend_schema(
         request={'multipart/form-data': {
