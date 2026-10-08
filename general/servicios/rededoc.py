@@ -87,6 +87,24 @@ class Rededoc:
         """
         return self._peticion('GET', '/api/emisores/certificado/', parametros={'emisor': emisor_id})
 
+    def consultar_software(self, emisor_id, modulo: str = None):
+        """
+        Los registros de software DIAN de un emisor.
+        `GET /api/emisores/software/?emisor={id}&modulo={facturacion|nomina}`;
+        sin `modulo` trae todos los del emisor.
+        """
+        parametros = {'emisor': emisor_id}
+        if modulo:
+            parametros['modulo'] = modulo
+        return self._peticion('GET', '/api/emisores/software/', parametros=parametros)
+
+    def crear_software(self, datos: dict):
+        """
+        Registra el software DIAN de un emisor. `POST /api/emisores/software/`.
+        Rededoc acepta uno por emisor y tipo, y no devuelve el `pin`.
+        """
+        return self._peticion('POST', '/api/emisores/software/', datos=datos)
+
     def eliminar_certificado(self, certificado_id):
         """
         Da de baja un certificado y borra su .p12. `DELETE /api/emisores/certificado/{id}/`

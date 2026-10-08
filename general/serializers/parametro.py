@@ -18,6 +18,9 @@ class GenParametroSerializer(serializers.ModelSerializer):
             'gen_factura_electronica_activa',
             'gen_rededoc_emisor',
             'gen_certificado_vence',
+            'gen_electronico_habilitado_facturacion',
+            'gen_electronico_habilitado_nomina',
+            'gen_electronico_habilitado_equivalente',
             'gen_asistente_datos_iniciales',
         ]
         read_only_fields = fields

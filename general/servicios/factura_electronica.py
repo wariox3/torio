@@ -26,6 +26,7 @@ from utilidades.excepciones import con_detail
 
 EXTENSIONES_CERTIFICADO = ('.p12', '.pfx')
 TAMANO_MAXIMO_CERTIFICADO = 1024 * 1024  # 1 MB; un certificado real pesa unos pocos KB
+MODULOS_SOFTWARE = ('facturacion', 'nomina')
 
 
 class ErrorFacturaElectronica(Exception):
@@ -218,6 +219,43 @@ def certificado_consultar(cliente: Rededoc = None) -> dict:
     emisor_id = _emisor_id()
     cliente = cliente or Rededoc()
     respuesta = cliente.consultar_certificados(emisor_id)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    return respuesta['datos']
+
+
+def software_consultar(modulo: str = None, cliente: Rededoc = None) -> dict:
+    """
+    El software DIAN del emisor de `gen_rededoc_emisor`, tal como lo tiene
+    rededoc. Con `modulo` (facturacion o nomina) solo el de ese módulo.
+    """
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+    respuesta = cliente.consultar_software(emisor_id, modulo)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    return respuesta['datos']
+
+
+def software_crear(tipo: str, identificador: str, pin: str, test_set_id: str,
+                   cliente: Rededoc = None) -> dict:
+    """
+    Registra en rededoc el software DIAN del emisor de `gen_rededoc_emisor`.
+
+    En torio no se guarda nada: el software vive en rededoc y se lee con
+    `software_consultar`. El PIN solo pasa de camino; rededoc no lo devuelve.
+    Que el emisor ya tenga software de ese tipo, o que le falte el certificado,
+    lo valida rededoc y su mensaje es el que sube al front.
+    """
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+    respuesta = cliente.crear_software({
+        'emisor': emisor_id,
+        'tipo': tipo,
+        'identificador': identificador,
+        'pin': pin,
+        'test_set_id': test_set_id,
+    })
     if respuesta['error']:
         raise _error_rededoc(respuesta)
     return respuesta['datos']
@@ -550,6 +588,15 @@ AVISOS = (AVISO_VALIDACION, AVISO_NOTIFICACION)
 # documento: la vista lo responde apenas pasa la firma y nunca llega a
 # `procesar_aviso`, por eso no va en `AVISOS`.
 AVISO_PRUEBA = 'prueba'
+# La DIAN habilitó al emisor para una operación. Tampoco es de un documento: lo
+# aplica `procesar_habilitacion`, no `procesar_aviso`.
+AVISO_HABILITACION = 'habilitacion'
+# Operación de rededoc → campo de `GenParametro` que enciende.
+CAMPO_HABILITADO_POR_OPERACION = {
+    'facturacion': 'gen_electronico_habilitado_facturacion',
+    'nomina': 'gen_electronico_habilitado_nomina',
+    'documento_equivalente': 'gen_electronico_habilitado_equivalente',
+}
 
 
 class DocumentoYaValidado(APIException):
@@ -593,6 +640,26 @@ def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenD
         documento.save(update_fields=['estado_electronico_notificado'])
     return documento
 
+
+
+def procesar_habilitacion(emisor_id, operacion) -> GenParametro:
+    """
+    Marca al tenant habilitado ante la DIAN para `operacion`.
+
+    Solo enciende: apagar la bandera no es algo que avise rededoc. Repetir el
+    aviso deja todo igual. El `emisor` tiene que ser el de `gen_rededoc_emisor`:
+    un aviso tardío de un emisor ya desvinculado o reasignado no puede habilitar
+    al tenant con lo que la DIAN aprobó para otro. Responde el mismo 404 que un
+    cliente desconocido.
+    """
+    parametro, _ = GenParametro.objects.get_or_create(id=1)
+    if not parametro.gen_rededoc_emisor or parametro.gen_rededoc_emisor != emisor_id:
+        raise NotFound('El emisor no existe.')
+
+    campo = CAMPO_HABILITADO_POR_OPERACION[operacion]
+    setattr(parametro, campo, True)
+    parametro.save(update_fields=[campo])
+    return parametro
 
 # ------------------------------------------------------------ notificar ----
 

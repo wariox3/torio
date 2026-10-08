@@ -45,15 +45,32 @@ class FechaHoraField(serializers.DateTimeField):
 
 
 class RededocAvisoSerializer(serializers.Serializer):
-    tipo = serializers.ChoiceField(choices=(*factura_electronica.AVISOS, factura_electronica.AVISO_PRUEBA))
+    tipo = serializers.ChoiceField(choices=(
+        *factura_electronica.AVISOS, factura_electronica.AVISO_PRUEBA, factura_electronica.AVISO_HABILITACION,
+    ))
     cliente = serializers.IntegerField(min_value=1, help_text='Id del cliente (tenant) en torio.')
-    # Opcional solo para `prueba`; `validate` lo exige en los demás.
+    # Opcional en `prueba` y `habilitacion`; `validate` lo exige en los demás.
     documento = serializers.UUIDField(required=False, help_text='Id del documento en rededoc.')
     fecha_validacion = FechaHoraField(required=False, allow_null=True)
     cufe = serializers.CharField(max_length=150, required=False, allow_null=True, allow_blank=True)
+    # Solo de `habilitacion`, que los exige en `validate`.
+    emisor = serializers.IntegerField(min_value=1, required=False, help_text='Id del emisor en rededoc.')
+    operacion = serializers.ChoiceField(
+        choices=tuple(factura_electronica.CAMPO_HABILITADO_POR_OPERACION), required=False,
+        help_text='Operación para la que la DIAN habilitó al emisor.',
+    )
 
     def validate(self, attrs):
         if attrs['tipo'] == factura_electronica.AVISO_PRUEBA:
+            return attrs
+        if attrs['tipo'] == factura_electronica.AVISO_HABILITACION:
+            faltan = {
+                campo: 'Es obligatorio en un aviso de habilitación.'
+                for campo in ('emisor', 'operacion')
+                if campo not in attrs
+            }
+            if faltan:
+                raise serializers.ValidationError(faltan)
             return attrs
         if 'documento' not in attrs:
             raise serializers.ValidationError({'documento': 'Este campo es requerido.'})
@@ -82,7 +99,10 @@ class CtnRededocViewSet(viewsets.GenericViewSet):
         description=(
             'Recibe los avisos de RedEDoc sobre un documento electrónico: '
             '`validacion` (la DIAN lo aceptó; trae `fecha_validacion` y `cufe`) y '
-            '`notificacion` (se le entregó al adquiriente). `prueba` verifica la '
+            '`notificacion` (se le entregó al adquiriente). `habilitacion` marca al '
+            'cliente habilitado ante la DIAN para una `operacion` (facturacion, nomina o '
+            'documento_equivalente); trae `emisor`, que tiene que ser el del cliente, y '
+            'no lleva `documento`. `prueba` verifica la '
             'firma y que el `cliente` exista, y responde 200 sin tocar nada; no lleva '
             '`documento`. Un cliente inexistente en `prueba` sí responde «El cliente no existe.».\n\n'
             'Cada aviso viene firmado: `X-Rededoc-Fecha` (timestamp unix) y '
@@ -134,6 +154,14 @@ class CtnRededocViewSet(viewsets.GenericViewSet):
             if cliente is None:
                 raise NotFound('El cliente no existe.')
             return Response({'detail': 'Aviso de prueba recibido.'}, status=status.HTTP_200_OK)
+
+        if datos['tipo'] == factura_electronica.AVISO_HABILITACION:
+            # Cliente desconocido y emisor que no es el suyo responden lo mismo.
+            if cliente is None:
+                raise NotFound('El emisor no existe.')
+            with schema_context(cliente.schema_name):
+                factura_electronica.procesar_habilitacion(datos['emisor'], datos['operacion'])
+            return Response(status=status.HTTP_200_OK)
 
         if cliente is None:
             raise NotFound('El documento no existe.')

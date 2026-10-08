@@ -21,7 +21,7 @@ from rest_framework.throttling import ScopedRateThrottle
 
 from contenedor.models import CtnCliente
 from contenedor.views.rededoc import CtnRededocViewSet
-from general.models import GenDocumento, GenDocumentoClase, GenDocumentoTipo
+from general.models import GenDocumento, GenDocumentoClase, GenDocumentoTipo, GenParametro
 from general.servicios.rededoc import firmar_aviso
 
 SECRETO = 'secreto-de-prueba'
@@ -269,6 +269,86 @@ class WebhookRededocTests(TenantTestCase):
 
         self.assertEqual(respuesta.status_code, 400)
         self.assertIn('documento', respuesta.data)
+
+    # ---- habilitación ----
+
+    def _habilitacion(self, **datos):
+        return self._llamar(**{'tipo': 'habilitacion', 'documento': None, 'emisor': 77, **datos})
+
+    def _parametro_con_emisor(self, emisor=77):
+        GenParametro.objects.all().delete()
+        return GenParametro.objects.create(id=1, gen_rededoc_emisor=emisor)
+
+    def test_la_habilitacion_enciende_solo_la_operacion_avisada(self):
+        campos = {
+            'facturacion': 'gen_electronico_habilitado_facturacion',
+            'nomina': 'gen_electronico_habilitado_nomina',
+            'documento_equivalente': 'gen_electronico_habilitado_equivalente',
+        }
+        for operacion, campo in campos.items():
+            with self.subTest(operacion=operacion):
+                self._parametro_con_emisor()
+
+                respuesta = self._habilitacion(operacion=operacion)
+
+                self.assertEqual(respuesta.status_code, 200)
+                parametro = GenParametro.objects.get(id=1)
+                for otro in campos.values():
+                    self.assertIs(getattr(parametro, otro), otro == campo)
+
+    def test_repetir_la_habilitacion_deja_todo_igual(self):
+        self._parametro_con_emisor()
+        self._habilitacion(operacion='nomina')
+
+        respuesta = self._habilitacion(operacion='nomina')
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIs(GenParametro.objects.get(id=1).gen_electronico_habilitado_nomina, True)
+
+    def test_la_habilitacion_de_otro_emisor_responde_404_y_no_enciende(self):
+        for emisor_guardado in (88, None):
+            with self.subTest(emisor_guardado=emisor_guardado):
+                self._parametro_con_emisor(emisor_guardado)
+
+                respuesta = self._habilitacion(operacion='facturacion')
+
+                self.assertEqual(respuesta.status_code, 404)
+                self.assertEqual(respuesta.data, {'detail': 'El emisor no existe.'})
+                self.assertIs(GenParametro.objects.get(id=1).gen_electronico_habilitado_facturacion, False)
+
+    def test_la_habilitacion_de_un_cliente_desconocido_responde_igual_que_otro_emisor(self):
+        self._parametro_con_emisor()
+
+        respuesta = self._habilitacion(operacion='facturacion', cliente=999999)
+
+        self.assertEqual(respuesta.status_code, 404)
+        self.assertEqual(respuesta.data, {'detail': 'El emisor no existe.'})
+
+    def test_la_habilitacion_exige_emisor_y_una_operacion_valida(self):
+        self._parametro_con_emisor()
+        casos = (
+            ({'operacion': 'facturacion', 'emisor': None}, 'emisor'),
+            ({}, 'operacion'),
+            ({'operacion': 'otra'}, 'operacion'),
+        )
+        for datos, campo in casos:
+            with self.subTest(datos=datos):
+                respuesta = self._habilitacion(**datos)
+
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertIn(campo, respuesta.data)
+                self.assertIn('detail', respuesta.data)
+        parametro = GenParametro.objects.get(id=1)
+        self.assertIs(parametro.gen_electronico_habilitado_facturacion, False)
+
+    def test_la_habilitacion_sin_firma_responde_401_y_no_enciende(self):
+        self._parametro_con_emisor()
+        crudo = self._cuerpo(tipo='habilitacion', documento=None, emisor=77, operacion='facturacion')
+
+        respuesta = self._enviar(crudo, firma='v1=deadbeef')
+
+        self.assertEqual(respuesta.status_code, 401)
+        self.assertIs(GenParametro.objects.get(id=1).gen_electronico_habilitado_facturacion, False)
 
     # ---- notificación programada ----
 

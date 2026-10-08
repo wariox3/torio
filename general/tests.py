@@ -1237,6 +1237,30 @@ class RededocTests(SimpleTestCase):
         self.assertIsNone(peticion.call_args.kwargs['json'])
         self.assertEqual(peticion.call_args.kwargs['timeout'], rededoc_servicio.Rededoc.TIMEOUT_NOTIFICAR)
 
+    def test_consultar_software_manda_modulo_solo_si_viene(self):
+        cliente = rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k')
+        for modulo, esperado in ((None, {'emisor': 77}), ('nomina', {'emisor': 77, 'modulo': 'nomina'})):
+            with self.subTest(modulo=modulo):
+                with mock.patch.object(
+                    rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {'results': []}),
+                ) as peticion:
+                    cliente.consultar_software(77, modulo)
+
+                metodo, url = peticion.call_args.args
+                self.assertEqual((metodo, url), ('GET', 'https://api.rededoc.uk/api/emisores/software/'))
+                self.assertEqual(peticion.call_args.kwargs['params'], esperado)
+
+    def test_crear_software_manda_los_datos_en_json(self):
+        datos = {'emisor': 77, 'tipo': 'facturacion', 'identificador': 'sw', 'pin': '12345', 'test_set_id': 'ts'}
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(201, {'id': 3}),
+        ) as peticion:
+            rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k').crear_software(datos)
+
+        metodo, url = peticion.call_args.args
+        self.assertEqual((metodo, url), ('POST', 'https://api.rededoc.uk/api/emisores/software/'))
+        self.assertEqual(peticion.call_args.kwargs['json'], datos)
+
     def test_la_llave_viaja_en_el_header_authorization(self):
         with mock.patch.object(
             rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {}),
@@ -1677,6 +1701,46 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
         self.cliente.consultar_certificados.assert_called_once_with(77)
         self.assertEqual(datos, {'count': 1, 'results': [{'id': 5}]})
 
+    def test_software_consultar_pide_los_del_emisor_guardado_con_su_modulo(self):
+        self.cliente.consultar_software.return_value = {
+            'error': False, 'status': 200, 'datos': {'count': 1, 'results': [{'id': 3}]},
+        }
+        for modulo in (None, 'facturacion'):
+            with self.subTest(modulo=modulo):
+                self.cliente.consultar_software.reset_mock()
+
+                datos = factura_electronica.software_consultar(modulo, cliente=self.cliente)
+
+                self.cliente.consultar_software.assert_called_once_with(77, modulo)
+                self.assertEqual(datos, {'count': 1, 'results': [{'id': 3}]})
+
+    def test_software_crear_manda_el_emisor_guardado_y_devuelve_lo_de_rededoc(self):
+        self.cliente.crear_software.return_value = {'error': False, 'status': 201, 'datos': {'id': 3}}
+
+        datos = factura_electronica.software_crear(
+            'nomina', '94966156-8084-428b-b1b1-a903a053aed1', '12345', '0d26ba8c-8584-4199-b210-2ddc063c3ddd',
+            cliente=self.cliente,
+        )
+
+        self.cliente.crear_software.assert_called_once_with({
+            'emisor': 77,
+            'tipo': 'nomina',
+            'identificador': '94966156-8084-428b-b1b1-a903a053aed1',
+            'pin': '12345',
+            'test_set_id': '0d26ba8c-8584-4199-b210-2ddc063c3ddd',
+        })
+        self.assertEqual(datos, {'id': 3})
+
+    def test_software_crear_rechazado_por_rededoc_sube_su_mensaje(self):
+        cuerpo = {'detail': 'El emisor ya tiene un software DIAN de nómina electrónica.', 'errores': []}
+        self.cliente.crear_software.return_value = {'error': True, 'status': 400, 'datos': cuerpo}
+
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.software_crear('nomina', 'sw', '12345', 'ts', cliente=self.cliente)
+
+        self.assertEqual(caso.exception.status, 400)
+        self.assertEqual(caso.exception.cuerpo['detail'], cuerpo['detail'])
+
     def test_sin_emisor_es_404_y_no_llama_a_rededoc(self):
         GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
 
@@ -1685,6 +1749,8 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
             'emisor_actualizar': lambda: factura_electronica.emisor_actualizar(cliente=self.cliente),
             'emisor_desvincular': factura_electronica.emisor_desvincular,
             'certificado_consultar': lambda: factura_electronica.certificado_consultar(cliente=self.cliente),
+            'software_consultar': lambda: factura_electronica.software_consultar(cliente=self.cliente),
+            'software_crear': lambda: factura_electronica.software_crear('facturacion', 'sw', '1', 'ts', cliente=self.cliente),
         }
         for nombre, llamada in llamadas.items():
             with self.subTest(funcion=nombre):
@@ -1695,6 +1761,8 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
         self.cliente.consultar_emisor.assert_not_called()
         self.cliente.actualizar_emisor.assert_not_called()
         self.cliente.consultar_certificados.assert_not_called()
+        self.cliente.consultar_software.assert_not_called()
+        self.cliente.crear_software.assert_not_called()
 
     def test_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
         for status_rededoc, esperado in ((400, 400), (0, 502)):
@@ -2016,6 +2084,64 @@ class FacturaElectronicaVistaTests(TenantTestCase):
         with mock.patch.object(factura_electronica, 'emisor_crear', side_effect=error):
             respuesta = self._llamar()
         self.assertEqual(respuesta.status_code, 502)
+
+    def test_software_consultar_valida_el_modulo_de_la_query(self):
+        vista = _ElectronicoViewSinPermisos.as_view({'get': 'software_consultar'})
+        casos = (
+            ({}, 200, None),
+            ({'modulo': 'facturacion'}, 200, 'facturacion'),
+            ({'modulo': 'nomina'}, 200, 'nomina'),
+            ({'modulo': 'documento_equivalente'}, 400, None),
+            ({'modulo': ''}, 200, None),
+        )
+        for query, esperado, modulo in casos:
+            with self.subTest(query=query):
+                peticion = self.factory.get('/general/electronico/software-consultar/', query)
+                force_authenticate(peticion, user=SegUsuario(id=1))
+                with mock.patch.object(factura_electronica, 'software_consultar', return_value={'results': []}) as servicio:
+                    respuesta = vista(peticion)
+
+                self.assertEqual(respuesta.status_code, esperado)
+                if esperado == 200:
+                    servicio.assert_called_once_with(modulo)
+                else:
+                    self.assertIn('detail', respuesta.data)
+                    servicio.assert_not_called()
+
+    def test_software_crear_exige_los_cuatro_campos(self):
+        vista = _ElectronicoViewSinPermisos.as_view({'post': 'software_crear'})
+        completo = {
+            'tipo': 'facturacion',
+            'identificador': '94966156-8084-428b-b1b1-a903a053aed1',
+            'pin': '12345',
+            'test_set_id': '0d26ba8c-8584-4199-b210-2ddc063c3ddd',
+        }
+        casos = [(completo, 201)]
+        casos += [({k: v for k, v in completo.items() if k != campo}, 400) for campo in completo]
+        casos += [({**completo, 'tipo': 'documento_equivalente'}, 400), ({**completo, 'pin': ''}, 400)]
+        for campo in ('identificador', 'test_set_id'):
+            for invalido in (
+                'sw',
+                '94966156-8084-428b-b1b1-a903a053aed',  # 35 caracteres
+                '94966156-8084-428b-b1b1-a903a053aed12',  # 37 caracteres
+                '949661568084428bb1b1a903a053aed1',  # sin guiones
+                '94966156-8084-428b-b1b1-a903a053aedz',  # caracter que no es hex
+            ):
+                casos.append(({**completo, campo: invalido}, 400))
+        for cuerpo, esperado in casos:
+            with self.subTest(cuerpo=cuerpo):
+                peticion = self.factory.post('/general/electronico/software-crear/', cuerpo, format='json')
+                force_authenticate(peticion, user=SegUsuario(id=1))
+                with mock.patch.object(factura_electronica, 'software_crear', return_value={'id': 3}) as servicio:
+                    respuesta = vista(peticion)
+
+                self.assertEqual(respuesta.status_code, esperado)
+                if esperado == 201:
+                    servicio.assert_called_once_with(**completo)
+                    self.assertEqual(respuesta.data, {'id': 3})
+                else:
+                    self.assertIn('detail', respuesta.data)
+                    servicio.assert_not_called()
 
 
 class _PrecioDetalleViewSinPermisos(GenPrecioDetalleViewSet):

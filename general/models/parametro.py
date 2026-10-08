@@ -10,6 +10,11 @@ class GenParametro(models.Model):
     # rededoc, así que esta fecha sirve para mostrar y avisar, no para decidir
     # si el tenant puede facturar. `null` significa que nunca se cargó uno.
     gen_certificado_vence = models.DateField(null=True)
+    # Habilitación del emisor ante la DIAN por operación: facturación, nómina
+    # electrónica y documento equivalente se habilitan por separado.
+    gen_electronico_habilitado_facturacion = models.BooleanField(default=False, db_default=False)
+    gen_electronico_habilitado_nomina = models.BooleanField(default=False, db_default=False)
+    gen_electronico_habilitado_equivalente = models.BooleanField(default=False, db_default=False)
     # Asistente de datos iniciales: mientras esté en True el front ofrece cargar
     # una plantilla o descartarla. Arranca encendido y lo apaga el back —al aplicar
     # una plantilla o al descartar—, nunca un PATCH del front. El default importa:

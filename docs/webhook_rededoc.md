@@ -5,7 +5,8 @@ Estado: **implementado del lado de torio**: vista `contenedor/views/rededoc.py`,
 `general/servicios/factura_electronica.py` (`procesar_aviso`), con tests en
 `contenedor/tests_rededoc.py`. **Nobelio ya envía los avisos** (`apps/emisores/servicios/
 webhooks.py`), y el flujo completo —emitir, validación, notificación— está probado de punta
-a punta.
+a punta. **Falta en nobelio** el aviso `habilitacion` (2026-10-07): torio ya lo recibe,
+pero rededoc todavía no lo manda.
 
 Este documento es el contrato: lo que nobelio tiene que mandar y cómo tiene que leer la
 respuesta. Lo que no esté acá no forma parte del contrato.
@@ -35,16 +36,23 @@ X-Rededoc-Firma: v1=<firma>
 
 | Campo | Tipo | Obligatorio | Qué es |
 |---|---|---|---|
-| `tipo` | texto | siempre | `validacion`, `notificacion` o `prueba` |
+| `tipo` | texto | siempre | `validacion`, `notificacion`, `habilitacion` o `prueba` |
 | `cliente` | entero | siempre | Id del cliente (tenant) en torio |
-| `documento` | UUID | en `validacion` y `notificacion` | Id del documento en rededoc: el mismo que devolvió al crearlo. En `prueba` no se usa |
+| `documento` | UUID | en `validacion` y `notificacion` | Id del documento en rededoc: el mismo que devolvió al crearlo. En `habilitacion` y `prueba` no se usa |
 | `fecha_validacion` | fecha y hora ISO 8601 | en `validacion` | Cuándo lo validó la DIAN. Con hora: `2026-09-21` solo se rechaza |
 | `cufe` | texto, hasta 150 | en `validacion` | CUFE/CUDE del documento |
+| `emisor` | entero | en `habilitacion` | Id del emisor en rededoc. Tiene que ser el que el cliente tiene guardado |
+| `operacion` | texto | en `habilitacion` | `facturacion`, `nomina` o `documento_equivalente` |
 
 - **`validacion`**: la DIAN aceptó el documento. Torio lo marca validado y guarda el CUFE
   y la fecha.
 - **`notificacion`**: el documento se le entregó al adquiriente. Torio lo marca
   notificado. `fecha_validacion` y `cufe` no se usan.
+- **`habilitacion`**: la DIAN habilitó al emisor para una `operacion`. Torio enciende la
+  bandera de esa operación (`GenParametro.gen_electronico_habilitado_facturacion`,
+  `_nomina` o `_equivalente`). Solo enciende: no hay aviso para apagarla. Si el `emisor`
+  no es el que el cliente tiene en `gen_rededoc_emisor` —un emisor ya desvinculado o
+  reasignado— no toca nada y responde `404`.
 - **`prueba`**: no es de ningún documento. Sirve para comprobar la configuración de un
   emisor antes de mandar avisos reales (sección 3, *Probar la configuración*). Torio
   verifica la firma y que el `cliente` exista, y no toca nada.
@@ -58,16 +66,20 @@ Ejemplo:
 {"tipo": "validacion", "cliente": 12, "documento": "0b8f3c2e-5d7a-4e1b-9c6f-2a4d8e7b1f90", "fecha_validacion": "2026-09-21T10:15:00-05:00", "cufe": "abc123"}
 ```
 
+```json
+{"tipo": "habilitacion", "cliente": 12, "emisor": 77, "operacion": "nomina"}
+```
+
 ## 3. La respuesta
 
 Todo error trae `detail` con el mensaje. Un 200 no trae cuerpo, salvo el de `prueba`.
 
 | Código | Cuándo | ¿Reintentar? |
 |---|---|---|
-| `200` | Aviso aplicado. También una `notificacion` repetida, y una `prueba` que pasó | No: listo |
+| `200` | Aviso aplicado. También una `notificacion` o una `habilitacion` repetidas, y una `prueba` que pasó | No: listo |
 | `400` | Cuerpo inválido (campo que falta, `tipo` desconocido, fecha sin hora…). Trae el error por campo además de `detail` | No: el mismo cuerpo volverá a fallar |
 | `401` | Firma inválida o fecha fuera de la ventana (sección 4) | Sí, **firmando de nuevo** con la hora actual. Si persiste, es el secreto o el reloj |
-| `404` | El cliente no existe, o el documento no está en ese cliente. Es la misma respuesta en los dos casos, a propósito, salvo en `prueba` | No |
+| `404` | El cliente no existe, o el documento no está en ese cliente. En `habilitacion`, el cliente no existe o el `emisor` no es el suyo (`El emisor no existe.`). Es la misma respuesta en los dos casos, a propósito, salvo en `prueba` | No |
 | `409` | `validacion` de un documento que ya estaba validado. Torio **no** lo reescribe | No: es definitivo |
 | `429` | Límite de peticiones de torio: 600 por minuto desde una misma IP | Sí, con espera |
 | `5xx`, timeout, sin conexión | Falla de torio o de la red | Sí, con espera |
