@@ -12,6 +12,12 @@ class EmisorReasignarRequestSerializer(serializers.Serializer):
     emisor = serializers.IntegerField(min_value=1, help_text='Id del emisor en rededoc.')
 
 
+class AsistenteTerminarRequestSerializer(serializers.Serializer):
+    modulo = serializers.ChoiceField(
+        choices=tuple(servicio.CAMPO_ASISTENTE_POR_MODULO), help_text='Asistente que se termina.',
+    )
+
+
 class SoftwareConsultarQuerySerializer(serializers.Serializer):
     modulo = serializers.ChoiceField(
         choices=servicio.MODULOS_SOFTWARE, required=False,
@@ -108,13 +114,13 @@ class GenElectronicoViewSet(viewsets.GenericViewSet):
 
         return Response(status=status.HTTP_200_OK)
 
-    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
+    @extend_schema(request=AsistenteTerminarRequestSerializer, responses=OpenApiTypes.OBJECT)
     @action(detail=False, methods=['post'], url_path='asistente-terminar')
     def asistente_terminar(self, request):
-        parametro = servicio.asistente_terminar()
-        return Response(
-            {'gen_asistente_electronico': parametro.gen_asistente_electronico}, status=status.HTTP_200_OK,
-        )
+        serializer = AsistenteTerminarRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        campo = servicio.asistente_terminar(serializer.validated_data['modulo'])
+        return Response({campo: False}, status=status.HTTP_200_OK)
 
     @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
     @action(detail=False, methods=['get'], url_path='certificado-consultar')

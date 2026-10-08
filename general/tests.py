@@ -1369,11 +1369,11 @@ class GenParametroViewTests(TenantTestCase):
         return vista(peticion)
 
     def test_leer_crea_la_fila_si_el_tenant_todavia_no_la_tiene(self):
-        respuesta = self._llamar('campos', campos='id,gen_asistente_electronico')
+        respuesta = self._llamar('campos', campos='id,gen_asistente_electronico_venta')
 
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(respuesta.data['id'], 1)
-        self.assertIs(respuesta.data['gen_asistente_electronico'], True)
+        self.assertIs(respuesta.data['gen_asistente_electronico_venta'], True)
         self.assertEqual(GenParametro.objects.count(), 1)
 
     def test_leer_dos_veces_no_duplica_la_fila(self):
@@ -1382,16 +1382,16 @@ class GenParametroViewTests(TenantTestCase):
         self.assertEqual(GenParametro.objects.count(), 1)
 
     def test_devuelve_el_valor_guardado(self):
-        GenParametro.objects.create(id=1, gen_asistente_electronico=False)
-        respuesta = self._llamar('campos', campos='gen_asistente_electronico')
-        self.assertIs(respuesta.data['gen_asistente_electronico'], False)
+        GenParametro.objects.create(id=1, gen_asistente_electronico_venta=False)
+        respuesta = self._llamar('campos', campos='gen_asistente_electronico_venta')
+        self.assertIs(respuesta.data['gen_asistente_electronico_venta'], False)
 
     def test_campos_devuelve_solo_lo_pedido(self):
-        GenParametro.objects.create(id=1, gen_asistente_electronico=False)
-        respuesta = self._llamar('campos', campos='gen_asistente_electronico')
+        GenParametro.objects.create(id=1, gen_asistente_electronico_venta=False)
+        respuesta = self._llamar('campos', campos='gen_asistente_electronico_venta')
 
         self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(respuesta.data, {'gen_asistente_electronico': False})
+        self.assertEqual(respuesta.data, {'gen_asistente_electronico_venta': False})
 
     def test_campos_sin_parametro_devuelve_400(self):
         respuesta = self._llamar('campos')
@@ -1399,14 +1399,14 @@ class GenParametroViewTests(TenantTestCase):
 
     def test_campos_rechaza_una_columna_inexistente(self):
         """Sin esta validación, `campos` sería un .values() con entrada del cliente."""
-        respuesta = self._llamar('campos', campos='gen_asistente_electronico,inventado')
+        respuesta = self._llamar('campos', campos='gen_asistente_electronico_venta,inventado')
 
         self.assertEqual(respuesta.status_code, 400)
         self.assertIn('inventado', respuesta.data['detail'])
 
     def test_campos_repetidos_no_rompen_la_consulta(self):
         respuesta = self._llamar(
-            'campos', campos='gen_asistente_electronico,gen_asistente_electronico',
+            'campos', campos='gen_asistente_electronico_venta,gen_asistente_electronico_venta',
         )
         self.assertEqual(respuesta.status_code, 200)
 
@@ -1431,7 +1431,7 @@ class GenParametroViewTests(TenantTestCase):
     def test_el_serializer_no_acepta_escritura(self):
         serializer = GenParametroSerializer(
             GenParametro.objects.create(id=1),
-            data={'gen_asistente_electronico': False},
+            data={'gen_asistente_electronico_venta': False},
             partial=True,
         )
         self.assertTrue(serializer.is_valid(), serializer.errors)
@@ -1518,13 +1518,13 @@ class FacturaElectronicaCrearEmisorTests(TenantTestCase):
         return cliente
 
     def test_guarda_el_id_del_emisor_y_no_termina_el_asistente(self):
-        """Tener emisor no es haber terminado: `gen_asistente_electronico` va aparte."""
+        """Tener emisor no es haber terminado: `gen_asistente_electronico_venta` va aparte."""
         cliente = self._cliente()
         parametro = factura_electronica.emisor_crear(cliente=cliente)
 
         self.assertEqual(parametro.gen_rededoc_emisor, 77)
         self.assertEqual(GenParametro.objects.get(id=1).gen_rededoc_emisor, 77)
-        self.assertIs(GenParametro.objects.get(id=1).gen_asistente_electronico, True)
+        self.assertIs(GenParametro.objects.get(id=1).gen_asistente_electronico_venta, True)
 
     def test_el_payload_sale_de_la_configuracion(self):
         cliente = self._cliente()
@@ -2223,18 +2223,35 @@ class FacturaElectronicaVistaTests(TenantTestCase):
                     self.assertIn('detail', respuesta.data)
                     servicio.assert_not_called()
 
-    def test_asistente_terminar_lo_apaga_y_repetirlo_deja_todo_igual(self):
-        GenParametro.objects.all().delete()
+    def _terminar_asistente(self, cuerpo):
         vista = _ElectronicoViewSinPermisos.as_view({'post': 'asistente_terminar'})
+        peticion = self.factory.post('/general/electronico/asistente-terminar/', cuerpo, format='json')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return vista(peticion)
 
-        for _ in range(2):
-            peticion = self.factory.post('/general/electronico/asistente-terminar/')
-            force_authenticate(peticion, user=SegUsuario(id=1))
-            respuesta = vista(peticion)
+    def test_asistente_terminar_apaga_solo_el_del_modulo_y_repetirlo_deja_todo_igual(self):
+        campos = {'venta': 'gen_asistente_electronico_venta', 'nomina': 'gen_asistente_electronico_nomina'}
+        for modulo, campo in campos.items():
+            with self.subTest(modulo=modulo):
+                GenParametro.objects.all().delete()
+                for _ in range(2):
+                    respuesta = self._terminar_asistente({'modulo': modulo})
 
-            self.assertEqual(respuesta.status_code, 200)
-            self.assertEqual(respuesta.data, {'gen_asistente_electronico': False})
-            self.assertIs(GenParametro.objects.get(id=1).gen_asistente_electronico, False)
+                    self.assertEqual(respuesta.status_code, 200)
+                    self.assertEqual(respuesta.data, {campo: False})
+                    parametro = GenParametro.objects.get(id=1)
+                    for otro in campos.values():
+                        self.assertIs(getattr(parametro, otro), otro != campo)
+
+    def test_asistente_terminar_exige_un_modulo_valido(self):
+        GenParametro.objects.all().delete()
+        for cuerpo in ({}, {'modulo': 'compra'}):
+            with self.subTest(cuerpo=cuerpo):
+                respuesta = self._terminar_asistente(cuerpo)
+
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertIn('detail', respuesta.data)
+        self.assertFalse(GenParametro.objects.exists())
 
 
 class _PrecioDetalleViewSinPermisos(GenPrecioDetalleViewSet):
@@ -6078,7 +6095,7 @@ class EmitirTests(TenantTestCase):
             id=1, nombre='FACTURA', venta=True, codigo=1,
             documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
         )
-        GenParametro.objects.create(id=1, gen_asistente_electronico=False, gen_rededoc_emisor=77)
+        GenParametro.objects.create(id=1, gen_asistente_electronico_venta=False, gen_rededoc_emisor=77)
         pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
         estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
         self.ciudad = GenCiudad.objects.create(
@@ -6264,7 +6281,7 @@ class EmitirTests(TenantTestCase):
         self.assertEqual(self._llamar({}).status_code, 400)
 
     def test_con_el_asistente_sin_terminar_no_se_emite(self):
-        GenParametro.objects.filter(id=1).update(gen_asistente_electronico=True)
+        GenParametro.objects.filter(id=1).update(gen_asistente_electronico_venta=True)
         self._no_envia({'ids': [self._documento().id]}, 400, 'no ha terminado el asistente')
 
     def test_sin_emisor_no_se_emite(self):
@@ -6581,7 +6598,7 @@ class NotificarTests(TenantTestCase):
             id=1, nombre='FACTURA ELECTRÓNICA DE VENTA', venta=True,
             documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
         )
-        GenParametro.objects.create(id=1, gen_asistente_electronico=False, gen_rededoc_emisor=77)
+        GenParametro.objects.create(id=1, gen_asistente_electronico_venta=False, gen_rededoc_emisor=77)
         self.contacto = _contacto_facturacion()
         self.factory = APIRequestFactory()
 
@@ -6674,7 +6691,7 @@ class NotificarTests(TenantTestCase):
         self.assertEqual(self._llamar({'ids': []}).status_code, 400)
 
     def test_con_el_asistente_sin_terminar_no_notifica(self):
-        GenParametro.objects.filter(id=1).update(gen_asistente_electronico=True)
+        GenParametro.objects.filter(id=1).update(gen_asistente_electronico_venta=True)
         self._no_envia({'ids': [self._documento().id]}, 400, 'no ha terminado el asistente')
 
     def test_un_documento_inexistente_responde_404(self):
