@@ -2,6 +2,7 @@ from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from contabilidad.models import ConCuenta, ConMovimiento
@@ -57,7 +58,16 @@ _TrasladarResponse = inline_serializer(
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por código o nombre'),
+    OpenApiParameter('permite_movimiento', bool, description='Filtrar por permite movimiento'),
+    OpenApiParameter('nombre__icontains', str, description='Nombre contiene'),
+    OpenApiParameter('codigo__startswith', str, description='Código comienza con'),
+    OpenApiParameter(
+        'ordering', str, enum=['codigo', '-codigo', 'nombre', '-nombre'],
+        description='Campo de ordenamiento (por defecto `codigo`)',
+    ),
 ]
+
+_SELECCIONAR_ORDENAMIENTOS = {'codigo', '-codigo', 'nombre', '-nombre'}
 
 
 @extend_schema(tags=['Cuenta'])
@@ -100,7 +110,25 @@ class ConCuentaViewSet(
     @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=ConCuentaSeleccionarSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)
     def seleccionar(self, request):
-        qs = ConCuenta.objects.order_by('codigo')
+        ordering = request.query_params.get('ordering', '').strip() or 'codigo'
+        if ordering not in _SELECCIONAR_ORDENAMIENTOS:
+            raise ValidationError({'detail': f'Ordenamiento "{ordering}" no permitido.'})
+        qs = ConCuenta.objects.order_by(ordering)
+
+        # Se filtra antes del `search` para que el OR de abajo salga acotado y no
+        # recupere por nombre cuentas que no cumplen los filtros.
+        valor = request.query_params.get('permite_movimiento')
+        if valor is not None:
+            qs = qs.filter(permite_movimiento=valor.lower() == 'true')
+
+        nombre = request.query_params.get('nombre__icontains', '').strip()
+        if nombre:
+            qs = qs.filter(nombre__icontains=nombre)
+
+        codigo = request.query_params.get('codigo__startswith', '').strip()
+        if codigo:
+            qs = qs.filter(codigo__startswith=codigo)
+
         search = request.query_params.get('search', '').strip()
         if search:
             qs = qs.filter(codigo__icontains=search) | qs.filter(nombre__icontains=search)

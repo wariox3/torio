@@ -185,6 +185,65 @@ class TrasladarCuentaTests(TenantTestCase):
         self.assertIn('cuenta_destino', response.data)
 
 
+class SeleccionarCuentaTests(TenantTestCase):
+    """
+    El selector de cuentas se acota por query params: `permite_movimiento`,
+    `nombre__icontains`, `codigo__startswith` y `ordering` (lista blanca).
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        ConCuenta.objects.create(codigo='1105', nombre='CAJA', permite_movimiento=True)
+        ConCuenta.objects.create(codigo='1110', nombre='BANCOS', permite_movimiento=True)
+        ConCuenta.objects.create(codigo='11', nombre='DISPONIBLE')
+        ConCuenta.objects.create(codigo='2205', nombre='PROVEEDORES', permite_movimiento=True)
+
+    def _get(self, params=None):
+        request = APIRequestFactory().get('/contabilidad/cuenta/seleccionar/', params or {})
+        return _CuentaViewSinPermisos.as_view({'get': 'seleccionar'})(request)
+
+    def _seleccionar(self, params=None):
+        response = self._get(params)
+        self.assertEqual(response.status_code, 200)
+        return [c['codigo'] for c in response.data['results']]
+
+    def test_sin_parametros_ordena_por_codigo(self):
+        self.assertEqual(self._seleccionar(), ['11', '1105', '1110', '2205'])
+
+    def test_filtra_por_permite_movimiento(self):
+        self.assertEqual(self._seleccionar({'permite_movimiento': 'True'}), ['1105', '1110', '2205'])
+        self.assertEqual(self._seleccionar({'permite_movimiento': 'false'}), ['11'])
+
+    def test_filtra_por_nombre_contiene(self):
+        self.assertEqual(self._seleccionar({'nombre__icontains': 'ca'}), ['1105'])
+
+    def test_filtra_por_codigo_comienza_con(self):
+        self.assertEqual(self._seleccionar({'codigo__startswith': '11'}), ['11', '1105', '1110'])
+
+    def test_combina_filtros(self):
+        params = {'permite_movimiento': 'True', 'codigo__startswith': '11', 'ordering': '-codigo'}
+        self.assertEqual(self._seleccionar(params), ['1110', '1105'])
+
+    def test_ordena_por_nombre(self):
+        self.assertEqual(
+            self._seleccionar({'ordering': 'nombre'}), ['1110', '1105', '11', '2205'],
+        )
+
+    def test_el_search_no_recupera_uno_excluido(self):
+        params = {'permite_movimiento': 'True', 'search': 'DISPONIBLE'}
+        self.assertEqual(self._seleccionar(params), [])
+
+    def test_ordering_no_permitido_da_400(self):
+        response = self._get({'ordering': 'permite_movimiento'})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.data)
+
+
 class _ComprobanteViewSinPermisos(ConComprobanteViewSet):
     """Variante de la vista sin auth/permiso/throttle para probar el action aislado."""
     authentication_classes = []
