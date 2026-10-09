@@ -75,7 +75,7 @@ def configuracion_actual():
 
     return (
         GenConfiguracion.objects
-        .select_related('gen_empresa_ciudad__estado')
+        .select_related('gen_empresa_ciudad__estado', 'gen_empresa_tipo_persona')
         .first()
     )
 

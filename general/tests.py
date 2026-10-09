@@ -20,7 +20,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django_tenants.test.cases import TenantTestCase
 from PIL import Image, ImageDraw
-from reportlab.platypus import Spacer
+from reportlab.platypus import Paragraph, Spacer
 from rest_framework import permissions
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
@@ -28,6 +28,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from contabilidad.models import ConCentroCosto, ConComprobante, ConCuenta
 from general import tasks as tareas
 from general.formatos import FormatoDocumentoFactura
+from general.formatos.documento_factura import URL_CONSULTA_DIAN
 from general.models import (
     GenArchivo,
     GenArchivoTipo,
@@ -6864,15 +6865,162 @@ class FormatoFacturaTests(TenantTestCase):
         GenConfiguracion.objects.update_or_create(id=1, defaults={
             'gen_empresa_razon_social': 'Semantica Digital SAS',
             'gen_empresa_numero_identificacion': '901192048', 'gen_empresa_digito_verificacion': '4',
-            'gen_empresa_direccion': 'CL 9 SUR # 50 FF 165',
+            'gen_empresa_direccion': 'CL 9 SUR # 50 FF 165', 'gen_empresa_telefono': '3044769718',
+            'gen_empresa_tipo_persona_id': 1, 'gen_empresa_ciudad_id': 1,
         })
         texto = self._textos(self._factura())
 
         self.assertIn('SEMANTICA DIGITAL SAS', texto)
-        self.assertIn('901192048-4', texto)
-        self.assertIn('CL 9 SUR # 50 FF 165', texto)
+        self.assertIn('NIT: 901192048-4 - PERSONA JURÍDICA', texto)
+        # Solo la ciudad, sin el departamento.
+        self.assertIn('DIRECCIÓN: CL 9 SUR # 50 FF 165 - MEDELLÍN', texto)
+        self.assertNotIn('MEDELLÍN - ', texto)
+        self.assertIn('TEL: 3044769718', texto)
         self.assertIn('FACTURA ELECTRÓNICA DE VENTA', texto)
-        self.assertIn('Fecha de emisión: 2026-09-17', texto)
+        # La fecha va una sola vez, en los datos de la factura, no repetida en el encabezado.
+        self.assertNotIn('Fecha de emisión', texto)
+        self.assertIn('FECHA EMISIÓN', texto)
+
+    def test_la_informacion_superior_sale_con_sus_saltos_de_linea_y_escapada(self):
+        GenConfiguracion.objects.update_or_create(id=1, defaults={
+            'ven_factura_informacion_superior': 'Responsables de IVA & ICA\r\nNo somos grandes contribuyentes',
+        })
+        parrafos = self._parrafos_informacion(self._factura())
+
+        self.assertEqual(len(parrafos), 1)
+        self.assertEqual(
+            parrafos[0].text, 'Responsables de IVA &amp; ICA<br/>No somos grandes contribuyentes',
+        )
+        # Va en el bloque de la empresa, no suelta entre el encabezado y las partes.
+        formato = FormatoDocumentoFactura(self._factura())
+        self.assertFalse([e for e in formato.construir() if isinstance(e, Paragraph)])
+
+    def test_sin_informacion_superior_no_sale_ningun_parrafo_suelto(self):
+        for valor in (None, '', '   '):
+            with self.subTest(valor=valor):
+                GenConfiguracion.objects.update_or_create(id=1, defaults={'ven_factura_informacion_superior': valor})
+
+                self.assertEqual(self._parrafos_informacion(self._factura()), [])
+
+    def test_la_informacion_inferior_va_bajo_informacion_de_pago(self):
+        GenConfiguracion.objects.update_or_create(id=1, defaults={
+            'ven_factura_informacion_inferior': 'Consignar en Bancolombia ahorros 123 & Davivienda\r\nNequi 3001234567',
+        })
+        documento = self._factura()
+
+        parrafos = self._parrafos_informacion(documento, estilo='factura_informacion_pago')
+        self.assertEqual(len(parrafos), 1)
+        self.assertEqual(parrafos[0].text, 'Consignar en Bancolombia ahorros 123 &amp; Davivienda<br/>Nequi 3001234567')
+        # Justo después del título, en el bloque de las notas.
+        notas = FormatoDocumentoFactura(documento)._notas(
+            documento, GenConfiguracion.objects.get(id=1), FormatoDocumentoFactura._estilos(),
+        )
+        textos = [e.text for e in notas if isinstance(e, Paragraph)]
+        self.assertTrue(textos[-2].startswith('<b>INFORMACIÓN DE PAGO:</b>'))
+        self.assertEqual(textos[-1], parrafos[0].text)
+
+    def test_sin_informacion_inferior_las_notas_terminan_en_el_titulo(self):
+        for valor in (None, '', '  '):
+            with self.subTest(valor=valor):
+                GenConfiguracion.objects.update_or_create(id=1, defaults={'ven_factura_informacion_inferior': valor})
+
+                self.assertEqual(self._parrafos_informacion(self._factura(), estilo='factura_informacion_pago'), [])
+
+    def _parrafos_informacion(self, documento, estilo='factura_informacion'):
+        """Los párrafos con el estilo dado, estén donde estén en la hoja."""
+        encontrados = []
+
+        def recorrer(elemento):
+            if isinstance(elemento, (list, tuple)):
+                for item in elemento:
+                    recorrer(item)
+            elif isinstance(elemento, Paragraph):
+                if elemento.style.name == estilo:
+                    encontrados.append(elemento)
+            elif hasattr(elemento, '_cellvalues'):
+                recorrer(elemento._cellvalues)
+
+        recorrer(FormatoDocumentoFactura(documento).construir())
+        return encontrados
+
+    def test_los_totales_traen_un_renglon_por_impuesto_con_su_nombre(self):
+        documento = self._factura()
+        iva = GenImpuesto.objects.create(nombre='IVA 19%', nombre_extendido='IVA', porcentaje=19, operacion=1)
+        iva_5 = GenImpuesto.objects.create(nombre='IVA 5%', nombre_extendido='IVA', porcentaje=5, operacion=1)
+        retencion = GenImpuesto.objects.create(
+            nombre='RTEFTE 4%', nombre_extendido='Retención', porcentaje=4, operacion=-1,
+        )
+        primera = documento.documentos_detalles_documento_rel.get()
+        segunda = GenDocumentoDetalle.objects.create(
+            documento=documento, item=self.item, cantidad=Decimal('1'), precio=Decimal('40000'),
+        )
+        # El mismo IVA en dos líneas se suma en un renglón; dos IVA distintos son dos renglones.
+        for detalle, impuesto, total in (
+            (primera, iva, '11400'), (segunda, iva, '7600'), (segunda, iva_5, '2000'), (primera, retencion, '2400'),
+        ):
+            GenDocumentoImpuesto.objects.create(documento_detalle=detalle, impuesto=impuesto, total=Decimal(total))
+
+        formato = FormatoDocumentoFactura(documento)
+        self.assertEqual(formato._impuestos_por_nombre(documento), [
+            ('IVA 19%', Decimal('19000')), ('IVA 5%', Decimal('2000')), ('RTEFTE 4%', Decimal('2400')),
+        ])
+        texto = self._textos(documento)
+        self.assertIn('IVA 19%', texto)
+        self.assertIn('19,000.00', texto)
+        self.assertIn('RTEFTE 4%', texto)
+        self.assertIn('2,400.00', texto)
+        self.assertNotIn('Retenciones', texto)
+
+    def test_sin_impuestos_los_totales_no_inventan_renglones(self):
+        documento = self._factura()
+
+        self.assertEqual(FormatoDocumentoFactura(documento)._impuestos_por_nombre(documento), [])
+        texto = self._textos(documento)
+        self.assertIn('Subtotal', texto)
+        self.assertNotIn('Impuestos', texto)
+
+    def _contenido_qr(self, documento):
+        dibujo = FormatoDocumentoFactura._qr(documento, GenConfiguracion.objects.first())
+        return dibujo.contents[0].value
+
+    def test_sin_validar_el_qr_lleva_los_datos_de_la_factura_y_no_la_consulta_dian(self):
+        GenConfiguracion.objects.update_or_create(id=1, defaults={
+            'gen_empresa_numero_identificacion': '901192048', 'gen_empresa_digito_verificacion': '4',
+        })
+        contenido = self._contenido_qr(self._factura())
+
+        self.assertEqual(contenido.splitlines(), [
+            'FACTURA SIN VALIDAR ANTE LA DIAN',
+            'NumFac: FE2813',
+            'FecFac: 2026-09-17',
+            'NitFac: 901192048-4',
+            'DocAdq: 901998045',
+            'ValFac: 60000.00',
+            'ValIva: 0.00',
+            'ValTolFac: 60000.00',
+        ])
+        self.assertNotIn('catalogo-vpfe', contenido)
+        self.assertNotIn('CUFE', contenido)
+
+    def test_el_qr_sin_validar_aguanta_una_factura_a_medio_llenar(self):
+        contenido = self._contenido_qr(self._factura(contacto=None, resolucion=None, numero=None))
+
+        self.assertIn('NumFac: \n', contenido)
+        self.assertIn('DocAdq: \n', contenido)
+        self.assertTrue(contenido.startswith('FACTURA SIN VALIDAR ANTE LA DIAN'))
+
+    def test_validada_el_qr_es_el_de_rededoc_o_la_consulta_por_cufe(self):
+        con_cufe = self._factura(cue='abc123')
+        self.assertEqual(self._contenido_qr(con_cufe), URL_CONSULTA_DIAN.format(cufe='abc123'))
+
+        con_qr = self._factura(cue='abc123', qr='https://rededoc.co/qr/abc123')
+        self.assertEqual(self._contenido_qr(con_qr), 'https://rededoc.co/qr/abc123')
+
+    def test_la_factura_no_lleva_firmas(self):
+        texto = self._textos(self._factura())
+
+        self.assertNotIn('ELABORADO POR', texto)
+        self.assertNotIn('ACEPTADA, FIRMADA', texto)
 
     def test_sin_configuracion_de_empresa_se_imprime_igual(self):
         GenConfiguracion.objects.all().delete()
@@ -6905,7 +7053,9 @@ class FormatoFacturaTests(TenantTestCase):
         documento = self._factura(contacto=None, resolucion=None, numero=None)
         texto = self._textos(documento)
 
-        self.assertIn('SIN NUMERAR', texto)
+        # Sin número el recuadro queda en blanco, no con un texto de relleno.
+        self.assertNotIn('SIN NUMERAR', texto)
+        self.assertNotIn('None', texto)
         contenido, _ = documento_imprimir.imprimir(GenDocumento.objects.filter(pk=documento.pk))
         self.assertTrue(contenido.startswith(b'%PDF'))
 

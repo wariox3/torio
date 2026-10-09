@@ -22,6 +22,7 @@ import io
 from decimal import Decimal
 from xml.sax.saxutils import escape
 
+from django.db.models import Sum
 from django.utils import timezone
 from reportlab.graphics.barcode.qr import QrCodeWidget
 from reportlab.graphics.shapes import Drawing
@@ -33,6 +34,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.platypus import Image, Paragraph, Spacer, Table, TableStyle
 
 from general.formatos.base import FormatoBase
+from general.models import GenDocumentoImpuesto
 from utilidades.formatos import configuracion_actual, datos_empresa
 from utilidades.formatos.pagina import ANCHO_CONTENIDO, anchos
 from utilidades.numero_letras import valor_en_letras
@@ -82,7 +84,7 @@ _ANCHO_ENCABEZADO = [LADO_LOGO, ANCHO_CONTENIDO - LADO_LOGO - _ANCHO_TITULO, _AN
 
 class FormatoDocumentoFactura(FormatoBase):
     """
-    Factura de venta: partes, detalles, totales, bloque electrónico y firmas.
+    Factura de venta: partes, detalles, totales y bloque electrónico.
 
     Numera sus páginas: una factura larga que se reparte en varias hojas tiene que
     poder armarse de nuevo, y el cliente saber que no le falta ninguna.
@@ -97,19 +99,18 @@ class FormatoDocumentoFactura(FormatoBase):
     def construir(self):
         documento = self.documento
         estilos = self._estilos()
+        configuracion = configuracion_actual()
 
         return [
-            self._encabezado(documento, estilos),
-            Spacer(1, 0.5 * cm),
+            self._encabezado(documento, configuracion, estilos),
+            Spacer(1, 0.3 * cm),
             self._partes(documento, estilos),
             Spacer(1, 0.5 * cm),
             self._detalles(documento, estilos),
             Spacer(1, 0.4 * cm),
-            self._resumen(documento, estilos),
+            self._resumen(documento, configuracion, estilos),
             Spacer(1, 0.5 * cm),
-            self._electronico(documento, estilos),
-            Spacer(1, 1.8 * cm),
-            self._firmas(estilos),
+            self._electronico(documento, configuracion, estilos),
         ]
 
     # ------------------------------------------------------------- estilos ----
@@ -122,20 +123,17 @@ class FormatoDocumentoFactura(FormatoBase):
             return ParagraphStyle(f'factura_{nombre}', parent=base, **kwargs)
 
         return {
-            'razon_social': estilo('razon_social', fontName='Helvetica-Bold', fontSize=12, leading=15),
-            'nombre_comercial': estilo('nombre_comercial', fontSize=8, leading=10, textColor=_GRIS_TEXTO),
-            'empresa': estilo('empresa', fontSize=7.5, leading=10.5),
+            'razon_social': estilo('razon_social', fontName='Helvetica-Bold', fontSize=10, leading=13),
+            'empresa': estilo('empresa', fontSize=8, leading=10.5),
             'titulo': estilo(
-                'titulo', fontName='Helvetica-Bold', fontSize=8.5, leading=11,
-                alignment=TA_CENTER, textColor=colors.white,
+                'titulo', fontName='Helvetica-Bold', fontSize=13, leading=16, alignment=TA_CENTER,
             ),
             'numero_titulo': estilo(
-                'numero_titulo', fontName='Helvetica-Bold', fontSize=18, leading=22, alignment=TA_CENTER,
+                'numero_titulo', fontName='Helvetica-Bold', fontSize=14, leading=17, alignment=TA_CENTER,
             ),
-            'emision': estilo('emision', fontSize=7.5, leading=10, alignment=TA_CENTER, textColor=_GRIS_TEXTO),
             'seccion': estilo('seccion', fontName='Helvetica-Bold', fontSize=8, leading=10),
-            'etiqueta': estilo('etiqueta', fontName='Helvetica-Bold', fontSize=7.5, leading=10),
-            'valor': estilo('valor', fontSize=7.5, leading=10),
+            'etiqueta': estilo('etiqueta', fontName='Helvetica-Bold', fontSize=7.5, leading=9),
+            'valor': estilo('valor', fontSize=7.5, leading=9),
             'columna': estilo(
                 'columna', fontName='Helvetica-Bold', fontSize=7, leading=9, alignment=TA_CENTER,
             ),
@@ -153,12 +151,20 @@ class FormatoDocumentoFactura(FormatoBase):
                 alignment=TA_RIGHT, textColor=colors.white,
             ),
             'texto': estilo('texto', fontSize=7.5, leading=10),
-            'cufe': estilo('cufe', fontName='Courier', fontSize=6.5, leading=8.5),
+            'informacion': estilo('informacion', fontSize=7, leading=9, textColor=_GRIS_TEXTO),
+            'informacion_pago': estilo('informacion_pago', fontSize=7.5, leading=10),
+            'cufe': estilo('cufe', fontName='Courier', fontSize=6, leading=7.5),
             'aviso': estilo(
-                'aviso', fontName='Helvetica-Bold', fontSize=8, leading=11, textColor=_GRIS_TEXTO,
+                'aviso', fontName='Helvetica-Bold', fontSize=6.5, leading=8.5, textColor=_GRIS_TEXTO,
             ),
-            'firma': estilo('firma', fontName='Helvetica-Bold', fontSize=7.5, leading=10,
-                            alignment=TA_CENTER),
+            'electronico_titulo': estilo(
+                'electronico_titulo', fontName='Helvetica-Bold', fontSize=7, leading=9, textColor=_OSCURO,
+            ),
+            'electronico_etiqueta': estilo(
+                'electronico_etiqueta', fontName='Helvetica-Bold', fontSize=5.5, leading=7.5,
+                textColor=_GRIS_TEXTO,
+            ),
+            'electronico_valor': estilo('electronico_valor', fontSize=6.5, leading=8),
         }
 
     # ------------------------------------------------------------ utilidades ----
@@ -181,9 +187,12 @@ class FormatoDocumentoFactura(FormatoBase):
 
     @staticmethod
     def _numero(documento):
-        """«FE2813»: el prefijo de la resolución pegado al número, como lo numera la DIAN."""
+        """
+        «FE2813»: el prefijo de la resolución pegado al número, como lo numera la DIAN.
+        Sin número, el recuadro queda en blanco pero con su alto.
+        """
         if documento.numero is None:
-            return 'SIN NUMERAR'
+            return '&nbsp;'
         prefijo = documento.resolucion.prefijo if documento.resolucion_id else ''
         return escape(f'{prefijo or ""}{documento.numero}')
 
@@ -195,69 +204,94 @@ class FormatoDocumentoFactura(FormatoBase):
 
     # ------------------------------------------------------------ encabezado ----
 
-    def _encabezado(self, documento, estilos):
+    def _encabezado(self, documento, configuracion, estilos):
         """
-        La empresa a la izquierda y, a la derecha, qué documento es: el título en una
-        franja oscura y el número grande debajo. Una raya oscura a lo ancho lo separa
-        del resto de la hoja.
+        La empresa a la izquierda y, a la derecha, qué documento es: el título y, debajo,
+        el número en un recuadro fino. Los dos arrancan a la misma altura, arriba.
         """
-        configuracion = configuracion_actual()
         tabla = Table(
             [[self._logotipo(configuracion), self._empresa(configuracion, estilos),
               self._recuadro_titulo(documento, estilos)]],
             colWidths=_ANCHO_ENCABEZADO,
         )
         tabla.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('LEFTPADDING', (0, 0), (0, 0), 0),
             ('LEFTPADDING', (1, 0), (1, 0), 12),
             ('RIGHTPADDING', (-1, 0), (-1, 0), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 0),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('LINEBELOW', (0, 0), (-1, 0), 1.2, _OSCURO),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
         ]))
         return tabla
+
+    def _informacion_superior(self, configuracion, estilos):
+        """
+        El texto libre que la empresa quiere arriba de la factura
+        (`ven_factura_informacion_superior`): va debajo de sus datos, en el mismo
+        bloque y alineado con ellos, con sus saltos de línea. Sin texto no sale nada,
+        ni siquiera el renglón: no es un dato de la factura que tenga que quedar a la
+        vista cuando falta.
+        """
+        texto = (getattr(configuracion, 'ven_factura_informacion_superior', None) or '').strip()
+        if not texto:
+            return []
+        return [
+            Spacer(1, 4),
+            Paragraph('<br/>'.join(self._texto(linea) for linea in texto.splitlines()),
+                      estilos['informacion']),
+        ]
 
     def _empresa(self, configuracion, estilos):
         """
-        Razón social, nombre comercial si es otro, y los datos de contacto.
+        La razón social en negrita y, debajo, en mayúsculas: el NIT con el tipo de
+        persona, la dirección con la ciudad y el teléfono.
 
         Las líneas salen aunque el dato falte, igual que en el encabezado estándar:
         el bloque mide lo mismo en todos los tenants y lo que falta queda a la vista.
+        La ciudad va sola, sin el departamento que trae `datos_empresa`.
         """
         empresa = datos_empresa(configuracion)
+        tipo_persona = getattr(configuracion, 'gen_empresa_tipo_persona', None)
+        ciudad = getattr(configuracion, 'gen_empresa_ciudad', None)
+
+        def unidos(*partes):
+            return ' - '.join(parte for parte in partes if parte)
+
+        lineas = (
+            ('NIT', unidos(empresa['nit'], tipo_persona and f'PERSONA {tipo_persona.nombre}')),
+            ('DIRECCIÓN', unidos(empresa['direccion'], ciudad and ciudad.nombre)),
+            ('TEL', empresa['telefono']),
+        )
         elementos = [Paragraph(self._texto(empresa['razon_social'].upper()) or '&nbsp;',
                                estilos['razon_social'])]
-        comercial = empresa['nombre_corto']
-        if comercial and comercial.upper() != empresa['razon_social'].upper():
-            elementos.append(Paragraph(self._texto(comercial), estilos['nombre_comercial']))
-        elementos.append(Spacer(1, 3))
-        for etiqueta, clave in (('NIT', 'nit'), ('Dirección', 'direccion'), ('Ciudad', 'ciudad'),
-                                ('Teléfono', 'telefono'), ('Correo', 'correo')):
+        for etiqueta, valor in lineas:
             elementos.append(Paragraph(
-                f'<b>{etiqueta}:</b> {self._texto(empresa[clave])}', estilos['empresa'],
+                f'{etiqueta}: {self._texto(valor.upper())}', estilos['empresa'],
             ))
+        elementos.extend(self._informacion_superior(configuracion, estilos))
         return elementos
 
     def _recuadro_titulo(self, documento, estilos):
-        tabla = Table(
-            [
-                [Paragraph(self._texto(documento.documento_tipo.nombre.upper()), estilos['titulo'])],
-                [Paragraph(self._numero(documento), estilos['numero_titulo'])],
-                [Paragraph(f'Fecha de emisión: {self._texto(documento.fecha)}', estilos['emision'])],
-            ],
+        """
+        El título suelto, sin franja, y el número en un recuadro de línea fina y
+        esquinas redondeadas. La fecha de emisión no va acá: ya está en los datos de
+        la factura.
+        """
+        numero = Table(
+            [[Paragraph(self._numero(documento), estilos['numero_titulo'])]],
             colWidths=[_ANCHO_TITULO],
+            cornerRadii=[3, 3, 3, 3],
         )
-        tabla.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), _OSCURO),
-            ('BOX', (0, 0), (-1, -1), 0.8, _OSCURO),
-            ('TOPPADDING', (0, 0), (-1, 0), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
-            ('TOPPADDING', (0, 1), (-1, 1), 8),
-            ('BOTTOMPADDING', (0, 1), (-1, 1), 2),
-            ('BOTTOMPADDING', (0, -1), (-1, -1), 7),
+        numero.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 0.8, _GRIS_ETIQUETA),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ]))
-        return tabla
+        return [
+            Paragraph(self._texto(documento.documento_tipo.nombre.upper()), estilos['titulo']),
+            Spacer(1, 10),
+            numero,
+        ]
 
     @staticmethod
     def _logotipo(configuracion):
@@ -353,8 +387,11 @@ class FormatoDocumentoFactura(FormatoBase):
             ('BACKGROUND', (0, 0), (-1, 0), _GRIS_ETIQUETA),
             ('BOX', (0, 0), (-1, -1), 0.5, _GRIS_LINEA),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, -1), 2),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('TOPPADDING', (0, 0), (-1, -1), 1),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+            # La primera fila de datos con un poco de aire bajo la franja del título.
+            ('TOPPADDING', (0, 1), (-1, 1), 3),
+            ('BOTTOMPADDING', (0, -1), (-1, -1), 3),
             ('TOPPADDING', (0, 0), (-1, 0), 4),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
             ('LEFTPADDING', (0, 0), (-1, -1), 6),
@@ -408,10 +445,10 @@ class FormatoDocumentoFactura(FormatoBase):
 
     # --------------------------------------------------------------- resumen ----
 
-    def _resumen(self, documento, estilos):
+    def _resumen(self, documento, configuracion, estilos):
         """El valor en letras, los comentarios y el pago al lado de los totales."""
         tabla = Table(
-            [[self._notas(documento, estilos), self._totales(documento, estilos)]],
+            [[self._notas(documento, configuracion, estilos), self._totales(documento, estilos)]],
             colWidths=_ANCHO_RESUMEN,
         )
         tabla.setStyle(TableStyle([
@@ -424,27 +461,56 @@ class FormatoDocumentoFactura(FormatoBase):
         ]))
         return tabla
 
-    def _notas(self, documento, estilos):
+    def _notas(self, documento, configuracion, estilos):
+        """
+        Valor en letras, comentarios e información de pago. Bajo el título de la
+        información de pago va el texto libre de la empresa
+        (`ven_factura_informacion_inferior`), con sus saltos de línea; la cuenta del
+        documento, si tiene, sigue en la línea del título.
+        """
         banco = documento.cuenta_banco
         pago = ''
         if banco is not None:
             tipo = banco.cuenta_banco_tipo.nombre if banco.cuenta_banco_tipo_id else ''
             pago = ' '.join(parte for parte in (tipo, banco.nombre, banco.numero_cuenta) if parte)
 
-        return [
+        notas = [
             Paragraph(f'<b>VALOR EN LETRAS:</b> {valor_en_letras(documento.total)}', estilos['texto']),
             Spacer(1, 0.25 * cm),
             Paragraph(f'<b>COMENTARIOS:</b> {self._texto(documento.comentario)}', estilos['texto']),
             Spacer(1, 0.25 * cm),
             Paragraph(f'<b>INFORMACIÓN DE PAGO:</b> {self._texto(pago)}', estilos['texto']),
         ]
+        inferior = (getattr(configuracion, 'ven_factura_informacion_inferior', None) or '').strip()
+        if inferior:
+            notas += [
+                Spacer(1, 2),
+                Paragraph('<br/>'.join(self._texto(linea) for linea in inferior.splitlines()),
+                          estilos['informacion_pago']),
+            ]
+        return notas
+
+    @staticmethod
+    def _impuestos_por_nombre(documento):
+        """
+        Un renglón por impuesto con su nombre y lo que suma en la factura: primero
+        los que se cobran (IVA, ICA…) y después las retenciones, que son los de
+        operación negativa. Una factura con IVA y retención muestra los dos.
+        """
+        return [
+            (fila['impuesto__nombre'], fila['valor'])
+            for fila in GenDocumentoImpuesto.objects
+            .filter(documento_detalle__documento=documento)
+            .values('impuesto_id', 'impuesto__nombre', 'impuesto__operacion')
+            .annotate(valor=Sum('total'))
+            .order_by('-impuesto__operacion', 'impuesto_id')
+        ]
 
     def _totales(self, documento, estilos):
         lineas = (
             ('Subtotal', documento.subtotal),
             ('Descuento', documento.descuento),
-            ('Impuestos', documento.impuesto),
-            ('Retenciones', documento.impuesto_retencion),
+            *self._impuestos_por_nombre(documento),
         )
         filas = [
             [Paragraph(etiqueta, estilos['total_etiqueta']),
@@ -471,7 +537,7 @@ class FormatoDocumentoFactura(FormatoBase):
 
     # ----------------------------------------------------------- electrónico ----
 
-    def _electronico(self, documento, estilos):
+    def _electronico(self, documento, configuracion, estilos):
         """
         El QR a la izquierda y, a la derecha, lo que identifica la factura ante la DIAN.
 
@@ -496,57 +562,69 @@ class FormatoDocumentoFactura(FormatoBase):
         if documento.fecha_validacion:
             validacion = timezone.localtime(documento.fecha_validacion).strftime('%Y-%m-%d %H:%M:%S')
 
-        detalle = [
-            Paragraph('REPRESENTACIÓN GRÁFICA DE LA FACTURA ELECTRÓNICA DE VENTA', estilos['seccion']),
-            Spacer(1, 0.15 * cm),
-        ]
         if cufe:
-            detalle.append(Paragraph('<b>CUFE:</b>', estilos['texto']))
-            detalle.append(Paragraph(escape(cufe), estilos['cufe']))
+            primera = ('CUFE', Paragraph(escape(cufe), estilos['cufe']))
         else:
-            detalle.append(Paragraph(
+            primera = ('ESTADO', Paragraph(
                 'DOCUMENTO SIN VALIDAR ANTE LA DIAN: todavía no tiene CUFE.', estilos['aviso'],
             ))
-        detalle.extend([
-            Spacer(1, 0.15 * cm),
-            Paragraph(f'<b>RESOLUCIÓN DIAN:</b> {texto_resolucion}', estilos['texto']),
-            Paragraph(
-                f'<b>FECHA VALIDACIÓN:</b> {validacion} &nbsp;&nbsp; '
-                f'<b>SOFTWARE:</b> {SOFTWARE} &nbsp;&nbsp; '
-                f'<b>MODALIDAD:</b> {MODALIDAD_SOFTWARE}',
-                estilos['texto'],
-            ),
-            Paragraph(f'<b>FABRICANTE DEL SOFTWARE:</b> {FABRICANTE_SOFTWARE}', estilos['texto']),
-        ])
+        pares = (
+            primera,
+            ('RESOLUCIÓN DIAN', texto_resolucion),
+            ('FECHA VALIDACIÓN', validacion),
+            ('SOFTWARE', f'{SOFTWARE} · {MODALIDAD_SOFTWARE}'),
+            ('FABRICANTE', FABRICANTE_SOFTWARE),
+        )
+        ancho_detalle = ANCHO_CONTENIDO - LADO_QR - 0.4 * cm
+        filas = [[Paragraph('REPRESENTACIÓN GRÁFICA DE LA FACTURA ELECTRÓNICA DE VENTA',
+                            estilos['electronico_titulo']), '']]
+        for etiqueta, valor in pares:
+            if isinstance(valor, str):
+                valor = Paragraph(valor, estilos['electronico_valor'])
+            filas.append([Paragraph(etiqueta, estilos['electronico_etiqueta']), valor])
+
+        detalle = Table(filas, colWidths=[2.6 * cm, ancho_detalle - 2.6 * cm - 12])
+        detalle.setStyle(TableStyle([
+            ('SPAN', (0, 0), (-1, 0)),
+            ('LINEBELOW', (0, 0), (-1, 0), 0.4, _GRIS_ETIQUETA),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 1.5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1.5),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 3),
+            ('TOPPADDING', (0, 1), (-1, 1), 4),
+        ]))
 
         tabla = Table(
-            [[self._qr(documento), detalle]],
-            colWidths=[LADO_QR + 0.4 * cm, ANCHO_CONTENIDO - LADO_QR - 0.4 * cm],
+            [[self._qr(documento, configuracion), detalle]],
+            colWidths=[LADO_QR + 0.4 * cm, ancho_detalle],
         )
+        # Sin recuadro: el QR arranca en el margen, como el resto de la hoja, y una
+        # línea fina lo separa de los datos.
         tabla.setStyle(TableStyle([
-            ('BOX', (0, 0), (-1, -1), 0.5, _GRIS_LINEA),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN', (0, 0), (0, 0), 'CENTER'),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('LEFTPADDING', (1, 0), (1, 0), 10),
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('LEFTPADDING', (0, 0), (0, 0), 0),
+            ('TOPPADDING', (0, 0), (-1, -1), 0),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+            ('LEFTPADDING', (1, 0), (1, 0), 12),
+            ('LINEBEFORE', (1, 0), (1, 0), 0.4, _GRIS_ETIQUETA),
         ]))
         return tabla
 
-    @staticmethod
-    def _qr(documento):
+    @classmethod
+    def _qr(cls, documento, configuracion):
         """
         El QR que lleva a la consulta de la factura en la DIAN.
 
         Manda el que devolvió rededoc (`documento.qr`); si no hay, se arma con el
-        CUFE. Sin ninguno de los dos no hay nada que consultar, y el espacio queda
-        en blanco para no imprimir un QR que no lleva a ninguna parte.
+        CUFE. Sin ninguno de los dos la factura no está validada, y el QR lleva sus
+        datos (`_contenido_qr_sin_validar`) para que el espacio no quede en blanco.
         """
         contenido = documento.qr or (
             URL_CONSULTA_DIAN.format(cufe=documento.cue) if documento.cue else ''
-        )
-        if not contenido:
-            return Spacer(LADO_QR, LADO_QR)
+        ) or cls._contenido_qr_sin_validar(documento, configuracion)
 
         widget = QrCodeWidget(contenido)
         x1, y1, x2, y2 = widget.getBounds()
@@ -557,22 +635,28 @@ class FormatoDocumentoFactura(FormatoBase):
         dibujo.add(widget)
         return dibujo
 
-    # ---------------------------------------------------------------- firmas ----
-
     @staticmethod
-    def _firmas(estilos):
-        """Quien la elabora y el cliente que la recibe: la aceptación de la factura."""
-        ancho = ANCHO_CONTENIDO / 2
-        tabla = Table(
-            [[Paragraph('ELABORADO POR', estilos['firma']),
-              Paragraph('ACEPTADA, FIRMADA Y/O SELLO Y FECHA', estilos['firma'])]],
-            colWidths=[ancho, ancho],
+    def _contenido_qr_sin_validar(documento, configuracion):
+        """
+        Los datos de una factura que la DIAN todavía no validó, con las mismas claves
+        del QR de la DIAN (`NumFac`, `FecFac`, `NitFac`…).
+
+        No lleva CUFE ni la URL de consulta, y la primera línea dice que no está
+        validada: quien lo escanee ve qué factura es, pero no llega a nada que la
+        haga pasar por válida.
+        """
+        prefijo = (documento.resolucion.prefijo or '') if documento.resolucion_id else ''
+        numero = f'{prefijo}{documento.numero}' if documento.numero is not None else ''
+        contacto = documento.contacto
+        pares = (
+            ('NumFac', numero),
+            ('FecFac', documento.fecha or ''),
+            ('NitFac', datos_empresa(configuracion)['nit']),
+            ('DocAdq', contacto.numero_identificacion if contacto is not None else ''),
+            ('ValFac', f'{documento.subtotal or CERO:.2f}'),
+            ('ValIva', f'{documento.impuesto or CERO:.2f}'),
+            ('ValTolFac', f'{documento.total or CERO:.2f}'),
         )
-        tabla.setStyle(TableStyle([
-            ('LINEABOVE', (0, 0), (0, 0), 0.6, colors.black),
-            ('LINEABOVE', (1, 0), (1, 0), 0.6, colors.black),
-            ('LEFTPADDING', (0, 0), (-1, -1), 1.5 * cm),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 1.5 * cm),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ]))
-        return tabla
+        return '\n'.join(
+            ['FACTURA SIN VALIDAR ANTE LA DIAN', *(f'{clave}: {valor}' for clave, valor in pares)]
+        )
