@@ -7,6 +7,7 @@ from reportlab.platypus import PageBreak
 from rest_framework.exceptions import ValidationError
 
 from general.formatos import (
+    FormatoDocumentoCuentaCobro,
     FormatoDocumentoEgreso,
     FormatoDocumentoFactura,
     FormatoDocumentoGenerico,
@@ -26,6 +27,7 @@ from utilidades.formatos.pagina import CanvasNumerado, MarcaDocumento, documento
 # el punto de entrada —`_clase_formato`— no cambia.
 DOCUMENTO_TIPO_PAGO = 4  # mismo id que `contabilizar.DOCUMENTO_TIPO_PAGO`
 DOCUMENTO_TIPO_EGRESO = 8  # mismo id que `contabilizar.DOCUMENTO_TIPO_EGRESO`
+DOCUMENTO_TIPO_CUENTA_COBRO = 17
 # Los de la clase 701: todos se imprimen como desprendible del empleado.
 DOCUMENTO_TIPOS_NOMINA = (
     14,  # NOMINA
@@ -37,6 +39,7 @@ DOCUMENTO_TIPOS_NOMINA = (
 
 FORMATOS = {
     DOCUMENTO_TIPO_FACTURA_VENTA: FormatoDocumentoFactura,
+    DOCUMENTO_TIPO_CUENTA_COBRO: FormatoDocumentoCuentaCobro,
     DOCUMENTO_TIPO_PAGO: FormatoDocumentoPago,
     DOCUMENTO_TIPO_EGRESO: FormatoDocumentoEgreso,
     **{documento_tipo: FormatoDocumentoNomina for documento_tipo in DOCUMENTO_TIPOS_NOMINA},

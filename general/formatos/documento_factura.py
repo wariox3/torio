@@ -96,6 +96,10 @@ class FormatoDocumentoFactura(FormatoBase):
 
     numerar_paginas = True
 
+    # El título de la tarjeta con los datos del documento, a la derecha del
+    # adquiriente. Los formatos que heredan de la factura cambian solo esto.
+    titulo_datos = 'DATOS DE LA FACTURA'
+
     def construir(self):
         documento = self.documento
         estilos = self._estilos()
@@ -375,7 +379,7 @@ class FormatoDocumentoFactura(FormatoBase):
         )
         # El número no va acá: está en el recuadro del encabezado, que es donde se
         # busca primero.
-        return self._tarjeta('DATOS DE LA FACTURA', self._filas(pares, estilos), estilos,
+        return self._tarjeta(self.titulo_datos, self._filas(pares, estilos), estilos,
                              _ANCHO_PARTES[2])
 
     def _tarjeta(self, titulo, filas, estilos, ancho):

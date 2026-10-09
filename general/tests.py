@@ -27,7 +27,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from contabilidad.models import ConCentroCosto, ConComprobante, ConCuenta
 from general import tasks as tareas
-from general.formatos import FormatoDocumentoFactura
+from general.formatos import FormatoDocumentoCuentaCobro, FormatoDocumentoFactura
 from general.formatos.documento_factura import URL_CONSULTA_DIAN
 from general.models import (
     GenArchivo,
@@ -6891,6 +6891,96 @@ class EmitirTests(TenantTestCase):
         valido = self._documento()
         invalido = self._documento(resolucion=None)
         self._no_envia({'ids': [valido.id, invalido.id]}, 400, 'no tiene resolución')
+
+
+class FormatoCuentaCobroTests(TenantTestCase):
+    """
+    La cuenta de cobro (tipo 17) es la factura sin lo electrónico: lleva la empresa,
+    el cliente, los detalles y los totales, pero no CUFE, QR ni resolución, y al pie
+    las firmas de quien la elabora y de quien la acepta.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.tipo = GenDocumentoTipo.objects.create(
+            id=17, nombre='CUENTA COBRO', venta=True,
+            documento_clase=GenDocumentoClase.objects.create(id=104, nombre='Cuenta cobro'),
+        )
+        pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
+        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        self.contacto = GenContacto.objects.create(
+            numero_identificacion='901998045', digito_verificacion='1',
+            nombre_corto='ESTRATEGIA & DIGITAL SAS',
+            identificacion=GenIdentificacion.objects.create(id=6, nombre='NIT', abreviatura='NIT'),
+            tipo_persona=GenTipoPersona.objects.create(id=1, nombre='Jurídica'),
+            ciudad=ciudad, direccion='CR 51 9 30', telefono='3044769718', correo='general@x.com',
+        )
+        self.item = GenItem.objects.create(nombre='ASESORÍA CONTABLE', codigo='SRV01')
+
+    def _cuenta_cobro(self):
+        documento = GenDocumento.objects.create(
+            documento_tipo=self.tipo, fecha=date(2026, 10, 9), fecha_vence=date(2026, 10, 9),
+            numero=45, contacto=self.contacto,
+            total=Decimal('150000'), subtotal=Decimal('150000'),
+        )
+        GenDocumentoDetalle.objects.create(
+            documento=documento, item=self.item, cantidad=Decimal('1'),
+            precio=Decimal('150000'), total=Decimal('150000'),
+        )
+        return documento
+
+    def _textos(self, documento):
+        textos = []
+
+        def recorrer(elemento):
+            if isinstance(elemento, (list, tuple)):
+                for item in elemento:
+                    recorrer(item)
+            elif hasattr(elemento, 'getPlainText'):
+                textos.append(elemento.getPlainText())
+            elif hasattr(elemento, '_cellvalues'):
+                recorrer(elemento._cellvalues)
+            elif isinstance(elemento, str):
+                textos.append(elemento)
+
+        recorrer(FormatoDocumentoCuentaCobro(documento).construir())
+        return ' '.join(textos)
+
+    def test_la_cuenta_de_cobro_usa_su_formato(self):
+        documento = self._cuenta_cobro()
+        self.assertIs(documento_imprimir._clase_formato(documento), FormatoDocumentoCuentaCobro)
+
+    def test_genera_el_pdf(self):
+        contenido, nombre = documento_imprimir.imprimir(
+            GenDocumento.objects.filter(pk=self._cuenta_cobro().pk),
+        )
+        self.assertTrue(contenido.startswith(b'%PDF'))
+        self.assertEqual(nombre, 'cuenta_cobro45.pdf')
+
+    def test_lleva_lo_comercial_y_las_firmas(self):
+        texto = self._textos(self._cuenta_cobro())
+
+        self.assertIn('CUENTA COBRO', texto)
+        self.assertIn('DATOS DE LA CUENTA DE COBRO', texto)
+        self.assertNotIn('DATOS DE LA FACTURA', texto)
+        self.assertIn('NIT 901998045-1', texto)
+        self.assertIn('SRV01', texto)
+        self.assertIn('150,000.00', texto)
+        self.assertIn('CIENTO CINCUENTA MIL', texto.upper())
+        self.assertIn('ELABORADO POR', texto)
+        self.assertIn('ACEPTADA, FIRMADA Y/O SELLO Y FECHA', texto)
+
+    def test_no_lleva_nada_de_la_factura_electronica(self):
+        texto = self._textos(self._cuenta_cobro())
+
+        for ausente in ('CUFE', 'RESOLUCIÓN DIAN', 'SIN VALIDAR', 'REPRESENTACIÓN GRÁFICA', 'RedDoc ERP'):
+            self.assertNotIn(ausente, texto)
 
 
 class FormatoFacturaTests(TenantTestCase):
