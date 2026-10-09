@@ -44,6 +44,7 @@ InconsistenciasResponse = inline_serializer(
                 'numero': serializers.IntegerField(allow_null=True),
                 'cuenta_id': serializers.IntegerField(allow_null=True),
                 'documento_id': serializers.IntegerField(allow_null=True),
+                'documento_tipo_id': serializers.IntegerField(allow_null=True),
                 'documento_tipo_nombre': serializers.CharField(allow_null=True),
                 'inconsistencia': serializers.CharField(),
             },

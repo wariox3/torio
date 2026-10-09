@@ -17,7 +17,8 @@ def analizar_inconsistencias(periodo=None):
     tener que ir periodo por periodo.
 
     Cada inconsistencia comparte la misma forma (``comprobante_id``, ``comprobante_nombre``,
-    ``numero``, ``cuenta_id``, ``documento_id``, ``documento_tipo_nombre``, ``inconsistencia``),
+    ``numero``, ``cuenta_id``, ``documento_id``, ``documento_tipo_id``, ``documento_tipo_nombre``,
+    ``inconsistencia``),
     con ``None`` donde no aplique.
     Una lista vacía significa que lo revisado está consistente; para un periodo, que puede
     bloquearse.
@@ -45,6 +46,7 @@ def analizar_inconsistencias(periodo=None):
                 'numero': comprobante['numero'],
                 'cuenta_id': None,
                 'documento_id': None,
+                'documento_tipo_id': None,
                 'documento_tipo_nombre': None,
                 'inconsistencia': 'El total de débito y crédito no coinciden',
             })
@@ -64,6 +66,7 @@ def analizar_inconsistencias(periodo=None):
         'cuenta__exige_centro_costo',
         'cuenta__exige_contacto',
         'cuenta__exige_base',
+        'documento__documento_tipo_id',
         'documento__documento_tipo__nombre',
     )
     for movimiento in movimientos:
@@ -73,6 +76,7 @@ def analizar_inconsistencias(periodo=None):
             'numero': movimiento['numero'],
             'cuenta_id': movimiento['cuenta_id'],
             'documento_id': movimiento['documento_id'],
+            'documento_tipo_id': movimiento['documento__documento_tipo_id'],
             'documento_tipo_nombre': movimiento['documento__documento_tipo__nombre'],
         }
         codigo = movimiento['cuenta__codigo']
@@ -130,7 +134,7 @@ def analizar_inconsistencias(periodo=None):
     if periodo is not None:
         documentos = documentos.filter(fecha__year=periodo.anio, fecha__month=periodo.mes)
     documentos = documentos.order_by('fecha', 'numero', 'id').values(
-        'id', 'numero', 'documento_tipo__nombre',
+        'id', 'numero', 'documento_tipo_id', 'documento_tipo__nombre',
     )
     for documento in documentos:
         # `numero` es nulo mientras el documento no se aprueba, y ahí el id es lo
@@ -145,6 +149,7 @@ def analizar_inconsistencias(periodo=None):
             'numero': numero,
             'cuenta_id': None,
             'documento_id': documento['id'],
+            'documento_tipo_id': documento['documento_tipo_id'],
             'documento_tipo_nombre': documento['documento_tipo__nombre'],
             'inconsistencia': (
                 f'El documento de tipo {documento["documento_tipo__nombre"]} '

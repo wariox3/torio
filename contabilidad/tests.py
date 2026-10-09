@@ -2201,8 +2201,11 @@ class InconsistenciasMovimientoTests(TenantTestCase):
         segundo = self._documento(numero=2)
         inconsistencias = self._get({'periodo': self.periodo.id})['inconsistencias']
         self.assertEqual(
-            [(i['documento_id'], i['numero'], i['documento_tipo_nombre']) for i in inconsistencias],
-            [(primero.id, 1, 'FACTURA'), (segundo.id, 2, 'FACTURA')],
+            [
+                (i['documento_id'], i['numero'], i['documento_tipo_id'], i['documento_tipo_nombre'])
+                for i in inconsistencias
+            ],
+            [(primero.id, 1, 901, 'FACTURA'), (segundo.id, 2, 901, 'FACTURA')],
         )
         self.assertEqual(
             inconsistencias[0]['inconsistencia'],
