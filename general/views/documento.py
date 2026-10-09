@@ -2,8 +2,8 @@ from datetime import datetime
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Sum
-from django.db.models.functions import TruncMonth
+from django.db.models import CharField, Sum
+from django.db.models.functions import Cast, TruncMonth
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -19,6 +19,7 @@ from general.serializers import (
     GenDocumentoExportarSerializer,
     GenDocumentoGenerarRecurrenteSerializer,
     GenDocumentoImportarSerializer,
+    GenDocumentoReferenciaSeleccionarSerializer,
     GenDocumentoSerializer,
 )
 from general.servicios import cartera as cartera_servicio
@@ -34,6 +35,7 @@ from utilidades.mixins import (
     ImportarExcelMixin,
 )
 from utilidades.mixins.filtros import BusquedaRequest
+from utilidades.paginacion import SeleccionarPaginacion
 
 
 class DocumentoAccionRequestSerializer(serializers.Serializer):
@@ -49,6 +51,18 @@ class DocumentoIdsRequestSerializer(serializers.Serializer):
         allow_empty=False,
         help_text='Ids de los documentos a procesar.',
     )
+
+
+_SELECCIONAR_REFERENCIA_PARAMS = [
+    OpenApiParameter('contacto_id', int, required=True, description='Contacto dueño de los documentos'),
+    OpenApiParameter(
+        'documento_clase_id', int, required=True,
+        description='Clase de los documentos a referenciar (100 factura venta, 300 compra)',
+    ),
+    OpenApiParameter('search', str, description='Buscar por número'),
+    OpenApiParameter('con_pendiente', bool, description='Solo los que tienen saldo pendiente'),
+    OpenApiParameter('electronico', bool, description='Solo los validados por la DIAN'),
+]
 
 
 @extend_schema(tags=['Documento'])
@@ -233,6 +247,55 @@ class GenDocumentoViewSet(
         if tipo not in cartera_servicio.TIPOS:
             raise ValidationError({'detail': 'El tipo debe ser "cobrar" o "pagar".'})
         return Response(cartera_servicio.resumen(tipo), status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Documentos que puede referenciar una nota',
+        description=(
+            'Documentos aprobados y no anulados de un contacto y una clase, para el '
+            'selector de `documento_referencia` de una nota crédito o débito. '
+            'Del más reciente al más antiguo.'
+        ),
+        parameters=_SELECCIONAR_REFERENCIA_PARAMS,
+        responses=GenDocumentoReferenciaSeleccionarSerializer(many=True),
+    )
+    @action(
+        detail=False, methods=['get'], url_path='seleccionar-referencia',
+        pagination_class=SeleccionarPaginacion,
+    )
+    def seleccionar_referencia(self, request):
+        parametros = {}
+        for parametro in ('contacto_id', 'documento_clase_id'):
+            valor = request.query_params.get(parametro, '').strip()
+            if not valor:
+                raise ValidationError({'detail': f'El parámetro {parametro} es obligatorio.'})
+            try:
+                parametros[parametro] = int(valor)
+            except ValueError:
+                raise ValidationError({'detail': f'El parámetro {parametro} debe ser un número entero.'})
+
+        qs = GenDocumento.objects.select_related('documento_tipo', 'resolucion').filter(
+            contacto_id=parametros['contacto_id'],
+            documento_tipo__documento_clase_id=parametros['documento_clase_id'],
+            estado_aprobado=True,
+            estado_anulado=False,
+        ).order_by('-fecha', '-numero', '-id')
+
+        if request.query_params.get('con_pendiente', '').lower() == 'true':
+            qs = qs.filter(pendiente__gt=0)
+        if request.query_params.get('electronico', '').lower() == 'true':
+            qs = qs.filter(estado_electronico=True)
+
+        search = request.query_params.get('search', '').strip()
+        if search:
+            if not search.isdigit():
+                raise ValidationError({'detail': 'El parámetro search debe ser un número.'})
+            qs = qs.annotate(numero_texto=Cast('numero', CharField())).filter(
+                numero_texto__startswith=search,
+            )
+
+        pagina = self.paginate_queryset(qs)
+        serializer = GenDocumentoReferenciaSeleccionarSerializer(pagina, many=True)
+        return self.get_paginated_response(serializer.data)
 
     @action(detail=False, methods=['post'])
     def aprobar(self, request):

@@ -5047,6 +5047,134 @@ class CarteraResumenTests(TenantTestCase):
         self.assertIn('cobrar', respuesta.data['detail'])
 
 
+class SeleccionarReferenciaTests(TenantTestCase):
+    """
+    `seleccionar-referencia`: las facturas que puede referenciar una nota. Solo
+    aprobadas y no anuladas, del contacto y la clase pedidos.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test referencia'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'referencia@test.com'
+
+    def setUp(self):
+        self.tipo_factura = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA',
+            documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
+        )
+        self.tipo_compra = GenDocumentoTipo.objects.create(
+            id=5, nombre='COMPRA',
+            documento_clase=GenDocumentoClase.objects.create(id=300, nombre='Compra'),
+        )
+        pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
+        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        identificacion = GenIdentificacion.objects.create(id=6, nombre='NIT', codigo='31')
+        tipo_persona = GenTipoPersona.objects.create(id=1, nombre='Natural')
+        datos = {
+            'ciudad': ciudad, 'identificacion': identificacion, 'tipo_persona': tipo_persona,
+            'direccion': 'x', 'telefono': '1', 'correo': 'a@b.com',
+        }
+        self.cliente = GenContacto.objects.create(
+            numero_identificacion='1', nombre_corto='Cliente', **datos,
+        )
+        self.otro = GenContacto.objects.create(
+            numero_identificacion='2', nombre_corto='Otro', **datos,
+        )
+        self.resolucion = GenResolucion.objects.create(
+            numero='18760000001', prefijo='FE', consecutivo_desde=1, consecutivo_hasta=1000,
+            fecha_desde=date(2020, 1, 1), fecha_hasta=date(2030, 12, 31),
+        )
+
+    def _documento(self, numero, **overrides):
+        datos = {
+            'documento_tipo': self.tipo_factura,
+            'contacto': self.cliente,
+            'numero': numero,
+            'fecha': date(2026, 10, 1),
+            'total': Decimal('100'),
+            'pendiente': Decimal('100'),
+            'estado_aprobado': True,
+        }
+        datos.update(overrides)
+        return GenDocumento.objects.create(**datos)
+
+    def _get(self, params):
+        vista = _DocumentoViewSinPermisos.as_view({'get': 'seleccionar_referencia'})
+        return vista(APIRequestFactory().get('/general/documento/seleccionar-referencia/', params))
+
+    def _numeros(self, **params):
+        params = {'contacto_id': self.cliente.id, 'documento_clase_id': 100, **params}
+        respuesta = self._get(params)
+        self.assertEqual(respuesta.status_code, 200)
+        return [d['numero'] for d in respuesta.data['results']]
+
+    def test_solo_aprobadas_no_anuladas_del_contacto_y_la_clase(self):
+        self._documento(1)
+        self._documento(2, estado_aprobado=False)
+        self._documento(3, estado_anulado=True)
+        self._documento(4, contacto=self.otro)
+        self._documento(5, documento_tipo=self.tipo_compra)
+
+        self.assertEqual(self._numeros(), [1])
+
+    def test_filtra_por_clase(self):
+        self._documento(1)
+        self._documento(5, documento_tipo=self.tipo_compra)
+
+        self.assertEqual(self._numeros(documento_clase_id=300), [5])
+
+    def test_ordena_de_la_mas_reciente_a_la_mas_antigua(self):
+        self._documento(1, fecha=date(2026, 9, 1))
+        self._documento(2, fecha=date(2026, 10, 1))
+        self._documento(3, fecha=date(2026, 10, 1))
+
+        self.assertEqual(self._numeros(), [3, 2, 1])
+
+    def test_con_pendiente(self):
+        self._documento(1)
+        self._documento(2, pendiente=Decimal('0'))
+
+        self.assertEqual(sorted(self._numeros()), [1, 2])
+        self.assertEqual(self._numeros(con_pendiente='true'), [1])
+
+    def test_electronico(self):
+        self._documento(1, estado_electronico=True)
+        self._documento(2)
+
+        self.assertEqual(self._numeros(electronico='true'), [1])
+
+    def test_search_por_numero_que_comienza(self):
+        self._documento(12)
+        self._documento(120)
+        self._documento(312)
+
+        self.assertEqual(self._numeros(search='12'), [120, 12])
+
+    def test_trae_el_prefijo_de_la_resolucion(self):
+        self._documento(1, resolucion=self.resolucion)
+
+        respuesta = self._get({'contacto_id': self.cliente.id, 'documento_clase_id': 100})
+
+        self.assertEqual(respuesta.data['results'][0]['resolucion_prefijo'], 'FE')
+
+    def test_parametros_obligatorios(self):
+        for params in ({'documento_clase_id': 100}, {'contacto_id': self.cliente.id},
+                       {'contacto_id': 'x', 'documento_clase_id': 100}):
+            respuesta = self._get(params)
+            self.assertEqual(respuesta.status_code, 400)
+            self.assertIn('detail', respuesta.data)
+
+    def test_search_no_numerico_da_400(self):
+        respuesta = self._get({
+            'contacto_id': self.cliente.id, 'documento_clase_id': 100, 'search': 'abc',
+        })
+
+        self.assertEqual(respuesta.status_code, 400)
+
+
 class CalcularRedondeoTests(TenantTestCase):
     """
     `GenDocumentoDetalle.calcular()` deja todo valor en dinero en centavos; el
