@@ -308,10 +308,14 @@ def software_actualizar(software_id: int, datos: dict, cliente: Rededoc = None) 
     return respuesta['datos']
 
 
-def resoluciones_validar(cliente: Rededoc = None) -> dict:
+def resoluciones_validar(venta: bool = None, compra: bool = None, cliente: Rededoc = None) -> dict:
     """
     Valida contra la DIAN, a través de rededoc, las resoluciones vigentes del
     tenant, y marca como inactivas las que ya vencieron.
+
+    Con `venta` o `compra` el proceso entero se limita a las resoluciones de un
+    módulo: cada uno filtra por su campo, en `True` o en `False`. Sin ninguno,
+    todas.
 
     A rededoc se mandan las que no han vencido, cada una con su `id` de torio.
     Rededoc responde una entrada por resolución, en el mismo orden y sin id, así
@@ -333,8 +337,13 @@ def resoluciones_validar(cliente: Rededoc = None) -> dict:
 
     # Vencida es la que ya pasó su último día de vigencia: con `fecha_hasta` hoy
     # todavía numera. Sin número no hay qué buscar en la DIAN.
+    resoluciones = GenResolucion.objects.all()
+    if venta is not None:
+        resoluciones = resoluciones.filter(venta=venta)
+    if compra is not None:
+        resoluciones = resoluciones.filter(compra=compra)
     vigentes = list(
-        GenResolucion.objects.filter(fecha_hasta__gte=hoy)
+        resoluciones.filter(fecha_hasta__gte=hoy)
         .exclude(numero__isnull=True).exclude(numero='')
     )
     resultados = []
@@ -370,7 +379,7 @@ def resoluciones_validar(cliente: Rededoc = None) -> dict:
     validados = [r['id'] for r in resultados if r.get('validado')]
     no_validados = [r['id'] for r in resultados if not r.get('validado')]
 
-    inactivadas = GenResolucion.objects.filter(
+    inactivadas = resoluciones.filter(
         fecha_hasta__lt=hoy, estado_inactivo=False,
     ).update(estado_inactivo=True)
     GenResolucion.objects.filter(id__in=validados).update(estado_validado=True)

@@ -1,6 +1,6 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -27,6 +27,17 @@ _LIST_PARAMS = [
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por número o prefijo'),
 ]
+
+
+class ResolucionesValidarRequestSerializer(serializers.Serializer):
+    venta = serializers.BooleanField(
+        required=False, allow_null=True, default=None,
+        help_text='Limita el proceso a las resoluciones de venta (true) o a las que no lo son (false).',
+    )
+    compra = serializers.BooleanField(
+        required=False, allow_null=True, default=None,
+        help_text='Limita el proceso a las resoluciones de compra (true) o a las que no lo son (false).',
+    )
 
 
 @extend_schema(tags=['Resolución'])
@@ -73,8 +84,10 @@ class GenResolucionViewSet(
         description=(
             'Valida contra la DIAN, a través del servicio de facturación '
             'electrónica, las resoluciones vigentes de la empresa, y marca como '
-            'inactivas las que ya vencieron. No recibe nada: el emisor sale de '
-            '`gen_rededoc_emisor`.\n\n'
+            'inactivas las que ya vencieron. El emisor no se manda: sale de '
+            '`gen_rededoc_emisor`. Con `venta` o `compra` el proceso se limita a las '
+            'resoluciones de un módulo: cada uno filtra por su campo, en `true` o en '
+            '`false`; sin ninguno se procesan todas.\n\n'
             'Cada resolución vigente queda con `estado_validado` según lo que '
             'responda el servicio. Responde 200 con `inactivadas`, `validadas` y '
             '`resoluciones`: una entrada por resolución enviada, con su `id`, '
@@ -84,13 +97,17 @@ class GenResolucionViewSet(
             'no tiene un software aceptado por la DIAN, o la DIAN no devuelve '
             'rangos, 400 con el motivo en `detail`, y no se cambia nada.'
         ),
-        request=None,
+        request=ResolucionesValidarRequestSerializer,
         responses=OpenApiTypes.OBJECT,
     )
     @action(detail=False, methods=['post'], url_path='validar-resoluciones')
     def validar_resoluciones(self, request):
+        serializer = ResolucionesValidarRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         try:
-            datos = factura_electronica_servicio.resoluciones_validar()
+            datos = factura_electronica_servicio.resoluciones_validar(
+                serializer.validated_data['venta'], serializer.validated_data['compra'],
+            )
         except factura_electronica_servicio.ErrorFacturaElectronica as e:
             return Response(e.cuerpo, status=e.status)
         return Response(datos, status=status.HTTP_200_OK)
