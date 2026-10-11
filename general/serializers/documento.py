@@ -27,6 +27,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         'documento_tipo__venta', 'documento_tipo__compra',
         'documento_tipo__contabilidad',
         'documento_tipo__documento_clase_id',
+        'documento_tipo__documento_clase__grupo',
         # Nóminas generadas por una programación: el renglón del empleado o la
         # programación completa.
         'programacion_detalle_id', 'programacion_detalle__programacion_id',
