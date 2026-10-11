@@ -87,6 +87,7 @@ from general.views.electronico import GenElectronicoViewSet
 from general.views.modelo import GenModeloViewSet
 from general.views.parametro import GenParametroViewSet
 from general.views.precio_detalle import GenPrecioDetalleViewSet
+from general.views.resolucion import GenResolucionViewSet
 from inventario.models import InvAlmacen, InvExistencia
 from seguridad.models import SegUsuario
 from utilidades import backblaze, mime
@@ -1385,6 +1386,13 @@ class _ElectronicoViewSinPermisos(GenElectronicoViewSet):
     throttle_classes = []
 
 
+class _ResolucionViewSinPermisos(GenResolucionViewSet):
+    """Sin auth ni permisos: acá se prueba la traducción a HTTP, no la membresía."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
 class _ConfiguracionViewSinPermisos(GenConfiguracionViewSet):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
@@ -2008,6 +2016,10 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
             'software_actualizar': lambda: factura_electronica.software_actualizar(3, {'pin': '1'}, cliente=self.cliente),
             'recepcion_documento': lambda: factura_electronica.recepcion_documento({}, cliente=self.cliente),
             'recepcion_correo': lambda: factura_electronica.recepcion_correo({}, cliente=self.cliente),
+            'resolucion_validar': lambda: factura_electronica.resolucion_validar(
+                GenResolucion(numero='18764000001'), cliente=self.cliente,
+            ),
+            'resolucion_importar_dian': lambda: factura_electronica.resolucion_importar_dian(cliente=self.cliente),
         }
         for nombre, llamada in llamadas.items():
             with self.subTest(funcion=nombre):
@@ -2024,6 +2036,173 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
         self.cliente.actualizar_software.assert_not_called()
         self.cliente.consultar_documentos_recibidos.assert_not_called()
         self.cliente.consultar_correos_recibidos.assert_not_called()
+        self.cliente.validar_resolucion.assert_not_called()
+        self.cliente.importar_resoluciones.assert_not_called()
+
+    def _resolucion(self, **overrides):
+        datos = {
+            'prefijo': 'SETP', 'numero': '18764000001', 'consecutivo_desde': 990000000,
+            'consecutivo_hasta': 995000000, 'fecha_desde': date(2019, 1, 19),
+            'fecha_hasta': date(2030, 1, 19),
+        }
+        datos.update(overrides)
+        return GenResolucion.objects.create(**datos)
+
+    def _rededoc_valida(self, *resoluciones):
+        autorizada = {
+            'id': 5, 'numero_resolucion': '18764000001', 'prefijo': 'SETP',
+            'rango_desde': 990000000, 'rango_hasta': 995000000,
+            'vigente_desde': '2019-01-19', 'vigente_hasta': '2030-01-19',
+        }
+        self.cliente.validar_resolucion.return_value = {
+            'error': False, 'status': 200,
+            'datos': [{**autorizada, **cambios} for cambios in (resoluciones or ({},))],
+        }
+
+    def test_resolucion_validar_si_coincide_con_la_dian_queda_validada(self):
+        resolucion = self._resolucion()
+        self._rededoc_valida()
+
+        diferencias = factura_electronica.resolucion_validar(resolucion, cliente=self.cliente)
+
+        self.cliente.validar_resolucion.assert_called_once_with(77, 'facturacion', '18764000001')
+        self.assertEqual(diferencias, [])
+        resolucion.refresh_from_db()
+        self.assertTrue(resolucion.estado_validado)
+
+    def test_resolucion_validar_compara_con_la_del_mismo_prefijo(self):
+        resolucion = self._resolucion()
+        self._rededoc_valida({'prefijo': 'OTRO', 'rango_desde': 1, 'rango_hasta': 2}, {})
+
+        self.assertEqual(factura_electronica.resolucion_validar(resolucion, cliente=self.cliente), [])
+
+    def test_resolucion_validar_si_algo_cambia_dice_que_y_no_queda_validada(self):
+        casos = {
+            'consecutivo_desde': {'rango_desde': 1},
+            'consecutivo_hasta': {'rango_hasta': 999999999},
+            'fecha_desde': {'vigente_desde': '2020-01-01'},
+            'fecha_hasta': {'vigente_hasta': '2031-01-01'},
+        }
+        for campo, cambio in casos.items():
+            with self.subTest(campo=campo):
+                resolucion = self._resolucion(estado_validado=True)
+                self._rededoc_valida(cambio)
+
+                diferencias = factura_electronica.resolucion_validar(resolucion, cliente=self.cliente)
+
+                self.assertEqual(len(diferencias), 1)
+                self.assertIn(str(list(cambio.values())[0]), diferencias[0])
+                resolucion.refresh_from_db()
+                self.assertFalse(resolucion.estado_validado)
+
+    def test_resolucion_validar_con_otro_prefijo_no_queda_validada(self):
+        resolucion = self._resolucion(prefijo=None)
+        self._rededoc_valida()
+
+        diferencias = factura_electronica.resolucion_validar(resolucion, cliente=self.cliente)
+
+        self.assertEqual(len(diferencias), 1)
+        self.assertIn('SETP', diferencias[0])
+        resolucion.refresh_from_db()
+        self.assertFalse(resolucion.estado_validado)
+
+    def test_resolucion_validar_sin_numero_no_llama_a_rededoc(self):
+        resolucion = self._resolucion(numero=None)
+
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.resolucion_validar(resolucion, cliente=self.cliente)
+
+        self.assertEqual(caso.exception.status, 400)
+        self.cliente.validar_resolucion.assert_not_called()
+
+    def test_resolucion_validar_un_rechazo_sube_su_mensaje_y_no_toca_el_estado(self):
+        cuerpo = {'detail': 'La resolución 18764000001 no está asociada en la DIAN al software de facturación del emisor.'}
+        resolucion = self._resolucion(estado_validado=True)
+        for status_rededoc, esperado in ((400, 400), (0, 502)):
+            with self.subTest(status_rededoc=status_rededoc):
+                self.cliente.validar_resolucion.return_value = {
+                    'error': True, 'status': status_rededoc, 'datos': cuerpo,
+                }
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    factura_electronica.resolucion_validar(resolucion, cliente=self.cliente)
+                self.assertEqual(caso.exception.status, esperado)
+                self.assertEqual(caso.exception.cuerpo['detail'], cuerpo['detail'])
+                resolucion.refresh_from_db()
+                self.assertTrue(resolucion.estado_validado)
+
+    def _rededoc_importa(self, *resoluciones, status=201):
+        self.cliente.consultar_software.return_value = {
+            'error': False, 'status': 200,
+            'datos': {'count': 2, 'results': [
+                {'id': 3, 'emisor': 77, 'tipo': 'nomina'},
+                {'id': 4, 'emisor': 77, 'tipo': 'facturacion'},
+            ]},
+        }
+        importada = {
+            'id': 5, 'numero_resolucion': '18764000001', 'prefijo': 'SETP',
+            'rango_desde': 990000000, 'rango_hasta': 995000000,
+            'vigente_desde': '2019-01-19', 'vigente_hasta': '2030-01-19',
+        }
+        self.cliente.importar_resoluciones.return_value = {
+            'error': False, 'status': status,
+            'datos': [{**importada, **cambios} for cambios in resoluciones],
+        }
+
+    def test_resolucion_importar_dian_usa_el_software_del_emisor_y_crea_las_resoluciones(self):
+        self._rededoc_importa({}, {'prefijo': ''})
+
+        creadas = factura_electronica.resolucion_importar_dian(cliente=self.cliente)
+
+        self.cliente.consultar_software.assert_called_once_with(77)
+        self.cliente.importar_resoluciones.assert_called_once_with(4)
+        self.assertEqual([r.prefijo for r in creadas], ['SETP', None])
+        resolucion = GenResolucion.objects.get(prefijo='SETP')
+        self.assertEqual(resolucion.numero, '18764000001')
+        self.assertEqual((resolucion.consecutivo_desde, resolucion.consecutivo_hasta), (990000000, 995000000))
+        self.assertEqual((resolucion.fecha_desde, resolucion.fecha_hasta), (date(2019, 1, 19), date(2030, 1, 19)))
+        self.assertTrue(resolucion.venta)
+        self.assertTrue(resolucion.estado_validado)
+
+    def test_resolucion_importar_dian_no_toca_las_que_ya_existen(self):
+        existente = self._resolucion(consecutivo_desde=1)
+        self._rededoc_importa({}, {'prefijo': 'FE'})
+
+        creadas = factura_electronica.resolucion_importar_dian(cliente=self.cliente)
+
+        self.assertEqual([r.prefijo for r in creadas], ['FE'])
+        existente.refresh_from_db()
+        self.assertEqual(existente.consecutivo_desde, 1)
+        self.assertFalse(existente.estado_validado)
+        self.assertEqual(GenResolucion.objects.count(), 2)
+
+    def test_resolucion_importar_dian_sin_nuevas_no_crea_nada(self):
+        self._rededoc_importa(status=200)
+
+        self.assertEqual(factura_electronica.resolucion_importar_dian(cliente=self.cliente), [])
+        self.assertEqual(GenResolucion.objects.count(), 0)
+
+    def test_resolucion_importar_dian_sin_software_de_ese_tipo_no_importa(self):
+        self._rededoc_importa({})
+
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.resolucion_importar_dian('documento_equivalente', cliente=self.cliente)
+
+        self.assertEqual(caso.exception.status, 400)
+        self.cliente.importar_resoluciones.assert_not_called()
+
+    def test_resolucion_importar_dian_un_rechazo_sube_su_mensaje_y_una_caida_es_502(self):
+        cuerpo = {'detail': 'No registra prefijos asociados al código de software.'}
+        for status_rededoc, esperado in ((400, 400), (0, 502)):
+            with self.subTest(status_rededoc=status_rededoc):
+                self._rededoc_importa()
+                self.cliente.importar_resoluciones.return_value = {
+                    'error': True, 'status': status_rededoc, 'datos': cuerpo,
+                }
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    factura_electronica.resolucion_importar_dian(cliente=self.cliente)
+                self.assertEqual(caso.exception.status, esperado)
+                self.assertEqual(caso.exception.cuerpo['detail'], cuerpo['detail'])
+        self.assertEqual(GenResolucion.objects.count(), 0)
 
     def test_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
         for status_rededoc, esperado in ((400, 400), (0, 502)):
@@ -2455,6 +2634,110 @@ class FacturaElectronicaVistaTests(TenantTestCase):
                 else:
                     self.assertIn('detail', respuesta.data)
                     servicio.assert_not_called()
+
+    def _resolucion(self):
+        return GenResolucion.objects.create(
+            prefijo='SETP', numero='18764000001', consecutivo_desde=990000000,
+            consecutivo_hasta=995000000, fecha_desde=date(2019, 1, 19), fecha_hasta=date(2030, 1, 19),
+        )
+
+    def _validar_resolucion(self, pk, cuerpo=None):
+        vista = _ResolucionViewSinPermisos.as_view({'post': 'validar'})
+        peticion = self.factory.post(f'/general/resolucion/{pk}/validar/', cuerpo or {}, format='json')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return vista(peticion, pk=pk)
+
+    def test_resolucion_validar_responde_el_estado_y_las_diferencias(self):
+        resolucion = self._resolucion()
+        casos = [
+            ({}, 200, 'facturacion'),
+            ({'tipo_software': 'documento_equivalente'}, 200, 'documento_equivalente'),
+            ({'tipo_software': 'nomina'}, 400, None),
+        ]
+        for cuerpo, esperado, tipo in casos:
+            with self.subTest(cuerpo=cuerpo):
+                with mock.patch.object(
+                    factura_electronica, 'resolucion_validar', return_value=['La fecha desde es otra.'],
+                ) as servicio:
+                    respuesta = self._validar_resolucion(resolucion.id, cuerpo)
+
+                self.assertEqual(respuesta.status_code, esperado)
+                if esperado == 200:
+                    servicio.assert_called_once_with(resolucion, tipo)
+                    self.assertEqual(
+                        respuesta.data, {'estado_validado': False, 'diferencias': ['La fecha desde es otra.']},
+                    )
+                else:
+                    self.assertIn('detail', respuesta.data)
+                    servicio.assert_not_called()
+
+    def test_resolucion_validar_de_una_que_no_existe_es_404(self):
+        with mock.patch.object(factura_electronica, 'resolucion_validar') as servicio:
+            respuesta = self._validar_resolucion(999999)
+
+        self.assertEqual(respuesta.status_code, 404)
+        servicio.assert_not_called()
+
+    def test_resolucion_validar_devuelve_el_error_del_servicio(self):
+        resolucion = self._resolucion()
+        error = factura_electronica.ErrorFacturaElectronica('La resolución 18764000001 no está asociada.')
+
+        with mock.patch.object(factura_electronica, 'resolucion_validar', side_effect=error):
+            respuesta = self._validar_resolucion(resolucion.id)
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data['detail'], 'La resolución 18764000001 no está asociada.')
+
+    def test_resolucion_importar_dian_responde_las_creadas(self):
+        vista = _ResolucionViewSinPermisos.as_view({'post': 'importar_dian'})
+        resolucion = self._resolucion()
+        casos = [
+            ({}, [resolucion], 201, 'facturacion'),
+            ({'tipo_software': 'documento_equivalente'}, [], 200, 'documento_equivalente'),
+            ({'tipo_software': 'nomina'}, [], 400, None),
+        ]
+        for cuerpo, creadas, esperado, tipo in casos:
+            with self.subTest(cuerpo=cuerpo):
+                peticion = self.factory.post('/general/resolucion/importar-dian/', cuerpo, format='json')
+                force_authenticate(peticion, user=SegUsuario(id=1))
+                with mock.patch.object(
+                    factura_electronica, 'resolucion_importar_dian', return_value=creadas,
+                ) as servicio:
+                    respuesta = vista(peticion)
+
+                self.assertEqual(respuesta.status_code, esperado)
+                if esperado == 400:
+                    self.assertIn('detail', respuesta.data)
+                    servicio.assert_not_called()
+                else:
+                    servicio.assert_called_once_with(tipo)
+                    self.assertEqual([r['id'] for r in respuesta.data], [r.id for r in creadas])
+
+    def test_resolucion_importar_dian_devuelve_el_error_del_servicio(self):
+        vista = _ResolucionViewSinPermisos.as_view({'post': 'importar_dian'})
+        peticion = self.factory.post('/general/resolucion/importar-dian/', {}, format='json')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        error = factura_electronica.ErrorFacturaElectronica({'detail': 'La DIAN no respondió.'}, status=502)
+
+        with mock.patch.object(factura_electronica, 'resolucion_importar_dian', side_effect=error):
+            respuesta = vista(peticion)
+
+        self.assertEqual(respuesta.status_code, 502)
+        self.assertEqual(respuesta.data['detail'], 'La DIAN no respondió.')
+
+    def test_resolucion_estado_validado_no_se_puede_escribir(self):
+        resolucion = self._resolucion()
+        vista = _ResolucionViewSinPermisos.as_view({'patch': 'partial_update'})
+        peticion = self.factory.patch(
+            f'/general/resolucion/{resolucion.id}/', {'estado_validado': True}, format='json',
+        )
+        force_authenticate(peticion, user=SegUsuario(id=1))
+
+        respuesta = vista(peticion, pk=resolucion.id)
+
+        self.assertEqual(respuesta.status_code, 200)
+        resolucion.refresh_from_db()
+        self.assertFalse(resolucion.estado_validado)
 
     def test_software_crear_exige_los_cuatro_campos(self):
         vista = _ElectronicoViewSinPermisos.as_view({'post': 'software_crear'})
