@@ -14,6 +14,7 @@
     { "id": 11, "nombre": "Gestión humana Expansión",         "precio": 1,      "suscripcion_clase_id": 2,  "suscripcion_categoria_id": 3  },
     { "id": 12, "nombre": "Gestión humana Éxito",             "precio": 1,      "suscripcion_clase_id": 2,  "suscripcion_categoria_id": 3  },
     { "id": 13, "nombre": "Prueba ERP",                       "precio": 0,      "suscripcion_clase_id": 1,  "suscripcion_categoria_id": 99 },
-    { "id": 14, "nombre": "Prueba Gestión humana",            "precio": 0,      "suscripcion_clase_id": 2,  "suscripcion_categoria_id": 99 }
+    { "id": 14, "nombre": "Prueba Gestión humana",            "precio": 0,      "suscripcion_clase_id": 2,  "suscripcion_categoria_id": 99 },
+    { "id": 15, "nombre": "Cortesía ERP",                     "precio": 0,      "suscripcion_clase_id": 1,  "suscripcion_categoria_id": 99 }
   ]
 }
