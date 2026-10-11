@@ -6715,7 +6715,7 @@ class EmitirTests(TenantTestCase):
             'medio_pago': '1',
             'moneda': 35,
             'adquiriente': {
-                'tipo_identificacion': 3,
+                'tipo_identificacion': 13,
                 'numero_identificacion': '70143086',
                 'razon_social': 'Mario Estrada',
                 'primer_nombre': 'Mario',

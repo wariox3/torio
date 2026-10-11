@@ -549,7 +549,9 @@ def _adquiriente(documento):
         )
 
     return {
-        'tipo_identificacion': contacto.identificacion_id,
+        # Va el código DIAN (cédula = 13), que en rededoc es también su id; el
+        # id del catálogo propio no coincide.
+        'tipo_identificacion': int(contacto.identificacion.codigo),
         'numero_identificacion': contacto.numero_identificacion,
         'razon_social': contacto.nombre_corto,
         'primer_nombre': contacto.nombre1 or '',
