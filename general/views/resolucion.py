@@ -100,8 +100,8 @@ class GenResolucionViewSet(
         request=ResolucionesValidarRequestSerializer,
         responses=OpenApiTypes.OBJECT,
     )
-    @action(detail=False, methods=['post'], url_path='validar-resoluciones')
-    def validar_resoluciones(self, request):
+    @action(detail=False, methods=['post'])
+    def validar(self, request):
         serializer = ResolucionesValidarRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
