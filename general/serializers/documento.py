@@ -19,6 +19,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         # `estado_electronico_notificado=False`: sin el primero saldrían también las
         # que la DIAN todavía no ha validado, que no se pueden notificar.
         'estado_electronico', 'estado_electronico_notificado',
+        'estado_electronico_descartado',
         'afectado', 'pendiente',
         # Banderas del tipo: permiten acotar por naturaleza del documento sin
         # tener que enumerar los ids de tipo que caen de cada lado.

@@ -7620,6 +7620,18 @@ class FiltroNotificadoTests(TenantTestCase):
         self.assertNotIn(notificado, filtrados)
         self.assertNotIn(sin_validar, filtrados)
 
+    def test_filtra_por_descartado(self):
+        descartado = GenDocumento.objects.create(
+            documento_tipo=self.tipo, estado_electronico_descartado=True,
+        )
+        GenDocumento.objects.create(documento_tipo=self.tipo)
+
+        filtrados = self._filtrar([
+            {'propiedad': 'estado_electronico_descartado', 'operador': '=', 'valor': True},
+        ])
+
+        self.assertEqual(filtrados, [descartado])
+
     def test_la_respuesta_trae_los_estados_electronicos(self):
         documento = GenDocumento.objects.create(
             documento_tipo=self.tipo, estado_electronico=True, estado_electronico_notificado=False,
