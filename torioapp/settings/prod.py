@@ -32,3 +32,6 @@ SECURE_HSTS_PRELOAD = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = 'same-origin'
 X_FRAME_OPTIONS = 'DENY'
+
+# RedEDoc: en producción los documentos se emiten en el ambiente real de la DIAN.
+REDEDOC_AMBIENTE = 1

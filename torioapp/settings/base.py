@@ -323,6 +323,10 @@ WOMPI_INTEGRITY_SECRET = config('WOMPI_INTEGRITY_SECRET', default='')
 # RedEDoc (servicio Nobelio, api.rededoc.uk).
 REDEDOC_URL = config('REDEDOC_URL', default='https://api.rededoc.uk')
 REDEDOC_KEY = config('REDEDOC_KEY', default='')
+# Ambiente de la DIAN con el que se emiten los documentos: 2 pruebas
+# (habilitación), 1 producción. Solo `settings/prod.py` lo pone en 1, para que
+# desde dev o test nunca salga un documento real.
+REDEDOC_AMBIENTE = 2
 # Secreto con el que rededoc firma los avisos del webhook. Separado de
 # REDEDOC_KEY: esa autentica a torio ante rededoc, este a rededoc ante torio. El
 # anterior solo se llena mientras se rota, para no rechazar los avisos en vuelo.

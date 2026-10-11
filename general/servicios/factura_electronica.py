@@ -16,6 +16,7 @@ no habilita la emisión: hasta que se termine el asistente
 import calendar
 from decimal import ROUND_HALF_UP, Decimal
 
+from django.conf import settings
 from django.db import connection
 from django.utils import timezone
 from rest_framework import status
@@ -601,6 +602,7 @@ def _armar_factura_venta(documento, parametro):
 
     return {
         'emisor': parametro.gen_rededoc_emisor,
+        'ambiente': settings.REDEDOC_AMBIENTE,
         'documento_tipo': documento.documento_tipo.codigo,
         'prefijo': documento.resolucion.prefijo or '',
         'numero_resolucion': documento.resolucion.numero,
