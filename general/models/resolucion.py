@@ -13,6 +13,7 @@ class GenResolucion(models.Model):
     venta = models.BooleanField(default=False, db_default=False)
     compra = models.BooleanField(default=False, db_default=False)
     estado_validado = models.BooleanField(default=False, db_default=False)
+    estado_inactivo = models.BooleanField(default=False, db_default=False)
 
     class Meta:
         db_table = 'gen_resolucion'

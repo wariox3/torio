@@ -27,6 +27,7 @@ class GenResolucionExportarSerializer(serializers.Serializer):
         ('fecha_hasta', 'Fecha hasta'),
         ('venta', 'Venta'),
         ('compra', 'Compra'),
+        ('estado_inactivo', 'Inactivo'),
     )
 
     @staticmethod

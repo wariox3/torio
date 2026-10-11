@@ -8,7 +8,7 @@ class GenResolucionSerializer(serializers.ModelSerializer):
     campos_filtrables = {
         'id', 'prefijo', 'numero',
         'consecutivo_desde', 'consecutivo_hasta',
-        'fecha_desde', 'fecha_hasta', 'venta', 'compra', 'estado_validado',
+        'fecha_desde', 'fecha_hasta', 'venta', 'compra', 'estado_validado', 'estado_inactivo',
     }
     ordenamiento_default_lista = ('numero',)
 
@@ -27,6 +27,7 @@ class GenResolucionSerializer(serializers.ModelSerializer):
             'venta',
             'compra',
             'estado_validado',
+            'estado_inactivo',
         ]
         # `estado_validado` solo lo cambia `validar`: es un hecho comprobado
         # contra la DIAN, no algo que el cliente afirme.

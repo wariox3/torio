@@ -34,6 +34,7 @@ class GenResolucionImportarSerializer(serializers.Serializer):
         ('fecha_hasta', 'Fecha hasta'),
         ('venta', 'Venta'),
         ('compra', 'Compra'),
+        ('estado_inactivo', 'Inactivo'),
     )
     campos_requeridos = {
         'consecutivo_desde', 'consecutivo_hasta', 'fecha_desde', 'fecha_hasta',
@@ -66,6 +67,7 @@ class GenResolucionImportarSerializer(serializers.Serializer):
                     fecha_hasta=self._fecha(datos.get('fecha_hasta'), 'Fecha hasta'),
                     venta=self._si_no(datos.get('venta')),
                     compra=self._si_no(datos.get('compra')),
+                    estado_inactivo=self._si_no(datos.get('estado_inactivo')),
                 ))
             except Exception as e:
                 errores.append({'fila': idx, 'mensaje': str(e)})

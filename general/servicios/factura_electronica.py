@@ -14,10 +14,9 @@ no habilita la emisión: hasta que se termine el asistente
 """
 
 import calendar
-from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
-from django.db import connection, transaction
+from django.db import connection
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, ValidationError
@@ -30,9 +29,6 @@ from utilidades.excepciones import con_detail
 EXTENSIONES_CERTIFICADO = ('.p12', '.pfx')
 TAMANO_MAXIMO_CERTIFICADO = 1024 * 1024  # 1 MB; un certificado real pesa unos pocos KB
 MODULOS_SOFTWARE = ('facturacion', 'nomina')
-# Los tipos de software de rededoc que se numeran con resolución. Nómina no.
-TIPOS_SOFTWARE_RESOLUCION = ('facturacion', 'documento_equivalente')
-TIPO_SOFTWARE_RESOLUCION_POR_DEFECTO = 'facturacion'
 
 
 class ErrorFacturaElectronica(Exception):
@@ -312,114 +308,74 @@ def software_actualizar(software_id: int, datos: dict, cliente: Rededoc = None) 
     return respuesta['datos']
 
 
-# Campo de `GenResolucion` → (campo de la resolución en rededoc, nombre para el mensaje).
-CAMPOS_RESOLUCION = {
-    'consecutivo_desde': ('rango_desde', 'El consecutivo desde'),
-    'consecutivo_hasta': ('rango_hasta', 'El consecutivo hasta'),
-    'fecha_desde': ('vigente_desde', 'La fecha desde'),
-    'fecha_hasta': ('vigente_hasta', 'La fecha hasta'),
-}
-
-
-def resolucion_validar(resolucion: GenResolucion,
-                       tipo_software: str = TIPO_SOFTWARE_RESOLUCION_POR_DEFECTO,
-                       cliente: Rededoc = None) -> list:
+def resoluciones_validar(cliente: Rededoc = None) -> dict:
     """
-    Comprueba en rededoc —que le pregunta a la DIAN— que la resolución está
-    asociada al emisor de `gen_rededoc_emisor` y que lo guardado en torio es lo
-    que la DIAN autorizó. Devuelve las diferencias; vacía si coincide.
+    Valida contra la DIAN, a través de rededoc, las resoluciones vigentes del
+    tenant, y marca como inactivas las que ya vencieron.
 
-    Rededoc responde una lista, porque la DIAN puede autorizar varios prefijos
-    con una misma resolución: se compara con la del mismo prefijo, y de ella el
-    rango de consecutivos y la vigencia. `estado_validado` queda en lo que diga
-    la comparación.
+    A rededoc se mandan las que no han vencido, cada una con su `id` de torio.
+    Rededoc responde una entrada por resolución, en el mismo orden y sin id, así
+    que cada resultado se empareja con su resolución por la posición.
+    `estado_validado` queda en lo que rededoc responda en `validado`: que el
+    emisor tiene esa resolución en la DIAN.
 
-    Si rededoc no responde 200 —la resolución no existe, el emisor no tiene
-    software de ese tipo aceptado, o el servicio está caído— el estado no se
-    toca y el error sube al front.
-    """
-    if not resolucion.numero:
-        raise ErrorFacturaElectronica('La resolución no tiene número.')
-    emisor_id = _emisor_id()
-    cliente = cliente or Rededoc()
-    respuesta = cliente.validar_resolucion(emisor_id, tipo_software, resolucion.numero.strip())
-    if respuesta['error']:
-        raise _error_rededoc(respuesta)
+    Devuelve `inactivadas`, `validadas` y `resoluciones`: la respuesta de
+    rededoc —que además dice si hay `inconsistencia` en el rango o la
+    vigencia— con el `id` de torio de cada una.
 
-    prefijo = resolucion.prefijo or ''
-    autorizadas = respuesta['datos'] or []
-    autorizada = next((r for r in autorizadas if (r.get('prefijo') or '') == prefijo), None)
-    if autorizada is None:
-        prefijos = ', '.join(r.get('prefijo') or '(sin prefijo)' for r in autorizadas)
-        diferencias = [
-            f'El prefijo {prefijo or "(sin prefijo)"} no coincide con lo autorizado por la DIAN: {prefijos}.'
-        ]
-    else:
-        diferencias = []
-        for campo, (campo_rededoc, nombre) in CAMPOS_RESOLUCION.items():
-            guardado = getattr(resolucion, campo)
-            autorizado = autorizada.get(campo_rededoc)
-            # Las fechas llegan en ISO; se comparan como texto.
-            if str(guardado) != str(autorizado):
-                diferencias.append(f'{nombre} es {guardado} y la DIAN autorizó {autorizado}.')
-
-    resolucion.estado_validado = not diferencias
-    resolucion.save(update_fields=['estado_validado'])
-    return diferencias
-
-
-def resolucion_importar_dian(tipo_software: str = TIPO_SOFTWARE_RESOLUCION_POR_DEFECTO,
-                             cliente: Rededoc = None) -> list:
-    """
-    Importa de la DIAN, a través de rededoc, las resoluciones del software de
-    ese tipo del emisor de `gen_rededoc_emisor`, y crea en torio las que no
-    existan. Devuelve las creadas.
-
-    Rededoc importa por software, y su id no viene del front: se busca entre
-    los del emisor del tenant, porque todos los emisores cuelgan de la misma API
-    key y con un id ajeno se importarían las resoluciones de otra empresa.
-
-    Una resolución existe si ya hay una con el mismo prefijo y número; esas no
-    se tocan. Las creadas quedan validadas: sus datos son los de la DIAN.
+    Que el emisor no tenga un software aceptado por la DIAN, o que la DIAN no
+    devuelva rangos, lo dice rededoc con un 400 y su mensaje es el que sube al
+    front; en ese caso no se cambia nada.
     """
     emisor_id = _emisor_id()
     cliente = cliente or Rededoc()
-    respuesta = cliente.consultar_software(emisor_id)
-    if respuesta['error']:
-        raise _error_rededoc(respuesta)
-    software = next(
-        (s for s in (respuesta['datos'] or {}).get('results', []) if s.get('tipo') == tipo_software),
-        None,
+    hoy = timezone.localdate()
+
+    # Vencida es la que ya pasó su último día de vigencia: con `fecha_hasta` hoy
+    # todavía numera. Sin número no hay qué buscar en la DIAN.
+    vigentes = list(
+        GenResolucion.objects.filter(fecha_hasta__gte=hoy)
+        .exclude(numero__isnull=True).exclude(numero='')
     )
-    if software is None:
-        raise ErrorFacturaElectronica('La empresa no tiene registrado un software de ese tipo.')
+    resultados = []
+    if vigentes:
+        respuesta = cliente.validar_resoluciones(emisor_id, [
+            {
+                'id': resolucion.id,
+                'numero_resolucion': resolucion.numero,
+                'prefijo': resolucion.prefijo or '',
+                'rango_desde': resolucion.consecutivo_desde,
+                'rango_hasta': resolucion.consecutivo_hasta,
+                'vigente_desde': resolucion.fecha_desde.isoformat(),
+                'vigente_hasta': resolucion.fecha_hasta.isoformat(),
+            }
+            for resolucion in vigentes
+        ])
+        if respuesta['error']:
+            raise _error_rededoc(respuesta)
+        datos = respuesta['datos'] or []
+        # Emparejar por posición solo sirve si llegó una entrada por cada
+        # resolución enviada; con otra cantidad se marcaría la que no es.
+        if len(datos) != len(vigentes):
+            raise ErrorFacturaElectronica(
+                'El servicio de facturación electrónica respondió una cantidad de '
+                'resoluciones distinta a la enviada.',
+                status=502,
+            )
+        resultados = [
+            {**resultado, 'id': resolucion.id}
+            for resolucion, resultado in zip(vigentes, datos)
+        ]
 
-    respuesta = cliente.importar_resoluciones(software['id'])
-    if respuesta['error']:
-        raise _error_rededoc(respuesta)
+    validados = [r['id'] for r in resultados if r.get('validado')]
+    no_validados = [r['id'] for r in resultados if not r.get('validado')]
 
-    existentes = {
-        (prefijo or '', numero)
-        for prefijo, numero in GenResolucion.objects.values_list('prefijo', 'numero')
-    }
-    creadas = []
-    with transaction.atomic():
-        for importada in respuesta['datos'] or []:
-            llave = (importada.get('prefijo') or '', importada['numero_resolucion'])
-            if llave in existentes:
-                continue
-            existentes.add(llave)
-            creadas.append(GenResolucion.objects.create(
-                prefijo=importada.get('prefijo') or None,
-                numero=importada['numero_resolucion'],
-                consecutivo_desde=importada['rango_desde'],
-                consecutivo_hasta=importada['rango_hasta'],
-                fecha_desde=date.fromisoformat(importada['vigente_desde']),
-                fecha_hasta=date.fromisoformat(importada['vigente_hasta']),
-                venta=True,
-                estado_validado=True,
-            ))
-    return creadas
+    inactivadas = GenResolucion.objects.filter(
+        fecha_hasta__lt=hoy, estado_inactivo=False,
+    ).update(estado_inactivo=True)
+    GenResolucion.objects.filter(id__in=validados).update(estado_validado=True)
+    GenResolucion.objects.filter(id__in=no_validados).update(estado_validado=False)
+    return {'inactivadas': inactivadas, 'validadas': len(validados), 'resoluciones': resultados}
 
 
 def certificado_eliminar(cliente: Rededoc = None) -> GenParametro:

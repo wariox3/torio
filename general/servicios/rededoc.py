@@ -116,43 +116,26 @@ class Rededoc:
         """
         return self._peticion('PATCH', f'/api/emisores/software/{software_id}/', datos=datos)
 
-    # Validar e importar consultan los rangos en la DIAN dentro de la misma
-    # llamada, y la DIAN no siempre responde dentro del timeout general.
-    TIMEOUT_RESOLUCION_DIAN = 30
+    # Rededoc consulta los rangos en la DIAN dentro de la misma llamada, y la
+    # DIAN no siempre responde dentro del timeout general.
+    TIMEOUT_VALIDAR_RESOLUCIONES = 30
 
-    def validar_resolucion(self, emisor_id, tipo_software: str, numero_resolucion: str):
+    def validar_resoluciones(self, emisor_id, resoluciones: list):
         """
-        Comprueba en la DIAN que una resolución está asociada al emisor.
-        `POST /api/emisores/resolucion/validar/`.
+        Contrasta una lista de resoluciones con las que la DIAN le autorizó al
+        emisor. `POST /api/emisores/resolucion/validar/`.
 
-        Responde 200 con la lista de resoluciones de ese número —la DIAN puede
-        autorizar varios prefijos con una misma resolución—, sin la clave
-        técnica. Si la DIAN no la devuelve para ese software, o el emisor no
-        tiene software de ese tipo aceptado, responde 400.
+        Rededoc primero importa de la DIAN las resoluciones de los softwares
+        aceptados del emisor y después busca cada una de la lista. Responde 200
+        con una entrada por resolución, en el mismo orden: `validado` si el
+        emisor la tiene, `inconsistencia` si la tiene pero el rango o la
+        vigencia no coinciden, y los datos tal como están registrados. Sin
+        ningún software aceptado, o si la DIAN no devuelve rangos, responde 400.
         """
         return self._peticion(
             'POST', '/api/emisores/resolucion/validar/',
-            datos={
-                'emisor': emisor_id,
-                'tipo_software': tipo_software,
-                'numero_resolucion': numero_resolucion,
-            },
-            timeout=self.TIMEOUT_RESOLUCION_DIAN,
-        )
-
-    def importar_resoluciones(self, software_id):
-        """
-        Trae de la DIAN los rangos de numeración de un software y crea en rededoc
-        las resoluciones que le falten. `POST /api/emisores/resolucion/importar-dian/`.
-
-        Responde **solo las que creó** en esta llamada, sin la clave técnica: 201
-        si creó alguna y 200 con la lista vacía si ya las tenía todas. Si la DIAN
-        no devuelve rangos para ese software responde 400 con su mensaje.
-        """
-        return self._peticion(
-            'POST', '/api/emisores/resolucion/importar-dian/',
-            datos={'software': software_id},
-            timeout=self.TIMEOUT_RESOLUCION_DIAN,
+            datos={'emisor': emisor_id, 'resoluciones': resoluciones},
+            timeout=self.TIMEOUT_VALIDAR_RESOLUCIONES,
         )
 
     def consultar_documentos_recibidos(self, parametros: dict):
