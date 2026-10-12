@@ -120,9 +120,6 @@ DOCUMENTO_TIPOS_REMISION = (
 # el sentido lo trae la línea y no el tipo.
 DOCUMENTO_TIPO_TRASLADO_ALMACEN = 31
 
-# Mismo id que `contabilidad.servicios.depreciacion.DOCUMENTO_TIPO_DEPRECIACION`.
-DOCUMENTO_TIPO_DEPRECIACION = 23
-
 # Tipos que recalculan el costo promedio del item: los que meten mercancía y
 # traen un precio de entrada contra el cual promediar.
 DOCUMENTO_TIPOS_QUE_PROMEDIAN_COSTO = (
@@ -149,33 +146,30 @@ def validar_aprobacion(documento, consecutivo):
     el próximo de su tipo—, porque la resolución se valida contra ese número y no
     contra el que tenga la secuencia después.
     """
+    _validar_detalles(documento)
     _validar_total_no_negativo(documento)
     _validar_partida_doble(documento)
-    _validar_depreciacion(documento)
     _validar_resolucion(documento, consecutivo)
     _validar_nomina_electronica(documento)
     _validar_cantidad_afectada(documento)
+    _validar_almacen(documento)
     _validar_existencias(documento)
     _validar_nota_credito(documento)
     _validar_pagos(documento)
 
 
+def _validar_detalles(documento):
+    """
+    Un documento sin detalles no dice nada: aprobarlo gasta el consecutivo en
+    un documento vacío.
+    """
+    if not documento.documentos_detalles_documento_rel.exists():
+        raise ValidationError('El documento no tiene detalles.')
+
+
 def _validar_total_no_negativo(documento):
     if documento.total < 0:
         raise ValidationError('El total del documento no puede ser menor a cero.')
-
-
-def _validar_depreciacion(documento):
-    """
-    Una depreciación sin detalles no deprecia nada: aprobarla gasta el
-    consecutivo y deja cerrado un periodo al que nunca se le cargaron activos.
-    """
-    if documento.documento_tipo_id != DOCUMENTO_TIPO_DEPRECIACION:
-        return
-    if not documento.documentos_detalles_documento_rel.exists():
-        raise ValidationError(
-            'La depreciación no tiene detalles. Cargue los activos antes de aprobar.'
-        )
 
 
 def _validar_pagos(documento):
@@ -288,6 +282,32 @@ def _validar_nota_credito(documento):
         raise ValidationError(
             f'El documento referencia tiene {pendiente} pendiente y la nota crédito '
             f'intenta afectar {afectar}.'
+        )
+
+
+def _validar_almacen(documento):
+    """
+    Una línea que mueve inventario tiene que decir en qué almacén.
+
+    `_afectar_inventario` se salta las líneas sin almacén, así que sin esta
+    regla el documento queda aprobado y la cantidad no entra ni sale de ningún
+    saldo. En remisión solo se exige al item que lleva inventario: una línea
+    de servicio no compromete mercancía.
+    """
+    sin_almacen = list(
+        documento.documentos_detalles_documento_rel
+        .filter(almacen__isnull=True)
+        .filter(
+            ~Q(operacion_inventario=0)
+            | (~Q(operacion_remision=0) & Q(item__inventario=True))
+        )
+        .order_by('id')
+        .values_list('id', flat=True)
+    )
+    if sin_almacen:
+        detalles = ', '.join(str(pk) for pk in sin_almacen)
+        raise ValidationError(
+            f'Hay detalles que mueven inventario y no tienen almacén: {detalles}.'
         )
 
 
