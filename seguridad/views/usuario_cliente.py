@@ -31,9 +31,24 @@ class SegUsuarioClienteViewSet(
     ordenamiento_default_lista = ('usuario__nombre_corto',)
 
     def get_queryset(self):
-        return SegUsuarioCliente.objects.select_related('usuario').order_by(
-            'usuario__nombre_corto'
-        )
+        # Solo las membresías de los contenedores a los que pertenece quien
+        # consulta. Sin este corte cualquier sesión listaba —y editaba— los
+        # miembros de contenedores ajenos; con él, una membresía de otro
+        # contenedor ni siquiera se encuentra (404).
+        propios = SegUsuarioCliente.objects.filter(usuario=self.request.user).values('cliente_id')
+        return SegUsuarioCliente.objects.filter(cliente_id__in=propios).select_related(
+            'usuario', 'cliente',
+        ).order_by('usuario__nombre_corto')
+
+    def update(self, request, *args, **kwargs):
+        # Los accesos de un miembro los decide el owner, no el propio miembro.
+        # Es 403 y no 404: quien llega acá ya es miembro y puede ver la fila.
+        if self.get_object().cliente.owner_id != request.user.id:
+            return Response(
+                {'detail': 'Solo el owner del contenedor puede modificar los accesos.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().update(request, *args, **kwargs)
 
     @extend_schema(
         summary='Listar usuarios de un cliente',
@@ -57,6 +72,15 @@ class SegUsuarioClienteViewSet(
         try:
             membresia = self.get_object()
         except Exception:
+            return Response(
+                {'detail': 'No se encontró el acceso de usuario a cliente.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Solo el propio miembro (se sale) o el owner del contenedor (lo saca).
+        # A cualquier otro se le responde igual que si la membresía no existiera:
+        # un 403 confirmaría que ese id es de alguien.
+        if request.user.id not in (membresia.usuario_id, membresia.cliente.owner_id):
             return Response(
                 {'detail': 'No se encontró el acceso de usuario a cliente.'},
                 status=status.HTTP_404_NOT_FOUND,
