@@ -59,6 +59,23 @@ class Zinc:
             return False
         return True
 
+    def log_envio(self, codigo_documento_uuid: str, aplicacion: str = 'nobelio'):
+        """
+        El registro de los correos con que se le entregó un documento electrónico
+        a su adquiriente. `POST /api/externo/log_envio`.
+
+        El documento se busca por el id que tiene en la aplicación que lo envió
+        (`nobelio`, que es rededoc), no por un id de torio.
+        """
+        datos = {
+            'aplicacion': aplicacion,
+            'codigoDocumentoUUID': codigo_documento_uuid,
+        }
+        respuesta = self._post(datos, '/api/externo/log_envio')
+        if respuesta['status'] == 200:
+            return {'error': False, 'status': respuesta['status'], 'datos': respuesta['datos']}
+        return {'error': True, 'status': respuesta['status'], 'datos': respuesta['datos']}
+
     def _post(self, data: dict, url: str):
         url_completa = settings.ZINC_URL + url
         try:

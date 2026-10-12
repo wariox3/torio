@@ -447,6 +447,26 @@ class GenDocumentoViewSet(
             return Response(e.cuerpo, status=e.status)
         return Response({'notificados': notificados}, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary='Registro de envíos de un documento electrónico',
+        description=(
+            'El registro de los correos con que se le entregó el documento a su '
+            'adquiriente, consultado en el servicio de correo. Responde `log`.\n\n'
+            'Solo para documentos ya notificados: uno que no lo esté responde 400.'
+        ),
+        request=DocumentoAccionRequestSerializer,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['post'], url_path='electronico-log')
+    def electronico_log(self, request):
+        serializer = DocumentoAccionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            log = factura_electronica_servicio.electronico_log(serializer.validated_data['id'])
+        except factura_electronica_servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+        return Response({'log': log}, status=status.HTTP_200_OK)
+
     @extend_schema(request=BusquedaRequest, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=False, methods=['post'])
     def imprimir(self, request):

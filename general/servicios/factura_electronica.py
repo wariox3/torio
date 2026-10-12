@@ -26,6 +26,7 @@ from general.models import GenConfiguracion, GenDocumento, GenParametro, GenReso
 from general.servicios.documento import DOCUMENTO_CLASE_FACTURA_VENTA
 from general.servicios.rededoc import Rededoc
 from utilidades.excepciones import con_detail
+from utilidades.zinc import Zinc
 
 EXTENSIONES_CERTIFICADO = ('.p12', '.pfx')
 TAMANO_MAXIMO_CERTIFICADO = 1024 * 1024  # 1 MB; un certificado real pesa unos pocos KB
@@ -882,6 +883,32 @@ def notificar(documento_ids, cliente: Rededoc = None) -> list:
         documento.save(update_fields=['estado_electronico_notificado'])
         notificados.append(documento.id)
     return notificados
+
+
+def electronico_log(documento_id, zinc: Zinc = None) -> list:
+    """
+    El registro de los correos con que se le entregó el documento a su
+    adquiriente, tal como lo tiene zinc, que es la pasarela que los envía.
+
+    Zinc lo busca por el id del documento en rededoc (`electronico_id`), bajo la
+    aplicación `nobelio`. Solo tiene sentido para un documento ya notificado:
+    antes de eso no se ha enviado ningún correo.
+    """
+    documento = GenDocumento.objects.filter(id=documento_id).first()
+    if documento is None:
+        raise NotFound(f'El documento {documento_id} no existe.')
+    if not documento.estado_electronico_notificado:
+        raise ErrorFacturaElectronica(f'El documento {documento_id} nunca ha sido notificado.')
+    if not documento.electronico_id:
+        raise ErrorFacturaElectronica(
+            f'El documento {documento_id} está marcado como notificado pero no tiene id electrónico.'
+        )
+
+    zinc = zinc or Zinc()
+    respuesta = zinc.log_envio(str(documento.electronico_id))
+    if respuesta['error']:
+        raise ErrorFacturaElectronica('El servicio de correo no respondió el registro de envíos.', status=502)
+    return (respuesta['datos'] or {}).get('log', [])
 
 
 # ------------------------------------------------------------ recepción ----
