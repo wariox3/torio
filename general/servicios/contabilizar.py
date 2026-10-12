@@ -438,9 +438,12 @@ def _movimientos_item(documento, detalle, comun):
 
     centro_costo_sede_id = documento.sede.centro_costo_id if documento.sede_id else None
 
+    # Lo que se lleva al ingreso o al costo es el neto de la línea, ya sin el
+    # descuento: la cartera va por `total`, que lo trae descontado, y con
+    # `subtotal` el asiento queda descuadrado justo por el descuento.
     if tipo.venta:
         movimientos.append(_movimiento(
-            comun, item.cuenta_venta, -tipo.operacion, detalle.subtotal, 'VENTA',
+            comun, item.cuenta_venta, -tipo.operacion, detalle.total_bruto, 'VENTA',
             f'El item «{item.nombre}»: la cuenta de venta',
             contacto_id=documento.contacto_id, centro_costo_id=centro_costo_sede_id,
         ))
@@ -468,7 +471,7 @@ def _movimientos_item(documento, detalle, comun):
         else:
             cuenta, etiqueta, texto = item.cuenta_compra, 'la cuenta de compra', 'ITEM COMPRA'
         movimientos.append(_movimiento(
-            comun, cuenta, tipo.operacion, detalle.subtotal, texto,
+            comun, cuenta, tipo.operacion, detalle.total_bruto, texto,
             f'El item «{item.nombre}»: {etiqueta}',
             contacto_id=documento.contacto_id, centro_costo_id=detalle.centro_costo_id,
         ))
