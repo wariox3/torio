@@ -603,6 +603,8 @@ def _armar_factura_venta(documento, parametro):
     return {
         'emisor': parametro.gen_rededoc_emisor,
         'ambiente': settings.REDEDOC_AMBIENTE,
+        # El id del documento en torio, para ubicarlo en rededoc sin su UUID.
+        'referencia_externa': str(documento.id),
         'documento_tipo': documento.documento_tipo.codigo,
         'prefijo': documento.resolucion.prefijo or '',
         'numero_resolucion': documento.resolucion.numero,

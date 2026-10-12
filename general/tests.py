@@ -15,7 +15,7 @@ from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.db import IntegrityError, connection, transaction
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django_tenants.test.cases import TenantTestCase
@@ -1263,6 +1263,17 @@ class RededocTests(SimpleTestCase):
         self.assertEqual((metodo, url), ('POST', 'https://api.rededoc.uk/api/emisores/software/'))
         self.assertEqual(peticion.call_args.kwargs['json'], datos)
 
+    def test_validar_resoluciones_manda_el_emisor_y_la_lista_en_json(self):
+        resoluciones = [{'id': 4, 'numero_resolucion': '18760000001', 'prefijo': 'SETP'}]
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, []),
+        ) as peticion:
+            rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k').validar_resoluciones(77, resoluciones)
+
+        metodo, url = peticion.call_args.args
+        self.assertEqual((metodo, url), ('POST', 'https://api.rededoc.uk/api/emisores/resolucion/validar/'))
+        self.assertEqual(peticion.call_args.kwargs['json'], {'emisor': 77, 'resoluciones': resoluciones})
+
     def test_actualizar_software_hace_patch_sobre_su_id(self):
         with mock.patch.object(
             rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {'id': 3}),
@@ -2016,6 +2027,7 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
             'software_actualizar': lambda: factura_electronica.software_actualizar(3, {'pin': '1'}, cliente=self.cliente),
             'recepcion_documento': lambda: factura_electronica.recepcion_documento({}, cliente=self.cliente),
             'recepcion_correo': lambda: factura_electronica.recepcion_correo({}, cliente=self.cliente),
+            'resoluciones_validar': lambda: factura_electronica.resoluciones_validar(cliente=self.cliente),
         }
         for nombre, llamada in llamadas.items():
             with self.subTest(funcion=nombre):
@@ -2032,6 +2044,153 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
         self.cliente.actualizar_software.assert_not_called()
         self.cliente.consultar_documentos_recibidos.assert_not_called()
         self.cliente.consultar_correos_recibidos.assert_not_called()
+        self.cliente.validar_resoluciones.assert_not_called()
+
+    def _resolucion(self, vence_en=30, **overrides):
+        hoy = timezone.localdate()
+        datos = {
+            'prefijo': 'SETP', 'numero': '18760000001', 'consecutivo_desde': 990000000,
+            'consecutivo_hasta': 995000000, 'fecha_desde': hoy - timedelta(days=365),
+            'fecha_hasta': hoy + timedelta(days=vence_en), 'venta': True,
+        }
+        datos.update(overrides)
+        return GenResolucion.objects.create(**datos)
+
+    def _rededoc_valida(self, *resultados):
+        self.cliente.validar_resoluciones.return_value = {
+            'error': False, 'status': 200,
+            'datos': [{'validado': True, 'inconsistencia': False, **resultado} for resultado in resultados],
+        }
+
+    def test_resoluciones_validar_manda_las_vigentes_con_su_id(self):
+        resolucion = self._resolucion()
+        sin_prefijo = self._resolucion(prefijo=None, numero='18760000002', vence_en=0)
+        self._resolucion(numero='18760000003', vence_en=-1)
+        self._resolucion(numero=None)
+        self._rededoc_valida({}, {})
+
+        factura_electronica.resoluciones_validar(cliente=self.cliente)
+
+        self.cliente.validar_resoluciones.assert_called_once_with(77, [
+            {
+                'id': resolucion.id, 'numero_resolucion': '18760000001', 'prefijo': 'SETP',
+                'rango_desde': 990000000, 'rango_hasta': 995000000,
+                'vigente_desde': resolucion.fecha_desde.isoformat(),
+                'vigente_hasta': resolucion.fecha_hasta.isoformat(),
+            },
+            {
+                'id': sin_prefijo.id, 'numero_resolucion': '18760000002', 'prefijo': '',
+                'rango_desde': 990000000, 'rango_hasta': 995000000,
+                'vigente_desde': sin_prefijo.fecha_desde.isoformat(),
+                'vigente_hasta': sin_prefijo.fecha_hasta.isoformat(),
+            },
+        ])
+
+    def test_resoluciones_validar_marca_cada_una_segun_lo_que_responde_rededoc(self):
+        validada = self._resolucion(numero='1')
+        inconsistente = self._resolucion(numero='2')
+        rechazada = self._resolucion(numero='3', estado_validado=True)
+        self._rededoc_valida(
+            {'numero_resolucion': '1'},
+            {'numero_resolucion': '2', 'inconsistencia': True},
+            {'numero_resolucion': '3', 'validado': False},
+        )
+
+        datos = factura_electronica.resoluciones_validar(cliente=self.cliente)
+
+        self.assertEqual(datos['validadas'], 2)
+        self.assertEqual(
+            [(r['id'], r['validado'], r['inconsistencia']) for r in datos['resoluciones']],
+            [(validada.id, True, False), (inconsistente.id, True, True), (rechazada.id, False, False)],
+        )
+        for resolucion, esperado in ((validada, True), (inconsistente, True), (rechazada, False)):
+            resolucion.refresh_from_db()
+            self.assertEqual(resolucion.estado_validado, esperado)
+
+    def test_resoluciones_validar_inactiva_las_vencidas_y_no_las_manda(self):
+        vencida = self._resolucion(numero='1', vence_en=-1)
+        vence_hoy = self._resolucion(numero='2', vence_en=0)
+        self._rededoc_valida({})
+
+        datos = factura_electronica.resoluciones_validar(cliente=self.cliente)
+
+        self.assertEqual(datos['inactivadas'], 1)
+        self.assertEqual([r['id'] for r in datos['resoluciones']], [vence_hoy.id])
+        vencida.refresh_from_db()
+        vence_hoy.refresh_from_db()
+        self.assertTrue(vencida.estado_inactivo)
+        self.assertFalse(vencida.estado_validado)
+        self.assertFalse(vence_hoy.estado_inactivo)
+
+    def test_resoluciones_validar_sin_vigentes_no_llama_a_rededoc(self):
+        vencida = self._resolucion(vence_en=-1)
+
+        datos = factura_electronica.resoluciones_validar(cliente=self.cliente)
+
+        self.cliente.validar_resoluciones.assert_not_called()
+        self.assertEqual(datos, {'inactivadas': 1, 'validadas': 0, 'resoluciones': []})
+        vencida.refresh_from_db()
+        self.assertTrue(vencida.estado_inactivo)
+
+    def test_resoluciones_validar_filtra_por_venta_y_compra(self):
+        venta = self._resolucion(numero='1')
+        compra = self._resolucion(numero='2', venta=False, compra=True)
+        venta_vencida = self._resolucion(numero='3', vence_en=-1)
+        compra_vencida = self._resolucion(numero='4', venta=False, compra=True, vence_en=-1)
+        casos = [
+            ({'venta': True}, venta, venta_vencida, compra_vencida),
+            ({'venta': False}, compra, compra_vencida, venta_vencida),
+            ({'compra': True}, compra, compra_vencida, venta_vencida),
+            ({'compra': False}, venta, venta_vencida, compra_vencida),
+        ]
+        for filtros, enviada, inactivada, intacta in casos:
+            with self.subTest(filtros=filtros):
+                GenResolucion.objects.update(estado_inactivo=False)
+                self.cliente.validar_resoluciones.reset_mock()
+                self._rededoc_valida({})
+
+                datos = factura_electronica.resoluciones_validar(cliente=self.cliente, **filtros)
+
+                enviadas = self.cliente.validar_resoluciones.call_args.args[1]
+                self.assertEqual([r['id'] for r in enviadas], [enviada.id])
+                self.assertEqual(datos['inactivadas'], 1)
+                inactivada.refresh_from_db()
+                intacta.refresh_from_db()
+                self.assertTrue(inactivada.estado_inactivo)
+                self.assertFalse(intacta.estado_inactivo)
+
+    def test_resoluciones_validar_si_rededoc_falla_no_cambia_nada(self):
+        cuerpo = {'detail': 'El emisor no tiene un software aceptado por la DIAN.'}
+        vigente = self._resolucion(numero='1', estado_validado=True)
+        vencida = self._resolucion(numero='2', vence_en=-1)
+        for status_rededoc, esperado in ((400, 400), (0, 502)):
+            with self.subTest(status_rededoc=status_rededoc):
+                self.cliente.validar_resoluciones.return_value = {
+                    'error': True, 'status': status_rededoc, 'datos': cuerpo,
+                }
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    factura_electronica.resoluciones_validar(cliente=self.cliente)
+
+                self.assertEqual(caso.exception.status, esperado)
+                self.assertEqual(caso.exception.cuerpo['detail'], cuerpo['detail'])
+                vigente.refresh_from_db()
+                vencida.refresh_from_db()
+                self.assertTrue(vigente.estado_validado)
+                self.assertFalse(vencida.estado_inactivo)
+
+    def test_resoluciones_validar_con_otra_cantidad_de_resultados_es_502_y_no_marca(self):
+        self._resolucion(numero='1')
+        self._resolucion(numero='2')
+        vencida = self._resolucion(numero='3', vence_en=-1)
+        self._rededoc_valida({})
+
+        with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+            factura_electronica.resoluciones_validar(cliente=self.cliente)
+
+        self.assertEqual(caso.exception.status, 502)
+        self.assertFalse(GenResolucion.objects.filter(estado_validado=True).exists())
+        vencida.refresh_from_db()
+        self.assertFalse(vencida.estado_inactivo)
 
     def test_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
         for status_rededoc, esperado in ((400, 400), (0, 502)):
@@ -2469,6 +2628,61 @@ class FacturaElectronicaVistaTests(TenantTestCase):
             prefijo='SETP', numero='18764000001', consecutivo_desde=990000000,
             consecutivo_hasta=995000000, fecha_desde=date(2019, 1, 19), fecha_hasta=date(2030, 1, 19),
         )
+
+    def test_resolucion_validar_pasa_los_filtros_y_devuelve_lo_del_servicio(self):
+        vista = _ResolucionViewSinPermisos.as_view({'post': 'validar'})
+        resultado = {'inactivadas': 1, 'validadas': 2, 'resoluciones': []}
+        casos = [
+            ({}, 200, (None, None)),
+            ({'venta': True}, 200, (True, None)),
+            ({'compra': False}, 200, (None, False)),
+            ({'venta': False, 'compra': True}, 200, (False, True)),
+            ({'venta': 'quizas'}, 400, None),
+            ({'compra': 'quizas'}, 400, None),
+        ]
+        for cuerpo, esperado, argumentos in casos:
+            with self.subTest(cuerpo=cuerpo):
+                peticion = self.factory.post('/general/resolucion/validar/', cuerpo, format='json')
+                force_authenticate(peticion, user=SegUsuario(id=1))
+                with mock.patch.object(
+                    factura_electronica, 'resoluciones_validar', return_value=resultado,
+                ) as servicio:
+                    respuesta = vista(peticion)
+
+                self.assertEqual(respuesta.status_code, esperado)
+                if esperado == 200:
+                    servicio.assert_called_once_with(*argumentos)
+                    self.assertEqual(respuesta.data, resultado)
+                else:
+                    self.assertIn('detail', respuesta.data)
+                    servicio.assert_not_called()
+
+    def test_resolucion_validar_devuelve_el_error_del_servicio(self):
+        vista = _ResolucionViewSinPermisos.as_view({'post': 'validar'})
+        peticion = self.factory.post('/general/resolucion/validar/', {}, format='json')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        error = factura_electronica.ErrorFacturaElectronica('La empresa no tiene emisor configurado.', status=404)
+
+        with mock.patch.object(factura_electronica, 'resoluciones_validar', side_effect=error):
+            respuesta = vista(peticion)
+
+        self.assertEqual(respuesta.status_code, 404)
+        self.assertEqual(respuesta.data['detail'], 'La empresa no tiene emisor configurado.')
+
+    def test_resolucion_estado_inactivo_se_puede_escribir(self):
+        resolucion = self._resolucion()
+        vista = _ResolucionViewSinPermisos.as_view({'patch': 'partial_update'})
+        peticion = self.factory.patch(
+            f'/general/resolucion/{resolucion.id}/', {'estado_inactivo': True}, format='json',
+        )
+        force_authenticate(peticion, user=SegUsuario(id=1))
+
+        respuesta = vista(peticion, pk=resolucion.id)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertTrue(respuesta.data['estado_inactivo'])
+        resolucion.refresh_from_db()
+        self.assertTrue(resolucion.estado_inactivo)
 
     def test_resolucion_estado_validado_no_se_puede_escribir(self):
         resolucion = self._resolucion()
@@ -6733,6 +6947,7 @@ class EmitirTests(TenantTestCase):
         payload = cliente.crear_documento.call_args.args[0]
         self.assertEqual(payload, {
             'emisor': 77,
+            'ambiente': 2,
             'documento_tipo': 1,
             'prefijo': 'SETP',
             'numero_resolucion': '18760000001',
@@ -6788,6 +7003,15 @@ class EmitirTests(TenantTestCase):
         payload = cliente.crear_documento.call_args.args[0]
         self.assertEqual(payload['forma_pago'], '2')
         self.assertEqual(payload['fecha_vencimiento'], '2026-02-14')
+
+    def test_el_ambiente_sale_de_la_configuracion(self):
+        documento = self._documento()
+        cliente = self._cliente()
+
+        with override_settings(REDEDOC_AMBIENTE=1):
+            self._llamar({'ids': [documento.id]}, cliente)
+
+        self.assertEqual(cliente.crear_documento.call_args.args[0]['ambiente'], 1)
 
     def test_si_rededoc_rechaza_uno_los_anteriores_quedan_emitidos(self):
         uno = self._documento()
