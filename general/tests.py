@@ -95,6 +95,7 @@ from utilidades.formatos import EncabezadoEmpresa, datos_empresa
 from utilidades.formatos.empresa import LADO_LOGO, SEPARACION_LOGO
 from utilidades.formatos.pagina import ANCHO_CONTENIDO
 from utilidades.mixins import ImportarExcelMixin
+from utilidades.zinc import Zinc
 
 
 class _ModeloViewSinPermisos(GenModeloViewSet):
@@ -6948,6 +6949,7 @@ class EmitirTests(TenantTestCase):
         self.assertEqual(payload, {
             'emisor': 77,
             'ambiente': 2,
+            'referencia_externa': str(documento.id),
             'documento_tipo': 1,
             'prefijo': 'SETP',
             'numero_resolucion': '18760000001',
@@ -7742,6 +7744,129 @@ class NotificarTests(TenantTestCase):
         valido = self._documento()
         sin_validar = self._documento(numero=2814, estado_electronico=False, cue=None)
         self._no_envia({'ids': [valido.id, sin_validar.id]}, 400, 'no ha sido validado')
+
+
+class ElectronicoLogTests(TenantTestCase):
+    """
+    El registro de envíos de un documento notificado, que se le pide a zinc por
+    el id del documento en rededoc. Zinc se reemplaza: acá no se sale a la red.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.tipo = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', documento_clase=GenDocumentoClase.objects.create(id=100, nombre='FV'),
+        )
+        self.contacto = _contacto_facturacion()
+        self.factory = APIRequestFactory()
+        self.log = [{'correo': 'facturas@x.com', 'estado': 'entregado'}]
+
+    def _documento(self, **overrides):
+        datos = {
+            'documento_tipo': self.tipo, 'fecha': date(2026, 9, 17), 'estado_aprobado': True,
+            'estado_electronico_notificado': True, 'electronico_id': uuid_lib.uuid4(),
+            'contacto': self.contacto,
+        }
+        datos.update(overrides)
+        return GenDocumento.objects.create(**datos)
+
+    def _zinc(self, status=200, datos=None):
+        zinc = mock.Mock(spec=Zinc)
+        zinc.log_envio.return_value = {
+            'error': status != 200, 'status': status,
+            'datos': {'log': self.log} if datos is None else datos,
+        }
+        return zinc
+
+    def _llamar(self, datos, zinc=None):
+        vista = _DocumentoViewSinPermisos.as_view({'post': 'electronico_log'})
+        peticion = self.factory.post('/general/documento/electronico-log/', datos, format='json')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        with mock.patch.object(factura_electronica, 'Zinc', return_value=zinc or self._zinc()):
+            return vista(peticion)
+
+    def test_pide_el_log_por_el_id_electronico_y_lo_devuelve(self):
+        documento = self._documento()
+        zinc = self._zinc()
+
+        respuesta = self._llamar({'id': documento.id}, zinc)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, {'log': self.log})
+        zinc.log_envio.assert_called_once_with(str(documento.electronico_id))
+
+    def test_sin_log_en_la_respuesta_devuelve_la_lista_vacia(self):
+        respuesta = self._llamar({'id': self._documento().id}, self._zinc(datos={}))
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, {'log': []})
+
+    def test_exige_el_id(self):
+        zinc = self._zinc()
+
+        respuesta = self._llamar({}, zinc)
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('detail', respuesta.data)
+        zinc.log_envio.assert_not_called()
+
+    def test_un_documento_que_no_existe_es_404(self):
+        zinc = self._zinc()
+
+        respuesta = self._llamar({'id': 999999}, zinc)
+
+        self.assertEqual(respuesta.status_code, 404)
+        zinc.log_envio.assert_not_called()
+
+    def test_sin_notificar_o_sin_id_electronico_es_400_y_no_llama_a_zinc(self):
+        casos = {
+            'nunca ha sido notificado': {'estado_electronico_notificado': False},
+            'no tiene id electrónico': {'electronico_id': None},
+        }
+        for mensaje, overrides in casos.items():
+            with self.subTest(mensaje=mensaje):
+                zinc = self._zinc()
+
+                respuesta = self._llamar({'id': self._documento(**overrides).id}, zinc)
+
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertIn(mensaje, respuesta.data['detail'])
+                zinc.log_envio.assert_not_called()
+
+    def test_si_zinc_no_responde_es_502(self):
+        respuesta = self._llamar({'id': self._documento().id}, self._zinc(status=500, datos={}))
+
+        self.assertEqual(respuesta.status_code, 502)
+        self.assertIn('detail', respuesta.data)
+
+
+class ZincLogEnvioTests(SimpleTestCase):
+    """El cliente de zinc para el registro de envíos. No sale a la red."""
+
+    def test_manda_la_aplicacion_y_el_id_del_documento(self):
+        respuesta = mock.Mock(status_code=200)
+        respuesta.json.return_value = {'log': [{'estado': 'entregado'}]}
+        with mock.patch('utilidades.zinc.httpx.post', return_value=respuesta) as peticion:
+            resultado = Zinc().log_envio('0b8f3c2e-5d7a-4e1b-9c6f-2a4d8e7b1f90')
+
+        self.assertEqual(peticion.call_args.args[0], settings.ZINC_URL + '/api/externo/log_envio')
+        self.assertEqual(peticion.call_args.kwargs['json'], {
+            'aplicacion': 'nobelio',
+            'codigoDocumentoUUID': '0b8f3c2e-5d7a-4e1b-9c6f-2a4d8e7b1f90',
+        })
+        self.assertEqual(resultado, {'error': False, 'status': 200, 'datos': {'log': [{'estado': 'entregado'}]}})
+
+    def test_si_zinc_no_responde_200_es_error(self):
+        with mock.patch('utilidades.zinc.httpx.post', side_effect=httpx.ConnectError('caído')):
+            resultado = Zinc().log_envio('0b8f3c2e-5d7a-4e1b-9c6f-2a4d8e7b1f90')
+
+        self.assertTrue(resultado['error'])
+        self.assertEqual(resultado['status'], 500)
 
 
 class NotificarDocumentoTareaTests(TenantTestCase):
