@@ -19,6 +19,7 @@ from .estado import GenEstado
 from .festivo import GenFestivo
 from .forma_pago import GenFormaPago
 from .identificacion import GenIdentificacion
+from .imagen import GenImagen
 from .impuesto import GenImpuesto
 from .impuesto_tipo import GenImpuestoTipo
 from .item import GenItem

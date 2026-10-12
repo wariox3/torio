@@ -97,6 +97,7 @@ DOCUMENTO_TIPOS_CUENTA_DE_FORMA_PAGO = (
 # camino (una nota, un ajuste), no quitándoles el aprobado.
 DOCUMENTO_CLASES_QUE_PERMITEN_DESAPROBAR = (
     100, 101, 102, 104, 105,  # venta
+    107,                      # remisión
     200,                      # pago
     300, 301, 303,            # compra
     400,                      # egreso
@@ -118,6 +119,9 @@ DOCUMENTO_TIPOS_REMISION = (
 # El traslado mueve dos almacenes: cada línea saca de uno o mete en otro, así que
 # el sentido lo trae la línea y no el tipo.
 DOCUMENTO_TIPO_TRASLADO_ALMACEN = 31
+
+# Mismo id que `contabilidad.servicios.depreciacion.DOCUMENTO_TIPO_DEPRECIACION`.
+DOCUMENTO_TIPO_DEPRECIACION = 23
 
 # Tipos que recalculan el costo promedio del item: los que meten mercancía y
 # traen un precio de entrada contra el cual promediar.
@@ -147,6 +151,7 @@ def validar_aprobacion(documento, consecutivo):
     """
     _validar_total_no_negativo(documento)
     _validar_partida_doble(documento)
+    _validar_depreciacion(documento)
     _validar_resolucion(documento, consecutivo)
     _validar_nomina_electronica(documento)
     _validar_cantidad_afectada(documento)
@@ -158,6 +163,19 @@ def validar_aprobacion(documento, consecutivo):
 def _validar_total_no_negativo(documento):
     if documento.total < 0:
         raise ValidationError('El total del documento no puede ser menor a cero.')
+
+
+def _validar_depreciacion(documento):
+    """
+    Una depreciación sin detalles no deprecia nada: aprobarla gasta el
+    consecutivo y deja cerrado un periodo al que nunca se le cargaron activos.
+    """
+    if documento.documento_tipo_id != DOCUMENTO_TIPO_DEPRECIACION:
+        return
+    if not documento.documentos_detalles_documento_rel.exists():
+        raise ValidationError(
+            'La depreciación no tiene detalles. Cargue los activos antes de aprobar.'
+        )
 
 
 def _validar_pagos(documento):
@@ -605,6 +623,10 @@ def desaprobar(documento_id):
         if (documento.documento_tipo.documento_clase_id
                 not in DOCUMENTO_CLASES_QUE_PERMITEN_DESAPROBAR):
             raise ValidationError('El documento no permite desaprobación.')
+        # Una remisión que ya se facturó no se desaprueba: la factura ya sacó esa
+        # cantidad de `remision`, y devolverla acá la contaría dos veces.
+        if documento.documento_tipo_id == DOCUMENTO_TIPO_REMISION:
+            _validar_sin_afectar(documento)
 
         # Deshacer una entrada saca mercancía que quizá ya se despachó: se valida
         # antes de mover nada.

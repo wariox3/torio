@@ -19,7 +19,6 @@ class GenItem(models.Model):
     existencia = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     remision = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     disponible = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
-    imagen = models.TextField(null=True)
     cuenta_venta = models.ForeignKey(
         'contabilidad.ConCuenta',
         null=True,

@@ -10,6 +10,7 @@ from general.serializers import (
     GenContactoSeleccionarSerializer,
     GenContactoSerializer,
 )
+from general.servicios.imagen import anotar_imagen_principal, eliminar_imagenes_de
 from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import (
     ExportarExcelMixin,
@@ -69,7 +70,12 @@ class GenContactoViewSet(
             if valor is not None:
                 qs = qs.filter(**{filtro: valor.lower() == 'true'})
 
-        return qs
+        return anotar_imagen_principal(qs)
+
+    def perform_destroy(self, instance):
+        pk = instance.pk
+        instance.delete()
+        eliminar_imagenes_de(GenContacto, pk)
 
     @extend_schema(parameters=_LIST_PARAMS)
     def list(self, request, *args, **kwargs):

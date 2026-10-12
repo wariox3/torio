@@ -1,10 +1,11 @@
 from rest_framework import serializers
 
 from general.models import GenContacto
+from general.serializers.imagen import ImagenPrincipalSerializerMixin
 from utilidades.telefono import CampoTelefono
 
 
-class GenContactoSerializer(serializers.ModelSerializer):
+class GenContactoSerializer(ImagenPrincipalSerializerMixin, serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin y ExportarExcelMixin
     campos_filtrables = {
         'id', 'nombre_corto', 'numero_identificacion',
@@ -83,5 +84,7 @@ class GenContactoSerializer(serializers.ModelSerializer):
             'cuenta_banco_clase_nombre',
             'responsabilidad',
             'responsabilidad_nombre',
+            'imagen_principal_url',
+            'imagen_principal_url_miniatura',
         ]
         read_only_fields = ['id']

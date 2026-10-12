@@ -192,6 +192,25 @@ Things that are easy to break:
 
 Full design and rationale: **`docs/creacion_contenedor.md`**.
 
+### Attachments and images
+
+Two generic features, both keyed by `modelo` (FK to `GenModelo`) + `objeto_id`, so they
+work for any tenant model with a `GenModelo` row without touching that model:
+
+- **Adjuntos** — `GenArchivo`, `/general/archivo/`, `general/servicios/archivo.py`. The file
+  is stored as-is in `B2_BUCKET_PRIVADO` and only read through `descargar/`.
+- **Imágenes** — `GenImagen`, `/general/imagen/`, `general/servicios/imagen.py`. Converted to
+  WebP in two sizes and stored in `B2_BUCKET_PUBLICO` at
+  `<cliente_pk>/imagenes/<uuid>/{original,thumb}.webp`; the front loads the URL directly, so
+  the uuid is the only thing protecting it. A record has several images and exactly one
+  `principal` (a partial unique constraint enforces it).
+
+To show the main image of a model in its API, add `ImagenPrincipalSerializerMixin` to the
+serializer and pass the viewset queryset through `anotar_imagen_principal` (one subquery
+instead of a query per row). Neither feature cascades on its own — there is no FK — so a
+viewset whose records have images calls `eliminar_imagenes_de` in `perform_destroy`
+(`GenItem` and `GenContacto` do today).
+
 ### Development notes
 
 - Cookie domain is set to `.localhost` so JWT cookies work across all tenant subdomains.

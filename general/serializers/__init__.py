@@ -52,6 +52,7 @@ from .forma_pago_exportar import GenFormaPagoExportarSerializer
 from .forma_pago_importar import GenFormaPagoImportarSerializer
 from .forma_pago_seleccionar import GenFormaPagoSeleccionarSerializer
 from .identificacion import GenIdentificacionSeleccionarSerializer
+from .imagen import GenImagenCrearSerializer, GenImagenSerializer, ImagenPrincipalSerializerMixin
 from .impuesto import GenImpuestoSeleccionarSerializer
 from .impuesto_tipo import GenImpuestoTipoSeleccionarSerializer
 from .item import GenItemSerializer

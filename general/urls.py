@@ -22,6 +22,7 @@ from general.views import (
     GenFestivoViewSet,
     GenFormaPagoViewSet,
     GenIdentificacionViewSet,
+    GenImagenViewSet,
     GenImpuestoTipoViewSet,
     GenImpuestoViewSet,
     GenItemViewSet,
@@ -70,6 +71,7 @@ router.register(
 router.register(r'festivo', GenFestivoViewSet, basename='festivo')
 router.register(r'forma-pago', GenFormaPagoViewSet, basename='forma-pago')
 router.register(r'identificacion', GenIdentificacionViewSet, basename='identificacion')
+router.register(r'imagen', GenImagenViewSet, basename='imagen')
 router.register(r'impuesto', GenImpuestoViewSet, basename='impuesto')
 router.register(r'impuesto-tipo', GenImpuestoTipoViewSet, basename='impuesto-tipo')
 router.register(r'item', GenItemViewSet, basename='item')

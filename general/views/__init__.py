@@ -19,6 +19,7 @@ from .estado import GenEstadoViewSet
 from .festivo import GenFestivoViewSet
 from .forma_pago import GenFormaPagoViewSet
 from .identificacion import GenIdentificacionViewSet
+from .imagen import GenImagenViewSet
 from .impuesto import GenImpuestoViewSet
 from .impuesto_tipo import GenImpuestoTipoViewSet
 from .item import GenItemViewSet

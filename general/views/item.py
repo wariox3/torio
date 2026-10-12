@@ -10,6 +10,7 @@ from general.serializers import (
     GenItemSeleccionarSerializer,
     GenItemSerializer,
 )
+from general.servicios.imagen import anotar_imagen_principal, eliminar_imagenes_de
 from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import (
     ExportarExcelMixin,
@@ -74,7 +75,12 @@ class GenItemViewSet(
             if valor is not None:
                 qs = qs.filter(**{filtro: valor.lower() == 'true'})
 
-        return qs
+        return anotar_imagen_principal(qs)
+
+    def perform_destroy(self, instance):
+        pk = instance.pk
+        instance.delete()
+        eliminar_imagenes_de(GenItem, pk)
 
     @extend_schema(parameters=_LIST_PARAMS)
     def list(self, request, *args, **kwargs):
@@ -91,7 +97,7 @@ class GenItemViewSet(
                 | qs.filter(codigo__icontains=search)
                 | qs.filter(referencia__icontains=search)
             )
-        pagina = self.paginate_queryset(qs)
+        pagina = self.paginate_queryset(anotar_imagen_principal(qs))
         serializer = GenItemSeleccionarSerializer(pagina, many=True)
         return self.get_paginated_response(serializer.data)
 

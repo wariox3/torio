@@ -2,6 +2,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from general.models import GenImpuesto, GenItem, GenItemImpuesto
+from general.serializers.imagen import ImagenPrincipalSerializerMixin
 
 
 class GenItemImpuestoSerializer(serializers.ModelSerializer):
@@ -35,7 +36,7 @@ class GenItemImpuestoSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
-class GenItemSerializer(serializers.ModelSerializer):
+class GenItemSerializer(ImagenPrincipalSerializerMixin, serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin y ExportarExcelMixin
     campos_filtrables = {
         'id', 'nombre', 'codigo', 'referencia',
@@ -84,7 +85,8 @@ class GenItemSerializer(serializers.ModelSerializer):
             'existencia',
             'remision',
             'disponible',
-            'imagen',
+            'imagen_principal_url',
+            'imagen_principal_url_miniatura',
             'cuenta_venta',
             'cuenta_venta_nombre',
             'cuenta_compra',

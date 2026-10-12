@@ -48,6 +48,7 @@ from general.models import (
     GenFestivo,
     GenFormaPago,
     GenIdentificacion,
+    GenImagen,
     GenImpuesto,
     GenItem,
     GenModalidad,
@@ -77,6 +78,7 @@ from general.servicios import cartera as cartera_servicio
 from general.servicios import documento as documento_servicio
 from general.servicios import documento_imprimir, factura_electronica, logotipo
 from general.servicios import documento_pago as documento_pago_servicio
+from general.servicios import imagen as imagen_servicio
 from general.servicios import rededoc as rededoc_servicio
 from general.views.archivo import GenArchivoViewSet
 from general.views.configuracion import GenConfiguracionViewSet
@@ -84,6 +86,8 @@ from general.views.documento import GenDocumentoViewSet
 from general.views.documento_detalle import GenDocumentoDetalleViewSet
 from general.views.documento_pago import GenDocumentoPagoViewSet
 from general.views.electronico import GenElectronicoViewSet
+from general.views.imagen import GenImagenViewSet
+from general.views.item import GenItemViewSet
 from general.views.modelo import GenModeloViewSet
 from general.views.parametro import GenParametroViewSet
 from general.views.precio_detalle import GenPrecioDetalleViewSet
@@ -8030,3 +8034,257 @@ class FiltroNotificadoTests(TenantTestCase):
         documento.refresh_from_db()
         self.assertFalse(documento.estado_electronico)
         self.assertFalse(documento.estado_electronico_notificado)
+
+
+# --------------------------------------------------------------- imágenes ----
+
+class _ImagenViewSinPermisos(GenImagenViewSet):
+    """Acá se prueba el comportamiento de las imágenes, no la membresía."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class _ItemViewSinPermisos(GenItemViewSet):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class ImagenTests(TenantTestCase):
+    """
+    `/general/imagen/`: imágenes de cualquier registro, con una principal.
+
+    B2 se mockea. Lo que importa es qué queda en la base y qué se le pide al
+    bucket: una fila sin objetos es una imagen rota en cada lista, y unos
+    objetos sin fila quedan públicos para siempre sin que nadie sepa que existen.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        # Como decorador de la clase no aplica: `TenantTestCase.setUpClass` no
+        # pasa por el de Django, que es quien lo activa.
+        ajustes = override_settings(B2_BUCKET_PUBLICO='publico', B2_CDN_URL_PUBLICO='https://cdn.test/')
+        ajustes.enable()
+        self.addCleanup(ajustes.disable)
+        self.modelo = GenModelo.objects.create(
+            id=99004, app='general', clase='GenItem',
+            nombre='Item', tabla='gen_item', tipo=GenModelo.Tipo.ADMINISTRADOR,
+        )
+        self.item = GenItem.objects.create(nombre='Tornillo')
+
+    def _vista(self, acciones, **kwargs):
+        return _ImagenViewSinPermisos.as_view(acciones, **kwargs)
+
+    def _subir(self, datos=None, content_type='image/png', objeto_id=None, modelo=None):
+        peticion = APIRequestFactory().post(
+            '/general/imagen/',
+            {
+                'imagen': _subida(datos if datos is not None else _imagen(), content_type, 'foto.png'),
+                'modelo': modelo or self.modelo.pk,
+                'objeto_id': objeto_id or self.item.pk,
+            },
+            format='multipart',
+        )
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        with mock.patch.object(backblaze, 'subir') as subir:
+            respuesta = self._vista({'post': 'create'})(peticion)
+        return respuesta, subir
+
+    def _accion(self, metodo, accion, pk):
+        peticion = getattr(APIRequestFactory(), metodo)(f'/general/imagen/{pk}/')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        with mock.patch.object(backblaze, 'eliminar') as eliminar:
+            respuesta = self._vista({metodo: accion})(peticion, pk=pk)
+        return respuesta, eliminar
+
+    def _principales(self):
+        return list(GenImagen.objects.filter(principal=True).values_list('pk', flat=True))
+
+    def test_sube_original_y_miniatura_al_bucket_publico(self):
+        respuesta, subir = self._subir()
+        self.assertEqual(respuesta.status_code, 201)
+
+        imagen_uuid = respuesta.data['uuid']
+        prefijo = f'{connection.tenant.pk}/imagenes/{imagen_uuid}'
+        self.assertEqual(
+            [llamada.args[:2] for llamada in subir.call_args_list],
+            [('publico', f'{prefijo}/original.webp'), ('publico', f'{prefijo}/thumb.webp')],
+        )
+        for llamada in subir.call_args_list:
+            self.assertEqual(Image.open(io.BytesIO(llamada.args[2])).format, 'WEBP')
+            self.assertEqual(llamada.args[3], 'image/webp')
+
+        self.assertEqual(respuesta.data['url'], f'https://cdn.test/{prefijo}/original.webp')
+        self.assertEqual(respuesta.data['url_miniatura'], f'https://cdn.test/{prefijo}/thumb.webp')
+
+    def test_la_primera_imagen_queda_principal_y_las_siguientes_no(self):
+        primera, _ = self._subir()
+        segunda, _ = self._subir()
+        self.assertTrue(primera.data['principal'])
+        self.assertFalse(segunda.data['principal'])
+        self.assertEqual(self._principales(), [primera.data['id']])
+
+    def test_marcar_principal_deja_una_sola(self):
+        primera, _ = self._subir()
+        segunda, _ = self._subir()
+
+        respuesta, _ = self._accion('post', 'principal', segunda.data['id'])
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertTrue(respuesta.data['principal'])
+        self.assertEqual(self._principales(), [segunda.data['id']])
+
+    def test_la_base_no_admite_dos_principales_en_un_registro(self):
+        self._subir()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            GenImagen.objects.create(modelo=self.modelo, objeto_id=str(self.item.pk), principal=True)
+
+    def test_eliminar_la_principal_promueve_la_mas_reciente(self):
+        primera, _ = self._subir()
+        self._subir()
+        tercera, _ = self._subir()
+
+        respuesta, eliminar = self._accion('delete', 'destroy', primera.data['id'])
+
+        self.assertEqual(respuesta.status_code, 204)
+        prefijo = f'{connection.tenant.pk}/imagenes/{primera.data["uuid"]}'
+        self.assertEqual(
+            [llamada.args for llamada in eliminar.call_args_list],
+            [('publico', f'{prefijo}/original.webp'), ('publico', f'{prefijo}/thumb.webp')],
+        )
+        self.assertFalse(GenImagen.objects.filter(pk=primera.data['id']).exists())
+        self.assertEqual(self._principales(), [tercera.data['id']])
+
+    def test_si_b2_falla_al_eliminar_la_fila_se_conserva(self):
+        primera, _ = self._subir()
+        with mock.patch.object(backblaze, 'eliminar', side_effect=backblaze.ErrorDeAlmacenamiento()):
+            with self.assertRaises(backblaze.ErrorDeAlmacenamiento):
+                imagen_servicio.eliminar_imagen(GenImagen.objects.get(pk=primera.data['id']))
+        self.assertTrue(GenImagen.objects.filter(pk=primera.data['id']).exists())
+
+    def test_tope_de_imagenes_por_registro(self):
+        with mock.patch.object(imagen_servicio, 'MAX_IMAGENES_POR_REGISTRO', 2):
+            self._subir()
+            self._subir()
+            respuesta, subir = self._subir()
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('máximo', respuesta.data['detail'])
+        subir.assert_not_called()
+        self.assertEqual(GenImagen.objects.count(), 2)
+
+    def test_entradas_invalidas_dan_400_sin_tocar_b2(self):
+        casos = {
+            'no es imagen': {'datos': b'no soy una imagen'},
+            'pdf disfrazado': {'datos': b'%PDF-1.4 contenido'},
+            'gif': {'datos': _imagen(formato='GIF'), 'content_type': 'image/gif'},
+            'registro inexistente': {'objeto_id': 999999},
+            'modelo inexistente': {'modelo': 999999},
+        }
+        for nombre, kwargs in casos.items():
+            with self.subTest(nombre):
+                respuesta, subir = self._subir(**kwargs)
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertIsInstance(respuesta.data['detail'], str)
+                subir.assert_not_called()
+        self.assertFalse(GenImagen.objects.exists())
+
+    def test_si_falla_la_miniatura_no_queda_nada(self):
+        """Ni fila ni original huérfano: el original ya subido se borra."""
+        peticion = APIRequestFactory().post(
+            '/general/imagen/',
+            {'imagen': _subida(_imagen(), 'image/png'), 'modelo': self.modelo.pk, 'objeto_id': self.item.pk},
+            format='multipart',
+        )
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        fallo = [None, backblaze.ErrorDeAlmacenamiento()]
+        with mock.patch.object(backblaze, 'subir', side_effect=fallo), \
+             mock.patch.object(backblaze, 'eliminar') as eliminar:
+            respuesta = self._vista({'post': 'create'})(peticion)
+
+        self.assertEqual(respuesta.status_code, 502)
+        self.assertFalse(GenImagen.objects.exists())
+        self.assertEqual(
+            [llamada.args[1].rsplit('/', 1)[1] for llamada in eliminar.call_args_list],
+            ['original.webp', 'thumb.webp'],
+        )
+
+    def test_listar_filtra_por_registro_con_la_principal_primero(self):
+        otro = GenItem.objects.create(nombre='Tuerca')
+        primera, _ = self._subir()
+        segunda, _ = self._subir()
+        self._subir(objeto_id=otro.pk)
+
+        peticion = APIRequestFactory().get(
+            '/general/imagen/', {'modelo': self.modelo.pk, 'objeto_id': self.item.pk},
+        )
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        respuesta = self._vista({'get': 'list'})(peticion)
+
+        self.assertEqual(
+            [fila['id'] for fila in respuesta.data['results']],
+            [primera.data['id'], segunda.data['id']],
+        )
+
+    def _listar_items(self):
+        peticion = APIRequestFactory().get('/general/item/')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return _ItemViewSinPermisos.as_view({'get': 'list'})(peticion)
+
+    def test_el_item_expone_su_imagen_principal(self):
+        sin_imagen = GenItem.objects.create(nombre='Arandela')
+        self._subir()
+        segunda, _ = self._subir()
+        self._accion('post', 'principal', segunda.data['id'])
+
+        filas = {fila['id']: fila for fila in self._listar_items().data['results']}
+
+        prefijo = f'https://cdn.test/{connection.tenant.pk}/imagenes/{segunda.data["uuid"]}'
+        self.assertEqual(filas[self.item.pk]['imagen_principal_url'], f'{prefijo}/original.webp')
+        self.assertEqual(filas[self.item.pk]['imagen_principal_url_miniatura'], f'{prefijo}/thumb.webp')
+        self.assertIsNone(filas[sin_imagen.pk]['imagen_principal_url'])
+        self.assertIsNone(filas[sin_imagen.pk]['imagen_principal_url_miniatura'])
+
+    def test_la_imagen_de_otro_modelo_con_el_mismo_id_no_se_mezcla(self):
+        modelo_contacto = GenModelo.objects.create(
+            id=99001, app='general', clase='GenContacto',
+            nombre='Contacto', tabla='gen_contacto', tipo=GenModelo.Tipo.ADMINISTRADOR,
+        )
+        GenImagen.objects.create(modelo=modelo_contacto, objeto_id=str(self.item.pk), principal=True)
+
+        fila = self._listar_items().data['results'][0]
+        self.assertIsNone(fila['imagen_principal_url'])
+
+    def test_la_lista_de_items_no_consulta_por_fila(self):
+        self._subir()
+        with CaptureQueriesContext(connection) as con_uno:
+            self._listar_items()
+
+        for nombre in ('Tuerca', 'Arandela', 'Perno'):
+            item = GenItem.objects.create(nombre=nombre)
+            self._subir(objeto_id=item.pk)
+        with CaptureQueriesContext(connection) as con_cuatro:
+            respuesta = self._listar_items()
+
+        self.assertEqual(len(respuesta.data['results']), 4)
+        self.assertEqual(len(con_cuatro), len(con_uno))
+
+    def test_eliminar_el_item_elimina_sus_imagenes(self):
+        otro = GenItem.objects.create(nombre='Tuerca')
+        self._subir()
+        self._subir()
+        ajena, _ = self._subir(objeto_id=otro.pk)
+
+        peticion = APIRequestFactory().delete(f'/general/item/{self.item.pk}/')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        with mock.patch.object(backblaze, 'eliminar') as eliminar:
+            respuesta = _ItemViewSinPermisos.as_view({'delete': 'destroy'})(peticion, pk=self.item.pk)
+
+        self.assertEqual(respuesta.status_code, 204)
+        self.assertEqual(eliminar.call_count, 4)
+        self.assertEqual(list(GenImagen.objects.values_list('pk', flat=True)), [ajena.data['id']])
