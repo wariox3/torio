@@ -199,6 +199,20 @@ def _validar_resolucion(documento, consecutivo):
     if not documento.documentos_detalles_documento_rel.exists():
         raise ValidationError('El documento no tiene detalles.')
 
+    _validar_numeracion(documento, consecutivo)
+
+
+def _validar_numeracion(documento, consecutivo):
+    """
+    El número y la fecha contra la resolución del documento.
+
+    Aparte de `_validar_resolucion` porque `actualizar_electronico` corrige el
+    número, la fecha o la resolución de un documento ya aprobado y tiene que
+    volver a pasar por la misma regla.
+    """
+    if documento.documento_tipo.documento_clase_id not in DOCUMENTO_CLASES_CON_RESOLUCION:
+        return
+
     resolucion = documento.resolucion
     if resolucion is None:
         return
@@ -1244,3 +1258,129 @@ def generar_recurrente(
         )
 
     return generados
+
+
+# ------------------------------------------- correcciones sobre un aprobado ----
+#
+# Aprobar deja el documento inmutable (`GenDocumento.es_mutable`) y el `PATCH` lo
+# rechaza completo. Estas dos funciones son las únicas puertas para corregir un
+# aprobado, cada una con sus campos y su propio punto de no retorno.
+
+CAMPOS_ACTUALIZAR_ELECTRONICO = ('numero', 'resolucion', 'fecha', 'fecha_vence')
+
+
+def actualizar_electronico(documento_id, datos):
+    """
+    Corrige el número, la resolución, la fecha o el vencimiento de un documento.
+
+    Son los datos con los que el documento viaja a la DIAN, así que se pueden
+    corregir aunque esté aprobado, pero no después de enviado. Tampoco
+    contabilizado: sus movimientos ya llevan ese número y esa fecha.
+
+    `datos` trae solo lo que cambia. El consecutivo del tipo no se mueve: acá se
+    corrige un documento, no la secuencia.
+    """
+    with transaction.atomic():
+        try:
+            documento = GenDocumento.objects.select_for_update().get(pk=documento_id)
+        except GenDocumento.DoesNotExist:
+            raise NotFound('Documento no encontrado.')
+        if documento.estado_anulado:
+            raise ValidationError('El documento está anulado.')
+        if documento.estado_contabilizado:
+            raise ValidationError('El documento está contabilizado.')
+        if documento.estado_electronico_enviado:
+            raise ValidationError('El documento ya fue enviado electrónicamente.')
+
+        campos = [campo for campo in CAMPOS_ACTUALIZAR_ELECTRONICO if campo in datos]
+        # `fecha_contable` sigue a `fecha` mientras nadie las haya separado, igual
+        # que al guardar por la API (`GenDocumentoSerializer._seguir_fecha`).
+        if 'fecha' in datos and documento.fecha_contable in (None, documento.fecha):
+            documento.fecha_contable = datos['fecha']
+            campos.append('fecha_contable')
+        for campo in CAMPOS_ACTUALIZAR_ELECTRONICO:
+            if campo in datos:
+                setattr(documento, campo, datos[campo])
+
+        if (documento.fecha and documento.fecha_vence
+                and documento.fecha_vence < documento.fecha):
+            raise ValidationError('La fecha de vencimiento no puede ser anterior a la fecha.')
+
+        if documento.numero is not None:
+            _validar_numeracion(documento, documento.numero)
+            # El mismo número en otra resolución es otro documento: cada una tiene
+            # su prefijo.
+            repetido = GenDocumento.objects.filter(
+                documento_tipo_id=documento.documento_tipo_id,
+                resolucion_id=documento.resolucion_id,
+                numero=documento.numero,
+            ).exclude(pk=documento.pk).exists()
+            if repetido:
+                raise ValidationError(
+                    f'Ya existe otro documento de este tipo con el número {documento.numero}.'
+                )
+
+        documento.save(update_fields=campos)
+        return documento
+
+
+class DetallesAjenos(Exception):
+    """
+    Detalles pedidos que no son del documento. Lleva `errores`, uno por detalle,
+    con su posición en la petición.
+
+    No es un `ValidationError` porque DRF convierte todo su contenido a texto, y
+    el `indice` y el `id` tienen que salir como números.
+    """
+
+    def __init__(self, errores):
+        super().__init__('Hay detalles que no pertenecen al documento.')
+        self.errores = errores
+
+
+def actualizar_contabilidad(documento_id, datos):
+    """
+    Corrige la sede del documento y el centro de costo de sus detalles.
+
+    Son los datos que `contabilizar` copia a los movimientos y ninguno viaja a la
+    DIAN: se pueden corregir aprobado y enviado, pero no contabilizado, porque el
+    documento quedaría distinto de su contabilidad.
+
+    `datos` trae `sede` y `detalles` (`[{'id', 'centro_costo'}]`), los dos
+    opcionales. Un detalle que no es del documento corta todo sin cambiar nada,
+    con `DetallesAjenos`.
+    """
+    with transaction.atomic():
+        try:
+            documento = GenDocumento.objects.select_for_update().get(pk=documento_id)
+        except GenDocumento.DoesNotExist:
+            raise NotFound('Documento no encontrado.')
+        if documento.estado_anulado:
+            raise ValidationError('El documento está anulado.')
+        if documento.estado_contabilizado:
+            raise ValidationError('El documento está contabilizado.')
+
+        pedidos = datos.get('detalles', [])
+        detalles = {
+            detalle.pk: detalle
+            for detalle in GenDocumentoDetalle.objects.select_for_update().filter(
+                documento_id=documento.pk, pk__in=[pedido['id'] for pedido in pedidos],
+            )
+        }
+        errores = [
+            {'indice': indice, 'id': pedido['id'],
+             'mensaje': 'El detalle no pertenece al documento.'}
+            for indice, pedido in enumerate(pedidos)
+            if pedido['id'] not in detalles
+        ]
+        if errores:
+            raise DetallesAjenos(errores)
+
+        if 'sede' in datos:
+            documento.sede = datos['sede']
+            documento.save(update_fields=['sede'])
+        for pedido in pedidos:
+            detalle = detalles[pedido['id']]
+            detalle.centro_costo = pedido['centro_costo']
+        GenDocumentoDetalle.objects.bulk_update(detalles.values(), ['centro_costo'])
+        return documento

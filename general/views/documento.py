@@ -13,7 +13,8 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from contabilidad.servicios import depreciacion as depreciacion_servicio
-from general.models import GenDocumento
+from contabilidad.models import ConCentroCosto
+from general.models import GenDocumento, GenResolucion, GenSede
 from general.serializers import (
     GenDocumentoCrearSerializer,
     GenDocumentoExportarSerializer,
@@ -51,6 +52,31 @@ class DocumentoIdsRequestSerializer(serializers.Serializer):
         allow_empty=False,
         help_text='Ids de los documentos a procesar.',
     )
+
+
+class DocumentoActualizarElectronicoRequestSerializer(serializers.Serializer):
+    id = serializers.IntegerField(min_value=1, help_text='Id del documento.')
+    numero = serializers.IntegerField(min_value=1, required=False)
+    resolucion = serializers.PrimaryKeyRelatedField(
+        queryset=GenResolucion.objects.all(), required=False,
+    )
+    fecha = serializers.DateField(required=False)
+    fecha_vence = serializers.DateField(required=False)
+
+
+class DocumentoActualizarContabilidadDetalleSerializer(serializers.Serializer):
+    id = serializers.IntegerField(min_value=1, help_text='Id del detalle.')
+    centro_costo = serializers.PrimaryKeyRelatedField(
+        queryset=ConCentroCosto.objects.all(), allow_null=True,
+    )
+
+
+class DocumentoActualizarContabilidadRequestSerializer(serializers.Serializer):
+    id = serializers.IntegerField(min_value=1, help_text='Id del documento.')
+    sede = serializers.PrimaryKeyRelatedField(
+        queryset=GenSede.objects.all(), required=False, allow_null=True,
+    )
+    detalles = DocumentoActualizarContabilidadDetalleSerializer(many=True, required=False)
 
 
 _SELECCIONAR_REFERENCIA_PARAMS = [
@@ -357,6 +383,77 @@ class GenDocumentoViewSet(
         serializer.is_valid(raise_exception=True)
         documento = documento_servicio.anular(serializer.validated_data['id'])
         salida = GenDocumentoSerializer(documento)
+        return Response(salida.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Corregir los datos electrónicos de un documento',
+        description=(
+            'Cambia el `numero`, la `resolucion`, la `fecha` o la `fecha_vence` de un '
+            'documento, aunque esté aprobado. Solo se cambia lo que se envíe, y hay '
+            'que enviar al menos uno.\n\n'
+            'No se corrige un documento anulado, contabilizado ni ya enviado '
+            'electrónicamente. El número tiene que caer en el rango de la resolución '
+            'que quede y no repetirse en otro documento del mismo tipo y resolución; '
+            'en la factura de venta la fecha tiene que estar dentro de la vigencia. '
+            'La fecha de vencimiento no puede ser anterior a la fecha.\n\n'
+            'El consecutivo del tipo de documento no se mueve. `fecha_contable` sigue '
+            'a `fecha` si venían iguales.\n\n'
+            'Responde el documento actualizado; un rechazo responde 400 con el motivo '
+            'en `detail`.'
+        ),
+        request=DocumentoActualizarElectronicoRequestSerializer,
+        responses=GenDocumentoSerializer,
+    )
+    @action(detail=False, methods=['post'], url_path='actualizar-electronico')
+    def actualizar_electronico(self, request):
+        serializer = DocumentoActualizarElectronicoRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = dict(serializer.validated_data)
+        documento_id = datos.pop('id')
+        if not datos:
+            return Response(
+                {'detail': 'Debe enviar numero, resolucion, fecha o fecha_vence.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        documento = documento_servicio.actualizar_electronico(documento_id, datos)
+        salida = GenDocumentoSerializer(self.get_queryset().get(pk=documento.pk))
+        return Response(salida.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Corregir los datos contables de un documento',
+        description=(
+            'Cambia la `sede` del documento y el `centro_costo` de los detalles que '
+            'se envíen en `detalles`, aunque el documento esté aprobado o ya enviado '
+            'electrónicamente. Hay que enviar `sede`, `detalles` o los dos; ambos '
+            'aceptan `null` para quitar el valor.\n\n'
+            'No se corrige un documento anulado ni contabilizado: hay que '
+            'descontabilizarlo primero.\n\n'
+            'Responde el documento actualizado. Si algún detalle no pertenece al '
+            'documento no se cambia nada y responde 400 con `detail` y, en '
+            '`errores`, la posición y el id de cada uno.'
+        ),
+        request=DocumentoActualizarContabilidadRequestSerializer,
+        responses=GenDocumentoSerializer,
+    )
+    @action(detail=False, methods=['post'], url_path='actualizar-contabilidad')
+    def actualizar_contabilidad(self, request):
+        serializer = DocumentoActualizarContabilidadRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = dict(serializer.validated_data)
+        documento_id = datos.pop('id')
+        if 'sede' not in datos and not datos.get('detalles'):
+            return Response(
+                {'detail': 'Debe enviar sede o detalles.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            documento = documento_servicio.actualizar_contabilidad(documento_id, datos)
+        except documento_servicio.DetallesAjenos as e:
+            return Response(
+                {'detail': str(e), 'errores': e.errores},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        salida = GenDocumentoSerializer(self.get_queryset().get(pk=documento.pk))
         return Response(salida.data, status=status.HTTP_200_OK)
 
     @extend_schema(
