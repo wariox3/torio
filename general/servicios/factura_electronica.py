@@ -785,14 +785,18 @@ def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenD
     """
     Aplica un aviso de rededoc al documento cuyo `electronico_id` es `documento_id`.
 
-    - `validacion`: la DIAN aceptó el documento; guarda su CUFE y la fecha, y
-      programa su notificación al adquiriente (`general.tasks`). Si el documento ya
+    - `validacion`: la DIAN aceptó el documento; guarda su CUFE y la fecha, y, si
+      es de venta, programa su notificación al adquiriente (`general.tasks`). Un
+      documento soporte o una nómina solo quedan validados. Si el documento ya
       estaba validado no se reescribe: responde 409, porque un CUFE no cambia, y
       uno distinto para el mismo documento es un error que hay que ver.
     - `notificacion`: el documento se le entregó al adquiriente. Repetirla deja el
       documento igual.
     """
-    documento = GenDocumento.objects.filter(electronico_id=documento_id).first()
+    documento = (
+        GenDocumento.objects.select_related('documento_tipo')
+        .filter(electronico_id=documento_id).first()
+    )
     if documento is None:
         raise NotFound('El documento no existe.')
 
@@ -806,9 +810,14 @@ def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenD
         # Validado, ya se le puede entregar al adquiriente. Va por la cola y no
         # acá: armar el PDF y esperar a rededoc y a su pasarela de correo no
         # tiene por qué demorar la respuesta del webhook.
-        from general.tasks import programar_notificacion
+        #
+        # Solo los de venta: son los que tienen un cliente esperando el documento.
+        # En el documento soporte el adquiriente es la propia empresa, y la nómina
+        # no se le entrega a nadie por este camino.
+        if documento.documento_tipo.venta:
+            from general.tasks import programar_notificacion
 
-        programar_notificacion(documento.id)
+            programar_notificacion(documento.id)
     else:
         documento.estado_electronico_notificado = True
         documento.save(update_fields=['estado_electronico_notificado'])

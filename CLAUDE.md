@@ -146,7 +146,8 @@ rededoc, this one rededoc to torio.
 
 Full contract (payload, response codes, retries, test vector): **`docs/webhook_rededoc.md`**.
 
-A `validacion` notice queues the customer notification in **Celery** (broker RabbitMQ,
+A `validacion` notice of a **sales** document (`GenDocumentoTipo.venta`; a documento soporte
+or a payroll is only marked validated) queues the customer notification in **Celery** (broker RabbitMQ,
 `CELERY_BROKER_URL`; task `general.tasks.notificar_documento`). It is enqueued with
 `transaction.on_commit`, and a broker failure is logged but never fails the webhook:
 an error there would make rededoc retry, get 409, and the notification would be lost.
