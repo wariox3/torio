@@ -110,6 +110,7 @@
       "compra": true,
       "pagar": true,
       "electronico": true,
+      "codigo": 4,
       "operacion": 1,
       "inventario": true,
       "contabilidad": true

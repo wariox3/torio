@@ -23,7 +23,10 @@ from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 
 from general.models import GenConfiguracion, GenDocumento, GenParametro, GenResolucion
-from general.servicios.documento import DOCUMENTO_CLASE_FACTURA_VENTA
+from general.servicios.documento import (
+    DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
+    DOCUMENTO_CLASE_FACTURA_VENTA,
+)
 from general.servicios.rededoc import Rededoc
 from utilidades.excepciones import con_detail
 from utilidades.zinc import Zinc
@@ -491,6 +494,10 @@ FORMA_PAGO_CREDITO = '2'
 # trae el catálogo (ninguno tiene tipo).
 TRIBUTOS = {'IVA': '01', 'ICA': '03', 'COM': '04'}
 TRIBUTO_POR_DEFECTO = '01'
+# Lo mismo para las retenciones, que solo viajan en el documento soporte. Acá no
+# hay valor por defecto: una retención que saliera con el tributo equivocado se
+# le informaría a la DIAN como otra, así que la que no esté acá corta la emisión.
+RETENCIONES = {'RTF': '06', 'RTI': '05'}
 
 DOS_DECIMALES = Decimal('0.01')
 
@@ -570,6 +577,27 @@ def _armar(documento, parametro):
 
 
 def _armar_factura_venta(documento, parametro):
+    return _armar_con_resolucion(documento, parametro, contacto='cliente', con_retenciones=False)
+
+
+def _armar_documento_soporte(documento, parametro):
+    """
+    El documento soporte viaja con la forma de la factura, leída desde la compra:
+    lo expide la empresa, que es quien compra, así que en `adquiriente` va el
+    vendedor —el no obligado a facturar—; rededoc los cruza al armar el XML.
+
+    Se numera contra su propia resolución, igual que la factura, y es el único
+    que lleva las retenciones: rededoc las reconoce por el tributo y las deja
+    fuera del total a pagar.
+    """
+    return _armar_con_resolucion(documento, parametro, contacto='proveedor', con_retenciones=True)
+
+
+def _armar_con_resolucion(documento, parametro, contacto, con_retenciones):
+    """
+    El payload de un documento que se numera contra una resolución. `contacto` es
+    cómo se le dice al tercero en los mensajes de error.
+    """
     if documento.documento_tipo.codigo is None:
         raise ErrorFacturaElectronica(
             f'El tipo de documento {documento.documento_tipo.nombre} no tiene código de '
@@ -615,21 +643,21 @@ def _armar_factura_venta(documento, parametro):
         'forma_pago': FORMA_PAGO_CREDITO if credito else FORMA_PAGO_CONTADO,
         'medio_pago': getattr(documento.metodo_pago, 'codigo', None) or MEDIO_PAGO_NO_DEFINIDO,
         'moneda': MONEDA,
-        'adquiriente': _adquiriente(documento),
-        'detalles': _detalles(documento),
+        'adquiriente': _adquiriente(documento, contacto),
+        'detalles': _detalles(documento, con_retenciones),
     }
 
 
-def _adquiriente(documento):
+def _adquiriente(documento, rol='cliente'):
     contacto = documento.contacto
     if contacto is None:
-        raise ErrorFacturaElectronica(f'El documento {documento.id} no tiene cliente.')
+        raise ErrorFacturaElectronica(f'El documento {documento.id} no tiene {rol}.')
 
     ciudad = contacto.ciudad
     codigo_postal = contacto.codigo_postal or ciudad.codigo_postal
     if not codigo_postal:
         raise ErrorFacturaElectronica(
-            f'El cliente {contacto.nombre_corto} no tiene código postal, ni su ciudad uno por defecto.'
+            f'El {rol} {contacto.nombre_corto} no tiene código postal, ni su ciudad uno por defecto.'
         )
 
     return {
@@ -657,7 +685,7 @@ def _adquiriente(documento):
     }
 
 
-def _detalles(documento):
+def _detalles(documento, con_retenciones=False):
     lineas = (
         documento.documentos_detalles_documento_rel
         .filter(item__isnull=False)
@@ -676,28 +704,40 @@ def _detalles(documento):
             'descuento': _decimal(linea.descuento),
             'valor_unitario': _decimal(linea.precio),
             'valor_total': _decimal(linea.total_bruto),
-            'impuestos': _impuestos(linea),
+            'impuestos': _impuestos(linea, con_retenciones),
         })
     if not detalles:
         raise ErrorFacturaElectronica(f'El documento {documento.id} no tiene detalles para emitir.')
     return detalles
 
 
-def _impuestos(linea):
-    # Las retenciones (operación negativa) no van: en la factura rededoc las
-    # rechaza, porque no las separa del total a pagar.
-    return [
-        {
-            'tributo': TRIBUTOS.get(
-                getattr(impuesto.impuesto.impuesto_tipo, 'codigo', None), TRIBUTO_POR_DEFECTO,
-            ),
+def _impuestos(linea, con_retenciones=False):
+    # Las retenciones (operación negativa) solo van si el documento las admite:
+    # en la factura rededoc las rechaza, porque no las separa del total a pagar.
+    impuestos = []
+    for impuesto in linea.documentos_impuestos_documento_detalle_rel.all():
+        retencion = impuesto.impuesto.operacion < 0
+        if retencion and not con_retenciones:
+            continue
+        impuestos.append({
+            'tributo': _tributo(impuesto.impuesto, retencion),
             'base_gravable': _decimal(impuesto.base),
             'tarifa': _decimal(impuesto.porcentaje),
             'valor': _decimal(impuesto.total),
-        }
-        for impuesto in linea.documentos_impuestos_documento_detalle_rel.all()
-        if impuesto.impuesto.operacion > 0
-    ]
+        })
+    return impuestos
+
+
+def _tributo(impuesto, retencion):
+    tipo = getattr(impuesto.impuesto_tipo, 'codigo', None)
+    if not retencion:
+        return TRIBUTOS.get(tipo, TRIBUTO_POR_DEFECTO)
+    if tipo not in RETENCIONES:
+        raise ErrorFacturaElectronica(
+            f'La retención {impuesto.nombre} no es de fuente ni de IVA, que son las que se '
+            'pueden emitir electrónicamente.'
+        )
+    return RETENCIONES[tipo]
 
 
 def _decimal(valor):
@@ -706,6 +746,7 @@ def _decimal(valor):
 
 ARMADORES = {
     DOCUMENTO_CLASE_FACTURA_VENTA: _armar_factura_venta,
+    DOCUMENTO_CLASE_DOCUMENTO_SOPORTE: _armar_documento_soporte,
 }
 
 
