@@ -1199,6 +1199,31 @@ def electronico_log(documento_id, zinc: Zinc = None) -> list:
     return (respuesta['datos'] or {}).get('log', [])
 
 
+def electronico_xml(documento_id, cliente: Rededoc = None) -> tuple:
+    """
+    El XML firmado del documento, tal como lo tiene rededoc, y el nombre con que
+    se descarga.
+
+    Rededoc lo busca por su propio id del documento (`electronico_id`), que solo
+    existe después de emitir. Que el XML todavía no esté firmado lo responde
+    rededoc, y su error sube tal cual.
+    """
+    documento = GenDocumento.objects.select_related('resolucion').filter(id=documento_id).first()
+    if documento is None:
+        raise NotFound(f'El documento {documento_id} no existe.')
+    if not documento.electronico_id:
+        raise ErrorFacturaElectronica(
+            f'El documento {documento_id} no ha sido enviado electrónicamente.'
+        )
+
+    cliente = cliente or Rededoc()
+    respuesta = cliente.descargar_xml(documento.electronico_id)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    prefijo = (documento.resolucion.prefijo if documento.resolucion_id else None) or ''
+    return respuesta['datos'], f'{prefijo}{documento.numero}.xml'
+
+
 # ------------------------------------------------------------ recepción ----
 
 RECEPCION_DOCUMENTO_TIPOS = ('factura_venta', 'nota_credito', 'nota_debito')

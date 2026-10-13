@@ -590,6 +590,33 @@ class GenDocumentoViewSet(
             return Response(e.cuerpo, status=e.status)
         return Response({'log': log}, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary='Descargar el XML de un documento electrónico',
+        description=(
+            'El XML firmado del documento, descargado del servicio de facturación '
+            'electrónica. Responde el archivo, con el prefijo y el número del '
+            'documento como nombre.\n\n'
+            'Solo para documentos ya enviados electrónicamente: uno que no lo esté, '
+            'o cuyo XML todavía no esté firmado, responde 400 con el motivo en '
+            '`detail`. Si el servicio no responde, 502.'
+        ),
+        request=DocumentoAccionRequestSerializer,
+        responses={(200, 'application/xml'): OpenApiTypes.BINARY},
+    )
+    @action(detail=False, methods=['post'], url_path='electronico-xml')
+    def electronico_xml(self, request):
+        serializer = DocumentoAccionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            contenido, nombre = factura_electronica_servicio.electronico_xml(
+                serializer.validated_data['id'],
+            )
+        except factura_electronica_servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+        response = HttpResponse(contenido, content_type='application/xml')
+        response['Content-Disposition'] = f'attachment; filename="{nombre}"'
+        return response
+
     @extend_schema(request=BusquedaRequest, responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     @action(detail=False, methods=['post'])
     def imprimir(self, request):

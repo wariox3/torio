@@ -261,12 +261,26 @@ class Rededoc:
             logger.warning('RedEDoc sin llave configurada (REDEDOC_KEY vacía)')
         return headers
 
+    def descargar_xml(self, documento_id):
+        """
+        El XML firmado de un documento. `GET /api/documentos/documento/{id}/xml/`.
+
+        `datos` trae los bytes del archivo. Rededoc responde 400 si el documento
+        todavía no está firmado.
+        """
+        return self._peticion(
+            'GET', f'/api/documentos/documento/{documento_id}/xml/', binario=True,
+        )
+
     def _peticion(self, metodo: str, ruta: str, datos: dict = None, parametros: dict = None,
-                  archivos: dict = None, timeout: float = None):
+                  archivos: dict = None, timeout: float = None, binario: bool = False):
         """
         Con `archivos` la petición sale como multipart y `datos` son los campos del
         formulario; sin ellos, `datos` va como cuerpo JSON. httpx pone el
         `Content-Type` con su boundary, por eso no se fija en `_headers()`.
+
+        Con `binario` la respuesta es un archivo y `datos` trae sus bytes. Solo si
+        salió bien: un error sigue llegando como JSON.
         """
         url_completa = self.url + ruta
         try:
@@ -288,6 +302,8 @@ class Rededoc:
         if respuesta.status_code >= 400:
             logger.warning('RedEDoc %s %s HTTP %s: %s', metodo, url_completa, respuesta.status_code, cuerpo)
             return {'error': True, 'status': respuesta.status_code, 'datos': cuerpo}
+        if binario:
+            cuerpo = respuesta.content
         return {'error': False, 'status': respuesta.status_code, 'datos': cuerpo}
 
     @staticmethod
