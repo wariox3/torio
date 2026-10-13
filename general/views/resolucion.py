@@ -106,11 +106,23 @@ class GenResolucionViewSet(
             'otra página. Cada resolución trae `importada`: verdadero si la empresa '
             'ya tiene una con ese número y prefijo. Si la empresa no tiene emisor configurado responde 404.'
         ),
-        parameters=[OpenApiParameter('page', int, description='Número de página')],
+        parameters=[
+            OpenApiParameter(
+                'modulo', str, required=True, enum=['facturacion', 'compras'],
+                description='Módulo de las resoluciones a listar',
+            ),
+            OpenApiParameter('page', int, description='Número de página'),
+        ],
         responses=OpenApiTypes.OBJECT,
     )
     @action(detail=False, methods=['get'], url_path='lista-dian')
     def lista_dian(self, request):
+        modulo = request.query_params.get('modulo')
+        if modulo not in factura_electronica_servicio.MODULOS_RESOLUCIONES:
+            return Response(
+                {'detail': 'El parámetro modulo es obligatorio y debe ser facturacion o compras.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         pagina = request.query_params.get('page')
         if pagina is not None and not (pagina.isdigit() and int(pagina) > 0):
             return Response(
@@ -118,7 +130,9 @@ class GenResolucionViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            datos = factura_electronica_servicio.resoluciones_consultar(pagina and int(pagina))
+            datos = factura_electronica_servicio.resoluciones_consultar(
+                modulo, pagina and int(pagina),
+            )
         except factura_electronica_servicio.ErrorFacturaElectronica as e:
             return Response(e.cuerpo, status=e.status)
         return Response(datos, status=status.HTTP_200_OK)

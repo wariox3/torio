@@ -409,12 +409,16 @@ REDEDOC_TIPO_FACTURA_DOCUMENTO_SOPORTE = 7
 # Fijo, y no `REDEDOC_AMBIENTE`: las de habilitación son las del Set de Pruebas, que
 # no sirven para numerar documentos reales.
 AMBIENTE_RESOLUCIONES = 1
+# Módulos de rededoc por los que se listan. `nomina` existe allá, pero acá las
+# resoluciones son solo de venta o de compra.
+MODULOS_RESOLUCIONES = ('facturacion', 'compras')
 
 
-def resoluciones_consultar(pagina: int = None, cliente: Rededoc = None) -> dict:
+def resoluciones_consultar(modulo: str, pagina: int = None, cliente: Rededoc = None) -> dict:
     """
     Las resoluciones de producción que rededoc tiene del emisor de
     `gen_rededoc_emisor`, que son las que se pueden traer con `resolucion_importar`.
+    Solo las del `modulo` pedido (`MODULOS_RESOLUCIONES`), que rededoc filtra.
 
     Antes de listar se le pide a rededoc que las traiga de la DIAN, para que la
     lista incluya las que la empresa acaba de tramitar. Solo al pedir la primera
@@ -437,7 +441,9 @@ def resoluciones_consultar(pagina: int = None, cliente: Rededoc = None) -> dict:
         respuesta = cliente.importar_resoluciones(emisor_id)
         if respuesta['error']:
             raise _error_rededoc(respuesta)
-    respuesta = cliente.consultar_resoluciones(emisor_id, AMBIENTE_RESOLUCIONES, pagina)
+    respuesta = cliente.consultar_resoluciones(
+        emisor_id, AMBIENTE_RESOLUCIONES, pagina, modulo,
+    )
     if respuesta['error']:
         raise _error_rededoc(respuesta)
     datos = respuesta['datos'] or {}
