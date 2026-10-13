@@ -410,6 +410,14 @@ def resoluciones_consultar(pagina: int = None, cliente: Rededoc = None) -> dict:
     Las resoluciones de producción que rededoc tiene del emisor de
     `gen_rededoc_emisor`, que son las que se pueden traer con `resolucion_importar`.
 
+    Antes de listar se le pide a rededoc que las traiga de la DIAN, para que la
+    lista incluya las que la empresa acaba de tramitar. Solo al pedir la primera
+    página: cada importación es una consulta a la DIAN, y repetirla al pasar de
+    página no trae nada nuevo. Si rededoc no puede importar —el emisor no tiene un
+    software aceptado, la DIAN no devuelve rangos o no responde— sube su error y
+    no se lista: una lista que saliera igual haría pasar por completa una que
+    quizás no lo está.
+
     Rededoc pagina, y sus `next` y `previous` son direcciones suyas, que al front
     no le sirven: se devuelven `count` y `results`, y la página se pide con
     `pagina`.
@@ -419,6 +427,10 @@ def resoluciones_consultar(pagina: int = None, cliente: Rededoc = None) -> dict:
     """
     emisor_id = _emisor_id()
     cliente = cliente or Rededoc()
+    if not pagina or pagina == 1:
+        respuesta = cliente.importar_resoluciones(emisor_id)
+        if respuesta['error']:
+            raise _error_rededoc(respuesta)
     respuesta = cliente.consultar_resoluciones(emisor_id, AMBIENTE_RESOLUCIONES, pagina)
     if respuesta['error']:
         raise _error_rededoc(respuesta)
