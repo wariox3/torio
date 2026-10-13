@@ -42,6 +42,12 @@ class ResolucionesValidarRequestSerializer(serializers.Serializer):
     )
 
 
+class ResolucionImportarDianRequestSerializer(serializers.Serializer):
+    id = serializers.IntegerField(
+        help_text='Id de la resolución en el servicio de facturación electrónica.',
+    )
+
+
 @extend_schema(tags=['Resolución'])
 class GenResolucionViewSet(
     FiltrosDinamicosMixin,
@@ -86,6 +92,62 @@ class GenResolucionViewSet(
         return self.get_paginated_response(serializer.data)
 
     @extend_schema(
+        summary='Listar las resoluciones del servicio de facturación electrónica',
+        description=(
+            'Las resoluciones que el servicio de facturación electrónica tiene del '
+            'emisor de la empresa, que son las que se pueden traer con '
+            '`importar-dian` usando su `id`. El emisor no se manda: sale de '
+            '`gen_rededoc_emisor`.\n\n'
+            'Responde 200 con `count` y `results`, paginado de a 10; `page` pide '
+            'otra página. Si la empresa no tiene emisor configurado responde 404.'
+        ),
+        parameters=[OpenApiParameter('page', int, description='Número de página')],
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['get'], url_path='lista-dian')
+    def lista_dian(self, request):
+        pagina = request.query_params.get('page')
+        if pagina is not None and not (pagina.isdigit() and int(pagina) > 0):
+            return Response(
+                {'detail': 'El parámetro page debe ser un número entero mayor que cero.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            datos = factura_electronica_servicio.resoluciones_consultar(pagina and int(pagina))
+        except factura_electronica_servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+        return Response(datos, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Importar una resolución desde el servicio de facturación electrónica',
+        description=(
+            'Crea la resolución que el servicio de facturación electrónica tiene con '
+            'ese `id`, ya traída de la DIAN, y la deja con `estado_validado` en '
+            'verdadero. Queda como de compra si es de documento soporte y como de '
+            'venta en los demás casos.\n\n'
+            'Responde 201 con la resolución creada. Si la empresa ya tiene una con el '
+            'mismo número y prefijo responde 400 con el motivo en `detail`; si la '
+            'empresa no tiene emisor, o la resolución no existe o no es de su emisor, '
+            '404.'
+        ),
+        request=ResolucionImportarDianRequestSerializer,
+        responses={201: GenResolucionSerializer},
+    )
+    @action(detail=False, methods=['post'], url_path='importar-dian')
+    def importar_dian(self, request):
+        resolucion_id = request.data.get('id')
+        if isinstance(resolucion_id, bool) or not str(resolucion_id or '').isdigit():
+            return Response(
+                {'detail': 'El campo id es requerido y debe ser un número entero.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            resolucion = factura_electronica_servicio.resolucion_importar(int(resolucion_id))
+        except factura_electronica_servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+        return Response(GenResolucionSerializer(resolucion).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
         summary='Validar las resoluciones en la DIAN',
         description=(
             'Valida contra la DIAN, a través del servicio de facturación '
@@ -106,8 +168,8 @@ class GenResolucionViewSet(
         request=ResolucionesValidarRequestSerializer,
         responses=OpenApiTypes.OBJECT,
     )
-    @action(detail=False, methods=['post'])
-    def validar(self, request):
+    @action(detail=False, methods=['post'], url_path='validar-dian')
+    def validar_dian(self, request):
         serializer = ResolucionesValidarRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:

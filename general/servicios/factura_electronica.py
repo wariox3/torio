@@ -18,6 +18,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
 from django.db import connection
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, ValidationError
@@ -390,6 +391,82 @@ def resoluciones_validar(venta: bool = None, compra: bool = None, cliente: Reded
     GenResolucion.objects.filter(id__in=validados).update(estado_validado=True)
     GenResolucion.objects.filter(id__in=no_validados).update(estado_validado=False)
     return {'inactivadas': inactivadas, 'validadas': len(validados), 'resoluciones': resultados}
+
+
+# El `tipo_factura` de rededoc (id de su catálogo) que es de compra: el documento
+# soporte, código DIAN 05. Los demás tipos que se numeran con resolución —factura
+# de venta, P.O.S.— son de venta.
+REDEDOC_TIPO_FACTURA_DOCUMENTO_SOPORTE = 7
+
+
+def resoluciones_consultar(pagina: int = None, cliente: Rededoc = None) -> dict:
+    """
+    Las resoluciones que rededoc tiene del emisor de `gen_rededoc_emisor`, que son
+    las que se pueden traer con `resolucion_importar`.
+
+    Rededoc pagina, y sus `next` y `previous` son direcciones suyas, que al front
+    no le sirven: se devuelven `count` y `results`, y la página se pide con
+    `pagina`.
+    """
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+    respuesta = cliente.consultar_resoluciones(emisor_id, pagina)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    datos = respuesta['datos'] or {}
+    return {'count': datos.get('count', 0), 'results': datos.get('results', [])}
+
+
+def resolucion_importar(resolucion_id: int, cliente: Rededoc = None) -> GenResolucion:
+    """
+    Crea en torio la resolución que rededoc tiene con ese id.
+
+    Rededoc ya la trajo de la DIAN, así que entra con `estado_validado` en
+    verdadero. La clave técnica no se copia: rededoc no la devuelve, y es él
+    quien calcula el CUFE.
+
+    El id viene del front, y todos los emisores cuelgan de la misma API key de
+    torio: rededoc respondería la resolución de otra empresa. Por eso se exige
+    que su `emisor` sea el del tenant. Que no exista y que sea ajena responden lo
+    mismo, para no revelar qué resoluciones hay.
+
+    Si la empresa ya tiene una con el mismo número y prefijo no se crea otra ni
+    se toca la que está: responde 400.
+    """
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+
+    respuesta = cliente.consultar_resolucion(resolucion_id)
+    if respuesta['error'] and respuesta['status'] != 404:
+        raise _error_rededoc(respuesta)
+    datos = None if respuesta['error'] else (respuesta['datos'] or {})
+    if datos is None or str(datos.get('emisor')) != str(emisor_id):
+        raise ErrorFacturaElectronica('La resolución no existe.', status=404)
+
+    numero = datos.get('numero_resolucion')
+    prefijo = datos.get('prefijo') or None
+    existentes = GenResolucion.objects.filter(numero=numero)
+    if prefijo is None:
+        existentes = existentes.filter(Q(prefijo__isnull=True) | Q(prefijo=''))
+    else:
+        existentes = existentes.filter(prefijo=prefijo)
+    if existentes.exists():
+        raise ErrorFacturaElectronica(
+            f'La resolución {numero} con prefijo {prefijo or "sin prefijo"} ya existe.'
+        )
+
+    compra = datos.get('tipo_factura') == REDEDOC_TIPO_FACTURA_DOCUMENTO_SOPORTE
+    return GenResolucion.objects.create(
+        numero=numero,
+        prefijo=prefijo,
+        consecutivo_desde=datos.get('rango_desde'),
+        consecutivo_hasta=datos.get('rango_hasta'),
+        fecha_desde=datos.get('vigente_desde'),
+        fecha_hasta=datos.get('vigente_hasta'),
+        venta=not compra,
+        compra=compra,
+        estado_validado=True,
+    )
 
 
 def certificado_eliminar(cliente: Rededoc = None) -> GenParametro:

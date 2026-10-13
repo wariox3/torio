@@ -138,6 +138,27 @@ class Rededoc:
             timeout=self.TIMEOUT_VALIDAR_RESOLUCIONES,
         )
 
+    def consultar_resoluciones(self, emisor_id, pagina=None):
+        """
+        Las resoluciones de un emisor. `GET /api/emisores/resolucion/?emisor={id}`.
+
+        Responde paginado, de a 10: `count`, `next`, `previous` y `results`. Con
+        `pagina` se pide una página distinta de la primera.
+        """
+        parametros = {'emisor': emisor_id}
+        if pagina:
+            parametros['page'] = pagina
+        return self._peticion('GET', '/api/emisores/resolucion/', parametros=parametros)
+
+    def consultar_resolucion(self, resolucion_id):
+        """
+        Una resolución tal como la tiene rededoc. `GET /api/emisores/resolucion/{id}/`.
+
+        Trae su `emisor`, el `tipo_factura`, el número, el prefijo, el rango y la
+        vigencia. La clave técnica no viene nunca: rededoc no la devuelve.
+        """
+        return self._peticion('GET', f'/api/emisores/resolucion/{resolucion_id}/')
+
     def consultar_documentos_recibidos(self, parametros: dict):
         """
         Los documentos que los proveedores le mandaron a un emisor, paginados.
