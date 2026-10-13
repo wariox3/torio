@@ -28,6 +28,10 @@ _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por número o prefijo'),
     OpenApiParameter('venta', bool, description='Solo las resoluciones de venta'),
     OpenApiParameter('compra', bool, description='Solo las resoluciones de compra'),
+    OpenApiParameter(
+        'estado_inactivo', bool,
+        description='Solo las inactivas (true) o solo las activas (false)',
+    ),
 ]
 
 
@@ -84,6 +88,11 @@ class GenResolucionViewSet(
             qs = qs.filter(venta=True)
         if request.query_params.get('compra') in ('true', 'True', '1'):
             qs = qs.filter(compra=True)
+        estado_inactivo = request.query_params.get('estado_inactivo')
+        if estado_inactivo in ('true', 'True', '1'):
+            qs = qs.filter(estado_inactivo=True)
+        elif estado_inactivo in ('false', 'False', '0'):
+            qs = qs.filter(estado_inactivo=False)
         search = request.query_params.get('search', '').strip()
         if search:
             qs = qs.filter(numero__icontains=search) | qs.filter(prefijo__icontains=search)
