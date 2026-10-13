@@ -138,14 +138,18 @@ class Rededoc:
             timeout=self.TIMEOUT_VALIDAR_RESOLUCIONES,
         )
 
-    def consultar_resoluciones(self, emisor_id, pagina=None):
+    def consultar_resoluciones(self, emisor_id, ambiente=None, pagina=None):
         """
-        Las resoluciones de un emisor. `GET /api/emisores/resolucion/?emisor={id}`.
+        Las resoluciones de un emisor.
+        `GET /api/emisores/resolucion/?emisor={id}&ambiente={1|2}`.
 
-        Responde paginado, de a 10: `count`, `next`, `previous` y `results`. Con
-        `pagina` se pide una página distinta de la primera.
+        Con `ambiente` solo las de ese ambiente de la DIAN: 1 producción, 2
+        habilitación. Responde paginado, de a 10: `count`, `next`, `previous` y
+        `results`. Con `pagina` se pide una página distinta de la primera.
         """
         parametros = {'emisor': emisor_id}
+        if ambiente:
+            parametros['ambiente'] = ambiente
         if pagina:
             parametros['page'] = pagina
         return self._peticion('GET', '/api/emisores/resolucion/', parametros=parametros)

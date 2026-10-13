@@ -94,12 +94,13 @@ class GenResolucionViewSet(
     @extend_schema(
         summary='Listar las resoluciones del servicio de facturación electrónica',
         description=(
-            'Las resoluciones que el servicio de facturación electrónica tiene del '
-            'emisor de la empresa, que son las que se pueden traer con '
+            'Las resoluciones de producción (ambiente 1) que el servicio de facturación '
+            'electrónica tiene del emisor de la empresa, que son las que se pueden traer con '
             '`importar-dian` usando su `id`. El emisor no se manda: sale de '
             '`gen_rededoc_emisor`.\n\n'
             'Responde 200 con `count` y `results`, paginado de a 10; `page` pide '
-            'otra página. Si la empresa no tiene emisor configurado responde 404.'
+            'otra página. Cada resolución trae `importada`: verdadero si la empresa '
+            'ya tiene una con ese número y prefijo. Si la empresa no tiene emisor configurado responde 404.'
         ),
         parameters=[OpenApiParameter('page', int, description='Número de página')],
         responses=OpenApiTypes.OBJECT,

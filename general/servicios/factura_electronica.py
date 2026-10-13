@@ -399,22 +399,46 @@ def resoluciones_validar(venta: bool = None, compra: bool = None, cliente: Reded
 REDEDOC_TIPO_FACTURA_DOCUMENTO_SOPORTE = 7
 
 
+# Ambiente de la DIAN de las resoluciones que se ofrecen para importar: producción.
+# Fijo, y no `REDEDOC_AMBIENTE`: las de habilitación son las del Set de Pruebas, que
+# no sirven para numerar documentos reales.
+AMBIENTE_RESOLUCIONES = 1
+
+
 def resoluciones_consultar(pagina: int = None, cliente: Rededoc = None) -> dict:
     """
-    Las resoluciones que rededoc tiene del emisor de `gen_rededoc_emisor`, que son
-    las que se pueden traer con `resolucion_importar`.
+    Las resoluciones de producción que rededoc tiene del emisor de
+    `gen_rededoc_emisor`, que son las que se pueden traer con `resolucion_importar`.
 
     Rededoc pagina, y sus `next` y `previous` son direcciones suyas, que al front
     no le sirven: se devuelven `count` y `results`, y la página se pide con
     `pagina`.
+
+    Cada resolución lleva `importada`: si la empresa ya tiene una con ese número y
+    prefijo, que es lo mismo que mira `resolucion_importar` para rechazarla.
     """
     emisor_id = _emisor_id()
     cliente = cliente or Rededoc()
-    respuesta = cliente.consultar_resoluciones(emisor_id, pagina)
+    respuesta = cliente.consultar_resoluciones(emisor_id, AMBIENTE_RESOLUCIONES, pagina)
     if respuesta['error']:
         raise _error_rededoc(respuesta)
     datos = respuesta['datos'] or {}
-    return {'count': datos.get('count', 0), 'results': datos.get('results', [])}
+    resultados = datos.get('results', [])
+    # Sin prefijo se guarda `None` o vacío según por dónde haya entrado: los dos
+    # son la misma resolución.
+    existentes = {
+        (numero, prefijo or '')
+        for numero, prefijo in GenResolucion.objects
+        .filter(numero__in=[r.get('numero_resolucion') for r in resultados])
+        .values_list('numero', 'prefijo')
+    }
+    return {
+        'count': datos.get('count', 0),
+        'results': [
+            {**r, 'importada': (r.get('numero_resolucion'), r.get('prefijo') or '') in existentes}
+            for r in resultados
+        ],
+    }
 
 
 def resolucion_importar(resolucion_id: int, cliente: Rededoc = None) -> GenResolucion:
