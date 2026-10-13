@@ -11,20 +11,25 @@ La liquidación es sobre mes comercial de 30 días: el activo que estuvo el mes
 completo deprecia su `depreciacion_periodo` entero, y el que entró o salió a
 mitad de mes deprecia la parte proporcional a los días que estuvo.
 
-El servicio **no toca el activo**: `depreciacion_acumulada` y `depreciacion_saldo`
-quedan como están, y el documento es la constancia de lo que se depreció en el
-periodo. Por eso el cargue exige un documento sin detalles: si se pudiera
-recargar sobre uno ya cargado, el mismo periodo quedaría depreciado dos veces.
+El cargue **no toca el activo**: lo depreciado solo le llega cuando el documento
+se aprueba, y se le devuelve si se desaprueba o se anula (`recalcular_activos`).
+Por eso el cargue exige un documento sin detalles: si se pudiera recargar sobre
+uno ya cargado, el mismo periodo quedaría depreciado dos veces.
+
+`depreciacion_acumulada` no se lleva sumando y restando: es la suma de las líneas
+de depreciación del activo en documentos aprobados y sin anular, y se recalcula
+desde ahí cada vez. Así un documento aprobado antes de que esto existiera, o
+cualquier descuadre, se corrige solo en vez de arrastrarse.
 """
 import calendar
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Sum
 from rest_framework.exceptions import NotFound, ValidationError
 
 from contabilidad.models import ConActivo
-from general.models import GenDocumento
+from general.models import GenDocumento, GenDocumentoDetalle
 from general.servicios.documento_detalle import crear_detalle
 from utilidades.moneda import redondear_moneda
 
@@ -98,6 +103,84 @@ def cargar_activos(documento_id):
         documento.save(update_fields=['total'])
 
     return documento
+
+
+def recalcular_activos(activo_ids=None):
+    """
+    Deja `depreciacion_acumulada` y `depreciacion_saldo` de los activos en lo que
+    dicen sus documentos; los que ya cuadran no se tocan. Sin `activo_ids`, todos.
+
+    Los activos se bloquean antes de sumar: así una aprobación que llegue en el
+    medio espera a que esto termine, en vez de cambiar un saldo que acá se va a
+    sobrescribir con un cálculo que no la vio.
+    """
+    with transaction.atomic():
+        activos = ConActivo.objects.select_for_update().order_by('id')
+        if activo_ids is not None:
+            activos = activos.filter(id__in=activo_ids)
+        activos = list(activos)
+
+        acumulados = dict(
+            GenDocumentoDetalle.objects.filter(
+                tipo_registro='D',
+                activo_id__in=[activo.id for activo in activos],
+                documento__estado_aprobado=True,
+                documento__estado_anulado=False,
+            ).values_list('activo_id').annotate(total=Sum('precio'))
+        )
+
+        corregidos = []
+        for activo in activos:
+            acumulada = acumulados.get(activo.id) or Decimal('0')
+            saldo = activo.valor_compra - activo.depreciacion_inicial - acumulada
+            if (activo.depreciacion_acumulada, activo.depreciacion_saldo) != (acumulada, saldo):
+                activo.depreciacion_acumulada = acumulada
+                activo.depreciacion_saldo = saldo
+                corregidos.append(activo)
+        ConActivo.objects.bulk_update(corregidos, ['depreciacion_acumulada', 'depreciacion_saldo'])
+    return activos
+
+
+def _depreciado_por_activo(documento):
+    """Cuánto deprecia el documento de cada activo: `{activo_id: valor}`."""
+    return dict(
+        documento.documentos_detalles_documento_rel
+        .filter(tipo_registro='D', activo__isnull=False)
+        .values_list('activo_id').annotate(total=Sum('precio'))
+    )
+
+
+def validar_saldo(documento):
+    """
+    Antes de aprobar: lo que el documento deprecia de cada activo tiene que caber
+    en lo que al activo le queda por depreciar.
+
+    El cargue ya topa cada línea en el saldo, pero el saldo de ese momento: dos
+    documentos del mismo activo cargados antes de aprobar ninguno caben cada uno
+    por su lado y juntos no. El saldo se recalcula acá mismo, para comparar contra
+    lo que de verdad queda.
+    """
+    depreciado = _depreciado_por_activo(documento)
+    if not depreciado:
+        return
+    for activo in recalcular_activos(depreciado.keys()):
+        if depreciado[activo.id] > activo.depreciacion_saldo:
+            raise ValidationError(
+                f'El activo {activo.codigo} - {activo.nombre} solo tiene '
+                f'{activo.depreciacion_saldo:,.2f} por depreciar y el documento le '
+                f'deprecia {depreciado[activo.id]:,.2f}.'
+            )
+
+
+def afectar_activos(documento):
+    """
+    Después de aprobar, desaprobar o anular: lleva a los activos del documento lo
+    que su nuevo estado significa. Aprobado, les suma lo depreciado; sin aprobar o
+    anulado, se lo devuelve. Es el mismo recálculo en los tres casos.
+    """
+    depreciado = _depreciado_por_activo(documento)
+    if depreciado:
+        recalcular_activos(depreciado.keys())
 
 
 def _periodo(fecha):

@@ -102,7 +102,7 @@ DOCUMENTO_CLASES_QUE_PERMITEN_DESAPROBAR = (
     300, 301, 303,            # compra
     400,                      # egreso
     500, 501,                 # entrada y salida de almacén
-    601, 603,                 # asiento y cierre contable
+    601, 602, 603,            # asiento, depreciación y cierre contable
     701,                      # nómina: se desaprueba con su programación
 )
 
@@ -485,6 +485,11 @@ def aprobar(documento_id):
             consecutivo = documento.numero
 
         validar_aprobacion(documento, consecutivo)
+        # El import va acá y no arriba: `depreciacion` importa servicios de
+        # `general`, y desde el módulo sería circular.
+        from contabilidad.servicios import depreciacion
+
+        depreciacion.validar_saldo(documento)
 
         if documento_tipo is not None:
             documento.numero = consecutivo
@@ -531,6 +536,9 @@ def aprobar(documento_id):
         # Marca el documento como aprobado (y guarda el número si se asignó arriba).
         documento.estado_aprobado = True
         documento.save(update_fields=campos_actualizar)
+        # Después de guardar: el activo se recalcula desde los documentos
+        # aprobados, y este ya tiene que contar.
+        depreciacion.afectar_activos(documento)
     return documento
 
 
@@ -669,6 +677,10 @@ def desaprobar(documento_id):
         # Quita el estado aprobado (conserva el número ya asignado).
         documento.estado_aprobado = False
         documento.save(update_fields=campos_actualizar)
+        # Después de guardar: sin aprobar, sus líneas ya no cuentan en el activo.
+        from contabilidad.servicios import depreciacion
+
+        depreciacion.afectar_activos(documento)
     return documento
 
 
@@ -923,6 +935,10 @@ def anular(documento_id):
             setattr(documento, campo, Decimal('0'))
         documento.estado_anulado = True
         documento.save(update_fields=set(campos_actualizar))
+        # Después de guardar: anulado, lo que depreció vuelve al activo.
+        from contabilidad.servicios import depreciacion
+
+        depreciacion.afectar_activos(documento)
     return documento
 
 

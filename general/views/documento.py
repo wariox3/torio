@@ -220,6 +220,27 @@ class GenDocumentoViewSet(
         return Response({'ejecutado': True}, status=status.HTTP_200_OK)
 
     @extend_schema(
+        summary='Validar la depreciación de los activos',
+        description=(
+            'Recalcula desde su origen `depreciacion_acumulada` y '
+            '`depreciacion_saldo` de todos los activos —lo acumulado es la suma de '
+            'sus líneas de depreciación en documentos aprobados y sin anular— y '
+            'corrige los que no coinciden con lo guardado; los que cuadran no se '
+            'tocan. Lo puede correr cualquier miembro del contenedor.\n\n'
+            'Responde `{"ejecutado": true}` cuando el proceso termina.'
+        ),
+        request=None,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(
+        detail=False, methods=['post'], url_path='depreciacion-validar',
+        permission_classes=[EsMiembroDelTenant, SuscripcionVigente],
+    )
+    def depreciacion_validar(self, request):
+        depreciacion_servicio.recalcular_activos()
+        return Response({'ejecutado': True}, status=status.HTTP_200_OK)
+
+    @extend_schema(
         summary='Resumen de la cartera',
         description=(
             'Cifras del tablero de cuentas por cobrar (`?tipo=cobrar`) o por pagar '
