@@ -26,6 +26,8 @@ _LIST_PARAMS = [
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por número o prefijo'),
+    OpenApiParameter('venta', bool, description='Solo las resoluciones de venta'),
+    OpenApiParameter('compra', bool, description='Solo las resoluciones de compra'),
 ]
 
 
@@ -72,6 +74,10 @@ class GenResolucionViewSet(
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)
     def seleccionar(self, request):
         qs = GenResolucion.objects.order_by('numero')
+        if request.query_params.get('venta') in ('true', 'True', '1'):
+            qs = qs.filter(venta=True)
+        if request.query_params.get('compra') in ('true', 'True', '1'):
+            qs = qs.filter(compra=True)
         search = request.query_params.get('search', '').strip()
         if search:
             qs = qs.filter(numero__icontains=search) | qs.filter(prefijo__icontains=search)
