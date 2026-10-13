@@ -400,13 +400,18 @@ class GenDocumentoViewSet(
     @extend_schema(
         summary='Emitir documentos electrónicos',
         description=(
-            'Crea cada documento en el servicio de facturación electrónica. Antes '
-            'de enviar el primero valida el lote completo: que la empresa esté '
-            'activada y tenga emisor, y que cada documento exista, esté aprobado, '
-            'no se haya enviado y sea de un tipo que se emite. Si uno no cumple, '
-            'no se envía ninguno.\n\n'
-            'El envío no es atómico: si rededoc rechaza un documento, los '
-            'anteriores ya quedaron creados, y el error los lista en `emitidos`.'
+            'Crea cada documento en el servicio de facturación electrónica. Cada '
+            'uno va por su cuenta: el que no pasa las validaciones, o el que el '
+            'servicio rechaza, no detiene a los demás. Responde 200 con `emitidos` y '
+            '`con_error`, los ids de cada grupo.\n\n'
+            'Los motivos no vienen en la respuesta: el documento queda con '
+            '`estado_electronico_error` y sus errores se leen en '
+            '`documento-electronico-error/lista/`, filtrando por `documento_id`. Cada '
+            'intento reemplaza los errores del anterior. Un documento que ya estaba '
+            'enviado se salta.\n\n'
+            'Solo responde error lo que no es de ningún documento: 400 si la empresa '
+            'no ha terminado el asistente o no tiene emisor, 404 si un id no existe y '
+            '502 si el servicio no responde.'
         ),
         request=DocumentoIdsRequestSerializer,
         responses=OpenApiTypes.OBJECT,
@@ -416,10 +421,10 @@ class GenDocumentoViewSet(
         serializer = DocumentoIdsRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            emitidos = factura_electronica_servicio.emitir(serializer.validated_data['ids'])
+            datos = factura_electronica_servicio.emitir(serializer.validated_data['ids'])
         except factura_electronica_servicio.ErrorFacturaElectronica as e:
             return Response(e.cuerpo, status=e.status)
-        return Response({'emitidos': emitidos}, status=status.HTTP_200_OK)
+        return Response(datos, status=status.HTTP_200_OK)
 
     @extend_schema(
         summary='Notificar documentos electrónicos',

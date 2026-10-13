@@ -11,6 +11,7 @@ from .documento import GenDocumentoViewSet
 from .documento_clase import GenDocumentoClaseViewSet
 from .documento_detalle import GenDocumentoDetalleViewSet
 from .documento_detalle_informe import GenDocumentoDetalleInformeViewSet
+from .documento_electronico_error import GenDocumentoElectronicoErrorViewSet
 from .documento_informe import GenDocumentoInformeViewSet
 from .documento_pago import GenDocumentoPagoViewSet
 from .documento_tipo import GenDocumentoTipoViewSet

@@ -38,6 +38,7 @@ from .documento_informe import (
     GenDocumentoNominaInformeExportarSerializer,
     GenDocumentoNominaInformeSerializer,
 )
+from .documento_electronico_error import GenDocumentoElectronicoErrorSerializer
 from .documento_pago import GenDocumentoPagoSerializer
 from .documento_referencia_seleccionar import GenDocumentoReferenciaSeleccionarSerializer
 from .documento_tipo import (

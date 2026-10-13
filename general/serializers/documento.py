@@ -19,7 +19,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         # `estado_electronico_notificado=False`: sin el primero saldrían también las
         # que la DIAN todavía no ha validado, que no se pueden notificar.
         'estado_electronico', 'estado_electronico_notificado',
-        'estado_electronico_descartado',
+        'estado_electronico_descartado', 'estado_electronico_error',
         'afectado', 'pendiente',
         # Banderas del tipo: permiten acotar por naturaleza del documento sin
         # tener que enumerar los ids de tipo que caen de cada lado.
@@ -151,6 +151,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             # la hubiera aceptado.
             'estado_electronico',
             'estado_electronico_notificado',
+            'estado_electronico_error',
         ]
         read_only_fields = [
             'id',
@@ -181,6 +182,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             # la hubiera aceptado.
             'estado_electronico',
             'estado_electronico_notificado',
+            'estado_electronico_error',
         ]
 
     def validate(self, datos):

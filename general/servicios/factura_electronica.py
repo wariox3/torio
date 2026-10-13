@@ -17,13 +17,19 @@ import calendar
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
-from django.db import connection
+from django.db import connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 
-from general.models import GenConfiguracion, GenDocumento, GenParametro, GenResolucion
+from general.models import (
+    GenConfiguracion,
+    GenDocumento,
+    GenDocumentoElectronicoError,
+    GenParametro,
+    GenResolucion,
+)
 from general.servicios.documento import (
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
     DOCUMENTO_CLASE_FACTURA_VENTA,
@@ -615,15 +621,32 @@ RETENCIONES = {'RTF': '06', 'RTI': '05'}
 DOS_DECIMALES = Decimal('0.01')
 
 
-def emitir(documento_ids, cliente: Rededoc = None) -> list:
-    """
-    Crea en rededoc cada documento y devuelve los ids de los que quedaron creados.
+class _ErroresDocumento(Exception):
+    """Todo lo que le falta a un documento para poder armarse, no solo lo primero."""
 
-    Todo se valida y se arma antes de enviar el primero: un dato que falte en
-    cualquiera de los documentos corta el lote sin haber mandado nada. El envío
-    en cambio no es atómico —rededoc no deshace lo creado—, así que cada
-    documento creado se marca apenas rededoc lo acepta, y si uno falla, los
-    anteriores quedan marcados y el error dice cuáles fueron.
+    def __init__(self, mensajes):
+        super().__init__(mensajes)
+        self.mensajes = mensajes
+
+
+def emitir(documento_ids, cliente: Rededoc = None) -> dict:
+    """
+    Crea en rededoc cada documento y devuelve `emitidos` y `con_error`, los ids de
+    los que quedaron creados y de los que no.
+
+    Cada documento va por su cuenta: el que no pasa las validaciones, o el que
+    rededoc rechaza, no detiene a los demás. Sus motivos quedan en
+    `GenDocumentoElectronicoError` y el documento con `estado_electronico_error`,
+    que es donde el front los lee; la respuesta solo dice a cuáles les pasó. Cada
+    intento reemplaza los errores del anterior, y uno que sale bien los borra.
+
+    Uno que ya estaba enviado se salta sin tocarlo: no es un error suyo, y
+    marcarlo dejaría con aviso un documento que está bien.
+
+    Lo que sí corta el lote es lo que no es de ningún documento: que la empresa no
+    pueda emitir, un id que no existe, o que rededoc no responda —ahí no se marca
+    nada, porque el documento no tiene nada que corregir, y el error dice cuáles
+    alcanzaron a salir—.
     """
     if not documento_ids:
         raise ValidationError({'ids': 'Este campo es requerido.'})
@@ -634,45 +657,118 @@ def emitir(documento_ids, cliente: Rededoc = None) -> list:
         'contacto__identificacion', 'contacto__ciudad__estado__pais',
     ).in_bulk(documento_ids)
     for documento_id in documento_ids:
-        documento = documentos.get(documento_id)
-        if documento is None:
+        if documento_id not in documentos:
             raise NotFound(f'El documento {documento_id} no existe.')
-        if not documento.estado_aprobado:
-            raise ErrorFacturaElectronica(f'El documento {documento_id} debe estar aprobado.')
-        if documento.estado_electronico_enviado:
-            raise ErrorFacturaElectronica(f'El documento {documento_id} ya fue enviado electrónicamente.')
-        if documento.documento_tipo.documento_clase_id not in ARMADORES:
-            raise ErrorFacturaElectronica(
-                f'El documento {documento_id} es de un tipo que todavía no se emite electrónicamente.'
-            )
-
-    payloads = [
-        (documentos[documento_id], _armar(documentos[documento_id], parametro))
-        for documento_id in documento_ids
-    ]
 
     cliente = cliente or Rededoc()
-    emitidos = []
-    for documento, payload in payloads:
+    emitidos, con_error = [], []
+    # Un id repetido en el lote se procesa una sola vez.
+    for documento_id in dict.fromkeys(documento_ids):
+        documento = documentos[documento_id]
+        if documento.estado_electronico_enviado:
+            continue
+
+        try:
+            payload = _validar_y_armar(documento, parametro)
+        except _ErroresDocumento as e:
+            _registrar_errores(documento, GenDocumentoElectronicoError.Fase.VALIDACION, e.mensajes)
+            con_error.append(documento.id)
+            continue
+
         respuesta = cliente.crear_documento(payload)
-        if respuesta['error']:
-            status = 400 if 400 <= respuesta['status'] < 500 else 502
+        if respuesta['error'] and not 400 <= respuesta['status'] < 500:
             raise ErrorFacturaElectronica(
                 {
-                    'detail': (
-                        f'El servicio de facturación electrónica rechazó el documento {documento.id}.'
-                    ),
-                    'documento': documento.id,
+                    'detail': 'El servicio de facturación electrónica no respondió.',
                     'emitidos': emitidos,
+                    'con_error': con_error,
                     'error': respuesta['datos'],
                 },
-                status=status,
+                status=502,
             )
-        documento.electronico_id = (respuesta['datos'] or {}).get('id')
-        documento.estado_electronico_enviado = True
-        documento.save(update_fields=['electronico_id', 'estado_electronico_enviado'])
+        if respuesta['error']:
+            _registrar_errores(
+                documento, GenDocumentoElectronicoError.Fase.EMISION,
+                _mensajes_rededoc(respuesta['datos'])
+                or ['El servicio de facturación electrónica rechazó el documento.'],
+            )
+            con_error.append(documento.id)
+            continue
+
+        with transaction.atomic():
+            documento.documentos_electronicos_errores_documento_rel.all().delete()
+            documento.electronico_id = (respuesta['datos'] or {}).get('id')
+            documento.estado_electronico_enviado = True
+            documento.estado_electronico_error = False
+            documento.save(update_fields=[
+                'electronico_id', 'estado_electronico_enviado', 'estado_electronico_error',
+            ])
         emitidos.append(documento.id)
-    return emitidos
+    return {'emitidos': emitidos, 'con_error': con_error}
+
+
+def _validar_y_armar(documento, parametro):
+    """El payload del documento, o `_ErroresDocumento` con todo lo que le falta."""
+    errores = []
+    if not documento.estado_aprobado:
+        errores.append(f'El documento {documento.id} debe estar aprobado.')
+    if documento.documento_tipo.documento_clase_id not in ARMADORES:
+        errores.append(
+            f'El documento {documento.id} es de un tipo que todavía no se emite electrónicamente.'
+        )
+        raise _ErroresDocumento(errores)
+    try:
+        payload = _armar(documento, parametro)
+    except _ErroresDocumento as e:
+        raise _ErroresDocumento(errores + e.mensajes)
+    if errores:
+        raise _ErroresDocumento(errores)
+    return payload
+
+
+def _registrar_errores(documento, fase, mensajes):
+    """Reemplaza los errores del documento por los de este intento y lo marca."""
+    with transaction.atomic():
+        documento.documentos_electronicos_errores_documento_rel.all().delete()
+        GenDocumentoElectronicoError.objects.bulk_create([
+            GenDocumentoElectronicoError(documento=documento, fase=fase, mensaje=mensaje)
+            for mensaje in mensajes
+        ])
+        documento.estado_electronico_error = True
+        documento.save(update_fields=['estado_electronico_error'])
+
+
+# Claves con las que un error viene suelto, sin ser de ningún campo.
+_CLAVES_SIN_CAMPO = ('detail', 'mensaje', 'non_field_errors')
+
+
+def _mensajes_rededoc(datos, ruta=''):
+    """
+    El cuerpo de error de rededoc, aplanado en un mensaje por renglón.
+
+    Rededoc responde los errores con la forma del payload —`{'adquiriente':
+    {'correo': [...]}, 'detalles': [{}, {'impuestos': [...]}]}`—; cada mensaje sale
+    con el camino hasta su campo por delante (`detalles[1].impuestos[0].tributo: …`),
+    que es lo que le dice al usuario qué corregir.
+    """
+    if isinstance(datos, dict):
+        mensajes = []
+        for clave, valor in datos.items():
+            if clave in _CLAVES_SIN_CAMPO:
+                hija = ruta
+            else:
+                hija = f'{ruta}.{clave}' if ruta else str(clave)
+            mensajes.extend(_mensajes_rededoc(valor, hija))
+        return mensajes
+    if isinstance(datos, (list, tuple)):
+        mensajes = []
+        for indice, valor in enumerate(datos):
+            anidado = isinstance(valor, (dict, list, tuple))
+            mensajes.extend(_mensajes_rededoc(valor, f'{ruta}[{indice}]' if anidado else ruta))
+        return mensajes
+    if datos in (None, ''):
+        return []
+    return [f'{ruta}: {datos}' if ruta else str(datos)]
 
 
 def _parametro_habilitado():
@@ -710,37 +806,51 @@ def _armar_con_resolucion(documento, parametro, contacto, con_retenciones):
     """
     El payload de un documento que se numera contra una resolución. `contacto` es
     cómo se le dice al tercero en los mensajes de error.
+
+    Revisa todo antes de fallar: quien corrige el documento tiene que ver de una
+    vez lo que le falta, no un error distinto en cada intento.
     """
+    errores = []
     if documento.documento_tipo.codigo is None:
-        raise ErrorFacturaElectronica(
+        errores.append(
             f'El tipo de documento {documento.documento_tipo.nombre} no tiene código de '
             'facturación electrónica.'
         )
-    if documento.resolucion is None:
-        raise ErrorFacturaElectronica(f'El documento {documento.id} no tiene resolución.')
     if documento.numero is None:
-        raise ErrorFacturaElectronica(f'El documento {documento.id} no tiene número.')
+        errores.append(f'El documento {documento.id} no tiene número.')
     if documento.fecha is None:
-        raise ErrorFacturaElectronica(f'El documento {documento.id} no tiene fecha.')
+        errores.append(f'El documento {documento.id} no tiene fecha.')
 
     resolucion = documento.resolucion
-    if not (resolucion.consecutivo_desde <= documento.numero <= resolucion.consecutivo_hasta):
-        raise ErrorFacturaElectronica(
-            f'El número {documento.numero} del documento {documento.id} está fuera del rango '
-            f'de la resolución, que va desde {resolucion.consecutivo_desde} hasta '
-            f'{resolucion.consecutivo_hasta}.'
-        )
-    if not (resolucion.fecha_desde <= documento.fecha <= resolucion.fecha_hasta):
-        raise ErrorFacturaElectronica(
-            f'La fecha {documento.fecha} del documento {documento.id} está fuera de la vigencia '
-            f'de la resolución, que va desde {resolucion.fecha_desde} hasta {resolucion.fecha_hasta}.'
-        )
+    if resolucion is None:
+        errores.append(f'El documento {documento.id} no tiene resolución.')
+    else:
+        if documento.numero is not None and not (
+            resolucion.consecutivo_desde <= documento.numero <= resolucion.consecutivo_hasta
+        ):
+            errores.append(
+                f'El número {documento.numero} del documento {documento.id} está fuera del rango '
+                f'de la resolución, que va desde {resolucion.consecutivo_desde} hasta '
+                f'{resolucion.consecutivo_hasta}.'
+            )
+        if documento.fecha is not None and not (
+            resolucion.fecha_desde <= documento.fecha <= resolucion.fecha_hasta
+        ):
+            errores.append(
+                f'La fecha {documento.fecha} del documento {documento.id} está fuera de la vigencia '
+                f'de la resolución, que va desde {resolucion.fecha_desde} hasta {resolucion.fecha_hasta}.'
+            )
 
     credito = bool(documento.plazo_pago and documento.plazo_pago.dias > 0)
     if credito and documento.fecha_vence is None:
-        raise ErrorFacturaElectronica(
+        errores.append(
             f'El documento {documento.id} es a crédito y no tiene fecha de vencimiento.'
         )
+
+    adquiriente = _o_error(errores, _adquiriente, documento, contacto)
+    detalles = _o_error(errores, _detalles, documento, con_retenciones)
+    if errores:
+        raise _ErroresDocumento(errores)
 
     return {
         'emisor': parametro.gen_rededoc_emisor,
@@ -748,17 +858,26 @@ def _armar_con_resolucion(documento, parametro, contacto, con_retenciones):
         # El id del documento en torio, para ubicarlo en rededoc sin su UUID.
         'referencia_externa': str(documento.id),
         'documento_tipo': documento.documento_tipo.codigo,
-        'prefijo': documento.resolucion.prefijo or '',
-        'numero_resolucion': documento.resolucion.numero,
+        'prefijo': resolucion.prefijo or '',
+        'numero_resolucion': resolucion.numero,
         'consecutivo': documento.numero,
         'fecha_emision': documento.fecha.isoformat(),
         'fecha_vencimiento': documento.fecha_vence.isoformat() if credito else None,
         'forma_pago': FORMA_PAGO_CREDITO if credito else FORMA_PAGO_CONTADO,
         'medio_pago': getattr(documento.metodo_pago, 'codigo', None) or MEDIO_PAGO_NO_DEFINIDO,
         'moneda': MONEDA,
-        'adquiriente': _adquiriente(documento, contacto),
-        'detalles': _detalles(documento, con_retenciones),
+        'adquiriente': adquiriente,
+        'detalles': detalles,
     }
+
+
+def _o_error(errores, armar, *args):
+    """Lo que devuelva `armar`, o `None` dejando su error en la lista."""
+    try:
+        return armar(*args)
+    except ErrorFacturaElectronica as e:
+        errores.append(e.cuerpo['detail'])
+        return None
 
 
 def _adquiriente(documento, rol='cliente'):

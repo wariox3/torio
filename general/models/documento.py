@@ -65,6 +65,8 @@ class GenDocumento(models.Model):
     estado_electronico_notificado = models.BooleanField(default=False, db_default=False)
     estado_electronico_evento = models.BooleanField(default=False, db_default=False)
     estado_electronico_descartado = models.BooleanField(default=False, db_default=False)
+    # El último intento de emisión falló; los motivos, en `GenDocumentoElectronicoError`.
+    estado_electronico_error = models.BooleanField(default=False, db_default=False)
     soporte = models.CharField(max_length=100, null=True)
     orden_compra = models.CharField(max_length=50, null=True)
     remision = models.CharField(max_length=50, null=True)
