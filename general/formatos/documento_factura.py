@@ -100,6 +100,20 @@ class FormatoDocumentoFactura(FormatoBase):
     # adquiriente. Los formatos que heredan de la factura cambian solo esto.
     titulo_datos = 'DATOS DE LA FACTURA'
 
+    # Lo demás que cambia de un documento a otro sin que cambie la hoja: quién es
+    # el contacto, cómo se llama el código que da la DIAN y cómo se nombra el
+    # documento en el bloque electrónico.
+    titulo_contacto = 'ADQUIRIENTE'
+    etiqueta_contacto = 'CLIENTE'
+    nombre_codigo = 'CUFE'
+    titulo_electronico = 'REPRESENTACIÓN GRÁFICA DE LA FACTURA ELECTRÓNICA DE VENTA'
+    aviso_sin_validar = 'FACTURA SIN VALIDAR ANTE LA DIAN'
+
+    # Los campos de la configuración con el texto libre de arriba y de abajo. Un
+    # formato que no lo lleva los deja en `None`.
+    campo_informacion_superior = 'ven_factura_informacion_superior'
+    campo_informacion_inferior = 'ven_factura_informacion_inferior'
+
     def construir(self):
         documento = self.documento
         estilos = self._estilos()
@@ -228,6 +242,11 @@ class FormatoDocumentoFactura(FormatoBase):
         ]))
         return tabla
 
+    @staticmethod
+    def _informacion(configuracion, campo):
+        """El texto libre de la configuración, o vacío si el formato no lo lleva."""
+        return (campo and getattr(configuracion, campo, None) or '').strip()
+
     def _informacion_superior(self, configuracion, estilos):
         """
         El texto libre que la empresa quiere arriba de la factura
@@ -236,7 +255,7 @@ class FormatoDocumentoFactura(FormatoBase):
         ni siquiera el renglón: no es un dato de la factura que tenga que quedar a la
         vista cuando falta.
         """
-        texto = (getattr(configuracion, 'ven_factura_informacion_superior', None) or '').strip()
+        texto = self._informacion(configuracion, self.campo_informacion_superior)
         if not texto:
             return []
         return [
@@ -356,14 +375,14 @@ class FormatoDocumentoFactura(FormatoBase):
             correo = contacto.correo_facturacion_electronica or contacto.correo
 
         pares = (
-            ('CLIENTE', self._texto(contacto and contacto.nombre_corto)),
+            (self.etiqueta_contacto, self._texto(contacto and contacto.nombre_corto)),
             ('IDENTIFICACIÓN', self._texto(identificacion)),
             ('DIRECCIÓN', self._texto(contacto and contacto.direccion)),
             ('CIUDAD', self._texto(ciudad)),
             ('TELÉFONO', self._texto(contacto and contacto.telefono)),
             ('CORREO', self._texto(correo)),
         )
-        return self._tarjeta('ADQUIRIENTE', self._filas(pares, estilos), estilos,
+        return self._tarjeta(self.titulo_contacto, self._filas(pares, estilos), estilos,
                              _ANCHO_PARTES[0])
 
     def _datos_factura(self, documento, estilos):
@@ -485,7 +504,7 @@ class FormatoDocumentoFactura(FormatoBase):
             Spacer(1, 0.25 * cm),
             Paragraph(f'<b>INFORMACIÓN DE PAGO:</b> {self._texto(pago)}', estilos['texto']),
         ]
-        inferior = (getattr(configuracion, 'ven_factura_informacion_inferior', None) or '').strip()
+        inferior = self._informacion(configuracion, self.campo_informacion_inferior)
         if inferior:
             notas += [
                 Spacer(1, 2),
@@ -567,10 +586,11 @@ class FormatoDocumentoFactura(FormatoBase):
             validacion = timezone.localtime(documento.fecha_validacion).strftime('%Y-%m-%d %H:%M:%S')
 
         if cufe:
-            primera = ('CUFE', Paragraph(escape(cufe), estilos['cufe']))
+            primera = (self.nombre_codigo, Paragraph(escape(cufe), estilos['cufe']))
         else:
             primera = ('ESTADO', Paragraph(
-                'DOCUMENTO SIN VALIDAR ANTE LA DIAN: todavía no tiene CUFE.', estilos['aviso'],
+                f'DOCUMENTO SIN VALIDAR ANTE LA DIAN: todavía no tiene {self.nombre_codigo}.',
+                estilos['aviso'],
             ))
         pares = (
             primera,
@@ -580,8 +600,7 @@ class FormatoDocumentoFactura(FormatoBase):
             ('FABRICANTE', FABRICANTE_SOFTWARE),
         )
         ancho_detalle = ANCHO_CONTENIDO - LADO_QR - 0.4 * cm
-        filas = [[Paragraph('REPRESENTACIÓN GRÁFICA DE LA FACTURA ELECTRÓNICA DE VENTA',
-                            estilos['electronico_titulo']), '']]
+        filas = [[Paragraph(self.titulo_electronico, estilos['electronico_titulo']), '']]
         for etiqueta, valor in pares:
             if isinstance(valor, str):
                 valor = Paragraph(valor, estilos['electronico_valor'])
@@ -639,8 +658,8 @@ class FormatoDocumentoFactura(FormatoBase):
         dibujo.add(widget)
         return dibujo
 
-    @staticmethod
-    def _contenido_qr_sin_validar(documento, configuracion):
+    @classmethod
+    def _contenido_qr_sin_validar(cls, documento, configuracion):
         """
         Los datos de una factura que la DIAN todavía no validó, con las mismas claves
         del QR de la DIAN (`NumFac`, `FecFac`, `NitFac`…).
@@ -662,5 +681,5 @@ class FormatoDocumentoFactura(FormatoBase):
             ('ValTolFac', f'{documento.total or CERO:.2f}'),
         )
         return '\n'.join(
-            ['FACTURA SIN VALIDAR ANTE LA DIAN', *(f'{clave}: {valor}' for clave, valor in pares)]
+            [cls.aviso_sin_validar, *(f'{clave}: {valor}' for clave, valor in pares)]
         )

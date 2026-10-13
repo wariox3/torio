@@ -27,7 +27,9 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from contabilidad.models import ConCentroCosto, ConComprobante, ConCuenta
 from general import tasks as tareas
-from general.formatos import FormatoDocumentoCuentaCobro, FormatoDocumentoFactura
+from general.formatos import (
+    FormatoDocumentoCuentaCobro, FormatoDocumentoFactura, FormatoDocumentoSoporte,
+)
 from general.formatos.documento_factura import URL_CONSULTA_DIAN
 from general.models import (
     GenArchivo,
@@ -7239,6 +7241,125 @@ class FormatoCuentaCobroTests(TenantTestCase):
 
         for ausente in ('CUFE', 'RESOLUCIÓN DIAN', 'SIN VALIDAR', 'REPRESENTACIÓN GRÁFICA', 'RedDoc ERP'):
             self.assertNotIn(ausente, texto)
+
+
+class FormatoDocumentoSoporteTests(TenantTestCase):
+    """
+    El documento soporte (tipo 11) es la hoja de la factura vista desde la compra: el
+    contacto es el vendedor, el código de la DIAN es el CUDS y no lleva el texto
+    libre de la factura de venta.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.tipo = GenDocumentoTipo.objects.create(
+            id=11, nombre='DOCUMENTO SOPORTE', compra=True,
+            documento_clase=GenDocumentoClase.objects.create(id=303, nombre='Documento soporte'),
+        )
+        pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
+        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        self.contacto = GenContacto.objects.create(
+            numero_identificacion='71234567', nombre_corto='PEDRO PÉREZ & HIJOS',
+            identificacion=GenIdentificacion.objects.create(id=3, nombre='Cédula', abreviatura='CC'),
+            tipo_persona=GenTipoPersona.objects.create(id=2, nombre='Natural'),
+            ciudad=ciudad, direccion='CR 51 9 30', telefono='3044769718', correo='pedro@x.com',
+        )
+        self.resolucion = GenResolucion.objects.create(
+            prefijo='DS', numero='18764109390870', consecutivo_desde=1, consecutivo_hasta=1000,
+            fecha_desde=date(2025, 5, 5), fecha_hasta=date(2027, 5, 5),
+        )
+        self.item = GenItem.objects.create(nombre='TRANSPORTE DE CARGA', codigo='SRV02')
+
+    def _documento_soporte(self, **overrides):
+        datos = {
+            'documento_tipo': self.tipo, 'fecha': date(2026, 10, 13), 'fecha_vence': date(2026, 10, 13),
+            'numero': 87, 'contacto': self.contacto, 'resolucion': self.resolucion,
+            'total': Decimal('250000'), 'subtotal': Decimal('250000'),
+        }
+        datos.update(overrides)
+        documento = GenDocumento.objects.create(**datos)
+        GenDocumentoDetalle.objects.create(
+            documento=documento, item=self.item, cantidad=Decimal('1'),
+            precio=Decimal('250000'), total=Decimal('250000'),
+        )
+        return documento
+
+    def _textos(self, documento):
+        textos = []
+
+        def recorrer(elemento):
+            if isinstance(elemento, (list, tuple)):
+                for item in elemento:
+                    recorrer(item)
+            elif hasattr(elemento, 'getPlainText'):
+                textos.append(elemento.getPlainText())
+            elif hasattr(elemento, '_cellvalues'):
+                recorrer(elemento._cellvalues)
+            elif isinstance(elemento, str):
+                textos.append(elemento)
+
+        recorrer(FormatoDocumentoSoporte(documento).construir())
+        return ' '.join(textos)
+
+    def test_el_documento_soporte_usa_su_formato(self):
+        documento = self._documento_soporte()
+        self.assertIs(documento_imprimir._clase_formato(documento), FormatoDocumentoSoporte)
+
+    def test_genera_el_pdf(self):
+        contenido, nombre = documento_imprimir.imprimir(
+            GenDocumento.objects.filter(pk=self._documento_soporte().pk),
+        )
+        self.assertTrue(contenido.startswith(b'%PDF'))
+        self.assertEqual(nombre, 'documento_soporte87.pdf')
+
+    def test_lleva_al_vendedor_el_numero_con_prefijo_y_la_resolucion(self):
+        texto = self._textos(self._documento_soporte())
+
+        self.assertIn('DOCUMENTO SOPORTE', texto)
+        self.assertIn('DS87', texto)
+        self.assertIn('DATOS DEL DOCUMENTO SOPORTE', texto)
+        self.assertIn('VENDEDOR', texto)
+        self.assertIn('PROVEEDOR:', texto)
+        self.assertIn('PEDRO PÉREZ & HIJOS', texto)
+        self.assertIn('CC 71234567', texto)
+        self.assertIn('SRV02', texto)
+        self.assertIn('250,000.00', texto)
+        self.assertIn('DOSCIENTOS CINCUENTA MIL', texto.upper())
+        self.assertIn('18764109390870', texto)
+        self.assertIn('rango del 1 al 1000', texto)
+        self.assertIn('NO OBLIGADOS A FACTURAR', texto)
+        self.assertIn('RedDoc ERP', texto)
+
+    def test_no_se_presenta_como_factura_de_venta(self):
+        texto = self._textos(self._documento_soporte(cue='abc123'))
+
+        for ausente in ('ADQUIRIENTE', 'CLIENTE', 'DATOS DE LA FACTURA', 'CUFE', 'FACTURA ELECTRÓNICA DE VENTA'):
+            self.assertNotIn(ausente, texto)
+        self.assertIn('CUDS', texto)
+        self.assertIn('abc123', texto)
+
+    def test_sin_validar_avisa_que_falta_el_cuds(self):
+        documento = self._documento_soporte()
+
+        self.assertIn('todavía no tiene CUDS', self._textos(documento))
+        contenido = FormatoDocumentoSoporte._contenido_qr_sin_validar(documento, None)
+        self.assertTrue(contenido.startswith('DOCUMENTO SOPORTE SIN VALIDAR ANTE LA DIAN'))
+
+    def test_no_lleva_el_texto_libre_de_la_factura_de_venta(self):
+        GenConfiguracion.objects.update_or_create(id=1, defaults={
+            'ven_factura_informacion_superior': 'Somos responsables de IVA',
+            'ven_factura_informacion_inferior': 'Consignar en Bancolombia ahorros 123',
+        })
+        texto = self._textos(self._documento_soporte())
+
+        self.assertNotIn('Somos responsables de IVA', texto)
+        self.assertNotIn('Consignar en Bancolombia', texto)
 
 
 class FormatoFacturaTests(TenantTestCase):
