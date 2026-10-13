@@ -152,6 +152,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'estado_electronico',
             'estado_electronico_notificado',
             'estado_electronico_error',
+            # El CUFE (o CUDS) con que la DIAN validó el documento.
+            'cue',
         ]
         read_only_fields = [
             'id',
@@ -183,6 +185,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'estado_electronico',
             'estado_electronico_notificado',
             'estado_electronico_error',
+            'cue',
         ]
 
     def validate(self, datos):

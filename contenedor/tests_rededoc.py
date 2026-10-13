@@ -38,7 +38,8 @@ class WebhookRededocTests(TenantTestCase):
         # El throttle cuenta en la caché del proceso, que sobrevive entre pruebas.
         cache.clear()
         tipo = GenDocumentoTipo.objects.create(
-            id=1, nombre='FACTURA', documento_clase=GenDocumentoClase.objects.create(id=100, nombre='FV'),
+            id=1, nombre='FACTURA', venta=True,
+            documento_clase=GenDocumentoClase.objects.create(id=100, nombre='FV'),
         )
         self.electronico_id = uuid.uuid4()
         self.documento = GenDocumento.objects.create(
@@ -359,6 +360,26 @@ class WebhookRededocTests(TenantTestCase):
 
         self.assertEqual(respuesta.status_code, 200)
         delay.assert_called_once_with(self.tenant.schema_name, self.documento.id)
+
+    def test_la_validacion_de_un_documento_que_no_es_de_venta_no_programa_notificacion(self):
+        """Un documento soporte o una nómina solo quedan validados: no hay cliente a quien entregarlos."""
+        soporte = GenDocumentoTipo.objects.create(
+            id=11, nombre='DOCUMENTO SOPORTE', compra=True,
+            documento_clase=GenDocumentoClase.objects.create(id=303, nombre='DS'),
+        )
+        GenDocumento.objects.filter(pk=self.documento.pk).update(documento_tipo=soporte)
+
+        with mock.patch('general.tasks.notificar_documento.delay') as delay:
+            with self.captureOnCommitCallbacks(execute=True) as pendientes:
+                respuesta = self._validacion()
+
+        self.assertEqual(respuesta.status_code, 200)
+        delay.assert_not_called()
+        self.assertEqual(pendientes, [])
+        self.documento.refresh_from_db()
+        self.assertTrue(self.documento.estado_electronico)
+        self.assertEqual(self.documento.cue, 'abc123')
+        self.assertFalse(self.documento.estado_electronico_notificado)
 
     def test_la_notificacion_no_se_programa_antes_de_confirmar(self):
         """Encolar antes del commit dejaría al worker leer el documento sin validar."""

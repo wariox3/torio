@@ -7,7 +7,7 @@ from openpyxl import load_workbook
 from reportlab.platypus import PageBreak, Table
 from rest_framework import permissions
 from rest_framework.exceptions import NotFound, ValidationError
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from contabilidad.formatos import FormatoCertificadoRetencion
 from contabilidad.models import (
@@ -37,6 +37,7 @@ from general.models import (
     GenCuentaBanco,
     GenCuentaBancoTipo,
     GenDocumento,
+    GenDocumentoClase,
     GenDocumentoDetalle,
     GenDocumentoPago,
     GenDocumentoTipo,
@@ -49,6 +50,9 @@ from general.models import (
 )
 from general.serializers import GenDocumentoDetalleSerializer
 from general.servicios import contabilizar
+from general.servicios import documento as documento_servicio
+from general.views.documento import GenDocumentoViewSet
+from seguridad.models import SegUsuario
 from utilidades.filtros import aplicar_filtros
 from utilidades.formatos.pagina import ANCHO_CONTENIDO
 
@@ -1508,7 +1512,8 @@ class _ContabilizarBase(TenantTestCase):
         return GenDocumentoDetalle.objects.create(
             documento=documento, item=item, tipo_registro='I',
             cantidad=1, precio=Decimal(subtotal), subtotal=Decimal(subtotal),
-            total=Decimal(subtotal),
+            # Al ingreso o al costo va el neto de la línea, que es `total_bruto`.
+            total_bruto=Decimal(subtotal), total=Decimal(subtotal),
         )
 
     def _crear_item(self):
@@ -2759,6 +2764,275 @@ class CargarActivoTests(TenantTestCase):
     def test_un_documento_que_no_existe_se_rechaza(self):
         with self.assertRaises(NotFound):
             depreciacion.cargar_activos(999999)
+
+
+class _DocumentoViewSinPermisos(GenDocumentoViewSet):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class AfectarActivoTests(TenantTestCase):
+    """
+    Lo depreciado le llega al activo cuando el documento se aprueba y se le
+    devuelve si se desaprueba o se anula. Lo acumulado no se lleva sumando y
+    restando: es lo que digan los documentos aprobados y sin anular.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.cuenta_gasto = ConCuenta.objects.create(
+            codigo='5160', nombre='Gasto depreciación', permite_movimiento=True,
+        )
+        self.cuenta_depreciacion = ConCuenta.objects.create(
+            codigo='1592', nombre='Depreciación acumulada', permite_movimiento=True,
+        )
+        self.centro_costo = ConCentroCosto.objects.create(nombre='Administración')
+        self.activo_grupo = ConActivoGrupo.objects.create(id=1, nombre='Muebles')
+        self.metodo = ConMetodoDepreciacion.objects.create(id=1, nombre='Línea recta')
+        self.tipo = GenDocumentoTipo.objects.create(
+            pk=depreciacion.DOCUMENTO_TIPO_DEPRECIACION, nombre='DEPRECIACION',
+            documento_clase=GenDocumentoClase.objects.create(id=602, nombre='Depreciación'),
+        )
+        # Costó 1.200.000 y entró ya depreciado en 1.000.000: le quedan dos cuotas.
+        self.activo = self._crear_activo()
+
+    def _crear_activo(self, codigo='1', valor_compra='1200000', inicial='1000000', periodo='100000'):
+        return ConActivo.objects.create(
+            codigo=codigo, nombre=f'Activo {codigo}',
+            fecha_compra=date(2025, 6, 1), fecha_activacion=date(2025, 6, 1),
+            valor_compra=Decimal(valor_compra), depreciacion_inicial=Decimal(inicial),
+            depreciacion_periodo=Decimal(periodo),
+            depreciacion_saldo=Decimal(valor_compra) - Decimal(inicial),
+            activo_grupo=self.activo_grupo, metodo_depreciacion=self.metodo,
+            cuenta_gasto=self.cuenta_gasto, cuenta_depreciacion=self.cuenta_depreciacion,
+            centro_costo=self.centro_costo,
+        )
+
+    def _cargado(self, fecha=date(2026, 1, 15)):
+        """Un documento de depreciación de ese mes, con sus líneas y sin aprobar."""
+        documento = GenDocumento.objects.create(documento_tipo=self.tipo, fecha=fecha)
+        depreciacion.cargar_activos(documento.pk)
+        return documento
+
+    def _con_linea(self, valor, activo=None, **estado):
+        """Un documento con una línea de depreciación de ese valor, sin pasar por el cargue."""
+        documento = GenDocumento.objects.create(
+            documento_tipo=self.tipo, fecha=date(2026, 1, 15), **estado,
+        )
+        GenDocumentoDetalle.objects.create(
+            documento=documento, tipo_registro='D', activo=activo or self.activo,
+            precio=Decimal(valor),
+        )
+        return documento
+
+    def _saldos(self, activo=None):
+        activo = activo or self.activo
+        activo.refresh_from_db()
+        return activo.depreciacion_acumulada, activo.depreciacion_saldo
+
+    # ------------------------------------------- aprobar, desaprobar, anular ----
+
+    def test_aprobar_le_suma_lo_depreciado_al_activo(self):
+        documento = self._cargado()
+        self.assertEqual(self._saldos(), (Decimal('0'), Decimal('200000')))
+
+        documento_servicio.aprobar(documento.pk)
+
+        self.assertEqual(self._saldos(), (Decimal('100000'), Decimal('100000')))
+
+    def test_desaprobar_se_lo_devuelve(self):
+        documento = self._cargado()
+        documento_servicio.aprobar(documento.pk)
+
+        documento = documento_servicio.desaprobar(documento.pk)
+
+        self.assertFalse(documento.estado_aprobado)
+        self.assertEqual(self._saldos(), (Decimal('0'), Decimal('200000')))
+
+    def test_aprobar_desaprobar_y_volver_a_aprobar_no_deprecia_dos_veces(self):
+        documento = self._cargado()
+        documento_servicio.aprobar(documento.pk)
+        documento_servicio.desaprobar(documento.pk)
+
+        documento_servicio.aprobar(documento.pk)
+
+        self.assertEqual(self._saldos(), (Decimal('100000'), Decimal('100000')))
+
+    def test_anular_tambien_se_lo_devuelve(self):
+        enero = self._cargado()
+        documento_servicio.aprobar(enero.pk)
+        febrero = self._cargado(date(2026, 2, 15))
+        documento_servicio.aprobar(febrero.pk)
+        self.assertEqual(self._saldos(), (Decimal('200000'), Decimal('0')))
+
+        documento_servicio.anular(enero.pk)
+
+        self.assertEqual(self._saldos(), (Decimal('100000'), Decimal('100000')))
+
+    def test_el_activo_agotado_no_entra_al_cargue_siguiente(self):
+        for fecha in (date(2026, 1, 15), date(2026, 2, 15)):
+            documento_servicio.aprobar(self._cargado(fecha).pk)
+
+        marzo = GenDocumento.objects.create(documento_tipo=self.tipo, fecha=date(2026, 3, 15))
+        depreciacion.cargar_activos(marzo.pk)
+
+        self.assertFalse(marzo.documentos_detalles_documento_rel.exists())
+
+    def test_el_cargue_sigue_sin_tocar_el_activo(self):
+        self._cargado()
+
+        self.assertEqual(self._saldos(), (Decimal('0'), Decimal('200000')))
+
+    def test_cada_activo_recibe_lo_suyo(self):
+        otro = self._crear_activo(codigo='2', valor_compra='900000', inicial='0', periodo='30000')
+        documento = self._cargado()
+
+        documento_servicio.aprobar(documento.pk)
+
+        self.assertEqual(self._saldos(), (Decimal('100000'), Decimal('100000')))
+        self.assertEqual(self._saldos(otro), (Decimal('30000'), Decimal('870000')))
+
+    def test_un_documento_sin_lineas_de_activo_no_toca_los_activos(self):
+        ConActivo.objects.filter(pk=self.activo.pk).update(depreciacion_acumulada=Decimal('7'))
+        otro_tipo = GenDocumentoTipo.objects.create(pk=901, nombre='OTRO')
+        documento = GenDocumento.objects.create(documento_tipo=otro_tipo, fecha=date(2026, 1, 15))
+        GenDocumentoDetalle.objects.create(documento=documento, tipo_registro='C')
+
+        documento_servicio.aprobar(documento.pk)
+
+        # Ni siquiera corrige el descuadre: no tiene líneas de ningún activo.
+        self.assertEqual(self._saldos()[0], Decimal('7'))
+
+    # ------------------------------------------------- validación del saldo ----
+
+    def test_no_se_aprueba_un_documento_que_deprecia_mas_de_lo_que_queda(self):
+        """Dos documentos cargados antes de aprobar ninguno caben cada uno por su lado y juntos no."""
+        ConActivo.objects.filter(pk=self.activo.pk).update(depreciacion_inicial=Decimal('1100000'))
+        depreciacion.recalcular_activos()
+        uno = self._cargado()
+        dos = self._cargado()
+        documento_servicio.aprobar(uno.pk)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(dos.pk)
+
+        self.assertEqual(
+            str(caso.exception.detail[0]),
+            'El activo 1 - Activo 1 solo tiene 0.00 por depreciar y el documento le deprecia 100,000.00.',
+        )
+        dos.refresh_from_db()
+        self.assertFalse(dos.estado_aprobado)
+        self.assertIsNone(dos.numero)
+        self.assertEqual(self._saldos(), (Decimal('100000'), Decimal('0')))
+
+    def test_se_aprueba_el_que_deprecia_justo_lo_que_queda(self):
+        documento = self._con_linea('200000')
+
+        documento_servicio.aprobar(documento.pk)
+
+        self.assertEqual(self._saldos(), (Decimal('200000'), Decimal('0')))
+
+    def test_el_saldo_se_valida_sumando_las_lineas_del_mismo_activo(self):
+        documento = self._con_linea('150000')
+        GenDocumentoDetalle.objects.create(
+            documento=documento, tipo_registro='D', activo=self.activo, precio=Decimal('50001'),
+        )
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(documento.pk)
+
+        self.assertIn('solo tiene 200,000.00 por depreciar', str(caso.exception.detail[0]))
+        self.assertIn('le deprecia 200,001.00', str(caso.exception.detail[0]))
+
+    def test_el_saldo_se_valida_contra_lo_que_dicen_los_documentos_y_no_contra_el_campo(self):
+        """Un documento aprobado antes de que esto existiera no le había llegado al activo."""
+        self._con_linea('150000', estado_aprobado=True)
+        self.assertEqual(self._saldos(), (Decimal('0'), Decimal('200000')))
+        documento = self._con_linea('100000')
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(documento.pk)
+
+        self.assertIn('solo tiene 50,000.00 por depreciar', str(caso.exception.detail[0]))
+
+    # ------------------------------------------------------------ recálculo ----
+
+    def test_recalcular_deja_el_activo_en_lo_que_dicen_sus_documentos(self):
+        self._con_linea('100000', estado_aprobado=True)
+        self._con_linea('30000', estado_aprobado=True)
+        ConActivo.objects.filter(pk=self.activo.pk).update(
+            depreciacion_acumulada=Decimal('999'), depreciacion_saldo=Decimal('-5'),
+        )
+
+        depreciacion.recalcular_activos()
+
+        self.assertEqual(self._saldos(), (Decimal('130000'), Decimal('70000')))
+
+    def test_recalcular_no_cuenta_lo_que_no_esta_aprobado_ni_lo_anulado(self):
+        self._con_linea('100000', estado_aprobado=True)
+        self._con_linea('20000')
+        self._con_linea('30000', estado_aprobado=True, estado_anulado=True)
+
+        depreciacion.recalcular_activos()
+
+        self.assertEqual(self._saldos(), (Decimal('100000'), Decimal('100000')))
+
+    def test_recalcular_solo_cuenta_las_lineas_de_depreciacion(self):
+        documento = self._con_linea('100000', estado_aprobado=True)
+        GenDocumentoDetalle.objects.create(
+            documento=documento, tipo_registro='C', activo=self.activo, precio=Decimal('5000'),
+        )
+
+        depreciacion.recalcular_activos()
+
+        self.assertEqual(self._saldos(), (Decimal('100000'), Decimal('100000')))
+
+    def test_recalcular_un_activo_sin_documentos_lo_deja_sin_acumulado(self):
+        ConActivo.objects.filter(pk=self.activo.pk).update(
+            depreciacion_acumulada=Decimal('50000'), depreciacion_saldo=Decimal('150000'),
+        )
+
+        depreciacion.recalcular_activos()
+
+        self.assertEqual(self._saldos(), (Decimal('0'), Decimal('200000')))
+
+    def test_recalcular_con_ids_solo_toca_esos_activos(self):
+        otro = self._crear_activo(codigo='2')
+        ConActivo.objects.update(depreciacion_acumulada=Decimal('999'))
+
+        depreciacion.recalcular_activos([otro.pk])
+
+        self.assertEqual(self._saldos(otro), (Decimal('0'), Decimal('200000')))
+        self.assertEqual(self._saldos()[0], Decimal('999'))
+
+    # ------------------------------------------------------------- endpoint ----
+
+    def test_depreciacion_validar_pone_al_dia_todos_los_activos(self):
+        otro = self._crear_activo(codigo='2')
+        self._con_linea('100000', estado_aprobado=True)
+        self._con_linea('40000', activo=otro, estado_aprobado=True)
+        vista = _DocumentoViewSinPermisos.as_view({'post': 'depreciacion_validar'})
+        peticion = APIRequestFactory().post('/general/documento/depreciacion-validar/')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+
+        respuesta = vista(peticion)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, {'ejecutado': True})
+        self.assertEqual(self._saldos(), (Decimal('100000'), Decimal('100000')))
+        self.assertEqual(self._saldos(otro), (Decimal('40000'), Decimal('160000')))
+
+    def test_depreciacion_validar_lleva_los_permisos_de_cartera_validar(self):
+        self.assertEqual(
+            GenDocumentoViewSet.depreciacion_validar.kwargs['permission_classes'],
+            GenDocumentoViewSet.cartera_validar.kwargs['permission_classes'],
+        )
 
 
 class ActivoDepreciacionTests(TenantTestCase):
