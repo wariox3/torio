@@ -86,7 +86,7 @@ from general.servicios import documento_imprimir, factura_electronica, logotipo
 from general.servicios import documento_pago as documento_pago_servicio
 from general.servicios import imagen as imagen_servicio
 from general.servicios import rededoc as rededoc_servicio
-from general.servicios import venta as venta_servicio
+from general.servicios import resumen as resumen_servicio
 from general.views.archivo import GenArchivoViewSet
 from general.views.configuracion import GenConfiguracionViewSet
 from general.views.documento import GenDocumentoViewSet
@@ -5743,7 +5743,7 @@ class VentaResumenTests(TenantTestCase):
         self._documento(date(2026, 10, 14), '200')
         self._documento(date(2026, 10, 14), '30', tipo=self.tipo_nota_credito)
 
-        resumen = venta_servicio.resumen('mes', hoy=self.HOY)
+        resumen = resumen_servicio.resumen('venta', 'mes', hoy=self.HOY)
 
         self.assertEqual((resumen['fecha_desde'], resumen['fecha_hasta']),
                          (date(2026, 10, 1), date(2026, 10, 31)))
@@ -5765,7 +5765,7 @@ class VentaResumenTests(TenantTestCase):
         self._documento(date(2026, 10, 3), '200')
         self._documento(date(2026, 10, 14), '300')
 
-        resumen = venta_servicio.resumen('anio', hoy=self.HOY)
+        resumen = resumen_servicio.resumen('venta', 'anio', hoy=self.HOY)
 
         self.assertEqual((resumen['fecha_desde'], resumen['fecha_hasta']),
                          (date(2026, 1, 1), date(2026, 12, 31)))
@@ -5784,7 +5784,7 @@ class VentaResumenTests(TenantTestCase):
         self._documento(date(2026, 9, 30), '100')
         self._documento(date(2026, 11, 1), '100')
 
-        resumen = venta_servicio.resumen('mes', hoy=self.HOY)
+        resumen = resumen_servicio.resumen('venta', 'mes', hoy=self.HOY)
 
         self.assertEqual(resumen['totales']['total'], Decimal('100'))
         self.assertEqual(resumen['totales']['documentos'], 1)

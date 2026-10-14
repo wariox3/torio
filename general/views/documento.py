@@ -28,7 +28,7 @@ from general.servicios import contabilizar as contabilizar_servicio
 from general.servicios import documento as documento_servicio
 from general.servicios import documento_imprimir
 from general.servicios import factura_electronica as factura_electronica_servicio
-from general.servicios import venta as venta_servicio
+from general.servicios import resumen as resumen_servicio
 from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente, TienePermisoModelo
 from utilidades.filtros import aplicar_filtros
 from utilidades.mixins import (
@@ -310,7 +310,7 @@ class GenDocumentoViewSet(
         ),
         parameters=[
             OpenApiParameter(
-                'periodo', OpenApiTypes.STR, required=True, enum=list(venta_servicio.PERIODOS),
+                'periodo', OpenApiTypes.STR, required=True, enum=list(resumen_servicio.PERIODOS),
                 description='Rango de `fecha` a resumir.',
             ),
         ],
@@ -322,9 +322,66 @@ class GenDocumentoViewSet(
     )
     def venta_resumen(self, request):
         periodo = request.query_params.get('periodo')
-        if periodo not in venta_servicio.PERIODOS:
+        if periodo not in resumen_servicio.PERIODOS:
             raise ValidationError({'detail': 'El periodo debe ser "mes" o "anio".'})
-        return Response(venta_servicio.resumen(periodo), status=status.HTTP_200_OK)
+        return Response(resumen_servicio.resumen('venta', periodo), status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Resumen de compras',
+        description=(
+            'Compra neta del periodo en curso para el tablero: documentos de compra '
+            'aprobados y no anulados, por su `fecha`; las notas crédito y de ajuste '
+            'restan.\n\n'
+            '- `?periodo=mes`: el mes actual, un punto por día en `serie`.\n'
+            '- `?periodo=anio`: el año actual, un punto por mes en `serie`.\n\n'
+            'Los días o meses sin compras salen en cero. `totales` suma la serie.'
+        ),
+        parameters=[
+            OpenApiParameter(
+                'periodo', OpenApiTypes.STR, required=True, enum=list(resumen_servicio.PERIODOS),
+                description='Rango de `fecha` a resumir.',
+            ),
+        ],
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(
+        detail=False, methods=['get'], url_path='compra-resumen',
+        permission_classes=[EsMiembroDelTenant, SuscripcionVigente],
+    )
+    def compra_resumen(self, request):
+        periodo = request.query_params.get('periodo')
+        if periodo not in resumen_servicio.PERIODOS:
+            raise ValidationError({'detail': 'El periodo debe ser "mes" o "anio".'})
+        return Response(resumen_servicio.resumen('compra', periodo), status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Resumen de ingresos contra costos y gastos',
+        description=(
+            'Las dos barras del tablero en cada punto del periodo en curso: `ingreso` '
+            'es el subtotal neto de las ventas y `egreso` el de las compras, con los '
+            'mismos documentos de `venta-resumen` y `compra-resumen`. Va antes de '
+            'impuestos: el IVA no es ingreso ni gasto.\n\n'
+            '- `?periodo=mes`: el mes actual, un punto por día en `serie`.\n'
+            '- `?periodo=anio`: el año actual, un punto por mes en `serie`.\n\n'
+            '`totales` trae `ingreso`, `egreso` y `diferencia` (ingreso - egreso).'
+        ),
+        parameters=[
+            OpenApiParameter(
+                'periodo', OpenApiTypes.STR, required=True, enum=list(resumen_servicio.PERIODOS),
+                description='Rango de `fecha` a resumir.',
+            ),
+        ],
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(
+        detail=False, methods=['get'], url_path='resultado-resumen',
+        permission_classes=[EsMiembroDelTenant, SuscripcionVigente],
+    )
+    def resultado_resumen(self, request):
+        periodo = request.query_params.get('periodo')
+        if periodo not in resumen_servicio.PERIODOS:
+            raise ValidationError({'detail': 'El periodo debe ser "mes" o "anio".'})
+        return Response(resumen_servicio.resultado(periodo), status=status.HTTP_200_OK)
 
     @extend_schema(
         summary='Documentos que puede referenciar una nota',
