@@ -49,6 +49,9 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
     # lo muestra con su estado en vez de dejar entrar.
     estado = serializers.CharField(source='cliente.estado', read_only=True)
     dominio = serializers.SerializerMethodField()
+    cliente_fecha_ultima_conexion = serializers.DateTimeField(
+        source='cliente.fecha_ultima_conexion', read_only=True,
+    )
     cliente_imagen = serializers.SerializerMethodField()
     cliente_imagen_thumbnail = serializers.SerializerMethodField()
     suscripcion_id = serializers.IntegerField(source='cliente.suscripcion.id', read_only=True)
@@ -62,7 +65,7 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
         model = SegUsuarioCliente
         fields = [
             'cliente_id', 'schema_name', 'cliente_nombre', 'activo', 'estado', 'dominio',
-            'cliente_imagen', 'cliente_imagen_thumbnail',
+            'cliente_fecha_ultima_conexion', 'cliente_imagen', 'cliente_imagen_thumbnail',
             'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
             'suscripcion_suscripcion_tipo_nombre',
             'propietario',

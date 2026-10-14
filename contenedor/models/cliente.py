@@ -51,6 +51,7 @@ class CtnCliente(TenantBase):
     # keys las arma `contenedor.imagen`. Null = sin imagen.
     imagen_uuid = models.UUIDField(null=True)
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
+    # La marca `POST /contenedor/cliente/<id>/ingresar/`. Arranca en la de creación.
     fecha_ultima_conexion = models.DateTimeField(null=True, auto_now_add=True)
     owner = models.ForeignKey(
         'seguridad.SegUsuario',

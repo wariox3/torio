@@ -384,6 +384,39 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
+        summary='Ingresar al contenedor',
+        description=(
+            'Marca `fecha_ultima_conexion` del contenedor con la hora actual. El front '
+            'lo llama una vez al entrar a un contenedor, no en cada petición. '
+            'Cualquier miembro; uno que no esté `listo` responde 409.'
+        ),
+        request=None,
+        responses={
+            200: inline_serializer('ClienteIngresarSerializer', {
+                'fecha_ultima_conexion': serializers.DateTimeField(),
+            }),
+            409: OpenApiResponse(
+                inline_serializer('ClienteIngresarNoListoSerializer', {'detail': serializers.CharField()}),
+                description='El contenedor no está listo',
+            ),
+        },
+    )
+    @action(detail=True, methods=['post'], url_path='ingresar')
+    def ingresar(self, request, pk=None):
+        # `get_object` filtra por membresía: a uno ajeno le responde 404.
+        cliente = self.get_object()
+        if cliente.estado != CtnCliente.ESTADO_LISTO:
+            return Response(
+                {'detail': 'El contenedor todavía no está listo.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        ahora = timezone.now()
+        # `update` y no `save`: el `save` de django-tenants crea el schema si no lo
+        # encuentra, y acá solo se cambia una columna del schema público.
+        CtnCliente.objects.filter(pk=cliente.pk).update(fecha_ultima_conexion=ahora)
+        return Response({'fecha_ultima_conexion': ahora})
+
+    @extend_schema(
         summary='Imagen del contenedor',
         description=(
             '`POST` (multipart, campo `imagen`) la carga o la reemplaza: acepta JPEG, '
