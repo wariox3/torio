@@ -9355,7 +9355,7 @@ class ActualizarElectronicoTests(_CorregirAprobadoBase):
     def test_hay_que_enviar_al_menos_un_campo(self):
         documento = self._documento()
 
-        self._rechaza({'id': documento.id}, 'Debe enviar numero, resolucion, fecha o fecha_vence')
+        self._rechaza({'id': documento.id}, 'Debe enviar numero, resolucion, fecha, fecha_vence o documento_concepto_correccion')
         self._rechaza({'id': documento.id, 'comentario': 'x'}, 'Debe enviar')
 
     def test_valida_la_forma_de_la_peticion(self):
@@ -9393,6 +9393,65 @@ class ActualizarElectronicoTests(_CorregirAprobadoBase):
 
                     self.assertEqual(respuesta.status_code, 400)
                     self.assertEqual(respuesta.data, {'detail': 'El documento no es modificable.'})
+
+    def _nota_credito(self, **overrides):
+        clase = GenDocumentoClase.objects.create(id=101, nombre='Nota crédito venta')
+        tipo = GenDocumentoTipo.objects.create(id=2, nombre='NOTA CRÉDITO', documento_clase=clase)
+        anulacion = GenDocumentoConceptoCorreccion.objects.create(
+            id=2, codigo='2', nombre='Anulación de factura electrónica', documento_clase=clase,
+        )
+        rebaja = GenDocumentoConceptoCorreccion.objects.create(
+            id=3, codigo='3', nombre='Rebaja o descuento parcial o total', documento_clase=clase,
+        )
+        datos = {'documento_tipo': tipo, 'resolucion': None, 'documento_concepto_correccion': anulacion}
+        datos.update(overrides)
+        return self._documento(**datos), rebaja
+
+    def test_corrige_el_concepto_de_correccion_de_una_nota_aprobada(self):
+        documento, rebaja = self._nota_credito()
+
+        respuesta = self._llamar({'id': documento.id, 'documento_concepto_correccion': rebaja.id})
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data['documento_concepto_correccion'], rebaja.id)
+        self.assertEqual(
+            respuesta.data['documento_concepto_correccion_nombre'], 'Rebaja o descuento parcial o total',
+        )
+        documento.refresh_from_db()
+        self.assertEqual(documento.documento_concepto_correccion_id, rebaja.id)
+
+    def test_el_concepto_tiene_que_ser_de_la_clase_del_documento(self):
+        _, rebaja = self._nota_credito()
+        factura = self._documento()
+
+        self._rechaza(
+            {'id': factura.id, 'documento_concepto_correccion': rebaja.id}, 'no corresponde',
+        )
+
+    def test_la_nota_credito_no_puede_quedar_sin_concepto(self):
+        documento, _ = self._nota_credito()
+
+        self._rechaza(
+            {'id': documento.id, 'documento_concepto_correccion': None}, 'debe indicar el concepto',
+        )
+        documento.refresh_from_db()
+        self.assertEqual(documento.documento_concepto_correccion_id, 2)
+
+    def test_en_los_demas_documentos_null_quita_el_concepto(self):
+        clase_debito = GenDocumentoClase.objects.create(id=102, nombre='Nota débito venta')
+        gastos = GenDocumentoConceptoCorreccion.objects.create(
+            id=7, codigo='2', nombre='Gastos por cobrar', documento_clase=clase_debito,
+        )
+        tipo_debito = GenDocumentoTipo.objects.create(id=3, nombre='NOTA DÉBITO', documento_clase=clase_debito)
+        documento = self._documento(
+            documento_tipo=tipo_debito, resolucion=None, documento_concepto_correccion=gastos,
+        )
+
+        respuesta = self._llamar({'id': documento.id, 'documento_concepto_correccion': None})
+
+        self.assertEqual(respuesta.status_code, 200)
+        documento.refresh_from_db()
+        self.assertIsNone(documento.documento_concepto_correccion_id)
 
 
 class ActualizarContabilidadTests(_CorregirAprobadoBase):

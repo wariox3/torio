@@ -1267,12 +1267,15 @@ def generar_recurrente(
 # rechaza completo. Estas dos funciones son las únicas puertas para corregir un
 # aprobado, cada una con sus campos y su propio punto de no retorno.
 
-CAMPOS_ACTUALIZAR_ELECTRONICO = ('numero', 'resolucion', 'fecha', 'fecha_vence')
+CAMPOS_ACTUALIZAR_ELECTRONICO = (
+    'numero', 'resolucion', 'fecha', 'fecha_vence', 'documento_concepto_correccion',
+)
 
 
 def actualizar_electronico(documento_id, datos):
     """
-    Corrige el número, la resolución, la fecha o el vencimiento de un documento.
+    Corrige el número, la resolución, la fecha, el vencimiento o el concepto de
+    corrección de un documento.
 
     Son los datos con los que el documento viaja a la DIAN, así que se pueden
     corregir aunque esté aprobado, pero no después de enviado. Tampoco
@@ -1306,6 +1309,19 @@ def actualizar_electronico(documento_id, datos):
         if (documento.fecha and documento.fecha_vence
                 and documento.fecha_vence < documento.fecha):
             raise ValidationError('La fecha de vencimiento no puede ser anterior a la fecha.')
+
+        # Las mismas reglas que al guardar por la API
+        # (`GenDocumentoSerializer._validar_concepto_correccion`).
+        if 'documento_concepto_correccion' in datos:
+            concepto = documento.documento_concepto_correccion
+            clase_id = documento.documento_tipo.documento_clase_id
+            if concepto is None:
+                if clase_id == DOCUMENTO_CLASE_NOTA_CREDITO_VENTA:
+                    raise ValidationError('La nota crédito debe indicar el concepto de corrección.')
+            elif concepto.documento_clase_id != clase_id:
+                raise ValidationError(
+                    'El concepto de corrección no corresponde a este tipo de documento.'
+                )
 
         if documento.numero is not None:
             _validar_numeracion(documento, documento.numero)

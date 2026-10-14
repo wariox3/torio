@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from contabilidad.servicios import depreciacion as depreciacion_servicio
 from contabilidad.models import ConCentroCosto
-from general.models import GenDocumento, GenResolucion, GenSede
+from general.models import GenDocumento, GenDocumentoConceptoCorreccion, GenResolucion, GenSede
 from general.serializers import (
     GenDocumentoCrearSerializer,
     GenDocumentoExportarSerializer,
@@ -63,6 +63,9 @@ class DocumentoActualizarElectronicoRequestSerializer(serializers.Serializer):
     )
     fecha = serializers.DateField(required=False)
     fecha_vence = serializers.DateField(required=False)
+    documento_concepto_correccion = serializers.PrimaryKeyRelatedField(
+        queryset=GenDocumentoConceptoCorreccion.objects.all(), required=False, allow_null=True,
+    )
 
 
 class DocumentoActualizarContabilidadDetalleSerializer(serializers.Serializer):
@@ -416,14 +419,16 @@ class GenDocumentoViewSet(
     @extend_schema(
         summary='Corregir los datos electrónicos de un documento',
         description=(
-            'Cambia el `numero`, la `resolucion`, la `fecha` o la `fecha_vence` de un '
-            'documento, aunque esté aprobado. Solo se cambia lo que se envíe, y hay '
-            'que enviar al menos uno.\n\n'
+            'Cambia el `numero`, la `resolucion`, la `fecha`, la `fecha_vence` o el '
+            '`documento_concepto_correccion` de un documento, aunque esté aprobado. '
+            'Solo se cambia lo que se envíe, y hay que enviar al menos uno.\n\n'
             'No se corrige un documento anulado, contabilizado ni ya enviado '
             'electrónicamente. El número tiene que caer en el rango de la resolución '
             'que quede y no repetirse en otro documento del mismo tipo y resolución; '
             'en la factura de venta la fecha tiene que estar dentro de la vigencia. '
-            'La fecha de vencimiento no puede ser anterior a la fecha.\n\n'
+            'La fecha de vencimiento no puede ser anterior a la fecha. El concepto de '
+            'corrección tiene que ser de la clase del documento, y la nota crédito '
+            'no puede quedar sin él (`null` lo quita en los demás).\n\n'
             'El consecutivo del tipo de documento no se mueve. `fecha_contable` sigue '
             'a `fecha` si venían iguales.\n\n'
             'Responde el documento actualizado; un rechazo responde 400 con el motivo '
@@ -440,7 +445,8 @@ class GenDocumentoViewSet(
         documento_id = datos.pop('id')
         if not datos:
             return Response(
-                {'detail': 'Debe enviar numero, resolucion, fecha o fecha_vence.'},
+                {'detail': 'Debe enviar numero, resolucion, fecha, fecha_vence o '
+                           'documento_concepto_correccion.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         documento = documento_servicio.actualizar_electronico(documento_id, datos)
