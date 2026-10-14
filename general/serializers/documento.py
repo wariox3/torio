@@ -19,7 +19,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         # Los pendientes por notificar son `estado_electronico=True` y
         # `estado_electronico_notificado=False`: sin el primero saldrían también las
         # que la DIAN todavía no ha validado, que no se pueden notificar.
-        'estado_electronico', 'estado_electronico_notificado',
+        'estado_electronico', 'estado_electronico_enviado', 'estado_electronico_notificado',
         'estado_electronico_descartado', 'estado_electronico_error',
         'afectado', 'pendiente',
         # Banderas del tipo: permiten acotar por naturaleza del documento sin
@@ -161,7 +161,9 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             # escribibles, una factura podría quedar como validada sin que la DIAN
             # la hubiera aceptado.
             'estado_electronico',
+            'estado_electronico_enviado',
             'estado_electronico_notificado',
+            'estado_electronico_descartado',
             'estado_electronico_error',
             # El CUFE (o CUDS) con que la DIAN validó el documento.
             'cue',
@@ -194,7 +196,9 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             # escribibles, una factura podría quedar como validada sin que la DIAN
             # la hubiera aceptado.
             'estado_electronico',
+            'estado_electronico_enviado',
             'estado_electronico_notificado',
+            'estado_electronico_descartado',
             'estado_electronico_error',
             'cue',
         ]
