@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from contenedor import imagen as imagen_servicio
 from contenedor.models import CtnCliente, CtnDominio
 from seguridad.models import SegUsuarioCliente
 from utilidades.telefono import CampoTelefono
@@ -13,14 +14,22 @@ class CtnClienteSerializer(serializers.ModelSerializer):
     """
 
     celular = CampoTelefono(label='Celular', max_length=20)
+    imagen = serializers.SerializerMethodField()
+    imagen_thumbnail = serializers.SerializerMethodField()
 
     class Meta:
         model = CtnCliente
         fields = [
             'id', 'schema_name', 'nombre', 'celular', 'correo', 'activo', 'estado',
-            'fecha_creacion',
+            'fecha_creacion', 'imagen', 'imagen_thumbnail',
         ]
         read_only_fields = ['id', 'activo', 'estado', 'fecha_creacion']
+
+    def get_imagen(self, obj) -> str | None:
+        return imagen_servicio.url_original(obj)
+
+    def get_imagen_thumbnail(self, obj) -> str | None:
+        return imagen_servicio.url_thumbnail(obj)
 
 
 class CtnClienteActualizarSerializer(serializers.ModelSerializer):
@@ -40,6 +49,8 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
     # lo muestra con su estado en vez de dejar entrar.
     estado = serializers.CharField(source='cliente.estado', read_only=True)
     dominio = serializers.SerializerMethodField()
+    cliente_imagen = serializers.SerializerMethodField()
+    cliente_imagen_thumbnail = serializers.SerializerMethodField()
     suscripcion_id = serializers.IntegerField(source='cliente.suscripcion.id', read_only=True)
     suscripcion_fecha_fin = serializers.DateField(source='cliente.suscripcion.fecha_fin', read_only=True)
     suscripcion_frecuencia = serializers.CharField(source='cliente.suscripcion.frecuencia', read_only=True)
@@ -51,6 +62,7 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
         model = SegUsuarioCliente
         fields = [
             'cliente_id', 'schema_name', 'cliente_nombre', 'activo', 'estado', 'dominio',
+            'cliente_imagen', 'cliente_imagen_thumbnail',
             'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
             'suscripcion_suscripcion_tipo_nombre',
             'propietario',
@@ -58,6 +70,12 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
             'acceso_inventario', 'acceso_humano', 'acceso_contabilidad',
             'acceso_turno',
         ]
+
+    def get_cliente_imagen(self, obj) -> str | None:
+        return imagen_servicio.url_original(obj.cliente)
+
+    def get_cliente_imagen_thumbnail(self, obj) -> str | None:
+        return imagen_servicio.url_thumbnail(obj.cliente)
 
     def get_dominio(self, obj):
         dominios = getattr(obj.cliente, '_dominio_primario', None)

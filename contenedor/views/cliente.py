@@ -9,10 +9,12 @@ from django_tenants.utils import schema_exists
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
+from contenedor import imagen as imagen_servicio
 from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion, CtnSuscripcionTipo
 from contenedor.serializers import CtnClienteSerializer
 from contenedor.serializers.cliente import (
@@ -372,8 +374,70 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        # Se leen antes: `delete` deja el pk en None.
+        cliente_id, imagen_uuid = cliente.pk, cliente.imagen_uuid
         cliente.delete(force_drop=True)
+        # Después del delete: si este fallara, el contenedor seguiría vivo y sin
+        # imagen. Sin FK que cascade, nadie más la borraría de B2.
+        if imagen_uuid:
+            imagen_servicio.borrar(cliente_id, imagen_uuid)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        summary='Imagen del contenedor',
+        description=(
+            '`POST` (multipart, campo `imagen`) la carga o la reemplaza: acepta JPEG, '
+            'PNG o WEBP (máx 5 MB) y genera original (1024px) y thumbnail (320×320) '
+            'en WEBP. `DELETE` la quita; quitarla a uno sin imagen no es error. Las '
+            'dos responden el contenedor, con `imagen` e `imagen_thumbnail`. Solo el '
+            'owner.\n\n'
+            'Es la imagen que identifica al contenedor en la interfaz, no el logotipo '
+            'de los formatos impresos (`/general/configuracion/logotipo/`).'
+        ),
+        request=inline_serializer(
+            name='ClienteImagenRequest',
+            fields={'imagen': serializers.ImageField()},
+        ),
+        responses={
+            200: CtnClienteSerializer,
+            400: OpenApiResponse(
+                inline_serializer('ClienteImagenErrorSerializer', {'detail': serializers.CharField()}),
+                description='Falta el archivo o la imagen no sirve',
+            ),
+            403: OpenApiResponse(
+                inline_serializer('ClienteImagenForbiddenSerializer', {'detail': serializers.CharField()}),
+                description='No es el owner',
+            ),
+        },
+    )
+    @action(
+        detail=True, methods=['post', 'delete'], url_path='imagen',
+        parser_classes=[MultiPartParser],
+    )
+    def imagen(self, request, pk=None):
+        cliente = self.get_object()
+        # Por owner y no por `es_superusuario`: la imagen vive en el schema
+        # público, y así tampoco depende de que el schema del tenant esté listo.
+        if cliente.owner_id != request.user.id:
+            return Response(
+                {'detail': 'Solo el owner del contenedor puede cambiar su imagen.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if request.method == 'DELETE':
+            imagen_servicio.quitar(cliente)
+            return Response(CtnClienteSerializer(cliente).data)
+
+        archivo = request.FILES.get('imagen')
+        if not archivo:
+            return Response({'detail': 'Campo imagen requerido.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            # Un fallo de B2 sale como ErrorDeAlmacenamiento (502) desde la capa
+            # de backblaze; acá solo se traduce lo que es culpa del archivo.
+            imagen_servicio.subir(archivo, cliente)
+        except ValueError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(CtnClienteSerializer(cliente).data)
 
     @extend_schema(
         summary='Listar contenedores del usuario',

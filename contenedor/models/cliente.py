@@ -46,6 +46,10 @@ class CtnCliente(TenantBase):
         'Estado', max_length=10, choices=ESTADO_CHOICES,
         default=ESTADO_LISTO, db_default=ESTADO_LISTO,
     )
+    # Imagen del contenedor en la interfaz (no el logotipo de los formatos, que es
+    # `GenConfiguracion.gen_empresa_logotipo`). Un uuid por juego de derivados: las
+    # keys las arma `contenedor.imagen`. Null = sin imagen.
+    imagen_uuid = models.UUIDField(null=True)
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
     fecha_ultima_conexion = models.DateTimeField(null=True, auto_now_add=True)
     owner = models.ForeignKey(
