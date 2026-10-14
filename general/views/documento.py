@@ -28,6 +28,7 @@ from general.servicios import contabilizar as contabilizar_servicio
 from general.servicios import documento as documento_servicio
 from general.servicios import documento_imprimir
 from general.servicios import factura_electronica as factura_electronica_servicio
+from general.servicios import venta as venta_servicio
 from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente, TienePermisoModelo
 from utilidades.filtros import aplicar_filtros
 from utilidades.mixins import (
@@ -294,6 +295,33 @@ class GenDocumentoViewSet(
         if tipo not in cartera_servicio.TIPOS:
             raise ValidationError({'detail': 'El tipo debe ser "cobrar" o "pagar".'})
         return Response(cartera_servicio.resumen(tipo), status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Resumen de ventas',
+        description=(
+            'Venta neta del periodo en curso para el tablero: documentos de venta '
+            'aprobados y no anulados, por su `fecha`; la nota crédito resta.\n\n'
+            '- `?periodo=mes`: el mes actual, un punto por día en `serie`.\n'
+            '- `?periodo=anio`: el año actual, un punto por mes en `serie`.\n\n'
+            'Los días o meses sin ventas salen en cero. `totales` suma la serie.'
+        ),
+        parameters=[
+            OpenApiParameter(
+                'periodo', OpenApiTypes.STR, required=True, enum=list(venta_servicio.PERIODOS),
+                description='Rango de `fecha` a resumir.',
+            ),
+        ],
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(
+        detail=False, methods=['get'], url_path='venta-resumen',
+        permission_classes=[EsMiembroDelTenant, SuscripcionVigente],
+    )
+    def venta_resumen(self, request):
+        periodo = request.query_params.get('periodo')
+        if periodo not in venta_servicio.PERIODOS:
+            raise ValidationError({'detail': 'El periodo debe ser "mes" o "anio".'})
+        return Response(venta_servicio.resumen(periodo), status=status.HTTP_200_OK)
 
     @extend_schema(
         summary='Documentos que puede referenciar una nota',

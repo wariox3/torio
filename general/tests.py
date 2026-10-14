@@ -86,6 +86,7 @@ from general.servicios import documento_imprimir, factura_electronica, logotipo
 from general.servicios import documento_pago as documento_pago_servicio
 from general.servicios import imagen as imagen_servicio
 from general.servicios import rededoc as rededoc_servicio
+from general.servicios import venta as venta_servicio
 from general.views.archivo import GenArchivoViewSet
 from general.views.configuracion import GenConfiguracionViewSet
 from general.views.documento import GenDocumentoViewSet
@@ -5693,6 +5694,119 @@ class CarteraResumenTests(TenantTestCase):
 
         self.assertEqual(respuesta.status_code, 400)
         self.assertIn('cobrar', respuesta.data['detail'])
+
+
+class VentaResumenTests(TenantTestCase):
+    """
+    `venta.resumen`: la venta neta del mes día a día o del año mes a mes. Se fija
+    `hoy` para que el rango no dependa del día en que corre la prueba.
+    """
+
+    HOY = date(2026, 10, 14)
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test venta'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'venta@test.com'
+
+    def setUp(self):
+        self.tipo_factura = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', venta=True, operacion=1,
+            documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
+        )
+        self.tipo_nota_credito = GenDocumentoTipo.objects.create(
+            id=2, nombre='NOTA CRÉDITO', venta=True, operacion=-1,
+            documento_clase=GenDocumentoClase.objects.create(id=101, nombre='Nota crédito venta'),
+        )
+        self.tipo_compra = GenDocumentoTipo.objects.create(
+            id=5, nombre='COMPRA', compra=True, operacion=1,
+            documento_clase=GenDocumentoClase.objects.create(id=300, nombre='Compra'),
+        )
+
+    def _documento(self, fecha, total, tipo=None, **overrides):
+        total = Decimal(total)
+        datos = {
+            'documento_tipo': tipo or self.tipo_factura,
+            'fecha': fecha,
+            'subtotal': total * Decimal('0.81'),
+            'impuesto': total * Decimal('0.19'),
+            'total': total,
+            'estado_aprobado': True,
+        }
+        datos.update(overrides)
+        return GenDocumento.objects.create(**datos)
+
+    def test_mes_trae_todos_los_dias_y_la_nota_credito_resta(self):
+        self._documento(date(2026, 10, 1), '100')
+        self._documento(date(2026, 10, 1), '50')
+        self._documento(date(2026, 10, 14), '200')
+        self._documento(date(2026, 10, 14), '30', tipo=self.tipo_nota_credito)
+
+        resumen = venta_servicio.resumen('mes', hoy=self.HOY)
+
+        self.assertEqual((resumen['fecha_desde'], resumen['fecha_hasta']),
+                         (date(2026, 10, 1), date(2026, 10, 31)))
+        self.assertEqual(len(resumen['serie']), 31)
+        por_fecha = {item['fecha']: item for item in resumen['serie']}
+        self.assertEqual(por_fecha['2026-10-01']['total'], Decimal('150'))
+        self.assertEqual(por_fecha['2026-10-01']['documentos'], 2)
+        self.assertEqual(por_fecha['2026-10-14']['total'], Decimal('170'))
+        self.assertEqual(por_fecha['2026-10-02'],
+                         {'fecha': '2026-10-02', 'documentos': 0, 'subtotal': Decimal('0'),
+                          'impuesto': Decimal('0'), 'total': Decimal('0')})
+        self.assertEqual(resumen['totales']['total'], Decimal('320'))
+        self.assertEqual(resumen['totales']['documentos'], 4)
+        self.assertEqual(resumen['totales']['subtotal'] + resumen['totales']['impuesto'],
+                         Decimal('320'))
+
+    def test_anio_trae_los_doce_meses(self):
+        self._documento(date(2026, 1, 20), '100')
+        self._documento(date(2026, 10, 3), '200')
+        self._documento(date(2026, 10, 14), '300')
+
+        resumen = venta_servicio.resumen('anio', hoy=self.HOY)
+
+        self.assertEqual((resumen['fecha_desde'], resumen['fecha_hasta']),
+                         (date(2026, 1, 1), date(2026, 12, 31)))
+        self.assertEqual([item['fecha'] for item in resumen['serie']],
+                         [f'2026-{mes:02d}' for mes in range(1, 13)])
+        totales = [item['total'] for item in resumen['serie']]
+        self.assertEqual(totales[0], Decimal('100'))
+        self.assertEqual(totales[9], Decimal('500'))
+        self.assertEqual(sum(totales), Decimal('600'))
+
+    def test_solo_cuentan_ventas_aprobadas_no_anuladas_y_del_periodo(self):
+        self._documento(date(2026, 10, 5), '100')
+        self._documento(date(2026, 10, 5), '100', estado_aprobado=False)
+        self._documento(date(2026, 10, 5), '100', estado_anulado=True)
+        self._documento(date(2026, 10, 5), '100', tipo=self.tipo_compra)
+        self._documento(date(2026, 9, 30), '100')
+        self._documento(date(2026, 11, 1), '100')
+
+        resumen = venta_servicio.resumen('mes', hoy=self.HOY)
+
+        self.assertEqual(resumen['totales']['total'], Decimal('100'))
+        self.assertEqual(resumen['totales']['documentos'], 1)
+
+    def test_la_vista_lee_el_periodo_de_la_url(self):
+        vista = _DocumentoViewSinPermisos.as_view({'get': 'venta_resumen'})
+        peticion = APIRequestFactory().get('/general/documento/venta-resumen/', {'periodo': 'anio'})
+
+        respuesta = vista(peticion)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data['periodo'], 'anio')
+        self.assertEqual(len(respuesta.data['serie']), 12)
+
+    def test_un_periodo_que_no_es_mes_ni_anio_se_rechaza(self):
+        vista = _DocumentoViewSinPermisos.as_view({'get': 'venta_resumen'})
+        for query in ({'periodo': 'semana'}, {}):
+            with self.subTest(query=query):
+                respuesta = vista(APIRequestFactory().get('/general/documento/venta-resumen/', query))
+
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertEqual(list(respuesta.data), ['detail'])
 
 
 class SeleccionarReferenciaTests(TenantTestCase):
