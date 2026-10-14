@@ -1,6 +1,7 @@
 from rest_framework.routers import DefaultRouter
 
 from contenedor.views import (
+    CtnArchivoViewSet,
     CtnCiudadViewSet,
     CtnClienteViewSet,
     CtnContactoViewSet,
@@ -11,11 +12,13 @@ from contenedor.views import (
     CtnMovimientoViewSet,
     CtnPaisViewSet,
     CtnRededocViewSet,
+    CtnSolicitudViewSet,
     CtnSuscripcionTipoViewSet,
     CtnSuscripcionViewSet,
 )
 
 router = DefaultRouter()
+router.register(r'archivo', CtnArchivoViewSet, basename='archivo')
 router.register(r'ciudad', CtnCiudadViewSet, basename='ciudad')
 router.register(r'cliente', CtnClienteViewSet)
 router.register(r'contacto', CtnContactoViewSet, basename='contacto')
@@ -25,6 +28,7 @@ router.register(r'identificacion', CtnIdentificacionViewSet, basename='identific
 router.register(r'movimiento', CtnMovimientoViewSet, basename='movimiento')
 router.register(r'pais', CtnPaisViewSet, basename='pais')
 router.register(r'rededoc', CtnRededocViewSet, basename='rededoc')
+router.register(r'solicitud', CtnSolicitudViewSet, basename='solicitud')
 router.register(r'suscripcion', CtnSuscripcionViewSet, basename='suscripcion')
 router.register(r'suscripcion-tipo', CtnSuscripcionTipoViewSet, basename='suscripcion-tipo')
 router.register(r'invitacion', CtnInvitacionViewSet, basename='invitacion')

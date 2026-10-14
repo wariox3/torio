@@ -1,0 +1,8 @@
+{
+  "model": "contenedor.CtnArchivoTipo",
+  "data": [
+    { "id": 1, "codigo": "camara_comercio", "nombre": "Cámara de comercio" },
+    { "id": 2, "codigo": "cedula_representante", "nombre": "Cédula del representante legal" },
+    { "id": 3, "codigo": "rut", "nombre": "RUT" }
+  ]
+}

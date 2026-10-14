@@ -1,3 +1,4 @@
+from .archivo import CtnArchivoViewSet
 from .ciudad import CtnCiudadViewSet
 from .cliente import CtnClienteViewSet
 from .contacto import CtnContactoViewSet
@@ -8,5 +9,6 @@ from .invitacion import CtnInvitacionViewSet
 from .movimiento import CtnMovimientoViewSet
 from .pais import CtnPaisViewSet
 from .rededoc import CtnRededocViewSet
+from .solicitud import CtnSolicitudViewSet
 from .suscripcion import CtnSuscripcionViewSet
 from .suscripcion_tipo import CtnSuscripcionTipoViewSet

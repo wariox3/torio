@@ -1,0 +1,6 @@
+{
+  "model": "contenedor.CtnModelo",
+  "data": [
+    { "id": 1, "app": "contenedor", "clase": "CtnSolicitud", "nombre": "Solicitud", "tabla": "ctn_solicitud", "tipo": "M" }
+  ]
+}

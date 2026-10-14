@@ -1,0 +1,6 @@
+{
+  "model": "contenedor.CtnSolicitudTipo",
+  "data": [
+    { "id": 1, "codigo": "certificado_firma", "nombre": "Certificado de firma electrónica" }
+  ]
+}

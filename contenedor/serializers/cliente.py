@@ -63,8 +63,11 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SegUsuarioCliente
+        # `id` es el de la membresía (`SegUsuarioCliente`), el que espera
+        # `DELETE /seguridad/usuario-cliente/<id>/` para salirse del contenedor. El
+        # del contenedor es `cliente_id`.
         fields = [
-            'cliente_id', 'schema_name', 'cliente_nombre', 'activo', 'estado', 'dominio',
+            'id', 'cliente_id', 'schema_name', 'cliente_nombre', 'activo', 'estado', 'dominio',
             'cliente_fecha_ultima_conexion', 'cliente_imagen', 'cliente_imagen_thumbnail',
             'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
             'suscripcion_suscripcion_tipo_nombre',
