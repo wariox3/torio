@@ -61,6 +61,7 @@ from .item_exportar import GenItemExportarSerializer
 from .item_importar import GenItemImportarSerializer
 from .item_seleccionar import GenItemSeleccionarSerializer
 from .log import GenLogSerializer
+from .documento_concepto_correccion_seleccionar import GenDocumentoConceptoCorreccionSeleccionarSerializer
 from .metodo_pago import GenMetodoPagoSerializer
 from .metodo_pago_seleccionar import GenMetodoPagoSeleccionarSerializer
 from .modalidad import GenModalidadSeleccionarSerializer

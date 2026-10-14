@@ -33,6 +33,7 @@ from general.models import (
 from general.servicios.documento import (
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
     DOCUMENTO_CLASE_FACTURA_VENTA,
+    DOCUMENTO_CLASE_NOTA_CREDITO_VENTA,
 )
 from general.servicios.rededoc import Rededoc
 from utilidades.excepciones import con_detail
@@ -623,6 +624,9 @@ TRIBUTO_POR_DEFECTO = '01'
 # hay valor por defecto: una retención que saliera con el tributo equivocado se
 # le informaría a la DIAN como otra, así que la que no esté acá corta la emisión.
 RETENCIONES = {'RTF': '06', 'RTI': '05'}
+# Las notas no se numeran contra una resolución de la DIAN, así que no tienen de
+# dónde heredar el prefijo: llevan este.
+PREFIJO_NOTA = 'NC'
 
 DOS_DECIMALES = Decimal('0.01')
 
@@ -661,6 +665,7 @@ def emitir(documento_ids, cliente: Rededoc = None) -> dict:
     documentos = GenDocumento.objects.select_related(
         'documento_tipo', 'resolucion', 'plazo_pago', 'metodo_pago',
         'contacto__identificacion', 'contacto__ciudad__estado__pais',
+        'documento_referencia', 'documento_concepto_correccion',
     ).in_bulk(documento_ids)
     for documento_id in documento_ids:
         if documento_id not in documentos:
@@ -877,6 +882,66 @@ def _armar_con_resolucion(documento, parametro, contacto, con_retenciones):
     }
 
 
+def _armar_nota_credito(documento, parametro):
+    """
+    La nota crédito corrige una factura ya emitida: viaja con el id que esa
+    factura tiene en rededoc (`documento_referencia`) y con el concepto que dice
+    por qué la corrige.
+
+    No se numera contra una resolución —va con `PREFIJO_NOTA` y la resolución
+    vacía— ni lleva vencimiento, que rededoc rechaza en una nota. Las
+    retenciones tampoco viajan, igual que en la factura.
+    """
+    errores = []
+    if documento.documento_tipo.codigo is None:
+        errores.append(
+            f'El tipo de documento {documento.documento_tipo.nombre} no tiene código de '
+            'facturación electrónica.'
+        )
+    if documento.numero is None:
+        errores.append(f'El documento {documento.id} no tiene número.')
+    if documento.fecha is None:
+        errores.append(f'El documento {documento.id} no tiene fecha.')
+
+    referencia = documento.documento_referencia
+    if referencia is None:
+        errores.append(f'El documento {documento.id} no tiene el documento que corrige.')
+    elif not referencia.electronico_id:
+        errores.append(
+            f'El documento {referencia.numero or referencia.id} que corrige la nota '
+            f'{documento.id} no ha sido enviado electrónicamente.'
+        )
+
+    concepto = documento.documento_concepto_correccion
+    if concepto is None:
+        errores.append(f'El documento {documento.id} no tiene concepto de corrección.')
+
+    adquiriente = _o_error(errores, _adquiriente, documento, 'cliente')
+    detalles = _o_error(errores, _detalles, documento, False)
+    if errores:
+        raise _ErroresDocumento(errores)
+
+    credito = bool(documento.plazo_pago and documento.plazo_pago.dias > 0)
+    return {
+        'emisor': parametro.gen_rededoc_emisor,
+        'ambiente': settings.REDEDOC_AMBIENTE,
+        'referencia_externa': str(documento.id),
+        'documento_tipo': documento.documento_tipo.codigo,
+        'prefijo': PREFIJO_NOTA,
+        'numero_resolucion': '',
+        'consecutivo': documento.numero,
+        'fecha_emision': documento.fecha.isoformat(),
+        'fecha_vencimiento': None,
+        'forma_pago': FORMA_PAGO_CREDITO if credito else FORMA_PAGO_CONTADO,
+        'medio_pago': getattr(documento.metodo_pago, 'codigo', None) or MEDIO_PAGO_NO_DEFINIDO,
+        'moneda': MONEDA,
+        'documento_referencia': str(referencia.electronico_id),
+        'concepto_correccion': concepto.codigo,
+        'adquiriente': adquiriente,
+        'detalles': detalles,
+    }
+
+
 def _o_error(errores, armar, *args):
     """Lo que devuelva `armar`, o `None` dejando su error en la lista."""
     try:
@@ -984,6 +1049,7 @@ def _decimal(valor):
 
 ARMADORES = {
     DOCUMENTO_CLASE_FACTURA_VENTA: _armar_factura_venta,
+    DOCUMENTO_CLASE_NOTA_CREDITO_VENTA: _armar_nota_credito,
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE: _armar_documento_soporte,
 }
 

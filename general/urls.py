@@ -28,6 +28,7 @@ from general.views import (
     GenImpuestoViewSet,
     GenItemViewSet,
     GenLogViewSet,
+    GenDocumentoConceptoCorreccionViewSet,
     GenMetodoPagoViewSet,
     GenModalidadViewSet,
     GenModeloViewSet,
@@ -82,6 +83,10 @@ router.register(r'impuesto-tipo', GenImpuestoTipoViewSet, basename='impuesto-tip
 router.register(r'item', GenItemViewSet, basename='item')
 router.register(r'log', GenLogViewSet, basename='log')
 router.register(r'metodo-pago', GenMetodoPagoViewSet, basename='metodo-pago')
+router.register(
+    r'documento-concepto-correccion', GenDocumentoConceptoCorreccionViewSet,
+    basename='documento-concepto-correccion',
+)
 router.register(r'modalidad', GenModalidadViewSet, basename='modalidad')
 router.register(r'modelo', GenModeloViewSet, basename='modelo')
 router.register(r'pais', GenPaisViewSet, basename='pais')

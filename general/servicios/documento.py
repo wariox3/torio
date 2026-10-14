@@ -43,6 +43,7 @@ def sincronizar_impuestos(detalle, impuestos):
 # constantes con nombre: `documento_clase_id == 100` no le dice nada a nadie.
 
 DOCUMENTO_CLASE_FACTURA_VENTA = 100
+DOCUMENTO_CLASE_NOTA_CREDITO_VENTA = 101
 DOCUMENTO_CLASE_DOCUMENTO_SOPORTE = 303
 DOCUMENTO_CLASE_NOMINA_ELECTRONICA = 702
 

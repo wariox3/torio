@@ -1,5 +1,5 @@
 from drf_spectacular.utils import extend_schema
-from rest_framework import viewsets
+from rest_framework import mixins, viewsets
 
 from general.models import GenDocumentoElectronicoError
 from general.serializers import GenDocumentoElectronicoErrorSerializer
@@ -7,7 +7,11 @@ from utilidades.mixins import FiltrosDinamicosMixin
 
 
 @extend_schema(tags=['DocumentoElectronicoError'])
-class GenDocumentoElectronicoErrorViewSet(FiltrosDinamicosMixin, viewsets.GenericViewSet):
+class GenDocumentoElectronicoErrorViewSet(
+    FiltrosDinamicosMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
     """
     Los errores del último intento de emisión de cada documento. Solo lectura: los
     escribe `documento/emitir/`. No lleva `TienePermisoModelo`: es un detalle (tipo

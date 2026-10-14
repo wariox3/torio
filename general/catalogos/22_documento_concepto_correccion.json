@@ -1,0 +1,21 @@
+{
+  "model": "general.GenDocumentoConceptoCorreccion",
+  "data": [
+    { "id": 1,  "codigo": "1", "documento_clase_id": 101, "nombre": "Devolución parcial de bienes o no aceptación parcial del servicio" },
+    { "id": 2,  "codigo": "2", "documento_clase_id": 101, "nombre": "Anulación de factura electrónica" },
+    { "id": 3,  "codigo": "3", "documento_clase_id": 101, "nombre": "Rebaja o descuento parcial o total" },
+    { "id": 4,  "codigo": "4", "documento_clase_id": 101, "nombre": "Ajuste de precio" },
+    { "id": 5,  "codigo": "5", "documento_clase_id": 101, "nombre": "Otros" },
+
+    { "id": 6,  "codigo": "1", "documento_clase_id": 102, "nombre": "Intereses" },
+    { "id": 7,  "codigo": "2", "documento_clase_id": 102, "nombre": "Gastos por cobrar" },
+    { "id": 8,  "codigo": "3", "documento_clase_id": 102, "nombre": "Cambio del valor" },
+    { "id": 9,  "codigo": "4", "documento_clase_id": 102, "nombre": "Otros" },
+
+    { "id": 10, "codigo": "1", "documento_clase_id": 304, "nombre": "Devolución parcial de los bienes y/o no aceptación parcial del servicio" },
+    { "id": 11, "codigo": "2", "documento_clase_id": 304, "nombre": "Anulación del documento soporte" },
+    { "id": 12, "codigo": "3", "documento_clase_id": 304, "nombre": "Rebaja o descuento parcial o total" },
+    { "id": 13, "codigo": "4", "documento_clase_id": 304, "nombre": "Ajuste de precio" },
+    { "id": 14, "codigo": "5", "documento_clase_id": 304, "nombre": "Otros" }
+  ]
+}

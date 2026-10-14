@@ -34,6 +34,7 @@
     {"id": 10031, "app": "general",      "clase": "GenDocumentoPago",          "nombre": "Documento pago",          "tabla": "gen_documento_pago",          "tipo": "D"},
     {"id": 10032, "app": "general",      "clase": "GenImagen",                 "nombre": "Imagen",                  "tabla": "gen_imagen",                  "tipo": "S"},
     {"id": 10033, "app": "general",      "clase": "GenDocumentoElectronicoError", "nombre": "Documento electrónico error", "tabla": "gen_documento_electronico_error", "tipo": "D"},
+    {"id": 10034, "app": "general",      "clase": "GenDocumentoConceptoCorreccion", "nombre": "Concepto de corrección", "tabla": "gen_documento_concepto_correccion", "tipo": "C"},
 
     {"id": 20001, "app": "contabilidad", "clase": "ConComprobante",            "nombre": "Comprobante",             "tabla": "con_comprobante",             "tipo": "C"},
     {"id": 20002, "app": "contabilidad", "clase": "ConCuenta",                 "nombre": "Cuenta",                  "tabla": "con_cuenta",                  "tipo": "A"},

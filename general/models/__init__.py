@@ -12,6 +12,7 @@ from .cuenta_banco_tipo import GenCuentaBancoTipo
 from .documento import GenDocumento
 from .documento_clase import GenDocumentoClase
 from .documento_detalle import GenDocumentoDetalle
+from .documento_concepto_correccion import GenDocumentoConceptoCorreccion
 from .documento_electronico_error import GenDocumentoElectronicoError
 from .documento_impuesto import GenDocumentoImpuesto
 from .documento_pago import GenDocumentoPago

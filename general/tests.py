@@ -42,6 +42,7 @@ from general.models import (
     GenCuentaBancoTipo,
     GenDocumento,
     GenDocumentoClase,
+    GenDocumentoConceptoCorreccion,
     GenDocumentoDetalle,
     GenDocumentoElectronicoError,
     GenDocumentoImpuesto,
@@ -88,6 +89,7 @@ from general.servicios import rededoc as rededoc_servicio
 from general.views.archivo import GenArchivoViewSet
 from general.views.configuracion import GenConfiguracionViewSet
 from general.views.documento import GenDocumentoViewSet
+from general.views.documento_concepto_correccion import GenDocumentoConceptoCorreccionViewSet
 from general.views.documento_detalle import GenDocumentoDetalleViewSet
 from general.views.documento_electronico_error import GenDocumentoElectronicoErrorViewSet
 from general.views.documento_pago import GenDocumentoPagoViewSet
@@ -7590,7 +7592,7 @@ class EmitirTests(TenantTestCase):
 
     def test_un_tipo_sin_armador_no_se_emite(self):
         otro = GenDocumentoTipo.objects.create(
-            id=2, nombre='NOTA', documento_clase=GenDocumentoClase.objects.create(id=101, nombre='NC'),
+            id=3, nombre='NOTA DÉBITO', documento_clase=GenDocumentoClase.objects.create(id=102, nombre='ND'),
         )
         self._con_error(self._documento(documento_tipo=otro), 'todavía no se emite')
 
@@ -7754,7 +7756,22 @@ class EmitirTests(TenantTestCase):
             nombre for nombre in ('list', 'retrieve', 'create', 'update', 'partial_update', 'destroy')
             if hasattr(GenDocumentoElectronicoErrorViewSet, nombre)
         }
-        self.assertEqual(acciones, set())
+        # Como todo detalle (tipo `D`) se puede traer por id, y nada más.
+        self.assertEqual(acciones, {'retrieve'})
+
+    def test_un_error_se_puede_traer_por_id(self):
+        documento = self._documento(resolucion=None)
+        self._llamar({'ids': [documento.id]})
+        error = GenDocumentoElectronicoError.objects.get(documento=documento)
+        vista = _DocumentoElectronicoErrorViewSinPermisos.as_view({'get': 'retrieve'})
+        peticion = self.factory.get(f'/general/documento-electronico-error/{error.id}/')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+
+        respuesta = vista(peticion, pk=error.id)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data['id'], error.id)
+        self.assertEqual(respuesta.data['documento'], documento.id)
 
     def test_borrar_el_documento_se_lleva_sus_errores(self):
         documento = self._documento(resolucion=None, detalles=False)
@@ -7816,6 +7833,103 @@ class EmitirTests(TenantTestCase):
 
     def test_los_errores_del_soporte_hablan_del_proveedor(self):
         self._con_error(self._documento_soporte(contacto=None), 'no tiene proveedor')
+
+    # ---- nota crédito ----
+
+    def _nota_credito(self, factura_enviada=True, concepto=True, **overrides):
+        clase = GenDocumentoClase.objects.create(id=101, nombre='Nota crédito venta')
+        tipo = GenDocumentoTipo.objects.create(
+            id=2, nombre='NOTA CRÉDITO DE VENTA', venta=True, codigo=2, documento_clase=clase,
+        )
+        self.factura = self._documento(
+            detalles=False, numero=990000050, estado_electronico_enviado=factura_enviada,
+            electronico_id=uuid_lib.UUID('11111111-2222-3333-4444-555555555555') if factura_enviada else None,
+        )
+        datos = {
+            'documento_tipo': tipo, 'resolucion': None, 'numero': 7,
+            'documento_referencia': self.factura,
+        }
+        if concepto:
+            datos['documento_concepto_correccion'] = GenDocumentoConceptoCorreccion.objects.create(
+                id=2, codigo='2', nombre='Anulación de factura electrónica', documento_clase=clase,
+            )
+        datos.update(overrides)
+        return self._documento(**datos)
+
+    def test_payload_de_la_nota_credito(self):
+        nota = self._nota_credito()
+        cliente = self._cliente(*[
+            {'error': False, 'status': 201, 'datos': {'id': str(uuid_lib.uuid4())}} for _ in range(2)
+        ])
+
+        respuesta = self._llamar({'ids': [nota.id]}, cliente)
+
+        self.assertEqual(respuesta.data, {'emitidos': [nota.id], 'con_error': []})
+        payload = cliente.crear_documento.call_args.args[0]
+        factura = self._documento(numero=990000099)
+        self._llamar({'ids': [factura.id]}, cliente)
+        de_factura = cliente.crear_documento.call_args.args[0]
+        # Lo que cambia frente a la factura; el adquiriente y los detalles son los mismos.
+        self.assertEqual({k: v for k, v in payload.items() if k not in ('adquiriente', 'detalles')}, {
+            'emisor': 77,
+            'ambiente': 2,
+            'referencia_externa': str(nota.id),
+            'documento_tipo': 2,
+            'prefijo': 'NC',
+            # La nota no se numera contra una resolución.
+            'numero_resolucion': '',
+            'consecutivo': 7,
+            'fecha_emision': '2026-01-15',
+            'fecha_vencimiento': None,
+            'forma_pago': '1',
+            'medio_pago': '1',
+            'moneda': 35,
+            # El id de la factura en rededoc, no el de torio.
+            'documento_referencia': '11111111-2222-3333-4444-555555555555',
+            'concepto_correccion': '2',
+        })
+        self.assertEqual(payload['adquiriente'], de_factura['adquiriente'])
+        self.assertEqual(payload['detalles'], de_factura['detalles'])
+        # Como en la factura, la retención no viaja.
+        self.assertEqual([i['tributo'] for i in payload['detalles'][0]['impuestos']], ['01'])
+
+    def test_la_nota_credito_nunca_lleva_vencimiento(self):
+        """Rededoc rechaza una nota con fecha de vencimiento, aunque sea a crédito."""
+        nota = self._nota_credito(
+            plazo_pago=GenPlazoPago.objects.create(id=1, nombre='30 días', dias=30),
+            fecha_vence=date(2026, 2, 14),
+        )
+        cliente = self._cliente()
+
+        self._llamar({'ids': [nota.id]}, cliente)
+
+        payload = cliente.crear_documento.call_args.args[0]
+        self.assertIsNone(payload['fecha_vencimiento'])
+        self.assertEqual(payload['forma_pago'], '2')
+
+    def test_la_nota_credito_sin_documento_que_corregir_no_se_emite(self):
+        self._con_error(self._nota_credito(documento_referencia=None), 'no tiene el documento que corrige')
+
+    def test_la_nota_credito_de_una_factura_sin_enviar_no_se_emite(self):
+        nota = self._nota_credito(factura_enviada=False)
+        self._con_error(nota, 'El documento 990000050 que corrige la nota')
+        self._con_error(nota, 'no ha sido enviado electrónicamente')
+
+    def test_la_nota_credito_sin_concepto_no_se_emite(self):
+        self._con_error(self._nota_credito(concepto=False), 'no tiene concepto de corrección')
+
+    def test_la_nota_credito_registra_todo_lo_que_le_falta(self):
+        nota = self._nota_credito(
+            concepto=False, documento_referencia=None, numero=None, detalles=False,
+        )
+
+        self._llamar({'ids': [nota.id]})
+
+        mensajes = ' | '.join(mensaje for _, mensaje in self._errores(nota))
+        for texto in ('no tiene número', 'no tiene el documento que corrige',
+                      'no tiene concepto de corrección', 'no tiene detalles'):
+            self.assertIn(texto, mensajes)
+        self.assertEqual(len(self._errores(nota)), 4)
 
     def test_la_factura_sigue_sin_llevar_retenciones(self):
         documento = self._documento()
@@ -8856,6 +8970,23 @@ class FiltroNotificadoTests(TenantTestCase):
         self.assertIs(datos['estado_electronico'], True)
         self.assertIs(datos['estado_electronico_notificado'], False)
 
+    def test_la_respuesta_trae_el_numero_del_documento_referencia(self):
+        factura = GenDocumento.objects.create(documento_tipo=self.tipo, numero=2813)
+        nota = GenDocumento.objects.create(documento_tipo=self.tipo, documento_referencia=factura)
+        sin_numero = GenDocumento.objects.create(
+            documento_tipo=self.tipo,
+            documento_referencia=GenDocumento.objects.create(documento_tipo=self.tipo),
+        )
+
+        datos = GenDocumentoSerializer(nota).data
+        self.assertEqual(datos['documento_referencia'], factura.id)
+        self.assertEqual(datos['documento_referencia_numero'], 2813)
+        # Sin referencia, o con una que todavía no tiene número, sale nulo.
+        self.assertIsNone(GenDocumentoSerializer(factura).data['documento_referencia_numero'])
+        self.assertIsNone(GenDocumentoSerializer(sin_numero).data['documento_referencia_numero'])
+        # La lista lo trae sin una consulta por fila.
+        self.assertIn('documento_referencia', GenDocumentoSerializer.select_related_lista)
+
     def test_la_respuesta_trae_el_cue_y_no_deja_escribirlo(self):
         documento = GenDocumento.objects.create(documento_tipo=self.tipo, cue='abc123')
         sin_validar = GenDocumento.objects.create(documento_tipo=self.tipo)
@@ -9424,6 +9555,199 @@ class ElectronicoXmlTests(TenantTestCase):
 
         self.assertEqual(respuesta.status_code, 404)
         cliente.descargar_xml.assert_not_called()
+
+
+class _ConceptoCorreccionViewSinPermisos(GenDocumentoConceptoCorreccionViewSet):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class DocumentoConceptoCorreccionTests(TenantTestCase):
+    """
+    El concepto de corrección de las notas: un catálogo con una lista por clase de
+    nota, que el documento guarda y solo acepta si es de su clase.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        self.clase_nota_credito = GenDocumentoClase.objects.create(id=101, nombre='Nota crédito venta')
+        self.clase_nota_debito = GenDocumentoClase.objects.create(id=102, nombre='Nota débito venta')
+        self.tipo_nota_credito = GenDocumentoTipo.objects.create(
+            id=2, nombre='NOTA CRÉDITO DE VENTA', documento_clase=self.clase_nota_credito,
+        )
+        self.tipo_sin_clase = GenDocumentoTipo.objects.create(id=13, nombre='ASIENTO')
+        self.anulacion = GenDocumentoConceptoCorreccion.objects.create(
+            id=2, codigo='2', nombre='Anulación de factura electrónica',
+            documento_clase=self.clase_nota_credito,
+        )
+        self.rebaja = GenDocumentoConceptoCorreccion.objects.create(
+            id=3, codigo='3', nombre='Rebaja o descuento parcial o total',
+            documento_clase=self.clase_nota_credito,
+        )
+        self.gastos = GenDocumentoConceptoCorreccion.objects.create(
+            id=7, codigo='2', nombre='Gastos por cobrar', documento_clase=self.clase_nota_debito,
+        )
+        self.factory = APIRequestFactory()
+
+    # ---- catálogo ----
+
+    def test_el_catalogo_trae_una_lista_por_clase_con_los_codigos_de_la_dian(self):
+        ruta = settings.BASE_DIR / 'general' / 'catalogos' / '22_documento_concepto_correccion.json'
+        catalogo = json.loads(ruta.read_text(encoding='utf-8'))
+
+        self.assertEqual(catalogo['model'], 'general.GenDocumentoConceptoCorreccion')
+        por_clase = {}
+        for fila in catalogo['data']:
+            por_clase.setdefault(fila['documento_clase_id'], []).append(fila['codigo'])
+        self.assertEqual(por_clase, {
+            101: ['1', '2', '3', '4', '5'],  # nota crédito de venta
+            102: ['1', '2', '3', '4'],       # nota débito de venta
+            304: ['1', '2', '3', '4', '5'],  # nota de ajuste
+        })
+        ids = [fila['id'] for fila in catalogo['data']]
+        self.assertEqual(len(ids), len(set(ids)))
+
+    # ---- seleccionar ----
+
+    def _seleccionar(self, query):
+        vista = _ConceptoCorreccionViewSinPermisos.as_view({'get': 'seleccionar'})
+        peticion = self.factory.get('/general/documento-concepto-correccion/seleccionar/', query)
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return vista(peticion)
+
+    def test_seleccionar_filtra_por_clase_y_busca_por_nombre_o_codigo(self):
+        casos = (
+            ({}, [2, 3, 7]),
+            ({'documento_clase_id': '101'}, [2, 3]),
+            ({'documento_clase_id': '102'}, [7]),
+            ({'documento_clase_id': '999'}, []),
+            ({'search': 'rebaja'}, [3]),
+            ({'search': '2'}, [2, 7]),
+            ({'documento_clase_id': '101', 'search': '2'}, [2]),
+        )
+        for query, esperado in casos:
+            with self.subTest(query=query):
+                respuesta = self._seleccionar(query)
+
+                self.assertEqual(respuesta.status_code, 200)
+                self.assertEqual([fila['id'] for fila in respuesta.data['results']], esperado)
+
+    def test_seleccionar_devuelve_id_nombre_y_codigo(self):
+        respuesta = self._seleccionar({'documento_clase_id': '102'})
+
+        self.assertEqual(
+            respuesta.data['results'], [{'id': 7, 'nombre': 'Gastos por cobrar', 'codigo': '2'}],
+        )
+
+    def test_seleccionar_rechaza_una_clase_que_no_es_numero(self):
+        respuesta = self._seleccionar({'documento_clase_id': 'abc'})
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(list(respuesta.data), ['detail'])
+
+    # ---- en el documento ----
+
+    def _validar(self, datos, instancia=None):
+        return GenDocumentoSerializer(instancia, data=datos, partial=instancia is not None)
+
+    def test_el_documento_guarda_el_concepto_y_lo_expone_con_su_nombre(self):
+        serializer = self._validar({
+            'documento_tipo': self.tipo_nota_credito.id, 'fecha': '2026-01-15',
+            'documento_concepto_correccion': self.anulacion.id,
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        documento = serializer.save()
+
+        datos = GenDocumentoSerializer(documento).data
+        self.assertEqual(datos['documento_concepto_correccion'], self.anulacion.id)
+        self.assertEqual(
+            datos['documento_concepto_correccion_nombre'], 'Anulación de factura electrónica',
+        )
+        self.assertIn('documento_concepto_correccion', GenDocumentoSerializer.select_related_lista)
+
+    def test_un_documento_sin_concepto_lo_expone_en_nulo(self):
+        documento = GenDocumento.objects.create(documento_tipo=self.tipo_nota_credito)
+
+        datos = GenDocumentoSerializer(documento).data
+
+        self.assertIsNone(datos['documento_concepto_correccion'])
+        self.assertIsNone(datos['documento_concepto_correccion_nombre'])
+
+    def test_no_se_acepta_un_concepto_de_otra_clase(self):
+        """Los códigos se repiten entre listas: el 2 de la nota débito no anula nada."""
+        for tipo in (self.tipo_nota_credito, self.tipo_sin_clase):
+            with self.subTest(tipo=tipo.nombre):
+                serializer = self._validar({
+                    'documento_tipo': tipo.id, 'fecha': '2026-01-15',
+                    'documento_concepto_correccion': self.gastos.id,
+                })
+
+                self.assertFalse(serializer.is_valid())
+                self.assertEqual(list(serializer.errors), ['documento_concepto_correccion'])
+
+    def test_al_editar_se_valida_contra_el_tipo_que_ya_tiene_el_documento(self):
+        documento = GenDocumento.objects.create(documento_tipo=self.tipo_nota_credito)
+
+        self.assertFalse(
+            self._validar({'documento_concepto_correccion': self.gastos.id}, documento).is_valid(),
+        )
+        serializer = self._validar({'documento_concepto_correccion': self.rebaja.id}, documento)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.save().documento_concepto_correccion_id, self.rebaja.id)
+
+    def test_la_nota_credito_exige_el_concepto_al_crearla(self):
+        for datos in ({}, {'documento_concepto_correccion': None}):
+            with self.subTest(datos=datos):
+                serializer = self._validar({
+                    'documento_tipo': self.tipo_nota_credito.id, 'fecha': '2026-01-15', **datos,
+                })
+
+                self.assertFalse(serializer.is_valid())
+                self.assertEqual(serializer.errors, {
+                    'documento_concepto_correccion':
+                        ['La nota crédito debe indicar el concepto de corrección.'],
+                })
+
+    def test_a_la_nota_credito_no_se_le_puede_quitar_el_concepto(self):
+        documento = GenDocumento.objects.create(
+            documento_tipo=self.tipo_nota_credito, documento_concepto_correccion=self.anulacion,
+        )
+
+        serializer = self._validar({'documento_concepto_correccion': None}, documento)
+
+        self.assertFalse(serializer.is_valid())
+        self.assertEqual(list(serializer.errors), ['documento_concepto_correccion'])
+
+    def test_una_nota_credito_guardada_sin_concepto_lo_exige_al_editarla(self):
+        """Las que ya existían sin concepto: cualquier edición pide ponérselo."""
+        documento = GenDocumento.objects.create(documento_tipo=self.tipo_nota_credito)
+
+        self.assertFalse(self._validar({'comentario': 'otro'}, documento).is_valid())
+        serializer = self._validar(
+            {'comentario': 'otro', 'documento_concepto_correccion': self.rebaja.id}, documento,
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    def test_los_demas_documentos_no_llevan_concepto(self):
+        serializer = self._validar({'documento_tipo': self.tipo_sin_clase.id, 'fecha': '2026-01-15'})
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertIsNone(serializer.save().documento_concepto_correccion_id)
+
+    def test_editar_otro_campo_no_tropieza_con_el_concepto_que_ya_tenia(self):
+        documento = GenDocumento.objects.create(
+            documento_tipo=self.tipo_nota_credito, documento_concepto_correccion=self.anulacion,
+        )
+
+        serializer = self._validar({'comentario': 'otro'}, documento)
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
 
 
 # --------------------------------------------------------------- imágenes ----

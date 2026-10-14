@@ -25,6 +25,7 @@ from .impuesto import GenImpuestoViewSet
 from .impuesto_tipo import GenImpuestoTipoViewSet
 from .item import GenItemViewSet
 from .log import GenLogViewSet
+from .documento_concepto_correccion import GenDocumentoConceptoCorreccionViewSet
 from .metodo_pago import GenMetodoPagoViewSet
 from .modalidad import GenModalidadViewSet
 from .modelo import GenModeloViewSet

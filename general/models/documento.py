@@ -118,6 +118,13 @@ class GenDocumento(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_metodo_pago_rel',
     )
+    # Solo en las notas: por qué corrigen el documento que referencian.
+    documento_concepto_correccion = models.ForeignKey(
+        'general.GenDocumentoConceptoCorreccion',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_documento_concepto_correccion_rel',
+    )
     forma_pago = models.ForeignKey(
         'general.GenFormaPago',
         null=True,

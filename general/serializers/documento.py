@@ -8,6 +8,7 @@ from general.models import (
 from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
 from general.serializers.documento_detalle import GenDocumentoDetalleSerializer
 from general.servicios import crear_detalle
+from general.servicios.documento import DOCUMENTO_CLASE_NOTA_CREDITO_VENTA
 
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
@@ -33,7 +34,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         'programacion_detalle_id', 'programacion_detalle__programacion_id',
     }
     select_related_lista = ('documento_tipo', 'documento_tipo__cuenta_cobrar', 'documento_tipo__cuenta_pagar', 'contacto', 'contacto__precio', 'sector', 'sede', 'centro_costo', 'plazo_pago', 'metodo_pago', 'forma_pago', 'comprobante', 'cuenta_banco',
-                             'almacen', 'asesor', 'resolucion')
+                             'almacen', 'asesor', 'resolucion', 'documento_concepto_correccion',
+                             'documento_referencia')
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
@@ -53,6 +55,12 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
     sector_nombre = serializers.CharField(source='sector.nombre', read_only=True, default=None)
     plazo_pago_nombre = serializers.CharField(source='plazo_pago.nombre', read_only=True, default=None)
     metodo_pago_nombre = serializers.CharField(source='metodo_pago.nombre', read_only=True, default=None)
+    documento_referencia_numero = serializers.IntegerField(
+        source='documento_referencia.numero', read_only=True, default=None,
+    )
+    documento_concepto_correccion_nombre = serializers.CharField(
+        source='documento_concepto_correccion.nombre', read_only=True, default=None,
+    )
     forma_pago_nombre = serializers.CharField(source='forma_pago.nombre', read_only=True, default=None)
     asesor_nombre = serializers.CharField(source='asesor.nombre_corto', read_only=True, default=None)
     cuenta_banco_nombre = serializers.CharField(
@@ -100,6 +108,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'plazo_pago_nombre',
             'metodo_pago',
             'metodo_pago_nombre',
+            'documento_concepto_correccion',
+            'documento_concepto_correccion_nombre',
             'forma_pago',
             'forma_pago_nombre',
             'asesor',
@@ -121,6 +131,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'almacen_nombre',
             'estrato',
             'documento_referencia',
+            'documento_referencia_numero',
             'subtotal',
             'descuento',
             'total_bruto',
@@ -190,7 +201,38 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
 
     def validate(self, datos):
         self._heredar_resolucion(datos)
+        self._validar_concepto_correccion(datos)
         return self._seguir_fecha(datos)
+
+    def _validar_concepto_correccion(self, datos):
+        """
+        El concepto de corrección tiene que ser de la clase del documento, y en
+        la nota crédito es obligatorio.
+
+        Cada clase de nota tiene su lista y los códigos se repiten entre ellas: el
+        «2» de la nota crédito anula la factura y el de la nota débito son gastos
+        por cobrar. Uno de otra clase le diría a la DIAN algo distinto de lo que
+        se eligió.
+        """
+        if 'documento_concepto_correccion' in datos:
+            concepto = datos['documento_concepto_correccion']
+        else:
+            concepto = getattr(self.instance, 'documento_concepto_correccion', None)
+        tipo = datos.get('documento_tipo') or getattr(self.instance, 'documento_tipo', None)
+        if concepto is None:
+            # La nota crédito lo lleva siempre: sin él no se puede emitir, y una
+            # vez aprobada ya no hay cómo ponérselo.
+            if tipo is not None and tipo.documento_clase_id == DOCUMENTO_CLASE_NOTA_CREDITO_VENTA:
+                raise serializers.ValidationError({
+                    'documento_concepto_correccion':
+                        'La nota crédito debe indicar el concepto de corrección.',
+                })
+            return
+        if tipo is None or concepto.documento_clase_id != tipo.documento_clase_id:
+            raise serializers.ValidationError({
+                'documento_concepto_correccion':
+                    'El concepto de corrección no corresponde a este tipo de documento.',
+            })
 
     def _heredar_resolucion(self, datos):
         """
