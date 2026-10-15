@@ -16,6 +16,9 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
     ven_item_utilidad_nombre = serializers.CharField(
         source='ven_item_utilidad.nombre', read_only=True, default=None,
     )
+    ven_pos_documento_tipo_nombre = serializers.CharField(
+        source='ven_pos_documento_tipo.nombre', read_only=True, default=None,
+    )
 
     class Meta:
         model = GenConfiguracion
@@ -48,6 +51,8 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
             'ven_item_imprevisto_nombre',
             'ven_item_utilidad',
             'ven_item_utilidad_nombre',
+            'ven_pos_documento_tipo',
+            'ven_pos_documento_tipo_nombre',
         ]
         # `gen_empresa_logotipo` no está en `fields` a propósito. Es un PNG en base64
     # de decenas de KB —hoy pesa 70 veces más que todos los demás campos juntos—

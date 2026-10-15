@@ -69,6 +69,11 @@ class GenConfiguracion(models.Model):
         'general.GenItem', null=True, on_delete=models.PROTECT,
         related_name='configuraciones_item_utilidad_rel',
     )
+    # Tipo de documento con el que factura el punto de venta (POS).
+    ven_pos_documento_tipo = models.ForeignKey(
+        'general.GenDocumentoTipo', null=True, on_delete=models.PROTECT,
+        related_name='configuraciones_pos_documento_tipo_rel',
+    )
 
     class Meta:
         db_table = 'gen_configuracion'
