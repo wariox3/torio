@@ -89,3 +89,54 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
             return dominios[0].domain if dominios else None
         dominio = CtnDominio.objects.filter(tenant=obj.cliente, is_primary=True).first()
         return dominio.domain if dominio else None
+
+
+class CtnClienteAdministrarSerializer(serializers.ModelSerializer):
+    """
+    Un contenedor visto desde el panel del staff: todos, no solo los del usuario.
+
+    `usuarios` y `suscripcion_vigente` llegan anotados desde la vista, para no
+    hacer una consulta por fila.
+    """
+
+    dominio = serializers.SerializerMethodField()
+    imagen = serializers.SerializerMethodField()
+    imagen_thumbnail = serializers.SerializerMethodField()
+    owner_email = serializers.CharField(source='owner.email', read_only=True, default=None)
+    owner_nombre_corto = serializers.CharField(source='owner.nombre_corto', read_only=True, default=None)
+    suscripcion_fecha_fin = serializers.DateField(
+        source='suscripcion.fecha_fin', read_only=True, default=None,
+    )
+    suscripcion_frecuencia = serializers.CharField(
+        source='suscripcion.frecuencia', read_only=True, default=None,
+    )
+    suscripcion_suscripcion_tipo_nombre = serializers.CharField(
+        source='suscripcion.suscripcion_tipo.nombre', read_only=True, default=None,
+    )
+    suscripcion_vigente = serializers.BooleanField(read_only=True)
+    usuarios = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = CtnCliente
+        fields = [
+            'id', 'schema_name', 'nombre', 'correo', 'celular', 'activo', 'estado', 'dominio',
+            'fecha_creacion', 'fecha_ultima_conexion', 'imagen', 'imagen_thumbnail',
+            'owner_id', 'owner_email', 'owner_nombre_corto',
+            'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
+            'suscripcion_suscripcion_tipo_nombre', 'suscripcion_vigente',
+            'usuarios',
+        ]
+        read_only_fields = fields
+
+    def get_dominio(self, obj) -> str | None:
+        dominios = getattr(obj, '_dominio_primario', None)
+        if dominios is not None:
+            return dominios[0].domain if dominios else None
+        dominio = CtnDominio.objects.filter(tenant=obj, is_primary=True).first()
+        return dominio.domain if dominio else None
+
+    def get_imagen(self, obj) -> str | None:
+        return imagen_servicio.url_original(obj)
+
+    def get_imagen_thumbnail(self, obj) -> str | None:
+        return imagen_servicio.url_thumbnail(obj)

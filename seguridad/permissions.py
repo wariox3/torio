@@ -33,6 +33,28 @@ class EsMiembroDelTenant(permissions.IsAuthenticated):
         ).exists()
 
 
+class EsStaff(permissions.IsAuthenticated):
+    """
+    Personal de la plataforma: `is_staff` en el schema público.
+
+    Con django-tenant-users, `is_staff` no es una columna del usuario sino de sus
+    permisos en el tenant activo (`UserTenantPermissions`), así que solo significa
+    «staff de la plataforma» evaluado en el público. Fuera de él —con `X-Tenant`—
+    se niega: ahí el mismo atributo diría si es staff de ese contenedor, que es
+    otra cosa.
+    """
+
+    message = 'No tienes acceso a esta sección.'
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+        tenant = connection.tenant
+        if tenant is not None and tenant.schema_name != get_public_schema_name():
+            return False
+        return bool(request.user.is_staff)
+
+
 class SuscripcionVigente(permissions.BasePermission):
     """
     Bloquea el acceso al tenant cuando su suscripción no existe o está vencida.

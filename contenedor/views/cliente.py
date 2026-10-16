@@ -3,10 +3,10 @@ from datetime import date, timedelta
 from django.conf import settings
 from django.core.cache import cache
 from django.db import IntegrityError, connection, transaction
-from django.db.models import Prefetch
+from django.db.models import BooleanField, Case, Count, Prefetch, Q, Value, When
 from django.utils import timezone
-from django_tenants.utils import schema_exists
-from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from django_tenants.utils import get_public_schema_name, schema_exists
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
@@ -19,10 +19,12 @@ from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion, CtnSuscrip
 from contenedor.serializers import CtnClienteSerializer
 from contenedor.serializers.cliente import (
     CtnClienteActualizarSerializer,
+    CtnClienteAdministrarSerializer,
     CtnClienteListaUsuarioSerializer,
 )
 from contenedor.tasks import clave_paso, programar_creacion
 from seguridad.models import CAMPOS_ACCESO, SegUsuario, SegUsuarioCliente
+from seguridad.permissions import EsStaff
 
 # Todo contenedor nuevo arranca en el mismo plan de prueba —'Prueba ERP', categoría
 # 99, precio 0— por quince días. No es algo que elija quien crea el tenant: para
@@ -501,3 +503,70 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
 
         pagina = self.paginate_queryset(membresias)
         return self.get_paginated_response(CtnClienteListaUsuarioSerializer(pagina, many=True).data)
+
+    @extend_schema(
+        summary='Panel del staff: todos los contenedores',
+        description=(
+            'Solo para el staff de la plataforma (`is_staff` en el schema público). Lista '
+            'todos los contenedores, sean o no del usuario, con su estado, propietario, '
+            'suscripción y cantidad de usuarios. Solo lee el schema público: no entra a '
+            'ningún contenedor. Filtros: `nombre` (también busca en el schema), `estado` '
+            '(creando/listo/error), `activo` y `suscripcion_vigente` (true/false).'
+        ),
+        parameters=[
+            OpenApiParameter('nombre', str),
+            OpenApiParameter('estado', str, enum=[valor for valor, _ in CtnCliente.ESTADO_CHOICES]),
+            OpenApiParameter('activo', bool),
+            OpenApiParameter('suscripcion_vigente', bool),
+        ],
+        responses={200: CtnClienteAdministrarSerializer(many=True)},
+    )
+    @action(detail=False, methods=['get'], url_path='administrar', permission_classes=[EsStaff])
+    def administrar(self, request):
+        # Vigente con la misma regla que `SuscripcionVigente`: hasta el día de
+        # `fecha_fin` inclusive; sin suscripción, no vigente.
+        clientes = CtnCliente.objects.exclude(
+            schema_name=get_public_schema_name(),
+        ).select_related(
+            'owner', 'suscripcion__suscripcion_tipo',
+        ).prefetch_related(
+            Prefetch(
+                'domains',
+                queryset=CtnDominio.objects.filter(is_primary=True),
+                to_attr='_dominio_primario',
+            )
+        ).annotate(
+            usuarios=Count('segusuariocliente', distinct=True),
+            suscripcion_vigente=Case(
+                When(suscripcion__fecha_fin__gte=timezone.localdate(), then=Value(True)),
+                default=Value(False),
+                output_field=BooleanField(),
+            ),
+        ).order_by('nombre', 'id')
+
+        nombre = request.query_params.get('nombre')
+        if nombre:
+            clientes = clientes.filter(Q(nombre__icontains=nombre) | Q(schema_name__icontains=nombre))
+
+        estado = request.query_params.get('estado')
+        if estado:
+            estados = [valor for valor, _ in CtnCliente.ESTADO_CHOICES]
+            if estado not in estados:
+                return Response(
+                    {'detail': f'estado debe ser uno de: {", ".join(estados)}.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            clientes = clientes.filter(estado=estado)
+
+        for campo in ('activo', 'suscripcion_vigente'):
+            valor = request.query_params.get(campo)
+            if valor is None or valor == '':
+                continue
+            if valor.lower() not in ('true', 'false'):
+                return Response(
+                    {'detail': f'{campo} debe ser true o false.'}, status=status.HTTP_400_BAD_REQUEST,
+                )
+            clientes = clientes.filter(**{campo: valor.lower() == 'true'})
+
+        pagina = self.paginate_queryset(clientes)
+        return self.get_paginated_response(CtnClienteAdministrarSerializer(pagina, many=True).data)

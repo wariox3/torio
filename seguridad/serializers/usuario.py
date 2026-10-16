@@ -1,4 +1,6 @@
 from django.conf import settings
+from django.db import connection
+from django_tenants.utils import get_public_schema_name
 from rest_framework import serializers
 
 from seguridad.foto import key_original, key_thumbnail, url_publica
@@ -48,6 +50,7 @@ class SegUsuarioMeSerializer(serializers.ModelSerializer):
     imagen_thumbnail = serializers.SerializerMethodField()
     mfa_activo = serializers.SerializerMethodField()
     mfa_metodo = serializers.SerializerMethodField()
+    is_staff = serializers.SerializerMethodField()
 
     class Meta:
         model = SegUsuario
@@ -55,9 +58,23 @@ class SegUsuarioMeSerializer(serializers.ModelSerializer):
             'id', 'email', 'nombre_corto', 'numero_identificacion',
             'celular', 'idioma', 'imagen', 'imagen_thumbnail',
             'saldo_pendiente', 'is_verified', 'mfa_activo', 'mfa_metodo',
-            'fecha_creacion',
+            'is_staff', 'fecha_creacion',
         ]
         read_only_fields = fields
+
+    def get_is_staff(self, obj) -> bool:
+        """
+        Si es staff de la plataforma: el front lo usa para mostrar el panel de
+        administración, que igual protege `EsStaff`.
+
+        `is_staff` sale de los permisos del usuario en el tenant activo, así que
+        solo vale en el schema público; en cualquier otro diría si es staff de ese
+        contenedor, y se responde `False`.
+        """
+        tenant = connection.tenant
+        if tenant is not None and tenant.schema_name != get_public_schema_name():
+            return False
+        return bool(obj.is_staff)
 
     def _mfa(self, obj):
         # La 1-1 puede no existir: la mayoría de cuentas no tiene MFA configurado.
