@@ -14,7 +14,7 @@ from general.servicios.documento import DOCUMENTO_CLASE_NOTA_CREDITO_VENTA
 class GenDocumentoSerializer(serializers.ModelSerializer):
     campos_filtrables = {
         'id', 'numero', 'fecha', 'fecha_vence', 'documento_tipo_id', 'documento_tipo__nombre',
-        'contacto_id', 'contrato_id',
+        'contacto_id', 'contrato_id', 'documento_referencia_id',
         'contacto__nombre_corto', 'contacto__numero_identificacion',
         'centro_costo_id', 'estado_aprobado', 'estado_anulado', 'estado_contabilizado',
         # Los pendientes por notificar son `estado_electronico=True` y
