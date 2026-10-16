@@ -41,6 +41,9 @@ class GenConfiguracion(models.Model):
     # Texto libre que la empresa quiere en la factura de venta, arriba y abajo.
     ven_factura_informacion_superior = models.TextField(null=True)
     ven_factura_informacion_inferior = models.TextField(null=True)
+    # Lo mismo para el tiquete del punto de venta (POS).
+    ven_pos_informacion_superior = models.TextField(null=True)
+    ven_pos_informacion_inferior = models.TextField(null=True)
     gen_empresa_identificacion = models.ForeignKey(
         'general.GenIdentificacion', null=True, on_delete=models.PROTECT,
         related_name='configuraciones_empresa_identificacion_rel',

@@ -14,9 +14,9 @@ from collections import Counter
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import cm
+from reportlab.lib.units import cm, mm
 from reportlab.pdfgen import canvas
-from reportlab.platypus import Flowable, SimpleDocTemplate
+from reportlab.platypus import Flowable, Frame, PageTemplate, SimpleDocTemplate
 
 PAGINA = letter
 MARGEN_HORIZONTAL = 1.1 * cm
@@ -58,6 +58,63 @@ def documento_pdf(buffer, titulo=None):
         bottomMargin=MARGEN_INFERIOR,
         title=titulo or '',
     )
+
+
+def plantilla_hoja(identificador):
+    """
+    La hoja estándar como `PageTemplate`: el mismo marco que arma `documento_pdf`,
+    para que un formato se vea igual impreso solo o dentro de un lote que mezcla
+    hojas y tiquetes.
+    """
+    return PageTemplate(
+        id=identificador,
+        frames=[Frame(
+            MARGEN_HORIZONTAL, MARGEN_INFERIOR, ANCHO_CONTENIDO,
+            PAGINA[1] - MARGEN_SUPERIOR - MARGEN_INFERIOR,
+        )],
+        pagesize=PAGINA,
+    )
+
+
+# --- Rollo -----------------------------------------------------------------
+#
+# El tiquete del punto de venta sale en papel térmico de 80 mm. El rollo no tiene
+# alto: la página mide lo que mide el tiquete, ni un centímetro en blanco al final
+# ni un corte a la mitad. Por eso la plantilla se arma por documento, después de
+# medir sus elementos contra el ancho del rollo.
+
+ANCHO_ROLLO = 80 * mm
+MARGEN_ROLLO = 4 * mm
+ANCHO_CONTENIDO_ROLLO = ANCHO_ROLLO - 2 * MARGEN_ROLLO
+# Holgura sobre lo medido: si el alto quedara justo, un redondeo de reportlab
+# podría mandar la última línea a una segunda página.
+_HOLGURA_ROLLO = 2 * mm
+
+
+def plantilla_rollo(identificador, elementos):
+    """La página del rollo, con el alto exacto de `elementos`."""
+    alto = _alto(elementos, ANCHO_CONTENIDO_ROLLO) + _HOLGURA_ROLLO
+    return PageTemplate(
+        id=identificador,
+        frames=[Frame(
+            MARGEN_ROLLO, MARGEN_ROLLO, ANCHO_CONTENIDO_ROLLO, alto,
+            leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+        )],
+        pagesize=(ANCHO_ROLLO, alto + 2 * MARGEN_ROLLO),
+    )
+
+
+def _alto(elementos, ancho):
+    """
+    Lo que ocupan los elementos apilados en un marco de `ancho`. Como el marco,
+    no cuenta el espacio antes del primero.
+    """
+    total = 0
+    for indice, elemento in enumerate(elementos):
+        _, alto = elemento.wrap(ancho, PAGINA[1] * 100)
+        antes = elemento.getSpaceBefore() if indice else 0
+        total += antes + alto + elemento.getSpaceAfter()
+    return total
 
 
 # --- Número de página ------------------------------------------------------

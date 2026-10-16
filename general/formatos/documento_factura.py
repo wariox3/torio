@@ -638,25 +638,20 @@ class FormatoDocumentoFactura(FormatoBase):
 
     @classmethod
     def _qr(cls, documento, configuracion):
+        return dibujo_qr(cls.contenido_qr(documento, configuracion), LADO_QR)
+
+    @classmethod
+    def contenido_qr(cls, documento, configuracion):
         """
-        El QR que lleva a la consulta de la factura en la DIAN.
+        Lo que codifica el QR que lleva a la consulta de la factura en la DIAN.
 
         Manda el que devolvió rededoc (`documento.qr`); si no hay, se arma con el
         CUFE. Sin ninguno de los dos la factura no está validada, y el QR lleva sus
         datos (`_contenido_qr_sin_validar`) para que el espacio no quede en blanco.
         """
-        contenido = documento.qr or (
+        return documento.qr or (
             URL_CONSULTA_DIAN.format(cufe=documento.cue) if documento.cue else ''
         ) or cls._contenido_qr_sin_validar(documento, configuracion)
-
-        widget = QrCodeWidget(contenido)
-        x1, y1, x2, y2 = widget.getBounds()
-        dibujo = Drawing(
-            LADO_QR, LADO_QR,
-            transform=[LADO_QR / (x2 - x1), 0, 0, LADO_QR / (y2 - y1), 0, 0],
-        )
-        dibujo.add(widget)
-        return dibujo
 
     @classmethod
     def _contenido_qr_sin_validar(cls, documento, configuracion):
@@ -683,3 +678,12 @@ class FormatoDocumentoFactura(FormatoBase):
         return '\n'.join(
             [cls.aviso_sin_validar, *(f'{clave}: {valor}' for clave, valor in pares)]
         )
+
+
+def dibujo_qr(contenido, lado):
+    """El QR de `contenido` escalado a un cuadro de `lado`."""
+    widget = QrCodeWidget(contenido)
+    x1, y1, x2, y2 = widget.getBounds()
+    dibujo = Drawing(lado, lado, transform=[lado / (x2 - x1), 0, 0, lado / (y2 - y1), 0, 0])
+    dibujo.add(widget)
+    return dibujo

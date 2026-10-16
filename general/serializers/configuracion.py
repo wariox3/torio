@@ -45,6 +45,8 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
             'gen_emitir_automaticamente',
             'ven_factura_informacion_superior',
             'ven_factura_informacion_inferior',
+            'ven_pos_informacion_superior',
+            'ven_pos_informacion_inferior',
             'ven_item_administracion',
             'ven_item_administracion_nombre',
             'ven_item_imprevisto',

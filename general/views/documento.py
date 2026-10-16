@@ -160,6 +160,8 @@ class GenDocumentoViewSet(
             'documentos_detalles_documento_rel__cuenta',
             'documentos_detalles_documento_rel__contacto',
             'documentos_detalles_documento_rel__documento_afectado',
+            # El tiquete POS pone, junto a cada ítem, los impuestos que lleva.
+            'documentos_detalles_documento_rel__documentos_impuestos_documento_detalle_rel__impuesto',
         )
         qs = aplicar_filtros(qs, filtros, campos_filtrables)
         if qs.count() > 50:

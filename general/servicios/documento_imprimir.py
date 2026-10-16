@@ -3,7 +3,7 @@ import re
 import unicodedata
 import zipfile
 
-from reportlab.platypus import PageBreak
+from reportlab.platypus import BaseDocTemplate, NextPageTemplate, PageBreak
 from rest_framework.exceptions import ValidationError
 
 from general.formatos import (
@@ -13,10 +13,18 @@ from general.formatos import (
     FormatoDocumentoGenerico,
     FormatoDocumentoNomina,
     FormatoDocumentoPago,
+    FormatoDocumentoPos,
+    FormatoDocumentoPosElectronico,
     FormatoDocumentoSoporte,
 )
 from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
-from utilidades.formatos.pagina import CanvasNumerado, MarcaDocumento, documento_pdf
+from utilidades.formatos.pagina import (
+    PAGINA,
+    CanvasNumerado,
+    MarcaDocumento,
+    plantilla_hoja,
+    plantilla_rollo,
+)
 
 # Qué formato imprime cada tipo de documento. Está quemado a propósito y no sale
 # de `GenDocumentoTipo.formato`: mientras sean pocos los tipos con formato propio,
@@ -30,6 +38,8 @@ DOCUMENTO_TIPO_PAGO = 4  # mismo id que `contabilizar.DOCUMENTO_TIPO_PAGO`
 DOCUMENTO_TIPO_EGRESO = 8  # mismo id que `contabilizar.DOCUMENTO_TIPO_EGRESO`
 DOCUMENTO_TIPO_DOCUMENTO_SOPORTE = 11
 DOCUMENTO_TIPO_CUENTA_COBRO = 17
+DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO = 24
+DOCUMENTO_TIPO_FACTURA_POS = 27
 # Los de la clase 701: todos se imprimen como desprendible del empleado.
 DOCUMENTO_TIPOS_NOMINA = (
     14,  # NOMINA
@@ -42,6 +52,8 @@ DOCUMENTO_TIPOS_NOMINA = (
 FORMATOS = {
     DOCUMENTO_TIPO_FACTURA_VENTA: FormatoDocumentoFactura,
     DOCUMENTO_TIPO_CUENTA_COBRO: FormatoDocumentoCuentaCobro,
+    DOCUMENTO_TIPO_FACTURA_POS: FormatoDocumentoPos,
+    DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO: FormatoDocumentoPosElectronico,
     DOCUMENTO_TIPO_DOCUMENTO_SOPORTE: FormatoDocumentoSoporte,
     DOCUMENTO_TIPO_PAGO: FormatoDocumentoPago,
     DOCUMENTO_TIPO_EGRESO: FormatoDocumentoEgreso,
@@ -54,16 +66,23 @@ def _clase_formato(documento):
     return FORMATOS.get(documento.documento_tipo_id, FormatoDocumentoGenerico)
 
 
-def _construir(documento):
+def _construir(documento, identificador):
     """
-    Elige la clase de formato según el tipo y devuelve los elementos del documento.
+    Elige la clase de formato según el tipo y devuelve la plantilla de página del
+    documento y sus elementos.
 
     Todos arrancan con su `MarcaDocumento`, numeren o no: es la marca la que le dice
     al canvas dónde termina el documento anterior, así que uno sin numerar que no
     la llevara le sumaría sus páginas al que va antes.
+
+    La plantilla es la hoja estándar o, para un tiquete, el rollo con el alto del
+    documento: por eso se arma con los elementos ya construidos.
     """
     clase = _clase_formato(documento)
-    return [MarcaDocumento(documento.id, clase.numerar_paginas), *clase(documento).construir()]
+    elementos = [MarcaDocumento(documento.id, clase.numerar_paginas), *clase(documento).construir()]
+    if clase.rollo:
+        return plantilla_rollo(identificador, elementos), elementos
+    return plantilla_hoja(identificador), elementos
 
 
 def _nombre_archivo(documento, sufijo=''):
@@ -101,35 +120,47 @@ def _listar(documentos):
     return documentos
 
 
-def _pdf(elementos):
-    """Construye un PDF a partir de una lista de flowables y devuelve sus bytes."""
+def _pdf(documentos):
+    """
+    Construye un PDF con los documentos, cada uno desde una página nueva, y
+    devuelve sus bytes.
+
+    Cada documento trae su plantilla de página, porque no todos van en la misma
+    hoja: un lote puede mezclar facturas en hoja carta con tiquetes POS en rollo.
+    Al pasar de uno a otro, `NextPageTemplate` cambia la plantilla de la página
+    que abre el salto.
+    """
+    plantillas = []
+    elementos = []
+    for indice, documento in enumerate(documentos):
+        identificador = f'documento_{indice}'
+        plantilla, propios = _construir(documento, identificador)
+        plantillas.append(plantilla)
+        if indice:
+            elementos += [NextPageTemplate(identificador), PageBreak()]
+        elementos += propios
+
     buffer = io.BytesIO()
-    # La misma caja que el resto de los formatos impresos: los márgenes de los
-    # que sale `ANCHO_CONTENIDO`, contra el que cada formato calcula sus anchos.
-    documento_pdf(buffer).build(elementos, canvasmaker=CanvasNumerado)
+    BaseDocTemplate(buffer, pagesize=PAGINA, pageTemplates=plantillas).build(
+        elementos, canvasmaker=CanvasNumerado,
+    )
     return buffer.getvalue()
 
 
 def pdf_documento(documento):
     """El PDF de un solo documento, con su formato. Devuelve (contenido, nombre)."""
-    return _pdf(_construir(documento)), _nombre_archivo(documento)
+    return _pdf([documento]), _nombre_archivo(documento)
 
 
 def imprimir(documentos):
     """Genera un único PDF con todos los documentos (uno por página). Devuelve (contenido, nombre)."""
     documentos = _listar(documentos)
 
-    elementos = []
-    for indice, documento in enumerate(documentos):
-        if indice:
-            elementos.append(PageBreak())
-        elementos.extend(_construir(documento))
-
     if len(documentos) == 1:
         nombre = _nombre_archivo(documentos[0])
     else:
         nombre = 'documentos.pdf'
-    return _pdf(elementos), nombre
+    return _pdf(documentos), nombre
 
 
 def imprimir_zip(documentos):
@@ -142,5 +173,5 @@ def imprimir_zip(documentos):
             # El id va de sufijo: garantiza nombres únicos dentro del zip aunque
             # dos documentos compartan tipo y número.
             nombre_pdf = _nombre_archivo(documento, sufijo=f'_{documento.id}')
-            comprimido.writestr(nombre_pdf, _pdf(_construir(documento)))
+            comprimido.writestr(nombre_pdf, _pdf([documento]))
     return buffer.getvalue(), 'documentos.zip'
