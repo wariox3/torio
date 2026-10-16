@@ -73,6 +73,7 @@ class SegUsuarioClientePermisoSerializer(serializers.ModelSerializer):
             'usuario_nombre_corto',
             'usuario_email',
             'propietario',
+            'soporte',
             'permiso',
         ]
         read_only_fields = fields

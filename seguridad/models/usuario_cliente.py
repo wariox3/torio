@@ -35,6 +35,12 @@ class SegUsuarioCliente(models.Model):
     # grupos, y el salto de `TienePermisoModelo` lo da `is_superuser` en el
     # `UserTenantPermissions` del tenant, que `add_user` marca al crear.
     propietario = models.BooleanField(default=False, db_default=False)
+    # Staff de la plataforma que entró a dar soporte (`POST /contenedor/cliente/<id>/soporte/`).
+    # Es una membresía con `is_superuser` en el tenant, pero no es un usuario del
+    # cliente: no puede modificar ni eliminar el contenedor (`es_superusuario`) y el
+    # owner no le edita accesos. Dura hasta que se cierra —él se sale o el owner lo
+    # saca, con el mismo `DELETE` de cualquier membresía— y al cerrarse no queda rastro.
+    soporte = models.BooleanField(default=False, db_default=False)
     # Arrancan en False: el acceso a cada módulo se concede explícitamente al
     # invitar, no se hereda por ser miembro del contenedor.
     acceso_venta = models.BooleanField(default=False, db_default=False)

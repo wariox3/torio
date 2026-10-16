@@ -47,6 +47,17 @@ The middleware only resolves the schema; it does **not** authorize. Membership i
 
 Tenant isolation is covered by `contenedor/tests_aislamiento.py` (`python manage.py test contenedor.tests_aislamiento`), one test class per layer: schema, header, container state (`creando`/`error` → 409), membership, per-tenant permissions, subscription, and connection reuse between requests.
 
+**Staff support access.** Platform staff (`is_staff` in the *public* schema, `EsStaff`) see every
+container at `GET /contenedor/cliente/administrar/` and enter one with
+`POST /contenedor/cliente/<id>/soporte/` (MFA required): that creates a normal membership with
+`SegUsuarioCliente.soporte = True`, `is_superuser` and every `acceso_*`, so all tenant permission
+checks work unchanged. It never expires — it is closed with the regular
+`DELETE /seguridad/usuario-cliente/<id>/` (the staff member or the owner) and leaves no history.
+A support membership is **not** a user of the client: `es_superusuario` returns `False` for it
+(it can't modify or delete the container), the owner can't edit its accesses, it skips
+`SuscripcionVigente`, and the panel's `usuarios` count excludes it. Any new code that reads
+`SegUsuarioCliente` as "the client's users" must decide what to do with `soporte`.
+
 `SHARED_APPS` run in the public schema. `TENANT_APPS` run in each tenant's isolated schema.
 
 ### Catalog system

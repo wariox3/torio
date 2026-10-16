@@ -43,10 +43,17 @@ class SegUsuarioClienteViewSet(
     def update(self, request, *args, **kwargs):
         # Los accesos de un miembro los decide el owner, no el propio miembro.
         # Es 403 y no 404: quien llega acá ya es miembro y puede ver la fila.
-        if self.get_object().cliente.owner_id != request.user.id:
+        membresia = self.get_object()
+        if membresia.cliente.owner_id != request.user.id:
             return Response(
                 {'detail': 'Solo el owner del contenedor puede modificar los accesos.'},
                 status=status.HTTP_403_FORBIDDEN,
+            )
+        # El soporte entra con todos los accesos; el owner puede sacarlo, no recortarlo.
+        if membresia.soporte:
+            return Response(
+                {'detail': 'Los accesos de un usuario de soporte no se modifican.'},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         return super().update(request, *args, **kwargs)
 

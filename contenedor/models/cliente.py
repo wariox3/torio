@@ -81,7 +81,10 @@ class CtnCliente(TenantBase):
 
     @schema_required
     @transaction.atomic
-    def add_user(self, user_obj, *, grupos=None, accesos=None, propietario=False, is_superuser=False, is_staff=False):
+    def add_user(
+        self, user_obj, *, grupos=None, accesos=None, propietario=False, soporte=False,
+        is_superuser=False, is_staff=False,
+    ):
         """
         Vincula un usuario al contenedor.
 
@@ -132,6 +135,7 @@ class CtnCliente(TenantBase):
             usuario=user_obj,
             cliente=self,
             propietario=propietario,
+            soporte=soporte,
             **{campo: bool((accesos or {}).get(campo, False)) for campo in CAMPOS_ACCESO},
         )
 
@@ -178,6 +182,11 @@ class CtnCliente(TenantBase):
         de plataforma con `createsuperuser`.
         """
         if usuario is None or not usuario.is_authenticated:
+            return False
+        # El staff en soporte tiene `is_superuser` para trabajar dentro del
+        # contenedor, pero modificarlo o eliminarlo es cosa del cliente.
+        from seguridad.models import SegUsuarioCliente
+        if SegUsuarioCliente.objects.filter(usuario=usuario, cliente=self, soporte=True).exists():
             return False
         return UserTenantPermissions.objects.filter(
             profile_id=usuario.pk,

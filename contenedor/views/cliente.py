@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from django.conf import settings
 from django.core.cache import cache
 from django.db import IntegrityError, connection, transaction
-from django.db.models import BooleanField, Case, Count, Prefetch, Q, Value, When
+from django.db.models import BooleanField, Case, Count, OuterRef, Prefetch, Q, Subquery, Value, When
 from django.utils import timezone
 from django_tenants.utils import get_public_schema_name, schema_exists
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
@@ -13,6 +13,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
+from tenant_users.tenants.models import ExistsError
 
 from contenedor import imagen as imagen_servicio
 from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion, CtnSuscripcionTipo
@@ -536,7 +537,13 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 to_attr='_dominio_primario',
             )
         ).annotate(
-            usuarios=Count('segusuariocliente', distinct=True),
+            # Los usuarios del cliente: el staff en soporte no cuenta.
+            usuarios=Count('segusuariocliente', filter=Q(segusuariocliente__soporte=False), distinct=True),
+            soporte_id=Subquery(
+                SegUsuarioCliente.objects.filter(
+                    cliente=OuterRef('pk'), usuario=request.user, soporte=True,
+                ).values('id')[:1]
+            ),
             suscripcion_vigente=Case(
                 When(suscripcion__fecha_fin__gte=timezone.localdate(), then=Value(True)),
                 default=Value(False),
@@ -570,3 +577,61 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
 
         pagina = self.paginate_queryset(clientes)
         return self.get_paginated_response(CtnClienteAdministrarSerializer(pagina, many=True).data)
+
+    @extend_schema(
+        summary='Abrir soporte en un contenedor',
+        description=(
+            'Solo staff con MFA activo. Hace al staff miembro del contenedor marcado como '
+            '`soporte`, con `is_superuser` y todos los accesos: desde ahí entra con '
+            '`X-Tenant` como cualquier miembro, aunque la suscripción esté vencida. No '
+            'puede modificar ni eliminar el contenedor. No vence: se cierra con '
+            '`DELETE /seguridad/usuario-cliente/<id>/`, que puede hacer él o el owner. '
+            'Responde la membresía con la forma de `lista-usuario`.'
+        ),
+        request=None,
+        responses={
+            201: CtnClienteListaUsuarioSerializer,
+            403: OpenApiResponse(description='No es staff, o no tiene MFA activo'),
+            404: OpenApiResponse(description='El contenedor no existe'),
+            409: OpenApiResponse(description='No está listo, o ya es miembro'),
+        },
+    )
+    @action(detail=True, methods=['post'], url_path='soporte', permission_classes=[EsStaff])
+    def soporte(self, request, pk=None):
+        cliente = CtnCliente.objects.exclude(schema_name=get_public_schema_name()).filter(pk=pk).first()
+        if cliente is None:
+            return Response(
+                {'detail': f'El cliente con id "{pk}" no existe.'}, status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Una cuenta de staff con soporte abierto tiene acceso total a datos de
+        # clientes: no se abre con solo la clave.
+        mfa = getattr(request.user, 'mfa', None)
+        if not (mfa and mfa.activo):
+            return Response(
+                {'detail': 'Debes tener MFA activo para abrir un soporte.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # `add_user` escribe en el schema del tenant, que mientras se crea no tiene tablas.
+        if cliente.estado != CtnCliente.ESTADO_LISTO:
+            return Response(
+                {'detail': 'El contenedor todavía no está listo.'}, status=status.HTTP_409_CONFLICT,
+            )
+
+        # Ya miembro —o ya en soporte—: entra con lo que tiene. Mezclar las dos
+        # cosas en una sola membresía haría que cerrar el soporte lo sacara del
+        # contenedor.
+        try:
+            membresia = cliente.add_user(
+                request.user,
+                accesos=dict.fromkeys(CAMPOS_ACCESO, True),
+                soporte=True,
+                is_superuser=True,
+            )
+        except ExistsError:
+            return Response(
+                {'detail': 'Ya eres miembro de este contenedor.'}, status=status.HTTP_409_CONFLICT,
+            )
+
+        return Response(CtnClienteListaUsuarioSerializer(membresia).data, status=status.HTTP_201_CREATED)

@@ -85,6 +85,17 @@ class SuscripcionVigente(permissions.BasePermission):
         if tenant is None or tenant.schema_name == get_public_schema_name():
             return True
 
+        if self._vigente(tenant):
+            return True
+        # El staff en soporte entra igual: buena parte del soporte es justamente
+        # por pagos. Solo se consulta cuando la suscripción no está vigente.
+        from seguridad.models import SegUsuarioCliente
+        return SegUsuarioCliente.objects.filter(
+            usuario=request.user, cliente=tenant, soporte=True,
+        ).exists()
+
+    @staticmethod
+    def _vigente(tenant):
         suscripcion_id = getattr(tenant, 'suscripcion_id', None)
         if suscripcion_id is None:
             return False

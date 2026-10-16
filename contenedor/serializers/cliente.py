@@ -71,7 +71,7 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
             'cliente_fecha_ultima_conexion', 'cliente_imagen', 'cliente_imagen_thumbnail',
             'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
             'suscripcion_suscripcion_tipo_nombre',
-            'propietario',
+            'propietario', 'soporte',
             'acceso_venta', 'acceso_compra', 'acceso_tesoreria', 'acceso_cartera',
             'acceso_inventario', 'acceso_humano', 'acceso_contabilidad',
             'acceso_turno',
@@ -115,6 +115,9 @@ class CtnClienteAdministrarSerializer(serializers.ModelSerializer):
     )
     suscripcion_vigente = serializers.BooleanField(read_only=True)
     usuarios = serializers.IntegerField(read_only=True)
+    # La membresía de soporte de quien consulta, si está dentro: su id es el del
+    # `DELETE /seguridad/usuario-cliente/<id>/` que la cierra.
+    soporte_id = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = CtnCliente
@@ -124,7 +127,7 @@ class CtnClienteAdministrarSerializer(serializers.ModelSerializer):
             'owner_id', 'owner_email', 'owner_nombre_corto',
             'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
             'suscripcion_suscripcion_tipo_nombre', 'suscripcion_vigente',
-            'usuarios',
+            'usuarios', 'soporte_id',
         ]
         read_only_fields = fields
 
