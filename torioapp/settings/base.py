@@ -367,6 +367,8 @@ CELERY_TASK_ROUTES = {
     # una) puede demorar las notificaciones; si eso se vuelve un problema, se le da
     # un worker propio solo cambiando el `-Q` (docs/creacion_contenedor.md).
     'contenedor.tasks.crear_contenedor': {'queue': 'crear_contenedor'},
+    # Un correo por empleado al notificar una programación de nómina.
+    'humano.tasks.notificar_nomina': {'queue': 'notificar_nomina'},
 }
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # Encolar se hace dentro de un request (el webhook de rededoc). Con RabbitMQ caído

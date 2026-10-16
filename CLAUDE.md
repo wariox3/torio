@@ -156,7 +156,7 @@ Tasks run outside any request, so they receive `schema_name` and enter it with
 `acks_late`, every task must be safe to run twice.
 
 Each task type gets **its own queue, named after the task** (`CELERY_TASK_ROUTES`;
-`notificar_documento` and `crear_contenedor` today). The worker only consumes the queues passed with `-Q`,
+`notificar_documento`, `crear_contenedor` and `notificar_nomina` today). The worker only consumes the queues passed with `-Q`,
 so a new routed task needs its queue added there (or its own worker) — otherwise it
 sits in RabbitMQ with no consumer.
 

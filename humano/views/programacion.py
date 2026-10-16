@@ -1,3 +1,6 @@
+import logging
+
+from django.db import connection
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -25,6 +28,7 @@ from humano.servicios import (
     eliminar_detalles,
     generar_programacion,
 )
+from humano.tasks import correo_nomina, notificar_nomina
 from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import (
     ExportarExcelMixin,
@@ -32,6 +36,8 @@ from utilidades.mixins import (
     ImportarExcelMixin,
 )
 from utilidades.paginacion import SeleccionarPaginacion
+
+logger = logging.getLogger(__name__)
 
 _LIST_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por nombre'),
@@ -49,6 +55,17 @@ class CargarContratosRequestSerializer(serializers.Serializer):
 
 class ProgramacionRequestSerializer(serializers.Serializer):
     programacion_id = serializers.IntegerField()
+
+
+class SinCorreoSerializer(serializers.Serializer):
+    documento_id = serializers.IntegerField()
+    contacto_nombre_corto = serializers.CharField(allow_null=True)
+
+
+class NotificarResponseSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+    encolados = serializers.IntegerField()
+    sin_correo = SinCorreoSerializer(many=True)
 
 
 class EliminarDetallesRequestSerializer(serializers.Serializer):
@@ -272,3 +289,69 @@ class HumProgramacionViewSet(
         response = HttpResponse(contenido, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="nominas_programacion{programacion.id}.pdf"'
         return response
+
+    @extend_schema(request=ProgramacionRequestSerializer, responses={202: NotificarResponseSerializer})
+    @action(detail=False, methods=['post'], url_path='notificar')
+    def notificar(self, request):
+        """
+        Le envía a cada empleado de una programación aprobada el desprendible de su
+        nómina por correo.
+
+        El envío corre en Celery, un correo por empleado: responde 202 en cuanto
+        quedan encolados, con la lista de los que no tienen un correo válido y por
+        eso no lo van a recibir. Se puede repetir: cada llamada envía de nuevo a todos.
+        """
+        serializer = ProgramacionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            programacion = HumProgramacion.objects.get(pk=serializer.validated_data['programacion_id'])
+        except HumProgramacion.DoesNotExist:
+            raise NotFound('Programación no encontrada.')
+        if not programacion.estado_aprobado:
+            return Response(
+                {'detail': 'La programación no está aprobada.'}, status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        documentos = (
+            GenDocumento.objects.filter(programacion_detalle__programacion=programacion)
+            .select_related('contacto')
+            .order_by('contacto__nombre_corto', 'id')
+        )
+        con_correo = []
+        sin_correo = []
+        for documento in documentos:
+            if correo_nomina(documento):
+                con_correo.append(documento.id)
+            else:
+                sin_correo.append({
+                    'documento_id': documento.id,
+                    'contacto_nombre_corto': documento.contacto.nombre_corto if documento.contacto_id else None,
+                })
+
+        schema_name = connection.schema_name
+        encolados = 0
+        try:
+            for documento_id in con_correo:
+                notificar_nomina.delay(schema_name, documento_id)
+                encolados += 1
+        except Exception:
+            # RabbitMQ caído. Los que alcanzaron a encolarse salen igual; como
+            # notificar se puede repetir, el usuario vuelve a intentar con todos.
+            logger.exception(
+                'No se pudo encolar la notificación de la programación %s (schema %s)',
+                programacion.id, schema_name,
+            )
+            return Response(
+                {'detail': 'No se pudo programar el envío de los correos. Intente de nuevo.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(
+            {
+                'detail': f'Se programó el envío de {encolados} correos.',
+                'encolados': encolados,
+                'sin_correo': sin_correo,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )

@@ -618,7 +618,7 @@ Environment=PYTHONDONTWRITEBYTECODE=1
 # al sumar una tarea con cola propia, se agrega aquí o se le da su propio worker.
 ExecStart=/opt/torio/venv/bin/celery -A torioapp worker \
     --loglevel=info --concurrency=2 -O fair \
-    -Q notificar_documento,crear_contenedor,celery \
+    -Q notificar_documento,crear_contenedor,notificar_nomina,celery \
     --without-gossip --without-mingle --without-heartbeat
 
 Restart=always
