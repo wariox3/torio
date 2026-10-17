@@ -42,7 +42,7 @@ torioapp/settings/
 
 - Python 3.12+
 - PostgreSQL 14+
-- `virtualenv` (recomendado en `~/.venvs/torio`)
+- `virtualenv` (recomendado en `.venv/` dentro del proyecto, ya ignorado por git)
 
 ## Setup local
 
@@ -51,8 +51,8 @@ torioapp/settings/
 git clone <repo> torio && cd torio
 
 # 2. Crear y activar entorno virtual
-python3.12 -m venv ~/.venvs/torio
-source ~/.venvs/torio/bin/activate
+python3.12 -m venv .venv
+source .venv/bin/activate
 
 # 3. Instalar dependencias
 pip install -r requirements.txt

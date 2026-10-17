@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Activate the virtual environment before running any command:
 
 ```bash
-source /home/desarrollo/.venvs/torio/bin/activate
+source .venv/bin/activate
 ```
 
 ```bash
