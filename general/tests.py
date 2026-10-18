@@ -8266,10 +8266,25 @@ class EmitirTests(TenantTestCase):
         self.assertIsNone(payload['documento_referencia'])
         self.assertEqual(payload['concepto_correccion'], '3')
 
-    def test_la_nota_credito_de_una_factura_sin_enviar_no_se_emite(self):
+    def test_la_anulacion_de_una_factura_sin_enviar_no_se_emite(self):
         nota = self._nota_credito(factura_enviada=False)
-        self._con_error(nota, 'El documento 990000050 que corrige la nota')
+        self._con_error(nota, 'El documento 990000050 que anula la nota')
         self._con_error(nota, 'no ha sido enviado electrónicamente')
+
+    def test_la_nota_credito_de_una_factura_sin_enviar_sale_sin_referencia(self):
+        """La factura se emitió por fuera de torio (itrio): no hay id de rededoc que mandar."""
+        nota = self._nota_credito(factura_enviada=False)
+        GenDocumento.objects.filter(pk=nota.pk).update(
+            documento_concepto_correccion=GenDocumentoConceptoCorreccion.objects.create(
+                id=3, codigo='3', nombre='Rebaja', documento_clase_id=101,
+            ),
+        )
+        cliente = self._cliente()
+
+        respuesta = self._llamar({'ids': [nota.id]}, cliente)
+
+        self.assertEqual(respuesta.data, {'emitidos': [nota.id], 'con_error': []})
+        self.assertIsNone(cliente.crear_documento.call_args.args[0]['documento_referencia'])
 
     def test_la_nota_credito_sin_concepto_no_se_emite(self):
         self._con_error(self._nota_credito(concepto=False), 'no tiene concepto de corrección')
@@ -8337,10 +8352,15 @@ class EmitirTests(TenantTestCase):
     def test_la_nota_debito_sin_concepto_no_se_emite(self):
         self._con_error(self._nota_debito(concepto=False), 'no tiene concepto de corrección')
 
-    def test_la_nota_debito_de_una_factura_sin_enviar_no_se_emite(self):
+    def test_la_nota_debito_de_una_factura_sin_enviar_sale_sin_referencia(self):
         factura = self._documento(detalles=False, numero=990000070)
-        self._con_error(self._nota_debito(referencia=False, documento_referencia=factura),
-                        'no ha sido enviado electrónicamente')
+        nota = self._nota_debito(referencia=False, documento_referencia=factura)
+        cliente = self._cliente()
+
+        respuesta = self._llamar({'ids': [nota.id]}, cliente)
+
+        self.assertEqual(respuesta.data, {'emitidos': [nota.id], 'con_error': []})
+        self.assertIsNone(cliente.crear_documento.call_args.args[0]['documento_referencia'])
 
     def test_la_factura_sigue_sin_llevar_retenciones(self):
         documento = self._documento()

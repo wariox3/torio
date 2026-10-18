@@ -900,7 +900,9 @@ def _armar_nota(documento, parametro):
     La factura corregida (`documento_referencia`, con el id que tiene en
     rededoc) es opcional: sin ella la nota sale como «sin referencia a
     facturas». La exige solo la anulación (`CONCEPTO_ANULACION` en la nota
-    crédito), igual que rededoc. Si viene, la factura ya tiene que estar enviada.
+    crédito), igual que rededoc. Si la factura no tiene `electronico_id` (se
+    emitió por fuera de torio, p. ej. desde itrio) la nota también sale sin
+    referencia; solo la anulación exige que esté enviada.
 
     No se numera contra una resolución —va con su prefijo de `PREFIJOS_NOTA` y
     la resolución vacía— ni lleva vencimiento, que rededoc rechaza en una nota.
@@ -927,14 +929,16 @@ def _armar_nota(documento, parametro):
         clase_id == DOCUMENTO_CLASE_NOTA_CREDITO_VENTA
         and concepto is not None and concepto.codigo == CONCEPTO_ANULACION
     )
-    if referencia is None:
-        if anulacion:
-            errores.append(
-                f'El documento {documento.id} es una anulación y no tiene la factura que anula.'
-            )
-    elif not referencia.electronico_id:
+    # Una factura sin `electronico_id` (p. ej. emitida desde itrio) no se puede
+    # referenciar: la nota sale sin referencia, salvo la anulación, que la exige.
+    referencia_electronica = referencia.electronico_id if referencia is not None else None
+    if anulacion and referencia is None:
         errores.append(
-            f'El documento {referencia.numero or referencia.id} que corrige la nota '
+            f'El documento {documento.id} es una anulación y no tiene la factura que anula.'
+        )
+    elif anulacion and not referencia_electronica:
+        errores.append(
+            f'El documento {referencia.numero or referencia.id} que anula la nota '
             f'{documento.id} no ha sido enviado electrónicamente.'
         )
 
@@ -957,7 +961,7 @@ def _armar_nota(documento, parametro):
         'forma_pago': FORMA_PAGO_CREDITO if credito else FORMA_PAGO_CONTADO,
         'medio_pago': getattr(documento.metodo_pago, 'codigo', None) or MEDIO_PAGO_NO_DEFINIDO,
         'moneda': MONEDA,
-        'documento_referencia': str(referencia.electronico_id) if referencia is not None else None,
+        'documento_referencia': str(referencia_electronica) if referencia_electronica else None,
         'concepto_correccion': concepto.codigo,
         'adquiriente': adquiriente,
         'detalles': detalles,
