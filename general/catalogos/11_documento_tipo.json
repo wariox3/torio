@@ -38,7 +38,8 @@
       "cobrar": true,
       "operacion": 1,
       "contabilidad": true,
-      "electronico": true
+      "electronico": true,
+      "codigo": 3
     },
     {
       "id": 4,

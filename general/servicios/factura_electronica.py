@@ -34,6 +34,7 @@ from general.servicios.documento import (
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
     DOCUMENTO_CLASE_FACTURA_VENTA,
     DOCUMENTO_CLASE_NOTA_CREDITO_VENTA,
+    DOCUMENTO_CLASE_NOTA_DEBITO_VENTA,
 )
 from general.servicios.rededoc import Rededoc
 from utilidades.excepciones import con_detail
@@ -625,8 +626,17 @@ TRIBUTO_POR_DEFECTO = '01'
 # le informaría a la DIAN como otra, así que la que no esté acá corta la emisión.
 RETENCIONES = {'RTF': '06', 'RTI': '05'}
 # Las notas no se numeran contra una resolución de la DIAN, así que no tienen de
-# dónde heredar el prefijo: llevan este.
-PREFIJO_NOTA = 'NC'
+# dónde heredar el prefijo: llevan uno fijo por clase.
+PREFIJOS_NOTA = {
+    DOCUMENTO_CLASE_NOTA_CREDITO_VENTA: 'NC',
+    DOCUMENTO_CLASE_NOTA_DEBITO_VENTA: 'ND',
+}
+# El concepto «Anulación de factura electrónica» de la nota crédito. Es el único
+# que exige la factura referenciada: rededoc deja ir las demás notas crédito y
+# débito «sin referencia a facturas» (CustomizationID 22 y 32), pero anular sin
+# decir qué factura no tiene sentido. El «2» de la nota débito es otra cosa
+# (gastos por cobrar), por eso se mira también la clase.
+CONCEPTO_ANULACION = '2'
 
 DOS_DECIMALES = Decimal('0.01')
 
@@ -882,16 +892,21 @@ def _armar_con_resolucion(documento, parametro, contacto, con_retenciones):
     }
 
 
-def _armar_nota_credito(documento, parametro):
+def _armar_nota(documento, parametro):
     """
-    La nota crédito corrige una factura ya emitida: viaja con el id que esa
-    factura tiene en rededoc (`documento_referencia`) y con el concepto que dice
-    por qué la corrige.
+    La nota crédito o débito de venta: corrige una factura y viaja con el
+    concepto que dice por qué.
 
-    No se numera contra una resolución —va con `PREFIJO_NOTA` y la resolución
-    vacía— ni lleva vencimiento, que rededoc rechaza en una nota. Las
-    retenciones tampoco viajan, igual que en la factura.
+    La factura corregida (`documento_referencia`, con el id que tiene en
+    rededoc) es opcional: sin ella la nota sale como «sin referencia a
+    facturas». La exige solo la anulación (`CONCEPTO_ANULACION` en la nota
+    crédito), igual que rededoc. Si viene, la factura ya tiene que estar enviada.
+
+    No se numera contra una resolución —va con su prefijo de `PREFIJOS_NOTA` y
+    la resolución vacía— ni lleva vencimiento, que rededoc rechaza en una nota.
+    Las retenciones tampoco viajan, igual que en la factura.
     """
+    clase_id = documento.documento_tipo.documento_clase_id
     errores = []
     if documento.documento_tipo.codigo is None:
         errores.append(
@@ -903,18 +918,25 @@ def _armar_nota_credito(documento, parametro):
     if documento.fecha is None:
         errores.append(f'El documento {documento.id} no tiene fecha.')
 
+    concepto = documento.documento_concepto_correccion
+    if concepto is None:
+        errores.append(f'El documento {documento.id} no tiene concepto de corrección.')
+
     referencia = documento.documento_referencia
+    anulacion = (
+        clase_id == DOCUMENTO_CLASE_NOTA_CREDITO_VENTA
+        and concepto is not None and concepto.codigo == CONCEPTO_ANULACION
+    )
     if referencia is None:
-        errores.append(f'El documento {documento.id} no tiene el documento que corrige.')
+        if anulacion:
+            errores.append(
+                f'El documento {documento.id} es una anulación y no tiene la factura que anula.'
+            )
     elif not referencia.electronico_id:
         errores.append(
             f'El documento {referencia.numero or referencia.id} que corrige la nota '
             f'{documento.id} no ha sido enviado electrónicamente.'
         )
-
-    concepto = documento.documento_concepto_correccion
-    if concepto is None:
-        errores.append(f'El documento {documento.id} no tiene concepto de corrección.')
 
     adquiriente = _o_error(errores, _adquiriente, documento, 'cliente')
     detalles = _o_error(errores, _detalles, documento, False)
@@ -927,7 +949,7 @@ def _armar_nota_credito(documento, parametro):
         'ambiente': settings.REDEDOC_AMBIENTE,
         'referencia_externa': str(documento.id),
         'documento_tipo': documento.documento_tipo.codigo,
-        'prefijo': PREFIJO_NOTA,
+        'prefijo': PREFIJOS_NOTA[clase_id],
         'numero_resolucion': '',
         'consecutivo': documento.numero,
         'fecha_emision': documento.fecha.isoformat(),
@@ -935,7 +957,7 @@ def _armar_nota_credito(documento, parametro):
         'forma_pago': FORMA_PAGO_CREDITO if credito else FORMA_PAGO_CONTADO,
         'medio_pago': getattr(documento.metodo_pago, 'codigo', None) or MEDIO_PAGO_NO_DEFINIDO,
         'moneda': MONEDA,
-        'documento_referencia': str(referencia.electronico_id),
+        'documento_referencia': str(referencia.electronico_id) if referencia is not None else None,
         'concepto_correccion': concepto.codigo,
         'adquiriente': adquiriente,
         'detalles': detalles,
@@ -1049,7 +1071,8 @@ def _decimal(valor):
 
 ARMADORES = {
     DOCUMENTO_CLASE_FACTURA_VENTA: _armar_factura_venta,
-    DOCUMENTO_CLASE_NOTA_CREDITO_VENTA: _armar_nota_credito,
+    DOCUMENTO_CLASE_NOTA_CREDITO_VENTA: _armar_nota,
+    DOCUMENTO_CLASE_NOTA_DEBITO_VENTA: _armar_nota,
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE: _armar_documento_soporte,
 }
 

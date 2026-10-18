@@ -16,6 +16,10 @@ class CtnSolicitudSerializer(serializers.ModelSerializer):
             'id', 'estado', 'observacion', 'usuario', 'fecha_creacion', 'fecha_atencion',
         ]
         extra_kwargs = {'comentario': {'required': False, 'allow_null': True}}
+        # Sin el `UniqueTogetherValidator` que DRF arma solo a partir de
+        # `ctn_solicitud_una_pendiente`: respondería 400 a una segunda pendiente.
+        # Ese caso es 409, y lo resuelve la vista (consulta previa + IntegrityError).
+        validators = []
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

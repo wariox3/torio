@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import re
 import uuid as uuid_lib
 import zipfile
 from datetime import date, datetime, time, timedelta
@@ -28,8 +29,10 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from contabilidad.models import ConCentroCosto, ConComprobante, ConCuenta
 from general import tasks as tareas
 from general.formatos import (
-    FormatoDocumentoCuentaCobro, FormatoDocumentoFactura, FormatoDocumentoSoporte,
+    FormatoDocumentoCuentaCobro, FormatoDocumentoFactura, FormatoDocumentoPos,
+    FormatoDocumentoPosElectronico, FormatoDocumentoSoporte,
 )
+from general.formatos import documento_pos
 from general.formatos.documento_factura import URL_CONSULTA_DIAN
 from general.models import (
     GenArchivo,
@@ -5808,6 +5811,226 @@ class VentaResumenTests(TenantTestCase):
                 self.assertEqual(respuesta.status_code, 400)
                 self.assertEqual(list(respuesta.data), ['detail'])
 
+    # --- compra-resumen ---
+
+    def _tipos_nota_compra(self):
+        nota_credito = GenDocumentoTipo.objects.create(
+            id=6, nombre='NOTA CRÉDITO COMPRA', compra=True, operacion=-1,
+            documento_clase=GenDocumentoClase.objects.create(id=301, nombre='Nota crédito compra'),
+        )
+        ajuste = GenDocumentoTipo.objects.create(
+            id=7, nombre='NOTA AJUSTE', compra=True, operacion=-1,
+            documento_clase=GenDocumentoClase.objects.create(id=304, nombre='Nota ajuste'),
+        )
+        return nota_credito, ajuste
+
+    def test_compra_mes_por_dia_y_las_notas_restan(self):
+        nota_credito, ajuste = self._tipos_nota_compra()
+        self._documento(date(2026, 10, 3), '500', tipo=self.tipo_compra)
+        self._documento(date(2026, 10, 3), '100', tipo=nota_credito)
+        self._documento(date(2026, 10, 20), '300', tipo=self.tipo_compra)
+        self._documento(date(2026, 10, 20), '50', tipo=ajuste)
+
+        resumen = resumen_servicio.resumen('compra', 'mes', hoy=self.HOY)
+
+        self.assertEqual(len(resumen['serie']), 31)
+        por_fecha = {item['fecha']: item for item in resumen['serie']}
+        self.assertEqual(por_fecha['2026-10-03']['total'], Decimal('400'))
+        self.assertEqual(por_fecha['2026-10-03']['documentos'], 2)
+        self.assertEqual(por_fecha['2026-10-20']['total'], Decimal('250'))
+        self.assertEqual(resumen['totales']['total'], Decimal('650'))
+
+    def test_compra_anio_por_mes(self):
+        self._documento(date(2026, 2, 10), '100', tipo=self.tipo_compra)
+        self._documento(date(2026, 10, 3), '200', tipo=self.tipo_compra)
+
+        resumen = resumen_servicio.resumen('compra', 'anio', hoy=self.HOY)
+
+        self.assertEqual([item['fecha'] for item in resumen['serie']],
+                         [f'2026-{mes:02d}' for mes in range(1, 13)])
+        totales = [item['total'] for item in resumen['serie']]
+        self.assertEqual(totales[1], Decimal('100'))
+        self.assertEqual(totales[9], Decimal('200'))
+        self.assertEqual(sum(totales), Decimal('300'))
+
+    def test_compra_solo_cuenta_compras_aprobadas_no_anuladas(self):
+        self._documento(date(2026, 10, 5), '100', tipo=self.tipo_compra)
+        self._documento(date(2026, 10, 5), '100', tipo=self.tipo_compra, estado_aprobado=False)
+        self._documento(date(2026, 10, 5), '100', tipo=self.tipo_compra, estado_anulado=True)
+        self._documento(date(2026, 10, 5), '100')
+
+        resumen = resumen_servicio.resumen('compra', 'mes', hoy=self.HOY)
+
+        self.assertEqual(resumen['totales']['total'], Decimal('100'))
+        self.assertEqual(resumen['totales']['documentos'], 1)
+
+    def test_compra_vista(self):
+        vista = _DocumentoViewSinPermisos.as_view({'get': 'compra_resumen'})
+
+        respuesta = vista(APIRequestFactory().get('/general/documento/compra-resumen/', {'periodo': 'mes'}))
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data['periodo'], 'mes')
+
+        for query in ({'periodo': 'semana'}, {}):
+            with self.subTest(query=query):
+                respuesta = vista(APIRequestFactory().get('/general/documento/compra-resumen/', query))
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertEqual(list(respuesta.data), ['detail'])
+
+    # --- resultado-resumen ---
+
+    def test_resultado_usa_el_subtotal_neto_alineado_por_fecha(self):
+        nota_credito, _ = self._tipos_nota_compra()
+        self._documento(date(2026, 10, 1), '1000')  # subtotal 810
+        self._documento(date(2026, 10, 1), '100', tipo=self.tipo_nota_credito)  # -81
+        self._documento(date(2026, 10, 1), '500', tipo=self.tipo_compra)  # 405
+        self._documento(date(2026, 10, 9), '200', tipo=self.tipo_compra)  # 162
+        self._documento(date(2026, 10, 9), '100', tipo=nota_credito)  # -81
+
+        resultado = resumen_servicio.resultado('mes', hoy=self.HOY)
+
+        self.assertEqual(len(resultado['serie']), 31)
+        por_fecha = {item['fecha']: item for item in resultado['serie']}
+        self.assertEqual(por_fecha['2026-10-01'],
+                         {'fecha': '2026-10-01', 'ingreso': Decimal('729'), 'egreso': Decimal('405')})
+        self.assertEqual(por_fecha['2026-10-09'],
+                         {'fecha': '2026-10-09', 'ingreso': Decimal('0'), 'egreso': Decimal('81')})
+        self.assertEqual(resultado['totales'],
+                         {'ingreso': Decimal('729'), 'egreso': Decimal('486'),
+                          'diferencia': Decimal('243')})
+
+    def test_resultado_anio(self):
+        self._documento(date(2026, 3, 1), '100')
+        self._documento(date(2026, 3, 1), '1000', tipo=self.tipo_compra)
+
+        resultado = resumen_servicio.resultado('anio', hoy=self.HOY)
+
+        self.assertEqual(len(resultado['serie']), 12)
+        self.assertEqual(resultado['serie'][2]['fecha'], '2026-03')
+        self.assertEqual(resultado['totales']['diferencia'], Decimal('-729'))
+
+    def test_resultado_vista(self):
+        vista = _DocumentoViewSinPermisos.as_view({'get': 'resultado_resumen'})
+
+        respuesta = vista(APIRequestFactory().get('/general/documento/resultado-resumen/', {'periodo': 'anio'}))
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(len(respuesta.data['serie']), 12)
+        self.assertEqual(set(respuesta.data['totales']), {'ingreso', 'egreso', 'diferencia'})
+
+        for query in ({'periodo': 'semana'}, {}):
+            with self.subTest(query=query):
+                respuesta = vista(APIRequestFactory().get('/general/documento/resultado-resumen/', query))
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertEqual(list(respuesta.data), ['detail'])
+
+
+class DocumentoListaTests(TenantTestCase):
+    """
+    `POST /general/documento/lista/`: banderas electrónicas de solo lectura y los
+    filtros por nombre del tipo y por documento referenciado.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test lista documento'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'lista@test.com'
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.tipo_factura = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA VENTA',
+            documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
+        )
+        self.tipo_nota = GenDocumentoTipo.objects.create(
+            id=2, nombre='NOTA CRÉDITO',
+            documento_clase=GenDocumentoClase.objects.create(id=101, nombre='Nota crédito'),
+        )
+
+    def _documento(self, **overrides):
+        datos = {'documento_tipo': self.tipo_factura, 'fecha': date(2026, 10, 1)}
+        datos.update(overrides)
+        return GenDocumento.objects.create(**datos)
+
+    def _lista(self, filtros):
+        vista = _DocumentoViewSinPermisos.as_view({'post': 'lista'})
+        peticion = self.factory.post('/general/documento/lista/', {'filtros': filtros}, format='json')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        respuesta = vista(peticion)
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        return respuesta.data['results']
+
+    def _ids(self, filtros):
+        return sorted(d['id'] for d in self._lista(filtros))
+
+    def test_la_lista_expone_enviado_y_descartado(self):
+        documento = self._documento(estado_electronico_enviado=True, estado_electronico_descartado=True)
+
+        fila = self._lista([{'propiedad': 'id', 'operador': '=', 'valor': documento.id}])[0]
+
+        self.assertIs(fila['estado_electronico_enviado'], True)
+        self.assertIs(fila['estado_electronico_descartado'], True)
+
+    def test_un_patch_no_cambia_enviado_ni_descartado(self):
+        documento = self._documento()
+        vista = _DocumentoViewSinPermisos.as_view({'patch': 'partial_update'})
+        peticion = self.factory.patch(
+            f'/general/documento/{documento.id}/',
+            {'estado_electronico_enviado': True, 'estado_electronico_descartado': True},
+            format='json',
+        )
+        force_authenticate(peticion, user=SegUsuario(id=1))
+
+        respuesta = vista(peticion, pk=documento.id)
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        documento.refresh_from_db()
+        self.assertFalse(documento.estado_electronico_enviado)
+        self.assertFalse(documento.estado_electronico_descartado)
+
+    def test_filtra_los_no_enviados(self):
+        pendiente = self._documento()
+        self._documento(estado_electronico_enviado=True)
+
+        ids = self._ids([{'propiedad': 'estado_electronico_enviado', 'operador': '=', 'valor': False}])
+
+        self.assertEqual(ids, [pendiente.id])
+
+    def test_filtra_por_nombre_del_tipo_sin_distinguir_mayusculas(self):
+        factura = self._documento()
+        otra = self._documento()
+        self._documento(documento_tipo=self.tipo_nota)
+
+        ids = self._ids([{'propiedad': 'documento_tipo__nombre', 'operador': 'contiene', 'valor': 'factura'}])
+
+        # Sin filas repetidas: el filtro sigue una FK, no una relación inversa.
+        self.assertEqual(ids, sorted([factura.id, otra.id]))
+
+    def test_el_filtro_por_nombre_del_tipo_sirve_al_imprimir(self):
+        factura = self._documento()
+        self._documento(documento_tipo=self.tipo_nota)
+        vista = _DocumentoViewSinPermisos()
+        vista.action = 'imprimir'
+        peticion = mock.Mock(data={'filtros': [
+            {'propiedad': 'documento_tipo__nombre', 'operador': 'contiene', 'valor': 'FACTURA'},
+        ]})
+
+        qs = vista._queryset_imprimir(peticion)
+
+        self.assertEqual(list(qs.values_list('id', flat=True)), [factura.id])
+
+    def test_filtra_por_documento_referencia(self):
+        factura = self._documento()
+        otra = self._documento()
+        nota = self._documento(documento_tipo=self.tipo_nota, documento_referencia=factura)
+        self._documento(documento_tipo=self.tipo_nota, documento_referencia=otra)
+
+        ids = self._ids([{'propiedad': 'documento_referencia_id', 'operador': '=', 'valor': factura.id}])
+        self.assertEqual(ids, [nota.id])
+
+        ids = self._ids([{'propiedad': 'documento_referencia_id', 'operador': 'is_null', 'valor': True}])
+        self.assertEqual(ids, sorted([factura.id, otra.id]))
+
 
 class SeleccionarReferenciaTests(TenantTestCase):
     """
@@ -7706,7 +7929,7 @@ class EmitirTests(TenantTestCase):
 
     def test_un_tipo_sin_armador_no_se_emite(self):
         otro = GenDocumentoTipo.objects.create(
-            id=3, nombre='NOTA DÉBITO', documento_clase=GenDocumentoClase.objects.create(id=102, nombre='ND'),
+            id=5, nombre='COMPRA', documento_clase=GenDocumentoClase.objects.create(id=300, nombre='Compra'),
         )
         self._con_error(self._documento(documento_tipo=otro), 'todavía no se emite')
 
@@ -8021,8 +8244,27 @@ class EmitirTests(TenantTestCase):
         self.assertIsNone(payload['fecha_vencimiento'])
         self.assertEqual(payload['forma_pago'], '2')
 
-    def test_la_nota_credito_sin_documento_que_corregir_no_se_emite(self):
-        self._con_error(self._nota_credito(documento_referencia=None), 'no tiene el documento que corrige')
+    def test_la_anulacion_sin_factura_no_se_emite(self):
+        self._con_error(
+            self._nota_credito(documento_referencia=None), 'es una anulación y no tiene la factura que anula',
+        )
+
+    def test_la_nota_credito_que_no_anula_sale_sin_factura(self):
+        """Rededoc la emite «sin referencia a facturas» (CustomizationID 22)."""
+        nota = self._nota_credito(documento_referencia=None)
+        GenDocumento.objects.filter(pk=nota.pk).update(
+            documento_concepto_correccion=GenDocumentoConceptoCorreccion.objects.create(
+                id=3, codigo='3', nombre='Rebaja', documento_clase_id=101,
+            ),
+        )
+        cliente = self._cliente()
+
+        respuesta = self._llamar({'ids': [nota.id]}, cliente)
+
+        self.assertEqual(respuesta.data, {'emitidos': [nota.id], 'con_error': []})
+        payload = cliente.crear_documento.call_args.args[0]
+        self.assertIsNone(payload['documento_referencia'])
+        self.assertEqual(payload['concepto_correccion'], '3')
 
     def test_la_nota_credito_de_una_factura_sin_enviar_no_se_emite(self):
         nota = self._nota_credito(factura_enviada=False)
@@ -8040,10 +8282,65 @@ class EmitirTests(TenantTestCase):
         self._llamar({'ids': [nota.id]})
 
         mensajes = ' | '.join(mensaje for _, mensaje in self._errores(nota))
-        for texto in ('no tiene número', 'no tiene el documento que corrige',
-                      'no tiene concepto de corrección', 'no tiene detalles'):
+        for texto in ('no tiene número', 'no tiene concepto de corrección', 'no tiene detalles'):
             self.assertIn(texto, mensajes)
-        self.assertEqual(len(self._errores(nota)), 4)
+        # Sin concepto no se sabe si es una anulación: la falta de factura no se reporta.
+        self.assertEqual(len(self._errores(nota)), 3)
+
+    # ---- nota débito ----
+
+    def _nota_debito(self, referencia=True, concepto=True, **overrides):
+        clase = GenDocumentoClase.objects.create(id=102, nombre='Nota débito venta')
+        tipo = GenDocumentoTipo.objects.create(
+            id=3, nombre='NOTA DÉBITO DE VENTA', venta=True, codigo=3, documento_clase=clase,
+        )
+        datos = {'documento_tipo': tipo, 'resolucion': None, 'numero': 8, 'documento_referencia': None}
+        if referencia:
+            datos['documento_referencia'] = self._documento(
+                detalles=False, numero=990000060, estado_electronico_enviado=True,
+                electronico_id=uuid_lib.UUID('66666666-2222-3333-4444-555555555555'),
+            )
+        if concepto:
+            # El «2» de la nota débito es «Gastos por cobrar», no una anulación.
+            datos['documento_concepto_correccion'] = GenDocumentoConceptoCorreccion.objects.create(
+                id=7, codigo='2', nombre='Gastos por cobrar', documento_clase=clase,
+            )
+        datos.update(overrides)
+        return self._documento(**datos)
+
+    def test_payload_de_la_nota_debito(self):
+        nota = self._nota_debito()
+        cliente = self._cliente()
+
+        respuesta = self._llamar({'ids': [nota.id]}, cliente)
+
+        self.assertEqual(respuesta.data, {'emitidos': [nota.id], 'con_error': []})
+        payload = cliente.crear_documento.call_args.args[0]
+        self.assertEqual(payload['documento_tipo'], 3)
+        self.assertEqual(payload['prefijo'], 'ND')
+        self.assertEqual(payload['numero_resolucion'], '')
+        self.assertEqual(payload['consecutivo'], 8)
+        self.assertIsNone(payload['fecha_vencimiento'])
+        self.assertEqual(payload['documento_referencia'], '66666666-2222-3333-4444-555555555555')
+        self.assertEqual(payload['concepto_correccion'], '2')
+        self.assertEqual([i['tributo'] for i in payload['detalles'][0]['impuestos']], ['01'])
+
+    def test_la_nota_debito_sale_sin_factura_aunque_su_concepto_sea_2(self):
+        nota = self._nota_debito(referencia=False)
+        cliente = self._cliente()
+
+        respuesta = self._llamar({'ids': [nota.id]}, cliente)
+
+        self.assertEqual(respuesta.data, {'emitidos': [nota.id], 'con_error': []})
+        self.assertIsNone(cliente.crear_documento.call_args.args[0]['documento_referencia'])
+
+    def test_la_nota_debito_sin_concepto_no_se_emite(self):
+        self._con_error(self._nota_debito(concepto=False), 'no tiene concepto de corrección')
+
+    def test_la_nota_debito_de_una_factura_sin_enviar_no_se_emite(self):
+        factura = self._documento(detalles=False, numero=990000070)
+        self._con_error(self._nota_debito(referencia=False, documento_referencia=factura),
+                        'no ha sido enviado electrónicamente')
 
     def test_la_factura_sigue_sin_llevar_retenciones(self):
         documento = self._documento()
@@ -8624,6 +8921,236 @@ def _contacto_facturacion(correo_facturacion='facturas@x.com'):
         direccion='CR 51 9 30', telefono='3044769718', correo='general@x.com',
         correo_facturacion_electronica=correo_facturacion,
     )
+
+
+class FormatoPosTests(TenantTestCase):
+    """
+    Tiquete POS (tipo 27) y POS electrónico (tipo 24): rollo de 80 mm con el alto
+    del tiquete, montos sin decimales y, en el electrónico, lo de la DIAN al final.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        clase = GenDocumentoClase.objects.create(id=100, nombre='Factura venta')
+        self.tipo_pos = GenDocumentoTipo.objects.create(
+            id=27, nombre='FACTURA POS', venta=True, documento_clase=clase,
+        )
+        self.tipo_pos_electronico = GenDocumentoTipo.objects.create(
+            id=24, nombre='FACTURA POS ELECTRÓNICA', venta=True, documento_clase=clase,
+        )
+        self.tipo_factura = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA', venta=True, documento_clase=clase,
+        )
+        pais = GenPais.objects.create(id=250, nombre='Colombia', codigo='CO')
+        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        self.contacto = GenContacto.objects.create(
+            numero_identificacion='1036000000', nombre_corto='JUAN PÉREZ',
+            identificacion=GenIdentificacion.objects.create(id=3, nombre='CC', abreviatura='CC'),
+            tipo_persona=GenTipoPersona.objects.create(id=2, nombre='Natural'),
+            ciudad=ciudad, direccion='CL 10 20 30', telefono='3001234567', correo='j@x.com',
+        )
+        self.resolucion = GenResolucion.objects.create(
+            prefijo='FEPS', numero='18764000000001', consecutivo_desde=1, consecutivo_hasta=5000,
+            fecha_desde=date(2025, 1, 1), fecha_hasta=date(2027, 1, 1),
+        )
+        self.item = GenItem.objects.create(nombre='CAFÉ', codigo='C01')
+        self.iva = GenImpuesto.objects.create(
+            nombre='IVA 19%', nombre_extendido='IVA 19% ventas', porcentaje=19, operacion=1,
+        )
+
+    def _pos(self, tipo=None, impuesto=True, **overrides):
+        datos = {
+            'documento_tipo': tipo or self.tipo_pos, 'fecha': date(2026, 10, 16), 'numero': 1284,
+            'contacto': self.contacto, 'resolucion': self.resolucion,
+            'subtotal': Decimal('10000'), 'impuesto': Decimal('1900'), 'total': Decimal('11900'),
+        }
+        datos.update(overrides)
+        documento = GenDocumento.objects.create(**datos)
+        detalle = GenDocumentoDetalle.objects.create(
+            documento=documento, item=self.item, cantidad=Decimal('1.000000'),
+            precio=Decimal('10000'), subtotal=Decimal('10000'), total=Decimal('11900'),
+        )
+        if impuesto:
+            GenDocumentoImpuesto.objects.create(
+                documento_detalle=detalle, impuesto=self.iva, base=Decimal('10000'), total=Decimal('1900'),
+            )
+        return documento
+
+    @staticmethod
+    def _textos(formato):
+        textos = []
+
+        def recorrer(elemento):
+            if isinstance(elemento, (list, tuple)):
+                for item in elemento:
+                    recorrer(item)
+            elif hasattr(elemento, 'getPlainText'):
+                textos.append(elemento.getPlainText())
+            elif hasattr(elemento, '_cellvalues'):
+                recorrer(elemento._cellvalues)
+
+        recorrer(formato.construir())
+        return textos
+
+    def _texto(self, documento, clase=FormatoDocumentoPos):
+        return ' | '.join(self._textos(clase(documento)))
+
+    @staticmethod
+    def _paginas(contenido):
+        """El tamaño (ancho, alto) de cada página, leído del `MediaBox` del PDF."""
+        return [
+            (float(ancho), float(alto))
+            for ancho, alto in re.findall(rb'/MediaBox \[ 0 0 ([\d.]+) ([\d.]+) \]', contenido)
+        ]
+
+    def test_cada_tipo_usa_su_formato(self):
+        self.assertIs(documento_imprimir._clase_formato(self._pos()), FormatoDocumentoPos)
+        self.assertIs(
+            documento_imprimir._clase_formato(self._pos(tipo=self.tipo_pos_electronico)),
+            FormatoDocumentoPosElectronico,
+        )
+
+    def test_una_sola_pagina_de_80_mm_con_el_alto_medido(self):
+        contenido, _ = documento_imprimir.imprimir(GenDocumento.objects.filter(pk=self._pos().pk))
+
+        paginas = self._paginas(contenido)
+        self.assertEqual(len(paginas), 1)
+        ancho, alto = paginas[0]
+        self.assertAlmostEqual(ancho, 226.77, places=1)
+        # Ni la hoja carta ni un rollo infinito: lo que mide el tiquete.
+        self.assertLess(alto, 792)
+        self.assertGreater(alto, 200)
+
+    def test_un_tiquete_largo_sigue_en_una_hoja(self):
+        documento = self._pos()
+        for _ in range(60):
+            GenDocumentoDetalle.objects.create(
+                documento=documento, item=self.item, cantidad=Decimal('1'), subtotal=Decimal('100'),
+            )
+
+        contenido, _ = documento_imprimir.imprimir(GenDocumento.objects.filter(pk=documento.pk))
+
+        paginas = self._paginas(contenido)
+        self.assertEqual(len(paginas), 1)
+        self.assertGreater(paginas[0][1], 792)
+
+    def test_un_lote_mixto_lleva_un_tamano_por_pagina(self):
+        pos = self._pos()
+        factura = self._pos(tipo=self.tipo_factura, numero=99)
+
+        contenido, _ = documento_imprimir.imprimir(
+            GenDocumento.objects.filter(pk__in=[pos.pk, factura.pk]).order_by('documento_tipo_id'),
+        )
+
+        paginas = self._paginas(contenido)
+        self.assertEqual(len(paginas), 2)
+        anchos = sorted(round(ancho, 1) for ancho, _ in paginas)
+        self.assertEqual(anchos, [226.8, 612.0])
+
+    def test_montos_sin_decimales_cantidad_sin_ceros_y_numero_con_prefijo(self):
+        texto = self._texto(self._pos())
+
+        self.assertIn('Número: FEPS1284', texto)
+        self.assertIn('11,900', texto)
+        self.assertNotIn('11,900.00', texto)
+        self.assertIn('| 1 |', texto)
+        self.assertNotIn('1.000000', texto)
+
+    def test_los_impuestos_van_entre_parentesis_y_con_su_bloque_de_bases(self):
+        texto = self._texto(self._pos())
+
+        self.assertIn('CAFÉ (IVA 19%)', texto)
+        self.assertIn('Vr base', texto)
+        self.assertIn('IVA 19% ventas', texto)
+
+    def test_sin_impuestos_no_sale_el_bloque_de_bases(self):
+        texto = self._texto(self._pos(impuesto=False))
+
+        self.assertIn('CAFÉ |', texto)
+        self.assertNotIn('(IVA', texto)
+        self.assertNotIn('Vr base', texto)
+
+    def test_el_descuento_solo_sale_si_lo_hay(self):
+        self.assertNotIn('Descuento', self._texto(self._pos()))
+
+        texto = self._texto(self._pos(descuento=Decimal('500')))
+        self.assertIn('Descuento: | 500', texto)
+        self.assertIn('Vta antes de impuestos: | 9,500', texto)
+
+    def test_informacion_superior_e_inferior_impresas(self):
+        GenConfiguracion.objects.update_or_create(id=1, defaults={
+            'ven_pos_informacion_superior': 'Régimen común & IVA',
+            'ven_pos_informacion_inferior': 'Gracias por su compra',
+        })
+
+        textos = self._textos(FormatoDocumentoPos(self._pos()))
+
+        self.assertIn('Régimen común & IVA', textos)
+        self.assertIn('Gracias por su compra', textos)
+        # Arriba, antes de los datos de la venta; abajo, después de los totales.
+        self.assertLess(textos.index('Régimen común & IVA'), textos.index('Número: FEPS1284'))
+        self.assertGreater(textos.index('Gracias por su compra'), textos.index('Vr base'))
+
+    def test_la_configuracion_expone_la_informacion_del_pos(self):
+        from general.serializers.configuracion import GenConfiguracionSerializer
+
+        campos = GenConfiguracionSerializer().fields
+        self.assertIn('ven_pos_informacion_superior', campos)
+        self.assertIn('ven_pos_informacion_inferior', campos)
+
+    def test_el_pos_no_electronico_no_lleva_nada_de_la_dian(self):
+        texto = self._texto(self._pos(cue='a' * 96))
+
+        for ausente in ('CUFE', 'Resolución', 'SIN VALIDAR', 'Fecha validación'):
+            self.assertNotIn(ausente, texto)
+
+    def test_el_pos_electronico_lleva_resolucion_cufe_partido_fecha_y_qr(self):
+        cufe = 'a' * 48 + 'b' * 48
+        documento = self._pos(
+            tipo=self.tipo_pos_electronico, cue=cufe,
+            fecha_validacion=timezone.make_aware(datetime(2026, 10, 16, 15, 30)),
+        )
+
+        with mock.patch.object(documento_pos, 'dibujo_qr', wraps=documento_pos.dibujo_qr) as qr:
+            elementos = FormatoDocumentoPosElectronico(documento).construir()
+        texto = ' | '.join(self._textos(FormatoDocumentoPosElectronico(documento)))
+
+        self.assertIn('Resolución: 18764000000001', texto)
+        self.assertIn('Prefijo: FEPS del 1 al 5000', texto)
+        self.assertIn('Fecha validación DIAN: 2026-10-16 15:30:00', texto)
+        self.assertNotIn('SIN VALIDAR', texto)
+        # 96 caracteres sin espacios: partido a mano en dos renglones de 48.
+        cufe_parrafo = next(
+            e for e in elementos if isinstance(e, Paragraph) and e.style.name == 'pos_cufe'
+        )
+        self.assertEqual(cufe_parrafo.text, f'CUFE:<br/>{"a" * 48}<br/>{"b" * 48}')
+        configuracion = GenConfiguracion.objects.filter(id=1).first()
+        qr.assert_called_once()
+        self.assertEqual(
+            qr.call_args.args[0], FormatoDocumentoFactura.contenido_qr(documento, configuracion),
+        )
+
+    def test_el_pos_electronico_sin_cufe_lleva_el_aviso(self):
+        texto = self._texto(self._pos(tipo=self.tipo_pos_electronico), FormatoDocumentoPosElectronico)
+
+        self.assertIn('DOCUMENTO SIN VALIDAR ANTE LA DIAN', texto)
+        self.assertNotIn('CUFE:', texto)
+        self.assertNotIn('Fecha validación', texto)
+
+    def test_el_pos_electronico_genera_el_pdf(self):
+        documento = self._pos(tipo=self.tipo_pos_electronico, cue='c' * 96)
+
+        contenido, nombre = documento_imprimir.imprimir(GenDocumento.objects.filter(pk=documento.pk))
+
+        self.assertTrue(contenido.startswith(b'%PDF'))
+        self.assertEqual(len(self._paginas(contenido)), 1)
+        self.assertEqual(nombre, 'factura_pos_electronica1284.pdf')
 
 
 class NotificarTests(TenantTestCase):
