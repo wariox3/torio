@@ -1498,6 +1498,79 @@ def recepcion_adjunto(filtros: dict, cliente: Rededoc = None) -> dict:
     }
 
 
+def recepcion_documento_descartar(documento_id, cliente: Rededoc = None) -> dict:
+    """
+    Descarta un documento recibido del emisor de `gen_rededoc_emisor` y devuelve
+    el documento como queda en rededoc.
+
+    El `emisor` va en la consulta, así que uno de otra empresa responde 404 en
+    rededoc, igual que uno que no existe; acá los dos son 404. Si no se puede
+    descartar (ya descartado, recepción terminada o con eventos), el 400 de
+    rededoc sube con su mensaje.
+    """
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+    respuesta = cliente.descartar_documento_recibido(documento_id, emisor_id)
+    if respuesta['error']:
+        if respuesta['status'] == 404:
+            raise ErrorFacturaElectronica('El documento no existe.', status=404)
+        raise _error_rededoc(respuesta)
+    return respuesta['datos']
+
+
+def recepcion_documento_restaurar(documento_id, cliente: Rededoc = None) -> dict:
+    """
+    Quita el descarte de un documento recibido del emisor de `gen_rededoc_emisor`
+    y devuelve el documento como queda en rededoc. Uno de otra empresa o que no
+    existe es 404; si no está descartado, el 400 de rededoc sube con su mensaje.
+    """
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+    respuesta = cliente.restaurar_documento_recibido(documento_id, emisor_id)
+    if respuesta['error']:
+        if respuesta['status'] == 404:
+            raise ErrorFacturaElectronica('El documento no existe.', status=404)
+        raise _error_rededoc(respuesta)
+    return respuesta['datos']
+
+
+def recepcion_documento_evento(documento_id, datos: dict, cliente: Rededoc = None) -> dict:
+    """
+    Registra un evento RADIAN (030 a 033) sobre un documento recibido del emisor
+    de `gen_rededoc_emisor` y devuelve el evento, que queda `pendiente`: rededoc
+    lo envía a la DIAN en segundo plano y su estado se ve en el listado de eventos.
+
+    `datos` es `{codigo, persona?, concepto_reclamo?}` tal cual lo pide rededoc.
+    Uno de otra empresa o que no existe es 404; si el evento no cabe, el 400 de
+    rededoc sube con su mensaje.
+    """
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+    respuesta = cliente.registrar_evento_recibido(documento_id, emisor_id, datos)
+    if respuesta['error']:
+        if respuesta['status'] == 404:
+            raise ErrorFacturaElectronica('El documento no existe.', status=404)
+        raise _error_rededoc(respuesta)
+    evento = respuesta['datos'] or {}
+    return {campo: valor for campo, valor in evento.items() if campo not in RECEPCION_EVENTO_OCULTOS}
+
+
+def recepcion_documento_eliminar(documento_id, cliente: Rededoc = None) -> None:
+    """
+    Elimina en rededoc un documento recibido del emisor de `gen_rededoc_emisor`,
+    con sus archivos. Uno de otra empresa o que no existe es 404; si tiene
+    eventos, el 400 de rededoc sube con su mensaje. Un 502 de rededoc (falló B2)
+    deja todo como estaba: repetir termina el trabajo.
+    """
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+    respuesta = cliente.eliminar_documento_recibido(documento_id, emisor_id)
+    if respuesta['error']:
+        if respuesta['status'] == 404:
+            raise ErrorFacturaElectronica('El documento no existe.', status=404)
+        raise _error_rededoc(respuesta)
+
+
 def recepcion_adjunto_descargar(adjunto_id, cliente: Rededoc = None) -> tuple:
     """
     El contenido de un adjunto de la recepción del emisor de

@@ -213,6 +213,60 @@ class Rededoc:
         """
         return self._peticion('GET', '/api/recepcion/adjunto/', parametros=parametros)
 
+    def descartar_documento_recibido(self, documento_id, emisor_id):
+        """
+        Descarta un documento recibido: queda intacto, pero ya no admite eventos
+        RADIAN (tampoco el acuse automático). Devuelve el documento.
+        `POST /api/recepcion/documento/{id}/descartar/?emisor=<id>`: con `emisor`,
+        rededoc responde 404 si el documento es de otro emisor. 400 si ya está
+        descartado, si su recepción terminó o si tiene algún evento.
+        """
+        return self._peticion(
+            'POST', f'/api/recepcion/documento/{documento_id}/descartar/',
+            parametros={'emisor': emisor_id},
+        )
+
+    def restaurar_documento_recibido(self, documento_id, emisor_id):
+        """
+        Quita el descarte de un documento recibido: vuelve a admitir eventos
+        RADIAN, salvo una factura de contado verificada, que queda terminada. El
+        acuse automático omitido no se pide solo. Devuelve el documento.
+        `POST /api/recepcion/documento/{id}/restaurar/?emisor=<id>`: con `emisor`,
+        rededoc responde 404 si el documento es de otro emisor. 400 si no está
+        descartado.
+        """
+        return self._peticion(
+            'POST', f'/api/recepcion/documento/{documento_id}/restaurar/',
+            parametros={'emisor': emisor_id},
+        )
+
+    def registrar_evento_recibido(self, documento_id, emisor_id, datos: dict):
+        """
+        Pide un evento RADIAN sobre un documento recibido y lo envía a la DIAN en
+        segundo plano. `POST /api/recepcion/documento/{id}/evento/?emisor=<id>`
+        con `{codigo, persona?, concepto_reclamo?}`. Responde 201 con el evento
+        `pendiente`; con `emisor`, 404 si el documento es de otro emisor, y 400 si
+        el evento no cabe (orden, plazos, factura descartada…).
+        """
+        return self._peticion(
+            'POST', f'/api/recepcion/documento/{documento_id}/evento/',
+            datos=datos, parametros={'emisor': emisor_id},
+        )
+
+    def eliminar_documento_recibido(self, documento_id, emisor_id):
+        """
+        Elimina un documento recibido y sus archivos, si no tiene eventos.
+        `DELETE /api/recepcion/documento/{id}/?emisor=<id>` responde 204 sin
+        cuerpo; con `emisor`, 404 si el documento es de otro emisor. 400 si tiene
+        algún evento RADIAN, en cualquier estado. El correo se queda con sus
+        demás adjuntos; si era una carga manual y este su único documento, se
+        elimina también.
+        """
+        return self._peticion(
+            'DELETE', f'/api/recepcion/documento/{documento_id}/',
+            parametros={'emisor': emisor_id},
+        )
+
     def descargar_adjunto_recibido(self, adjunto_id, emisor_id):
         """
         El contenido de un adjunto de recepción.

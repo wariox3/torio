@@ -73,6 +73,41 @@ class RecepcionAdjuntoDescargarQuerySerializer(serializers.Serializer):
     id = serializers.UUIDField(help_text='Id (uuid) del adjunto en rededoc.')
 
 
+class RecepcionDocumentoAccionRequestSerializer(serializers.Serializer):
+    id = serializers.UUIDField(help_text='Id (uuid) del documento recibido en rededoc.')
+
+
+class RecepcionEventoPersonaSerializer(serializers.Serializer):
+    tipo_identificacion = serializers.IntegerField(
+        min_value=1, help_text='Id del tipo de identificación en rededoc (13 = cédula).',
+    )
+    numero_identificacion = serializers.CharField(max_length=20)
+    nombres = serializers.CharField(max_length=100)
+    apellidos = serializers.CharField(max_length=100)
+    cargo = serializers.CharField(max_length=100, required=False)
+    area = serializers.CharField(max_length=100, required=False)
+
+
+class RecepcionDocumentoEventoRequestSerializer(serializers.Serializer):
+    id = serializers.UUIDField(help_text='Id (uuid) del documento recibido en rededoc.')
+    codigo = serializers.ChoiceField(
+        choices=servicio.RECEPCION_EVENTO_CODIGOS,
+        help_text='030 acuse, 031 reclamo, 032 recibo del bien o servicio, 033 aceptación.',
+    )
+    persona = RecepcionEventoPersonaSerializer(
+        required=False,
+        help_text='Solo 030 y 032. Sin ella, va la persona que recibe configurada en el emisor.',
+    )
+    concepto_reclamo = serializers.CharField(
+        max_length=10, required=False, help_text='Solo 031, y obligatorio ahí: código del concepto de reclamo.',
+    )
+
+    def validate(self, attrs):
+        if attrs['codigo'] == '031' and not attrs.get('concepto_reclamo'):
+            raise serializers.ValidationError('El reclamo (031) lleva su concepto.')
+        return attrs
+
+
 class RecepcionEventoQuerySerializer(serializers.Serializer):
     page = serializers.IntegerField(min_value=1, default=1)
     page_size = serializers.IntegerField(
@@ -239,3 +274,99 @@ class GenElectronicoRecepcionViewSet(viewsets.GenericViewSet):
             return Response(e.cuerpo, status=e.status)
 
         return Response(datos, status=codigo)
+
+    @extend_schema(
+        summary='Descartar un documento recibido',
+        description=(
+            'Marca el documento como descartado: queda intacto, pero ya no admite eventos '
+            'RADIAN (tampoco el acuse automático). Responde el documento actualizado. El '
+            'emisor no se manda: sale de `gen_rededoc_emisor`; un documento de otra empresa '
+            'responde 404. 400 si ya está descartado, si su recepción terminó o si tiene '
+            'algún evento.'
+        ),
+        request=RecepcionDocumentoAccionRequestSerializer,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['post'], url_path='documento-descartar')
+    def documento_descartar(self, request):
+        serializer = RecepcionDocumentoAccionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            datos = servicio.recepcion_documento_descartar(serializer.validated_data['id'])
+        except servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+
+        return Response(datos, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Restaurar un documento recibido',
+        description=(
+            'Quita el descarte: el documento vuelve a admitir eventos RADIAN, salvo una '
+            'factura de contado verificada como válida, que no los admite y queda terminada. '
+            'El acuse automático omitido no se pide solo. Responde el documento actualizado. '
+            'El emisor no se manda: sale de `gen_rededoc_emisor`; un documento de otra '
+            'empresa responde 404. 400 si no está descartado.'
+        ),
+        request=RecepcionDocumentoAccionRequestSerializer,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['post'], url_path='documento-restaurar')
+    def documento_restaurar(self, request):
+        serializer = RecepcionDocumentoAccionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            datos = servicio.recepcion_documento_restaurar(serializer.validated_data['id'])
+        except servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+
+        return Response(datos, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Eliminar un documento recibido',
+        description=(
+            'Elimina el documento y sus archivos, si no tiene eventos RADIAN (en cualquier '
+            'estado: con uno responde 400). El correo se queda con sus demás adjuntos; si '
+            'era una carga manual y este era su único documento, se elimina también. El '
+            'emisor no se manda: sale de `gen_rededoc_emisor`; un documento de otra empresa '
+            'responde 404.'
+        ),
+        request=RecepcionDocumentoAccionRequestSerializer,
+        responses=None,
+    )
+    @action(detail=False, methods=['post'], url_path='documento-eliminar')
+    def documento_eliminar(self, request):
+        serializer = RecepcionDocumentoAccionRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            servicio.recepcion_documento_eliminar(serializer.validated_data['id'])
+        except servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+
+        return Response(status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Registrar un evento RADIAN sobre un documento recibido',
+        description=(
+            '`codigo` 030 acuse, 031 reclamo, 032 recibo del bien o servicio, 033 aceptación. '
+            '`persona` solo en 030 y 032 (sin ella, la configurada en el emisor); '
+            '`concepto_reclamo` solo en 031, y obligatorio ahí. Responde 201 con el evento '
+            '`pendiente`: rededoc lo envía a la DIAN en segundo plano y su estado se consulta '
+            'en `evento/`. El emisor no se manda: sale de `gen_rededoc_emisor`; un documento '
+            'de otra empresa responde 404. 400 si el evento no cabe (orden, plazos, factura '
+            'descartada…), con el mensaje de rededoc.'
+        ),
+        request=RecepcionDocumentoEventoRequestSerializer,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['post'], url_path='documento-evento')
+    def documento_evento(self, request):
+        serializer = RecepcionDocumentoEventoRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        datos = dict(serializer.validated_data)
+        documento_id = datos.pop('id')
+        try:
+            evento = servicio.recepcion_documento_evento(documento_id, datos)
+        except servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+
+        return Response(evento, status=status.HTTP_201_CREATED)
