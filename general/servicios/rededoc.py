@@ -197,6 +197,22 @@ class Rededoc:
         """
         return self._peticion('GET', '/api/recepcion/correo/', parametros=parametros)
 
+    def consultar_eventos_recibidos(self, parametros: dict):
+        """
+        Los eventos RADIAN (030 a 033) que un emisor registró sobre sus
+        documentos recibidos, paginados. `GET /api/recepcion/evento/`. Igual que
+        los documentos: sin `emisor` responde todos los que alcanza la llave.
+        """
+        return self._peticion('GET', '/api/recepcion/evento/', parametros=parametros)
+
+    def consultar_adjuntos_recibidos(self, parametros: dict):
+        """
+        Los archivos que llegaron en los correos de recepción (XML, PDF y otros),
+        paginados de a 10. `GET /api/recepcion/adjunto/`. Exige `emisor`: sin él
+        rededoc responde 400.
+        """
+        return self._peticion('GET', '/api/recepcion/adjunto/', parametros=parametros)
+
     def eliminar_certificado(self, certificado_id):
         """
         Da de baja un certificado y borra su .p12. `DELETE /api/emisores/certificado/{id}/`

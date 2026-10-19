@@ -1335,6 +1335,17 @@ RECEPCION_CORREO_ORDENES = ('recibido_en', 'estado')
 # siempre la cuenta de servicio de torio.
 RECEPCION_CORREO_OCULTOS = ('raw_key', 'usuario')
 
+RECEPCION_DOCUMENTO_EVENTO_ESTADOS = ('pendiente', 'registrado', 'rechazado', 'error')
+# 030 acuse, 031 reclamo, 032 recibo del bien o servicio, 033 aceptación.
+RECEPCION_DOCUMENTO_EVENTO_CODIGOS = ('030', '031', '032', '033')
+RECEPCION_DOCUMENTO_EVENTO_ORDENES = ('creado_en', 'numero')
+# `usuario` es el de rededoc que pidió el evento: con la llave de torio, siempre
+# la cuenta de servicio de torio.
+RECEPCION_DOCUMENTO_EVENTO_OCULTOS = ('usuario',)
+
+RECEPCION_ADJUNTO_ROLES = ('xml', 'xml_documento', 'pdf', 'otro')
+RECEPCION_ADJUNTO_PAGINA = 10  # fijo en rededoc: no acepta page_size
+
 
 def _consulta_recepcion(filtros: dict, hoy) -> tuple:
     """
@@ -1420,6 +1431,71 @@ def recepcion_correo(filtros: dict, hoy=None, cliente: Rededoc = None) -> dict:
         for correo in datos.get('results', [])
     ]
     return _bandeja(filtros, datos, correos)
+
+
+def recepcion_documento_evento(filtros: dict, cliente: Rededoc = None) -> dict:
+    """
+    Los eventos RADIAN que el emisor de `gen_rededoc_emisor` registró sobre sus
+    documentos recibidos. A diferencia de las otras bandejas no hay rango de
+    fechas —rededoc no filtra los eventos por fecha—, así que `desde` y `hasta`
+    salen en nulo. El `emisor` lo pone el back, igual que en las demás.
+    """
+    emisor_id = _emisor_id()
+    filtros = dict(filtros)
+    filtros.pop('emisor', None)
+    filtros.setdefault('page', 1)
+    filtros.setdefault('page_size', RECEPCION_PAGINA)
+    parametros = {
+        clave: str(valor) if clave == 'documento' else valor
+        for clave, valor in filtros.items()
+        if valor not in (None, '')
+    }
+    parametros['emisor'] = emisor_id
+
+    cliente = cliente or Rededoc()
+    respuesta = cliente.consultar_eventos_recibidos(parametros)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    datos = respuesta['datos'] or {}
+    eventos = [
+        {campo: valor for campo, valor in evento.items() if campo not in RECEPCION_DOCUMENTO_EVENTO_OCULTOS}
+        for evento in datos.get('results', [])
+    ]
+    return _bandeja(filtros, datos, eventos)
+
+
+def recepcion_adjunto(filtros: dict, cliente: Rededoc = None) -> dict:
+    """
+    Los archivos que llegaron a la recepción del emisor de `gen_rededoc_emisor`:
+    los de un documento (`xml`, `xml_documento`, `pdf`) y los demás del correo
+    (`otro`). Se acotan con `correo`, `documento`, `rol` y `search`.
+
+    El `emisor` lo pone el back: con él rededoc solo responde los adjuntos de ese
+    emisor, así que un correo o documento de otra empresa sale vacío. Rededoc
+    pagina de a 10 sin dejar cambiar el tamaño: el front pagina con `page`.
+    """
+    emisor_id = _emisor_id()
+    filtros = dict(filtros)
+    filtros.pop('emisor', None)
+    filtros.setdefault('page', 1)
+    parametros = {
+        clave: str(valor) if clave == 'documento' else valor
+        for clave, valor in filtros.items()
+        if valor not in (None, '')
+    }
+    parametros['emisor'] = emisor_id
+
+    cliente = cliente or Rededoc()
+    respuesta = cliente.consultar_adjuntos_recibidos(parametros)
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    datos = respuesta['datos'] or {}
+    return {
+        'count': datos.get('count', 0),
+        'page': filtros['page'],
+        'page_size': RECEPCION_ADJUNTO_PAGINA,
+        'results': datos.get('results', []),
+    }
 
 # Tipo de contenido con el que sale cada extensión hacia rededoc.
 EXTENSIONES_RECEPCION = {'.zip': 'application/zip', '.xml': 'application/xml'}

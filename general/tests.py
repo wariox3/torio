@@ -1403,6 +1403,17 @@ class RededocTests(SimpleTestCase):
         self.assertEqual((metodo, url), ('GET', 'https://api.rededoc.uk/api/recepcion/correo/'))
         self.assertEqual(peticion.call_args.kwargs['params'], parametros)
 
+    def test_consultar_eventos_recibidos_pasa_los_parametros(self):
+        parametros = {'emisor': 77, 'codigo': '031'}
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {'count': 0, 'results': []}),
+        ) as peticion:
+            rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k').consultar_eventos_recibidos(parametros)
+
+        metodo, url = peticion.call_args.args
+        self.assertEqual((metodo, url), ('GET', 'https://api.rededoc.uk/api/recepcion/evento/'))
+        self.assertEqual(peticion.call_args.kwargs['params'], parametros)
+
     def test_la_llave_viaja_en_el_header_authorization(self):
         with mock.patch.object(
             rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {}),
@@ -2096,6 +2107,57 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
 
                 self.assertEqual(caso.exception.status, esperado)
 
+    def test_recepcion_documento_evento_manda_el_emisor_guardado_sin_rango_de_fechas(self):
+        self.cliente.consultar_eventos_recibidos.return_value = {
+            'error': False, 'status': 200,
+            'datos': {'count': 30, 'next': 'https://api.rededoc.uk/x?page=2', 'previous': None, 'results': []},
+        }
+
+        datos = factura_electronica.recepcion_documento_evento({'emisor': 88}, cliente=self.cliente)
+
+        self.cliente.consultar_eventos_recibidos.assert_called_once_with({'emisor': 77, 'page': 1, 'page_size': 25})
+        self.assertEqual(datos, {
+            'count': 30, 'page': 1, 'page_size': 25, 'desde': None, 'hasta': None, 'results': [],
+        })
+
+    def test_recepcion_documento_evento_pasa_los_filtros_con_el_documento_como_texto(self):
+        self.cliente.consultar_eventos_recibidos.return_value = {'error': False, 'status': 200, 'datos': {}}
+        documento = uuid_lib.UUID('3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8')
+
+        factura_electronica.recepcion_documento_evento({
+            'documento': documento, 'estado': 'rechazado', 'codigo': '031', 'ordering': '-numero',
+            'page': 2, 'page_size': 50,
+        }, cliente=self.cliente)
+
+        self.cliente.consultar_eventos_recibidos.assert_called_once_with({
+            'emisor': 77, 'documento': '3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8', 'estado': 'rechazado',
+            'codigo': '031', 'ordering': '-numero', 'page': 2, 'page_size': 50,
+        })
+
+    def test_recepcion_documento_evento_oculta_el_usuario_de_rededoc(self):
+        self.cliente.consultar_eventos_recibidos.return_value = {
+            'error': False, 'status': 200,
+            'datos': {'count': 1, 'results': [
+                {'id': 'e1', 'emisor': 77, 'codigo': '030', 'estado': 'registrado', 'usuario': 5},
+            ]},
+        }
+
+        datos = factura_electronica.recepcion_documento_evento({}, cliente=self.cliente)
+
+        self.assertEqual(datos['results'], [{'id': 'e1', 'emisor': 77, 'codigo': '030', 'estado': 'registrado'}])
+
+    def test_recepcion_documento_evento_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
+        for status_rededoc, esperado in ((400, 400), (0, 502)):
+            with self.subTest(status_rededoc=status_rededoc):
+                self.cliente.consultar_eventos_recibidos.return_value = {
+                    'error': True, 'status': status_rededoc, 'datos': {'detail': 'Falló'},
+                }
+
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    factura_electronica.recepcion_documento_evento({}, cliente=self.cliente)
+
+                self.assertEqual(caso.exception.status, esperado)
+
     def test_sin_emisor_es_404_y_no_llama_a_rededoc(self):
         GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
 
@@ -2109,6 +2171,7 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
             'software_actualizar': lambda: factura_electronica.software_actualizar(3, {'pin': '1'}, cliente=self.cliente),
             'recepcion_documento': lambda: factura_electronica.recepcion_documento({}, cliente=self.cliente),
             'recepcion_correo': lambda: factura_electronica.recepcion_correo({}, cliente=self.cliente),
+            'recepcion_documento_evento': lambda: factura_electronica.recepcion_documento_evento({}, cliente=self.cliente),
             'resoluciones_validar': lambda: factura_electronica.resoluciones_validar(cliente=self.cliente),
         }
         for nombre, llamada in llamadas.items():
@@ -2126,6 +2189,7 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
         self.cliente.actualizar_software.assert_not_called()
         self.cliente.consultar_documentos_recibidos.assert_not_called()
         self.cliente.consultar_correos_recibidos.assert_not_called()
+        self.cliente.consultar_eventos_recibidos.assert_not_called()
         self.cliente.validar_resoluciones.assert_not_called()
 
     def _resolucion(self, vence_en=30, **overrides):
@@ -2967,6 +3031,40 @@ class FacturaElectronicaVistaTests(TenantTestCase):
                 peticion = self.factory.get('/general/electronico/recepcion-correo/', query)
                 force_authenticate(peticion, user=SegUsuario(id=1))
                 with mock.patch.object(factura_electronica, 'recepcion_correo', return_value={'count': 0}) as servicio:
+                    respuesta = vista(peticion)
+
+                self.assertEqual(respuesta.status_code, esperado)
+                if esperado == 200:
+                    servicio.assert_called_once_with(filtros)
+                else:
+                    self.assertIn('detail', respuesta.data)
+                    servicio.assert_not_called()
+
+    def test_recepcion_documento_evento_valida_la_query(self):
+        vista = _ElectronicoViewSinPermisos.as_view({'get': 'recepcion_documento_evento'})
+        documento = '3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8'
+        validos = (
+            ({}, {'page': 1, 'page_size': 25}),
+            ({'documento': documento, 'estado': 'error', 'codigo': '033', 'ordering': '-creado_en',
+              'page': '2', 'page_size': '100'},
+             {'documento': uuid_lib.UUID(documento), 'estado': 'error', 'codigo': '033', 'ordering': '-creado_en',
+              'page': 2, 'page_size': 100}),
+        )
+        invalidos = (
+            {'documento': '123'},
+            {'estado': 'aceptado'},
+            {'codigo': '034'},
+            {'codigo': '30'},
+            {'ordering': 'estado'},
+            {'page': '0'},
+            {'page_size': '101'},
+        )
+        casos = [(query, 200, filtros) for query, filtros in validos] + [(query, 400, None) for query in invalidos]
+        for query, esperado, filtros in casos:
+            with self.subTest(query=query):
+                peticion = self.factory.get('/general/electronico/recepcion-documento-evento/', query)
+                force_authenticate(peticion, user=SegUsuario(id=1))
+                with mock.patch.object(factura_electronica, 'recepcion_documento_evento', return_value={'count': 0}) as servicio:
                     respuesta = vista(peticion)
 
                 self.assertEqual(respuesta.status_code, esperado)

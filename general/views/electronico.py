@@ -109,6 +109,34 @@ class RecepcionCorreoQuerySerializer(serializers.Serializer):
         return attrs
 
 
+class RecepcionAdjuntoQuerySerializer(serializers.Serializer):
+    page = serializers.IntegerField(min_value=1, default=1)
+    correo = serializers.IntegerField(min_value=1, required=False, help_text='Id del correo de recepción.')
+    documento = serializers.UUIDField(required=False, help_text='Id (uuid) del documento recibido en rededoc.')
+    rol = serializers.ChoiceField(
+        choices=servicio.RECEPCION_ADJUNTO_ROLES, required=False,
+        help_text='xml el recibido, xml_documento el extraído del AttachedDocument, pdf, otro.',
+    )
+    search = serializers.CharField(max_length=150, required=False, help_text='Busca en el nombre original.')
+
+
+class RecepcionDocumentoEventoQuerySerializer(serializers.Serializer):
+    page = serializers.IntegerField(min_value=1, default=1)
+    page_size = serializers.IntegerField(
+        min_value=1, max_value=servicio.RECEPCION_PAGINA_MAXIMA, default=servicio.RECEPCION_PAGINA,
+    )
+    documento = serializers.UUIDField(required=False, help_text='Id (uuid) del documento recibido en rededoc.')
+    estado = serializers.ChoiceField(choices=servicio.RECEPCION_DOCUMENTO_EVENTO_ESTADOS, required=False)
+    codigo = serializers.ChoiceField(
+        choices=servicio.RECEPCION_DOCUMENTO_EVENTO_CODIGOS, required=False,
+        help_text='030 acuse, 031 reclamo, 032 recibo del bien o servicio, 033 aceptación.',
+    )
+    ordering = serializers.ChoiceField(
+        choices=[orden for campo in servicio.RECEPCION_DOCUMENTO_EVENTO_ORDENES for orden in (campo, f'-{campo}')],
+        required=False, help_text='Con - delante es descendente. Por defecto, los más recientes primero.',
+    )
+
+
 @extend_schema(tags=['Electronico'])
 class GenElectronicoViewSet(viewsets.GenericViewSet):
     parser_classes = [JSONParser, MultiPartParser, FormParser]
@@ -271,6 +299,53 @@ class GenElectronicoViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         try:
             datos = servicio.recepcion_correo(serializer.validated_data)
+        except servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+
+        return Response(datos, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Eventos RADIAN de los documentos recibidos',
+        description=(
+            'Los eventos (030 acuse, 031 reclamo, 032 recibo del bien o servicio, 033 '
+            'aceptación) que el emisor de la empresa registró sobre sus documentos recibidos. '
+            'El emisor no se manda: sale de `gen_rededoc_emisor`. No hay rango de fechas. '
+            'Responde `count`, `page`, `page_size`, `desde` y `hasta` en nulo, y `results`; '
+            'en cada evento, `estado` dice si la DIAN lo registró, lo rechazó (motivo en '
+            '`respuesta_descripcion`) o no se pudo enviar.'
+        ),
+        parameters=[RecepcionDocumentoEventoQuerySerializer],
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['get'], url_path='recepcion-documento-evento')
+    def recepcion_documento_evento(self, request):
+        serializer = RecepcionDocumentoEventoQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        try:
+            datos = servicio.recepcion_documento_evento(serializer.validated_data)
+        except servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+
+        return Response(datos, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Adjuntos recibidos',
+        description=(
+            'Los archivos que llegaron a la recepción del emisor de la empresa: los de cada '
+            'documento (`xml`, `xml_documento`, `pdf`) y los demás del correo (`otro`). Se '
+            'filtran con `correo`, `documento`, `rol` y `search`. El emisor no se manda: sale '
+            'de `gen_rededoc_emisor`, y lo de otra empresa responde vacío. Responde `count`, '
+            '`page`, `page_size` (fijo en 10) y `results`; se pagina con `page`.'
+        ),
+        parameters=[RecepcionAdjuntoQuerySerializer],
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['get'], url_path='recepcion-adjunto')
+    def recepcion_adjunto(self, request):
+        serializer = RecepcionAdjuntoQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        try:
+            datos = servicio.recepcion_adjunto(serializer.validated_data)
         except servicio.ErrorFacturaElectronica as e:
             return Response(e.cuerpo, status=e.status)
 
