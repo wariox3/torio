@@ -154,6 +154,19 @@ class Rededoc:
             timeout=self.TIMEOUT_VALIDAR_RESOLUCIONES,
         )
 
+    def consultar_resolucion(self, resolucion_id, emisor_id):
+        """
+        Una resolución tal como la tiene rededoc. `GET /api/emisores/resolucion/{id}/`.
+
+        Con `?emisor=` rededoc solo la encuentra si es de ese emisor; si no,
+        responde 404. Trae su `emisor`, el `tipo_factura`, el número, el
+        prefijo, el rango y la vigencia. La clave técnica no viene nunca.
+        """
+        return self._peticion(
+            'GET', f'/api/emisores/resolucion/{resolucion_id}/',
+            parametros={'emisor': emisor_id},
+        )
+
     def consultar_documentos_recibidos(self, parametros: dict):
         """
         Los documentos que los proveedores le mandaron a un emisor, paginados.

@@ -18,6 +18,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
 from django.db import connection, transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, ValidationError
@@ -401,18 +402,24 @@ def resoluciones_validar(venta: bool = None, compra: bool = None, cliente: Reded
     return {'inactivadas': inactivadas, 'validadas': len(validados), 'resoluciones': resultados}
 
 
+# El `tipo_factura` de rededoc (id de su catálogo) que es de compra: el documento
+# soporte, código DIAN 05. Los demás tipos que se numeran con resolución —factura
+# de venta, P.O.S.— son de venta.
+REDEDOC_TIPO_FACTURA_DOCUMENTO_SOPORTE = 7
+
+
 # Ambiente de la DIAN de las resoluciones que se devuelven: producción. Fijo, y no
 # `REDEDOC_AMBIENTE`: las de habilitación son las del Set de Pruebas, que no sirven
 # para numerar documentos reales.
 AMBIENTE_RESOLUCIONES = 1
 
 
-def resoluciones_importar(cliente: Rededoc = None) -> list:
+def resoluciones_consultar(cliente: Rededoc = None) -> list:
     """
     Le pide a rededoc que traiga de la DIAN las resoluciones del emisor de
     `gen_rededoc_emisor`, y devuelve las que le quedan registradas.
 
-    No crea nada en torio: la empresa ve la lista y registra la que necesite. Rededoc
+    No crea nada en torio: la que se necesite se trae con `resolucion_importar`. Rededoc
     responde todas las del emisor, nuevas y anteriores, y acá se dejan solo las de
     producción (`AMBIENTE_RESOLUCIONES`). Sin ninguna se responde la lista vacía, no
     un error.
@@ -421,7 +428,7 @@ def resoluciones_importar(cliente: Rededoc = None) -> list:
     rangos o no responde— sube su error.
 
     Cada resolución lleva `importada`: si la empresa ya tiene una con ese número y
-    prefijo.
+    prefijo, que es lo mismo que mira `resolucion_importar` para rechazarla.
     """
     emisor_id = _emisor_id()
     cliente = cliente or Rededoc()
@@ -445,6 +452,60 @@ def resoluciones_importar(cliente: Rededoc = None) -> list:
         {**r, 'importada': (r.get('numero_resolucion'), r.get('prefijo') or '') in existentes}
         for r in resoluciones
     ]
+
+
+def resolucion_importar(resolucion_id: int, cliente: Rededoc = None) -> GenResolucion:
+    """
+    Crea en torio la resolución que rededoc tiene con ese id.
+
+    Rededoc ya la trajo de la DIAN, así que entra con `estado_validado` en
+    verdadero. La clave técnica no se copia: rededoc no la devuelve, y es él
+    quien calcula el CUFE.
+
+    El id viene del front, y todos los emisores cuelgan de la misma API key de
+    torio: rededoc respondería la resolución de otra empresa. Por eso se exige
+    que su `emisor` sea el del tenant. Que no exista y que sea ajena responden lo
+    mismo, para no revelar qué resoluciones hay.
+
+    Si la empresa ya tiene una con el mismo número y prefijo no se crea otra ni
+    se toca la que está: responde 400.
+    """
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+
+    # Con el emisor, rededoc solo encuentra la resolución si es de él: la de
+    # otra empresa responde 404, igual que una que no existe.
+    respuesta = cliente.consultar_resolucion(resolucion_id, emisor_id)
+    if respuesta['error'] and respuesta['status'] != 404:
+        raise _error_rededoc(respuesta)
+    datos = None if respuesta['error'] else (respuesta['datos'] or {})
+    if datos is None or str(datos.get('emisor')) != str(emisor_id):
+        raise ErrorFacturaElectronica('La resolución no existe.', status=404)
+
+    numero = datos.get('numero_resolucion')
+    prefijo = datos.get('prefijo') or None
+    existentes = GenResolucion.objects.filter(numero=numero)
+    if prefijo is None:
+        existentes = existentes.filter(Q(prefijo__isnull=True) | Q(prefijo=''))
+    else:
+        existentes = existentes.filter(prefijo=prefijo)
+    if existentes.exists():
+        raise ErrorFacturaElectronica(
+            f'La resolución {numero} con prefijo {prefijo or "sin prefijo"} ya existe.'
+        )
+
+    compra = datos.get('tipo_factura') == REDEDOC_TIPO_FACTURA_DOCUMENTO_SOPORTE
+    return GenResolucion.objects.create(
+        numero=numero,
+        prefijo=prefijo,
+        consecutivo_desde=datos.get('rango_desde'),
+        consecutivo_hasta=datos.get('rango_hasta'),
+        fecha_desde=datos.get('vigente_desde'),
+        fecha_hasta=datos.get('vigente_hasta'),
+        venta=not compra,
+        compra=compra,
+        estado_validado=True,
+    )
 
 
 def certificado_eliminar(cliente: Rededoc = None) -> GenParametro:

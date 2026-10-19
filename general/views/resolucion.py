@@ -46,6 +46,12 @@ class ResolucionesValidarRequestSerializer(serializers.Serializer):
     )
 
 
+class ResolucionImportarDianRequestSerializer(serializers.Serializer):
+    id = serializers.IntegerField(
+        help_text='Id de la resolución en el servicio de facturación electrónica.',
+    )
+
+
 @extend_schema(tags=['Resolución'])
 class GenResolucionViewSet(
     FiltrosDinamicosMixin,
@@ -95,12 +101,12 @@ class GenResolucionViewSet(
         return self.get_paginated_response(serializer.data)
 
     @extend_schema(
-        summary='Importar las resoluciones de la DIAN',
+        summary='Listar las resoluciones de la DIAN',
         description=(
             'Le pide al servicio de facturación electrónica que traiga de la DIAN las '
             'resoluciones del emisor y responde las que le quedan registradas. No crea '
-            'nada en la empresa: la resolución que se necesite se registra después. '
-            'No lleva cuerpo; el emisor sale de `gen_rededoc_emisor`.\n\n'
+            'nada en la empresa: la que se necesite se trae con `importar-dian`. '
+            'No lleva parámetros; el emisor sale de `gen_rededoc_emisor`.\n\n'
             'Responde 200 con la lista de las resoluciones de producción (ambiente '
             '1), cada una con `importada` en verdadero si la empresa ya tiene una '
             'con ese número y prefijo. Sin resoluciones, la lista va vacía.\n\n'
@@ -111,13 +117,42 @@ class GenResolucionViewSet(
         request=None,
         responses=OpenApiTypes.OBJECT,
     )
-    @action(detail=False, methods=['post'], url_path='importar-dian')
-    def importar_dian(self, request):
+    @action(detail=False, methods=['get'], url_path='lista-dian')
+    def lista_dian(self, request):
         try:
-            datos = factura_electronica_servicio.resoluciones_importar()
+            datos = factura_electronica_servicio.resoluciones_consultar()
         except factura_electronica_servicio.ErrorFacturaElectronica as e:
             return Response(e.cuerpo, status=e.status)
         return Response(datos, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Importar una resolución desde el servicio de facturación electrónica',
+        description=(
+            'Crea la resolución que el servicio de facturación electrónica tiene con '
+            'ese `id`, ya traída de la DIAN, y la deja con `estado_validado` en '
+            'verdadero. Queda como de compra si es de documento soporte y como de '
+            'venta en los demás casos.\n\n'
+            'Responde 201 con la resolución creada. Si la empresa ya tiene una con el '
+            'mismo número y prefijo responde 400 con el motivo en `detail`; si la '
+            'empresa no tiene emisor, o la resolución no existe o no es de su emisor, '
+            '404.'
+        ),
+        request=ResolucionImportarDianRequestSerializer,
+        responses={201: GenResolucionSerializer},
+    )
+    @action(detail=False, methods=['post'], url_path='importar-dian')
+    def importar_dian(self, request):
+        resolucion_id = request.data.get('id')
+        if isinstance(resolucion_id, bool) or not str(resolucion_id or '').isdigit():
+            return Response(
+                {'detail': 'El campo id es requerido y debe ser un número entero.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            resolucion = factura_electronica_servicio.resolucion_importar(int(resolucion_id))
+        except factura_electronica_servicio.ErrorFacturaElectronica as e:
+            return Response(e.cuerpo, status=e.status)
+        return Response(GenResolucionSerializer(resolucion).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
         summary='Validar las resoluciones en la DIAN',
