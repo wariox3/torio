@@ -26,6 +26,22 @@ class RecepcionDocumentoQuerySerializer(serializers.Serializer):
         help_text='NIT exacto del proveedor, sin DV.',
     )
     correo = serializers.IntegerField(min_value=1, required=False, help_text='Id del correo de recepción.')
+    verificacion_estado = serializers.ChoiceField(
+        choices=servicio.RECEPCION_VERIFICACION_ESTADOS, required=False,
+        help_text='Lo que dijo la DIAN al consultar el CUFE.',
+    )
+    radian_estado = serializers.ChoiceField(
+        choices=servicio.RECEPCION_RADIAN_ESTADOS, required=False,
+        help_text='El último evento RADIAN registrado sobre la factura.',
+    )
+    # `true`/`false` como texto y no BooleanField: con query params, DRF vuelve
+    # `False` un booleano que no vino, y filtraría siempre.
+    estado_recepcion = serializers.ChoiceField(
+        choices=('true', 'false'), required=False, help_text='true si la recepción del documento ya terminó.',
+    )
+    estado_descartado = serializers.ChoiceField(
+        choices=('true', 'false'), required=False, help_text='true si el documento está descartado.',
+    )
     ordering = serializers.ChoiceField(
         choices=[orden for campo in servicio.RECEPCION_ORDENES for orden in (campo, f'-{campo}')],
         required=False, help_text='Con - delante es descendente. Por defecto, los más recientes primero.',

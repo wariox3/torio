@@ -1321,6 +1321,8 @@ def electronico_xml(documento_id, cliente: Rededoc = None) -> tuple:
 
 RECEPCION_DOCUMENTO_TIPOS = ('factura_venta', 'nota_credito', 'nota_debito')
 RECEPCION_ORDENES = ('fecha_emision', 'numero', 'total_a_pagar', 'creado_en')
+RECEPCION_VERIFICACION_ESTADOS = ('pendiente', 'valido', 'invalido', 'no_verificable', 'error')
+RECEPCION_RADIAN_ESTADOS = ('sin_eventos', 'acuse', 'recibo', 'aceptada', 'reclamada')
 RECEPCION_PAGINA = 25
 RECEPCION_PAGINA_MAXIMA = 100
 
