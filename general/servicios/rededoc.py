@@ -143,8 +143,9 @@ class Rededoc:
         Hace que rededoc traiga de la DIAN las resoluciones del emisor y cree las
         que le falten. `POST /api/emisores/resolucion/importar-dian/`.
 
-        Responde 200 con `creadas`, cuántas dejó nuevas; no las devuelve. Sin
-        ningún software aceptado, o si la DIAN no devuelve rangos, responde 400.
+        Responde 200 con la lista de todas las resoluciones del emisor —las nuevas
+        y las que ya tenía—, de cualquier ambiente, sin paginar. Sin
+        ningún software, o si la DIAN no devuelve rangos, responde 400.
         Consulta a la DIAN dentro de la misma llamada, igual que la validación.
         """
         return self._peticion(
@@ -152,34 +153,6 @@ class Rededoc:
             datos={'emisor': emisor_id},
             timeout=self.TIMEOUT_VALIDAR_RESOLUCIONES,
         )
-
-    def consultar_resoluciones(self, emisor_id, ambiente=None, pagina=None, modulo=None):
-        """
-        Las resoluciones de un emisor.
-        `GET /api/emisores/resolucion/?emisor={id}&ambiente={1|2}&modulo={modulo}`.
-
-        Con `ambiente` solo las de ese ambiente de la DIAN: 1 producción, 2
-        habilitación. Con `modulo` solo las de ese módulo: `facturacion`, `nomina`
-        o `compras`. Responde paginado, de a 10: `count`, `next`, `previous` y
-        `results`. Con `pagina` se pide una página distinta de la primera.
-        """
-        parametros = {'emisor': emisor_id}
-        if ambiente:
-            parametros['ambiente'] = ambiente
-        if modulo:
-            parametros['modulo'] = modulo
-        if pagina:
-            parametros['page'] = pagina
-        return self._peticion('GET', '/api/emisores/resolucion/', parametros=parametros)
-
-    def consultar_resolucion(self, resolucion_id):
-        """
-        Una resolución tal como la tiene rededoc. `GET /api/emisores/resolucion/{id}/`.
-
-        Trae su `emisor`, el `tipo_factura`, el número, el prefijo, el rango y la
-        vigencia. La clave técnica no viene nunca: rededoc no la devuelve.
-        """
-        return self._peticion('GET', f'/api/emisores/resolucion/{resolucion_id}/')
 
     def consultar_documentos_recibidos(self, parametros: dict):
         """
