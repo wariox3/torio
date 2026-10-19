@@ -1,10 +1,19 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import viewsets
+from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 
 from general.models import GenImpuesto
-from general.serializers import GenImpuestoSeleccionarSerializer
+from general.serializers import (
+    GenImpuestoActualizarSerializer,
+    GenImpuestoSeleccionarSerializer,
+    GenImpuestoSerializer,
+)
+from utilidades.mixins import FiltrosDinamicosMixin
 from utilidades.paginacion import SeleccionarPaginacion
+
+_LIST_PARAMS = [
+    OpenApiParameter('search', str, description='Buscar por nombre o nombre extendido'),
+]
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por nombre o nombre extendido'),
@@ -14,13 +23,41 @@ _SELECCIONAR_PARAMS = [
 
 
 @extend_schema(tags=['Impuesto'])
-class GenImpuestoViewSet(viewsets.GenericViewSet):
-    serializer_class = GenImpuestoSeleccionarSerializer
+class GenImpuestoViewSet(
+    FiltrosDinamicosMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    Catálogo normativo: los impuestos los siembra `general/catalogos/19_impuesto.json`
+    y no se crean ni se borran por la API. Lo único que cada tenant configura es la
+    cuenta contable, y eso es lo único que acepta el PATCH.
+    """
+
+    serializer_class = GenImpuestoSerializer
+
+    def get_serializer_class(self):
+        if self.action in ('update', 'partial_update'):
+            return GenImpuestoActualizarSerializer
+        return GenImpuestoSerializer
+
+    def get_queryset(self):
+        qs = GenImpuesto.objects.select_related(*GenImpuestoSerializer.select_related_lista)
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            qs = qs.filter(nombre__icontains=search) | qs.filter(nombre_extendido__icontains=search)
+        return qs
+
+    @extend_schema(parameters=_LIST_PARAMS)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=GenImpuestoSeleccionarSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)
     def seleccionar(self, request):
-        qs = GenImpuesto.objects.select_related('impuesto_tipo').order_by('id')
+        qs = GenImpuesto.objects.select_related('impuesto_tipo', 'cuenta').order_by('id')
         search = request.query_params.get('search', '').strip()
         if search:
             qs = qs.filter(nombre__icontains=search) | qs.filter(nombre_extendido__icontains=search)

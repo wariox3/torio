@@ -15,6 +15,9 @@ class GenImpuesto(models.Model):
         on_delete=models.PROTECT,
         related_name='impuestos_impuesto_tipo_rel',
     )
+    # La configura cada tenant (PATCH /general/impuesto/{id}/). No debe ir nunca en
+    # `catalogos/19_impuesto.json`: el cargador actualiza las columnas que trae el
+    # JSON, y con ella pisaría la cuenta de todas las empresas en cada recarga.
     cuenta = models.ForeignKey(
         'contabilidad.ConCuenta',
         null=True,
