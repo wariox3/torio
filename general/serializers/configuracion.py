@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from general.models import GenConfiguracion
+from general.serializers.recepcion_persona import RecepcionPersonaSerializer
 
 
 class GenConfiguracionSerializer(serializers.ModelSerializer):
@@ -47,6 +48,7 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
             'ven_factura_informacion_inferior',
             'ven_pos_informacion_superior',
             'ven_pos_informacion_inferior',
+            'com_recepcion_recibe',
             'ven_item_administracion',
             'ven_item_administracion_nombre',
             'ven_item_imprevisto',
@@ -57,7 +59,15 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
             'ven_pos_documento_tipo_nombre',
         ]
         # `gen_empresa_logotipo` no está en `fields` a propósito. Es un PNG en base64
-    # de decenas de KB —hoy pesa 70 veces más que todos los demás campos juntos—
-    # y esta configuración la leen pantallas que solo quieren el UVT o el salario
-    # mínimo. Se lee por `GET logotipo/` y se escribe por `cargar-logotipo/`.
-    read_only_fields = ['id']
+        # de decenas de KB —hoy pesa 70 veces más que todos los demás campos juntos—
+        # y esta configuración la leen pantallas que solo quieren el UVT o el salario
+        # mínimo. Se lee por `GET logotipo/` y se escribe por `cargar-logotipo/`.
+        read_only_fields = ['id']
+
+    def validate_com_recepcion_recibe(self, valor):
+        """JSON en el modelo, pero con la forma de la persona que recibe; nulo la quita."""
+        if valor is None:
+            return None
+        persona = RecepcionPersonaSerializer(data=valor)
+        persona.is_valid(raise_exception=True)
+        return dict(persona.validated_data)

@@ -27,6 +27,7 @@ from general.models import (
     GenConfiguracion,
     GenDocumento,
     GenDocumentoElectronicoError,
+    GenIdentificacion,
     GenParametro,
     GenResolucion,
 )
@@ -1340,6 +1341,7 @@ RECEPCION_CORREO_OCULTOS = ('raw_key', 'usuario')
 RECEPCION_EVENTO_ESTADOS = ('pendiente', 'registrado', 'rechazado', 'error')
 # 030 acuse, 031 reclamo, 032 recibo del bien o servicio, 033 aceptación.
 RECEPCION_EVENTO_CODIGOS = ('030', '031', '032', '033')
+RECEPCION_EVENTO_CON_PERSONA = ('030', '032')
 RECEPCION_EVENTO_ORDENES = ('creado_en', 'numero')
 # `usuario` es el de rededoc que pidió el evento: con la llave de torio, siempre
 # la cuenta de servicio de torio.
@@ -1542,13 +1544,26 @@ def recepcion_documento_evento(documento_id, datos: dict, cliente: Rededoc = Non
     de `gen_rededoc_emisor` y devuelve el evento, que queda `pendiente`: rededoc
     lo envía a la DIAN en segundo plano y su estado se ve en el listado de eventos.
 
-    `datos` es `{codigo, persona?, concepto_reclamo?}` tal cual lo pide rededoc.
+    `datos` es `{codigo, persona?, concepto_reclamo?}`, ya validado. Solo viaja
+    lo que corresponde al código: la persona en 030 y 032, el concepto en 031.
+    La persona trae `identificacion` como id de `GenIdentificacion`, y rededoc
+    espera `tipo_identificacion` con el código DIAN: acá se convierte.
+
     Uno de otra empresa o que no existe es 404; si el evento no cabe, el 400 de
     rededoc sube con su mensaje.
     """
     emisor_id = _emisor_id()
+    codigo = datos['codigo']
+    cuerpo = {'codigo': codigo}
+    if codigo in RECEPCION_EVENTO_CON_PERSONA:
+        persona = dict(datos['persona'])
+        identificacion = GenIdentificacion.objects.get(pk=persona.pop('identificacion'))
+        cuerpo['persona'] = {'tipo_identificacion': int(identificacion.codigo), **persona}
+    if codigo == '031':
+        cuerpo['concepto_reclamo'] = datos['concepto_reclamo']
+
     cliente = cliente or Rededoc()
-    respuesta = cliente.registrar_evento_recibido(documento_id, emisor_id, datos)
+    respuesta = cliente.registrar_evento_recibido(documento_id, emisor_id, cuerpo)
     if respuesta['error']:
         if respuesta['status'] == 404:
             raise ErrorFacturaElectronica('El documento no existe.', status=404)

@@ -44,6 +44,10 @@ class GenConfiguracion(models.Model):
     # Lo mismo para el tiquete del punto de venta (POS).
     ven_pos_informacion_superior = models.TextField(null=True)
     ven_pos_informacion_inferior = models.TextField(null=True)
+    # La persona que recibe en los eventos RADIAN 030 y 032 de compras, con la
+    # forma de `RecepcionPersonaSerializer`. Es solo una sugerencia: el front la
+    # propone y `documento-evento` exige la persona en el cuerpo.
+    com_recepcion_recibe = models.JSONField(null=True)
     gen_empresa_identificacion = models.ForeignKey(
         'general.GenIdentificacion', null=True, on_delete=models.PROTECT,
         related_name='configuraciones_empresa_identificacion_rel',

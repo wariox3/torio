@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
+from general.serializers.recepcion_persona import RecepcionPersonaSerializer
 from general.servicios import factura_electronica as servicio
 
 
@@ -93,32 +94,23 @@ class RecepcionDocumentoAccionRequestSerializer(serializers.Serializer):
     id = serializers.UUIDField(help_text='Id (uuid) del documento recibido en rededoc.')
 
 
-class RecepcionEventoPersonaSerializer(serializers.Serializer):
-    tipo_identificacion = serializers.IntegerField(
-        min_value=1, help_text='Id del tipo de identificación en rededoc (13 = cédula).',
-    )
-    numero_identificacion = serializers.CharField(max_length=20)
-    nombres = serializers.CharField(max_length=100)
-    apellidos = serializers.CharField(max_length=100)
-    cargo = serializers.CharField(max_length=100, required=False)
-    area = serializers.CharField(max_length=100, required=False)
-
-
 class RecepcionDocumentoEventoRequestSerializer(serializers.Serializer):
     id = serializers.UUIDField(help_text='Id (uuid) del documento recibido en rededoc.')
     codigo = serializers.ChoiceField(
         choices=servicio.RECEPCION_EVENTO_CODIGOS,
         help_text='030 acuse, 031 reclamo, 032 recibo del bien o servicio, 033 aceptación.',
     )
-    persona = RecepcionEventoPersonaSerializer(
+    persona = RecepcionPersonaSerializer(
         required=False,
-        help_text='Solo 030 y 032. Sin ella, va la persona que recibe configurada en el emisor.',
+        help_text='Obligatoria en 030 y 032: quien recibe. `identificacion` es el id de GenIdentificacion.',
     )
     concepto_reclamo = serializers.CharField(
         max_length=10, required=False, help_text='Solo 031, y obligatorio ahí: código del concepto de reclamo.',
     )
 
     def validate(self, attrs):
+        if attrs['codigo'] in servicio.RECEPCION_EVENTO_CON_PERSONA and not attrs.get('persona'):
+            raise serializers.ValidationError(f"El evento {attrs['codigo']} lleva la persona que recibe.")
         if attrs['codigo'] == '031' and not attrs.get('concepto_reclamo'):
             raise serializers.ValidationError('El reclamo (031) lleva su concepto.')
         return attrs
@@ -364,7 +356,9 @@ class GenElectronicoRecepcionViewSet(viewsets.GenericViewSet):
         summary='Registrar un evento RADIAN sobre un documento recibido',
         description=(
             '`codigo` 030 acuse, 031 reclamo, 032 recibo del bien o servicio, 033 aceptación. '
-            '`persona` solo en 030 y 032 (sin ella, la configurada en el emisor); '
+            '`persona` obligatoria en 030 y 032, con `identificacion` como id de '
+            'GenIdentificacion (el front puede sugerirla desde `com_recepcion_recibe` de '
+            'la configuración); '
             '`concepto_reclamo` solo en 031, y obligatorio ahí. Responde 201 con el evento '
             '`pendiente`: rededoc lo envía a la DIAN en segundo plano y su estado se consulta '
             'en `evento/`. El emisor no se manda: sale de `gen_rededoc_emisor`; un documento '
