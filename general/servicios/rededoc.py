@@ -138,19 +138,29 @@ class Rededoc:
             timeout=self.TIMEOUT_VALIDAR_RESOLUCIONES,
         )
 
-    def importar_resoluciones(self, emisor_id):
+    def importar_resoluciones(self, emisor_id, ambiente=None, modulo=None, pagina=None):
         """
         Hace que rededoc traiga de la DIAN las resoluciones del emisor y cree las
         que le falten. `POST /api/emisores/resolucion/importar-dian/`.
 
-        Responde 200 con la lista de todas las resoluciones del emisor —las nuevas
-        y las que ya tenía—, de cualquier ambiente, sin paginar. Sin
+        Responde 200 con las resoluciones del emisor —las nuevas y las que ya
+        tenía— igual que el listado: paginadas de a 10 (`count`, `next`,
+        `previous`, `results`). `ambiente`, `modulo` y `pagina` van en la URL,
+        con el mismo significado que en `GET /api/emisores/resolucion/`. Sin
         ningún software, o si la DIAN no devuelve rangos, responde 400.
         Consulta a la DIAN dentro de la misma llamada, igual que la validación.
         """
+        parametros = {}
+        if ambiente:
+            parametros['ambiente'] = ambiente
+        if modulo:
+            parametros['modulo'] = modulo
+        if pagina:
+            parametros['page'] = pagina
         return self._peticion(
             'POST', '/api/emisores/resolucion/importar-dian/',
             datos={'emisor': emisor_id},
+            parametros=parametros or None,
             timeout=self.TIMEOUT_VALIDAR_RESOLUCIONES,
         )
 

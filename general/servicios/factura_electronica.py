@@ -408,24 +408,31 @@ def resoluciones_validar(venta: bool = None, compra: bool = None, cliente: Reded
 REDEDOC_TIPO_FACTURA_DOCUMENTO_SOPORTE = 7
 
 
-# Ambiente de la DIAN de las resoluciones que se devuelven: producción. Fijo, y no
+# Ambiente de la DIAN de las resoluciones que se listan: producción. Fijo, y no
 # `REDEDOC_AMBIENTE`: las de habilitación son las del Set de Pruebas, que no sirven
 # para numerar documentos reales.
 AMBIENTE_RESOLUCIONES = 1
+# Módulos de rededoc por los que se puede filtrar. `nomina` existe allá, pero acá
+# las resoluciones son solo de venta o de compra.
+MODULOS_RESOLUCIONES = ('facturacion', 'compras')
 
 
-def resoluciones_consultar(cliente: Rededoc = None) -> list:
+def resoluciones_consultar(modulo: str = None, pagina: int = None, cliente: Rededoc = None) -> dict:
     """
     Le pide a rededoc que traiga de la DIAN las resoluciones del emisor de
-    `gen_rededoc_emisor`, y devuelve las que le quedan registradas.
+    `gen_rededoc_emisor` y devuelve una página de las que le quedan registradas.
 
-    No crea nada en torio: la que se necesite se trae con `resolucion_importar`. Rededoc
-    responde todas las del emisor, nuevas y anteriores, y acá se dejan solo las de
-    producción (`AMBIENTE_RESOLUCIONES`). Sin ninguna se responde la lista vacía, no
-    un error.
+    No crea nada en torio: la que se necesite se trae con `resolucion_importar`.
+    Rededoc responde como su listado, y se le piden solo las de producción
+    (`AMBIENTE_RESOLUCIONES`) y, si viene, las del `modulo`. Sin ninguna se
+    responde la lista vacía, no un error.
 
     Si rededoc no puede importar —el emisor no tiene software, la DIAN no devuelve
     rangos o no responde— sube su error.
+
+    Rededoc pagina, y sus `next` y `previous` son direcciones suyas, que al front
+    no le sirven: se devuelven `count` y `results`, y la página se pide con
+    `pagina`.
 
     Cada resolución lleva `importada`: si la empresa ya tiene una con ese número y
     prefijo, que es lo mismo que mira `resolucion_importar` para rechazarla.
@@ -433,25 +440,28 @@ def resoluciones_consultar(cliente: Rededoc = None) -> list:
     emisor_id = _emisor_id()
     cliente = cliente or Rededoc()
 
-    respuesta = cliente.importar_resoluciones(emisor_id)
+    respuesta = cliente.importar_resoluciones(
+        emisor_id, AMBIENTE_RESOLUCIONES, modulo, pagina,
+    )
     if respuesta['error']:
         raise _error_rededoc(respuesta)
-    resoluciones = [
-        r for r in respuesta['datos'] or []
-        if str(r.get('ambiente')) == str(AMBIENTE_RESOLUCIONES)
-    ]
+    datos = respuesta['datos'] or {}
+    resultados = datos.get('results') or []
     # Sin prefijo se guarda `None` o vacío según por dónde haya entrado: los dos
     # son la misma resolución.
     existentes = {
         (numero, prefijo or '')
         for numero, prefijo in GenResolucion.objects
-        .filter(numero__in=[r.get('numero_resolucion') for r in resoluciones])
+        .filter(numero__in=[r.get('numero_resolucion') for r in resultados])
         .values_list('numero', 'prefijo')
     }
-    return [
-        {**r, 'importada': (r.get('numero_resolucion'), r.get('prefijo') or '') in existentes}
-        for r in resoluciones
-    ]
+    return {
+        'count': datos.get('count', 0),
+        'results': [
+            {**r, 'importada': (r.get('numero_resolucion'), r.get('prefijo') or '') in existentes}
+            for r in resultados
+        ],
+    }
 
 
 def resolucion_importar(resolucion_id: int, cliente: Rededoc = None) -> GenResolucion:
