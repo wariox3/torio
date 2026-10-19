@@ -2107,24 +2107,24 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
 
                 self.assertEqual(caso.exception.status, esperado)
 
-    def test_recepcion_documento_evento_manda_el_emisor_guardado_sin_rango_de_fechas(self):
+    def test_recepcion_evento_manda_el_emisor_guardado_sin_rango_de_fechas(self):
         self.cliente.consultar_eventos_recibidos.return_value = {
             'error': False, 'status': 200,
             'datos': {'count': 30, 'next': 'https://api.rededoc.uk/x?page=2', 'previous': None, 'results': []},
         }
 
-        datos = factura_electronica.recepcion_documento_evento({'emisor': 88}, cliente=self.cliente)
+        datos = factura_electronica.recepcion_evento({'emisor': 88}, cliente=self.cliente)
 
         self.cliente.consultar_eventos_recibidos.assert_called_once_with({'emisor': 77, 'page': 1, 'page_size': 25})
         self.assertEqual(datos, {
             'count': 30, 'page': 1, 'page_size': 25, 'desde': None, 'hasta': None, 'results': [],
         })
 
-    def test_recepcion_documento_evento_pasa_los_filtros_con_el_documento_como_texto(self):
+    def test_recepcion_evento_pasa_los_filtros_con_el_documento_como_texto(self):
         self.cliente.consultar_eventos_recibidos.return_value = {'error': False, 'status': 200, 'datos': {}}
         documento = uuid_lib.UUID('3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8')
 
-        factura_electronica.recepcion_documento_evento({
+        factura_electronica.recepcion_evento({
             'documento': documento, 'estado': 'rechazado', 'codigo': '031', 'ordering': '-numero',
             'page': 2, 'page_size': 50,
         }, cliente=self.cliente)
@@ -2134,7 +2134,7 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
             'codigo': '031', 'ordering': '-numero', 'page': 2, 'page_size': 50,
         })
 
-    def test_recepcion_documento_evento_oculta_el_usuario_de_rededoc(self):
+    def test_recepcion_evento_oculta_el_usuario_de_rededoc(self):
         self.cliente.consultar_eventos_recibidos.return_value = {
             'error': False, 'status': 200,
             'datos': {'count': 1, 'results': [
@@ -2142,11 +2142,11 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
             ]},
         }
 
-        datos = factura_electronica.recepcion_documento_evento({}, cliente=self.cliente)
+        datos = factura_electronica.recepcion_evento({}, cliente=self.cliente)
 
         self.assertEqual(datos['results'], [{'id': 'e1', 'emisor': 77, 'codigo': '030', 'estado': 'registrado'}])
 
-    def test_recepcion_documento_evento_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
+    def test_recepcion_evento_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
         for status_rededoc, esperado in ((400, 400), (0, 502)):
             with self.subTest(status_rededoc=status_rededoc):
                 self.cliente.consultar_eventos_recibidos.return_value = {
@@ -2154,7 +2154,7 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
                 }
 
                 with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
-                    factura_electronica.recepcion_documento_evento({}, cliente=self.cliente)
+                    factura_electronica.recepcion_evento({}, cliente=self.cliente)
 
                 self.assertEqual(caso.exception.status, esperado)
 
@@ -2171,7 +2171,7 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
             'software_actualizar': lambda: factura_electronica.software_actualizar(3, {'pin': '1'}, cliente=self.cliente),
             'recepcion_documento': lambda: factura_electronica.recepcion_documento({}, cliente=self.cliente),
             'recepcion_correo': lambda: factura_electronica.recepcion_correo({}, cliente=self.cliente),
-            'recepcion_documento_evento': lambda: factura_electronica.recepcion_documento_evento({}, cliente=self.cliente),
+            'recepcion_evento': lambda: factura_electronica.recepcion_evento({}, cliente=self.cliente),
             'resoluciones_validar': lambda: factura_electronica.resoluciones_validar(cliente=self.cliente),
         }
         for nombre, llamada in llamadas.items():
@@ -3040,8 +3040,8 @@ class FacturaElectronicaVistaTests(TenantTestCase):
                     self.assertIn('detail', respuesta.data)
                     servicio.assert_not_called()
 
-    def test_recepcion_documento_evento_valida_la_query(self):
-        vista = _ElectronicoViewSinPermisos.as_view({'get': 'recepcion_documento_evento'})
+    def test_recepcion_evento_valida_la_query(self):
+        vista = _ElectronicoViewSinPermisos.as_view({'get': 'recepcion_evento'})
         documento = '3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8'
         validos = (
             ({}, {'page': 1, 'page_size': 25}),
@@ -3062,9 +3062,9 @@ class FacturaElectronicaVistaTests(TenantTestCase):
         casos = [(query, 200, filtros) for query, filtros in validos] + [(query, 400, None) for query in invalidos]
         for query, esperado, filtros in casos:
             with self.subTest(query=query):
-                peticion = self.factory.get('/general/electronico/recepcion-documento-evento/', query)
+                peticion = self.factory.get('/general/electronico/recepcion-evento/', query)
                 force_authenticate(peticion, user=SegUsuario(id=1))
-                with mock.patch.object(factura_electronica, 'recepcion_documento_evento', return_value={'count': 0}) as servicio:
+                with mock.patch.object(factura_electronica, 'recepcion_evento', return_value={'count': 0}) as servicio:
                     respuesta = vista(peticion)
 
                 self.assertEqual(respuesta.status_code, esperado)

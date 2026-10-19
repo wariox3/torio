@@ -16,6 +16,7 @@ from .documento_informe import GenDocumentoInformeViewSet
 from .documento_pago import GenDocumentoPagoViewSet
 from .documento_tipo import GenDocumentoTipoViewSet
 from .electronico import GenElectronicoViewSet
+from .electronico_recepcion import GenElectronicoRecepcionViewSet
 from .estado import GenEstadoViewSet
 from .festivo import GenFestivoViewSet
 from .forma_pago import GenFormaPagoViewSet

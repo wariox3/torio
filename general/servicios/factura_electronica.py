@@ -1335,13 +1335,13 @@ RECEPCION_CORREO_ORDENES = ('recibido_en', 'estado')
 # siempre la cuenta de servicio de torio.
 RECEPCION_CORREO_OCULTOS = ('raw_key', 'usuario')
 
-RECEPCION_DOCUMENTO_EVENTO_ESTADOS = ('pendiente', 'registrado', 'rechazado', 'error')
+RECEPCION_EVENTO_ESTADOS = ('pendiente', 'registrado', 'rechazado', 'error')
 # 030 acuse, 031 reclamo, 032 recibo del bien o servicio, 033 aceptación.
-RECEPCION_DOCUMENTO_EVENTO_CODIGOS = ('030', '031', '032', '033')
-RECEPCION_DOCUMENTO_EVENTO_ORDENES = ('creado_en', 'numero')
+RECEPCION_EVENTO_CODIGOS = ('030', '031', '032', '033')
+RECEPCION_EVENTO_ORDENES = ('creado_en', 'numero')
 # `usuario` es el de rededoc que pidió el evento: con la llave de torio, siempre
 # la cuenta de servicio de torio.
-RECEPCION_DOCUMENTO_EVENTO_OCULTOS = ('usuario',)
+RECEPCION_EVENTO_OCULTOS = ('usuario',)
 
 RECEPCION_ADJUNTO_ROLES = ('xml', 'xml_documento', 'pdf', 'otro')
 RECEPCION_ADJUNTO_PAGINA = 10  # fijo en rededoc: no acepta page_size
@@ -1433,7 +1433,7 @@ def recepcion_correo(filtros: dict, hoy=None, cliente: Rededoc = None) -> dict:
     return _bandeja(filtros, datos, correos)
 
 
-def recepcion_documento_evento(filtros: dict, cliente: Rededoc = None) -> dict:
+def recepcion_evento(filtros: dict, cliente: Rededoc = None) -> dict:
     """
     Los eventos RADIAN que el emisor de `gen_rededoc_emisor` registró sobre sus
     documentos recibidos. A diferencia de las otras bandejas no hay rango de
@@ -1458,7 +1458,7 @@ def recepcion_documento_evento(filtros: dict, cliente: Rededoc = None) -> dict:
         raise _error_rededoc(respuesta)
     datos = respuesta['datos'] or {}
     eventos = [
-        {campo: valor for campo, valor in evento.items() if campo not in RECEPCION_DOCUMENTO_EVENTO_OCULTOS}
+        {campo: valor for campo, valor in evento.items() if campo not in RECEPCION_EVENTO_OCULTOS}
         for evento in datos.get('results', [])
     ]
     return _bandeja(filtros, datos, eventos)
@@ -1496,6 +1496,34 @@ def recepcion_adjunto(filtros: dict, cliente: Rededoc = None) -> dict:
         'page_size': RECEPCION_ADJUNTO_PAGINA,
         'results': datos.get('results', []),
     }
+
+
+def recepcion_adjunto_descargar(adjunto_id, cliente: Rededoc = None) -> tuple:
+    """
+    El contenido de un adjunto de la recepción del emisor de
+    `gen_rededoc_emisor`: devuelve `(contenido, tipo_contenido, disposicion)`.
+
+    El `emisor` va en la consulta, así que un adjunto de otra empresa responde
+    404 en rededoc, igual que uno que no existe; acá los dos son 404.
+
+    El nombre lo puso el proveedor: el `Content-Disposition` se toma tal cual lo
+    arma rededoc (con el helper de Django, que escapa comillas y acentos), y si
+    no fuera una descarga se fuerza a serlo, para que un HTML o un SVG de un
+    tercero nunca se abra en el navegador con el origen de torio.
+    """
+    emisor_id = _emisor_id()
+    cliente = cliente or Rededoc()
+    respuesta = cliente.descargar_adjunto_recibido(adjunto_id, emisor_id)
+    if respuesta['error']:
+        if respuesta['status'] == 404:
+            raise ErrorFacturaElectronica('El adjunto no existe.', status=404)
+        raise _error_rededoc(respuesta)
+    cabeceras = respuesta.get('cabeceras') or {}
+    tipo_contenido = cabeceras.get('Content-Type') or 'application/octet-stream'
+    disposicion = cabeceras.get('Content-Disposition') or ''
+    if not disposicion.lower().startswith('attachment'):
+        disposicion = 'attachment'
+    return respuesta['datos'], tipo_contenido, disposicion
 
 # Tipo de contenido con el que sale cada extensión hacia rededoc.
 EXTENSIONES_RECEPCION = {'.zip': 'application/zip', '.xml': 'application/xml'}

@@ -213,6 +213,22 @@ class Rededoc:
         """
         return self._peticion('GET', '/api/recepcion/adjunto/', parametros=parametros)
 
+    def descargar_adjunto_recibido(self, adjunto_id, emisor_id):
+        """
+        El contenido de un adjunto de recepción.
+        `GET /api/recepcion/adjunto/{id}/descargar/?emisor=<id>`: con `emisor`,
+        rededoc responde 404 si el adjunto es de otro emisor.
+
+        `datos` trae los bytes, y `cabeceras` el `Content-Type` y el
+        `Content-Disposition` con el nombre original, que rededoc arma siempre
+        como descarga.
+        """
+        return self._peticion(
+            'GET', f'/api/recepcion/adjunto/{adjunto_id}/descargar/',
+            parametros={'emisor': emisor_id}, binario=True,
+            cabeceras=('Content-Type', 'Content-Disposition'),
+        )
+
     def eliminar_certificado(self, certificado_id):
         """
         Da de baja un certificado y borra su .p12. `DELETE /api/emisores/certificado/{id}/`
@@ -289,14 +305,16 @@ class Rededoc:
         )
 
     def _peticion(self, metodo: str, ruta: str, datos: dict = None, parametros: dict = None,
-                  archivos: dict = None, timeout: float = None, binario: bool = False):
+                  archivos: dict = None, timeout: float = None, binario: bool = False,
+                  cabeceras: tuple = ()):
         """
         Con `archivos` la petición sale como multipart y `datos` son los campos del
         formulario; sin ellos, `datos` va como cuerpo JSON. httpx pone el
         `Content-Type` con su boundary, por eso no se fija en `_headers()`.
 
         Con `binario` la respuesta es un archivo y `datos` trae sus bytes. Solo si
-        salió bien: un error sigue llegando como JSON.
+        salió bien: un error sigue llegando como JSON. Los headers que se nombren
+        en `cabeceras` vuelven en la llave `cabeceras` (los que no vinieron, en None).
         """
         url_completa = self.url + ruta
         try:
@@ -320,7 +338,10 @@ class Rededoc:
             return {'error': True, 'status': respuesta.status_code, 'datos': cuerpo}
         if binario:
             cuerpo = respuesta.content
-        return {'error': False, 'status': respuesta.status_code, 'datos': cuerpo}
+        resultado = {'error': False, 'status': respuesta.status_code, 'datos': cuerpo}
+        if cabeceras:
+            resultado['cabeceras'] = {nombre: respuesta.headers.get(nombre) for nombre in cabeceras}
+        return resultado
 
     @staticmethod
     def _cuerpo(respuesta):
