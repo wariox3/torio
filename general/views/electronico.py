@@ -30,7 +30,7 @@ UUID_DIAN_INVALIDO = 'Debe ser un UUID de 36 caracteres: xxxxxxxx-xxxx-xxxx-xxxx
 
 
 class SoftwareCrearRequestSerializer(serializers.Serializer):
-    tipo = serializers.ChoiceField(choices=servicio.MODULOS_SOFTWARE, help_text='Operación que habilita el software.')
+    tipo = serializers.ChoiceField(choices=servicio.TIPOS_SOFTWARE, help_text='Operación que habilita el software.')
     identificador = serializers.RegexField(
         UUID_DIAN, error_messages={'invalid': UUID_DIAN_INVALIDO}, help_text='SoftwareID asignado por la DIAN.',
     )

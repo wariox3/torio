@@ -44,6 +44,10 @@ from utilidades.zinc import Zinc
 EXTENSIONES_CERTIFICADO = ('.p12', '.pfx')
 TAMANO_MAXIMO_CERTIFICADO = 1024 * 1024  # 1 MB; un certificado real pesa unos pocos KB
 MODULOS_SOFTWARE = ('facturacion', 'nomina')
+# Tipos de software de rededoc (`Software.Tipo`): la DIAN habilita cada operación
+# con su propio SoftwareID. No confundir con `MODULOS_SOFTWARE`, el filtro de la
+# consulta: el de documento equivalente es del módulo `facturacion`.
+TIPOS_SOFTWARE = ('facturacion', 'nomina', 'documento_equivalente')
 
 
 class ErrorFacturaElectronica(Exception):
