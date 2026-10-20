@@ -10,7 +10,7 @@ class TurSoporteDetalleSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('-id',)
 
     contrato_nombre = serializers.CharField(
-        source='contrato.contacto.nombre_corto', read_only=True, default=None)
+        source='contrato.contacto.nombre_corto', read_only=True, allow_null=True)
 
     class Meta:
         model = TurSoporteDetalle

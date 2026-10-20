@@ -4,7 +4,7 @@ from humano.models import HumGrupo
 
 
 class HumGrupoSeleccionarSerializer(serializers.ModelSerializer):
-    periodo_dias = serializers.IntegerField(source='periodo.dias', read_only=True, default=None)
+    periodo_dias = serializers.IntegerField(source='periodo.dias', read_only=True, allow_null=True)
 
     class Meta:
         model = HumGrupo

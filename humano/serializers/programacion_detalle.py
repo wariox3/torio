@@ -10,9 +10,9 @@ class HumProgramacionDetalleSerializer(serializers.ModelSerializer):
     select_related_lista = ('programacion', 'contrato', 'contrato__contacto')
     ordenamiento_default_lista = ('-id',)
 
-    contrato_nombre = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, default=None)
+    contrato_nombre = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, allow_null=True)
     contacto_numero_identificacion = serializers.CharField(
-        source='contrato.contacto.numero_identificacion', read_only=True, default=None,
+        source='contrato.contacto.numero_identificacion', read_only=True, allow_null=True,
     )
 
     class Meta:

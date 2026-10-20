@@ -31,13 +31,13 @@ class GenDocumentoDetallePendienteSerializer(serializers.ModelSerializer):
     documento_numero = serializers.IntegerField(source='documento.numero', read_only=True)
     documento_fecha = serializers.DateField(source='documento.fecha', read_only=True)
     documento_documento_tipo_nombre = serializers.CharField(
-        source='documento.documento_tipo.nombre', read_only=True, default=None,
+        source='documento.documento_tipo.nombre', read_only=True, allow_null=True,
     )
     contacto_id = serializers.IntegerField(source='documento.contacto_id', read_only=True)
     contacto_nombre_corto = serializers.CharField(
-        source='documento.contacto.nombre_corto', read_only=True, default=None,
+        source='documento.contacto.nombre_corto', read_only=True, allow_null=True,
     )
-    item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
+    item_nombre = serializers.CharField(source='item.nombre', read_only=True, allow_null=True)
     # Impuestos del item (no del detalle); [] cuando el detalle no tiene item.
     # Solo los del lado del documento: de venta en un tipo de venta, de compra en
     # uno de compra. Un tipo que no es ni venta ni compra no lleva impuestos.

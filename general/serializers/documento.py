@@ -41,38 +41,38 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
     documento_tipo_operacion = serializers.IntegerField(source='documento_tipo.operacion', read_only=True)
-    documento_tipo_cuenta_cobrar_id = serializers.IntegerField(source='documento_tipo.cuenta_cobrar_id', read_only=True, default=None)
-    documento_tipo_cuenta_cobrar_codigo = serializers.CharField(source='documento_tipo.cuenta_cobrar.codigo', read_only=True, default=None)
-    documento_tipo_cuenta_cobrar_nombre = serializers.CharField(source='documento_tipo.cuenta_cobrar.nombre', read_only=True, default=None)
-    documento_tipo_cuenta_pagar_id = serializers.IntegerField(source='documento_tipo.cuenta_pagar_id', read_only=True, default=None)
-    documento_tipo_cuenta_pagar_codigo = serializers.CharField(source='documento_tipo.cuenta_pagar.codigo', read_only=True, default=None)
-    documento_tipo_cuenta_pagar_nombre = serializers.CharField(source='documento_tipo.cuenta_pagar.nombre', read_only=True, default=None)
-    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
-    contacto_numero_identificacion = serializers.CharField(source='contacto.numero_identificacion', read_only=True, default=None)
-    contacto_precio_id = serializers.IntegerField(source='contacto.precio_id', read_only=True, default=None)
-    contacto_precio_nombre = serializers.CharField(source='contacto.precio.nombre', read_only=True, default=None)
-    resolucion_numero = serializers.CharField(source='resolucion.numero', read_only=True, default=None)
-    resolucion_prefijo = serializers.CharField(source='resolucion.prefijo', read_only=True, default=None)
-    sector_nombre = serializers.CharField(source='sector.nombre', read_only=True, default=None)
-    plazo_pago_nombre = serializers.CharField(source='plazo_pago.nombre', read_only=True, default=None)
-    metodo_pago_nombre = serializers.CharField(source='metodo_pago.nombre', read_only=True, default=None)
+    documento_tipo_cuenta_cobrar_id = serializers.IntegerField(source='documento_tipo.cuenta_cobrar_id', read_only=True, allow_null=True)
+    documento_tipo_cuenta_cobrar_codigo = serializers.CharField(source='documento_tipo.cuenta_cobrar.codigo', read_only=True, allow_null=True)
+    documento_tipo_cuenta_cobrar_nombre = serializers.CharField(source='documento_tipo.cuenta_cobrar.nombre', read_only=True, allow_null=True)
+    documento_tipo_cuenta_pagar_id = serializers.IntegerField(source='documento_tipo.cuenta_pagar_id', read_only=True, allow_null=True)
+    documento_tipo_cuenta_pagar_codigo = serializers.CharField(source='documento_tipo.cuenta_pagar.codigo', read_only=True, allow_null=True)
+    documento_tipo_cuenta_pagar_nombre = serializers.CharField(source='documento_tipo.cuenta_pagar.nombre', read_only=True, allow_null=True)
+    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, allow_null=True)
+    contacto_numero_identificacion = serializers.CharField(source='contacto.numero_identificacion', read_only=True, allow_null=True)
+    contacto_precio_id = serializers.IntegerField(source='contacto.precio_id', read_only=True, allow_null=True)
+    contacto_precio_nombre = serializers.CharField(source='contacto.precio.nombre', read_only=True, allow_null=True)
+    resolucion_numero = serializers.CharField(source='resolucion.numero', read_only=True, allow_null=True)
+    resolucion_prefijo = serializers.CharField(source='resolucion.prefijo', read_only=True, allow_null=True)
+    sector_nombre = serializers.CharField(source='sector.nombre', read_only=True, allow_null=True)
+    plazo_pago_nombre = serializers.CharField(source='plazo_pago.nombre', read_only=True, allow_null=True)
+    metodo_pago_nombre = serializers.CharField(source='metodo_pago.nombre', read_only=True, allow_null=True)
     documento_referencia_numero = serializers.IntegerField(
-        source='documento_referencia.numero', read_only=True, default=None,
+        source='documento_referencia.numero', read_only=True, allow_null=True,
     )
     documento_concepto_correccion_nombre = serializers.CharField(
-        source='documento_concepto_correccion.nombre', read_only=True, default=None,
+        source='documento_concepto_correccion.nombre', read_only=True, allow_null=True,
     )
-    forma_pago_nombre = serializers.CharField(source='forma_pago.nombre', read_only=True, default=None)
-    asesor_nombre = serializers.CharField(source='asesor.nombre_corto', read_only=True, default=None)
+    forma_pago_nombre = serializers.CharField(source='forma_pago.nombre', read_only=True, allow_null=True)
+    asesor_nombre = serializers.CharField(source='asesor.nombre_corto', read_only=True, allow_null=True)
     cuenta_banco_nombre = serializers.CharField(
-        source='cuenta_banco.nombre', read_only=True, default=None,
+        source='cuenta_banco.nombre', read_only=True, allow_null=True,
     )
-    almacen_nombre = serializers.CharField(source='almacen.nombre', read_only=True, default=None)
-    sede_nombre = serializers.CharField(source='sede.nombre', read_only=True, default=None)
-    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
-    centro_costo_codigo = serializers.CharField(source='centro_costo.codigo', read_only=True, default=None)
-    comprobante_nombre = serializers.CharField(source='comprobante.nombre', read_only=True, default=None)
-    comprobante_codigo = serializers.CharField(source='comprobante.codigo', read_only=True, default=None)
+    almacen_nombre = serializers.CharField(source='almacen.nombre', read_only=True, allow_null=True)
+    sede_nombre = serializers.CharField(source='sede.nombre', read_only=True, allow_null=True)
+    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, allow_null=True)
+    centro_costo_codigo = serializers.CharField(source='centro_costo.codigo', read_only=True, allow_null=True)
+    comprobante_nombre = serializers.CharField(source='comprobante.nombre', read_only=True, allow_null=True)
+    comprobante_codigo = serializers.CharField(source='comprobante.codigo', read_only=True, allow_null=True)
 
     class Meta:
         model = GenDocumento

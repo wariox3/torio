@@ -13,11 +13,11 @@ class ConMovimientoSerializer(serializers.ModelSerializer):
     select_related_lista = ('comprobante', 'cuenta', 'centro_costo', 'periodo', 'contacto', 'documento')
     ordenamiento_default_lista = ('-id',)
 
-    comprobante_nombre = serializers.CharField(source='comprobante.nombre', read_only=True, default=None)
-    cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, default=None)
-    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, default=None)
-    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
-    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
+    comprobante_nombre = serializers.CharField(source='comprobante.nombre', read_only=True, allow_null=True)
+    cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, allow_null=True)
+    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, allow_null=True)
+    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, allow_null=True)
+    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, allow_null=True)
 
     class Meta:
         model = ConMovimiento

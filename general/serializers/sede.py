@@ -9,8 +9,8 @@ class GenSedeSerializer(serializers.ModelSerializer):
     select_related_lista = ('centro_costo',)
     ordenamiento_default_lista = ('nombre',)
 
-    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
-    centro_costo_codigo = serializers.CharField(source='centro_costo.codigo', read_only=True, default=None)
+    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, allow_null=True)
+    centro_costo_codigo = serializers.CharField(source='centro_costo.codigo', read_only=True, allow_null=True)
 
     class Meta:
         model = GenSede

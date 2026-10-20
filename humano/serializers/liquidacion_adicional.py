@@ -10,7 +10,7 @@ class HumLiquidacionAdicionalSerializer(serializers.ModelSerializer):
     select_related_lista = ('liquidacion', 'concepto')
     ordenamiento_default_lista = ('-id',)
 
-    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, default=None)
+    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = HumLiquidacionAdicional

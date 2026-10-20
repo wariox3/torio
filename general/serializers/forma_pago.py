@@ -9,8 +9,8 @@ class GenFormaPagoSerializer(serializers.ModelSerializer):
     select_related_lista = ('cuenta',)
     ordenamiento_default_lista = ('id',)
 
-    cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, default=None)
-    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, default=None)
+    cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, allow_null=True)
+    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = GenFormaPago

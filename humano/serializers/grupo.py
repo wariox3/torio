@@ -9,8 +9,8 @@ class HumGrupoSerializer(serializers.ModelSerializer):
     select_related_lista = ('periodo',)
     ordenamiento_default_lista = ('nombre',)
 
-    periodo_nombre = serializers.CharField(source='periodo.nombre', read_only=True, default=None)
-    periodo_dias = serializers.IntegerField(source='periodo.dias', read_only=True, default=None)
+    periodo_nombre = serializers.CharField(source='periodo.nombre', read_only=True, allow_null=True)
+    periodo_dias = serializers.IntegerField(source='periodo.dias', read_only=True, allow_null=True)
 
     class Meta:
         model = HumGrupo

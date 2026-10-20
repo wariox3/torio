@@ -10,13 +10,13 @@ class HumAporteDetalleSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('-id',)
 
     aporte_contrato_contrato_contacto_numero_identificacion = serializers.CharField(
-        source='aporte_contrato.contrato.contacto.numero_identificacion', read_only=True, default=None,
+        source='aporte_contrato.contrato.contacto.numero_identificacion', read_only=True, allow_null=True,
     )
     aporte_contrato_contrato_contacto_nombre_corto = serializers.CharField(
-        source='aporte_contrato.contrato.contacto.nombre_corto', read_only=True, default=None,
+        source='aporte_contrato.contrato.contacto.nombre_corto', read_only=True, allow_null=True,
     )
     aporte_contrato_salario = serializers.DecimalField(
-        source='aporte_contrato.salario', max_digits=20, decimal_places=6, read_only=True, default=None,
+        source='aporte_contrato.salario', max_digits=20, decimal_places=6, read_only=True, allow_null=True,
     )
 
     class Meta:

@@ -8,7 +8,7 @@ class TurTurnoSerializer(serializers.ModelSerializer):
     campos_filtrables = {'id', 'nombre', 'codigo', 'descanso', 'estado_inactivo'}
     ordenamiento_default_lista = ('nombre',)
 
-    novedad_tipo_nombre = serializers.CharField(source='novedad_tipo.nombre', read_only=True, default=None)
+    novedad_tipo_nombre = serializers.CharField(source='novedad_tipo.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = TurTurno

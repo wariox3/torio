@@ -9,8 +9,8 @@ from general.models import (
 
 
 class GenDocumentoImpuestoSerializer(serializers.ModelSerializer):
-    impuesto_nombre = serializers.CharField(source='impuesto.nombre', read_only=True, default=None)
-    impuesto_operacion = serializers.IntegerField(source='impuesto.operacion', read_only=True, default=None)
+    impuesto_nombre = serializers.CharField(source='impuesto.nombre', read_only=True, allow_null=True)
+    impuesto_operacion = serializers.IntegerField(source='impuesto.operacion', read_only=True, allow_null=True)
 
     class Meta:
         model = GenDocumentoImpuesto
@@ -48,35 +48,35 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
     documento_documento_tipo_nombre = serializers.CharField(
-        source='documento.documento_tipo.nombre', read_only=True, default=None,
+        source='documento.documento_tipo.nombre', read_only=True, allow_null=True,
     )
-    documento_fecha = serializers.DateField(source='documento.fecha', read_only=True, default=None)
+    documento_fecha = serializers.DateField(source='documento.fecha', read_only=True, allow_null=True)
     # Datos del documento que cruza esta línea, para que el front liste las
     # afectaciones sin ir a buscarlos documento por documento.
     documento_afectado_numero = serializers.IntegerField(
-        source='documento_afectado.numero', read_only=True, default=None,
+        source='documento_afectado.numero', read_only=True, allow_null=True,
     )
     documento_afectado_documento_tipo_nombre = serializers.CharField(
-        source='documento_afectado.documento_tipo.nombre', read_only=True, default=None,
+        source='documento_afectado.documento_tipo.nombre', read_only=True, allow_null=True,
     )
-    item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
-    modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
-    modalidad_codigo = serializers.CharField(source='modalidad.codigo', read_only=True, default=None)
-    puesto_nombre = serializers.CharField(source='puesto.nombre', read_only=True, default=None)
-    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
-    centro_costo_codigo = serializers.CharField(source='centro_costo.codigo', read_only=True, default=None)
-    cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, default=None)
-    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, default=None)
+    item_nombre = serializers.CharField(source='item.nombre', read_only=True, allow_null=True)
+    modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, allow_null=True)
+    modalidad_codigo = serializers.CharField(source='modalidad.codigo', read_only=True, allow_null=True)
+    puesto_nombre = serializers.CharField(source='puesto.nombre', read_only=True, allow_null=True)
+    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, allow_null=True)
+    centro_costo_codigo = serializers.CharField(source='centro_costo.codigo', read_only=True, allow_null=True)
+    cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, allow_null=True)
+    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, allow_null=True)
     contacto_numero_identificacion = serializers.CharField(
-        source='contacto.numero_identificacion', read_only=True, default=None,
+        source='contacto.numero_identificacion', read_only=True, allow_null=True,
     )
     contacto_nombre_corto = serializers.CharField(
-        source='contacto.nombre_corto', read_only=True, default=None,
+        source='contacto.nombre_corto', read_only=True, allow_null=True,
     )
-    almacen_nombre = serializers.CharField(source='almacen.nombre', read_only=True, default=None)
-    activo_codigo = serializers.CharField(source='activo.codigo', read_only=True, default=None)
-    activo_nombre = serializers.CharField(source='activo.nombre', read_only=True, default=None)
-    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, default=None)
+    almacen_nombre = serializers.CharField(source='almacen.nombre', read_only=True, allow_null=True)
+    activo_codigo = serializers.CharField(source='activo.codigo', read_only=True, allow_null=True)
+    activo_nombre = serializers.CharField(source='activo.nombre', read_only=True, allow_null=True)
+    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, allow_null=True)
     impuestos = GenDocumentoImpuestoSerializer(
         many=True,
         read_only=True,

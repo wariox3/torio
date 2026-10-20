@@ -13,7 +13,7 @@ class TurSoporteSerializer(serializers.ModelSerializer):
     )
     ordenamiento_default_lista = ('fecha_desde', 'id')
 
-    grupo_nombre = serializers.CharField(source='grupo.nombre', read_only=True, default=None)
+    grupo_nombre = serializers.CharField(source='grupo.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = TurSoporte

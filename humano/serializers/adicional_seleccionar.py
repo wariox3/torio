@@ -4,8 +4,8 @@ from humano.models import HumAdicional
 
 
 class HumAdicionalSeleccionarSerializer(serializers.ModelSerializer):
-    contrato_nombre = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, default=None)
-    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, default=None)
+    contrato_nombre = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, allow_null=True)
+    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = HumAdicional

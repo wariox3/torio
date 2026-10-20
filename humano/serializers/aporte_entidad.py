@@ -9,7 +9,7 @@ class HumAporteEntidadSerializer(serializers.ModelSerializer):
     select_related_lista = ('aporte', 'entidad')
     ordenamiento_default_lista = ('-id',)
 
-    entidad_nombre = serializers.CharField(source='entidad.nombre', read_only=True, default=None)
+    entidad_nombre = serializers.CharField(source='entidad.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = HumAporteEntidad

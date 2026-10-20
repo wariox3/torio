@@ -24,16 +24,16 @@ class GenContactoSerializer(ImagenPrincipalSerializerMixin, serializers.ModelSer
     ciudad_nombre = serializers.CharField(source='ciudad.nombre', read_only=True)
     departamento_nombre = serializers.CharField(source='ciudad.estado.nombre', read_only=True)
     tipo_persona_nombre = serializers.CharField(source='tipo_persona.nombre', read_only=True)
-    responsabilidad_nombre = serializers.CharField(source='responsabilidad.nombre', read_only=True, default=None)
-    banco_nombre = serializers.CharField(source='banco.nombre', read_only=True, default=None)
+    responsabilidad_nombre = serializers.CharField(source='responsabilidad.nombre', read_only=True, allow_null=True)
+    banco_nombre = serializers.CharField(source='banco.nombre', read_only=True, allow_null=True)
     cuenta_banco_clase_nombre = serializers.CharField(
-        source='cuenta_banco_clase.nombre', read_only=True, default=None,
+        source='cuenta_banco_clase.nombre', read_only=True, allow_null=True,
     )
-    asesor_nombre_corto = serializers.CharField(source='asesor.nombre_corto', read_only=True, default=None)
-    precio_nombre = serializers.CharField(source='precio.nombre', read_only=True, default=None)
-    plazo_pago_nombre = serializers.CharField(source='plazo_pago.nombre', read_only=True, default=None)
+    asesor_nombre_corto = serializers.CharField(source='asesor.nombre_corto', read_only=True, allow_null=True)
+    precio_nombre = serializers.CharField(source='precio.nombre', read_only=True, allow_null=True)
+    plazo_pago_nombre = serializers.CharField(source='plazo_pago.nombre', read_only=True, allow_null=True)
     plazo_pago_proveedor_nombre = serializers.CharField(
-        source='plazo_pago_proveedor.nombre', read_only=True, default=None
+        source='plazo_pago_proveedor.nombre', read_only=True, allow_null=True
     )
 
     class Meta:

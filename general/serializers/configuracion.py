@@ -9,16 +9,16 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
         source='hum_entidad_riesgo.nombre', read_only=True,
     )
     ven_item_administracion_nombre = serializers.CharField(
-        source='ven_item_administracion.nombre', read_only=True, default=None,
+        source='ven_item_administracion.nombre', read_only=True, allow_null=True,
     )
     ven_item_imprevisto_nombre = serializers.CharField(
-        source='ven_item_imprevisto.nombre', read_only=True, default=None,
+        source='ven_item_imprevisto.nombre', read_only=True, allow_null=True,
     )
     ven_item_utilidad_nombre = serializers.CharField(
-        source='ven_item_utilidad.nombre', read_only=True, default=None,
+        source='ven_item_utilidad.nombre', read_only=True, allow_null=True,
     )
     ven_pos_documento_tipo_nombre = serializers.CharField(
-        source='ven_pos_documento_tipo.nombre', read_only=True, default=None,
+        source='ven_pos_documento_tipo.nombre', read_only=True, allow_null=True,
     )
 
     class Meta:

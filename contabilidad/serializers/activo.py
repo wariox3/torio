@@ -11,11 +11,11 @@ class ConActivoSerializer(serializers.ModelSerializer):
     )
     ordenamiento_default_lista = ('-id',)
 
-    activo_grupo_nombre = serializers.CharField(source='activo_grupo.nombre', read_only=True, default=None)
-    metodo_depreciacion_nombre = serializers.CharField(source='metodo_depreciacion.nombre', read_only=True, default=None)
-    cuenta_gasto_nombre = serializers.CharField(source='cuenta_gasto.nombre', read_only=True, default=None)
-    cuenta_depreciacion_nombre = serializers.CharField(source='cuenta_depreciacion.nombre', read_only=True, default=None)
-    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, default=None)
+    activo_grupo_nombre = serializers.CharField(source='activo_grupo.nombre', read_only=True, allow_null=True)
+    metodo_depreciacion_nombre = serializers.CharField(source='metodo_depreciacion.nombre', read_only=True, allow_null=True)
+    cuenta_gasto_nombre = serializers.CharField(source='cuenta_gasto.nombre', read_only=True, allow_null=True)
+    cuenta_depreciacion_nombre = serializers.CharField(source='cuenta_depreciacion.nombre', read_only=True, allow_null=True)
+    centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = ConActivo

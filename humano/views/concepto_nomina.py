@@ -1,6 +1,7 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from humano.models import HumConceptoNomina
 from humano.serializers import HumConceptoNominaSeleccionarSerializer, HumConceptoNominaSerializer
@@ -21,8 +22,8 @@ class HumConceptoNominaViewSet(
     viewsets.GenericViewSet,
 ):
     """
-    Catálogo de conceptos de nómina: `seleccionar`, `lista` y edición del
-    `concepto` (ver `HumConceptoNominaSerializer`). No se crean ni se borran.
+    Catálogo de conceptos de nómina: `seleccionar`, `lista`, `configuracion` y
+    edición del `concepto` (ver `HumConceptoNominaSerializer`). No se crean ni se borran.
     """
 
     serializer_class = HumConceptoNominaSerializer
@@ -36,6 +37,12 @@ class HumConceptoNominaViewSet(
         if self.action == 'seleccionar':
             return super().get_permissions()
         return [TienePermisoModelo()]
+
+    @extend_schema(responses=HumConceptoNominaSerializer(many=True))
+    @action(detail=False, methods=['get'], pagination_class=None)
+    def configuracion(self, request):
+        """Todos los conceptos de nómina, sin paginar ni filtrar: la pantalla de configuración los muestra completos."""
+        return Response(HumConceptoNominaSerializer(self.get_queryset(), many=True).data)
 
     @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=HumConceptoNominaSeleccionarSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)

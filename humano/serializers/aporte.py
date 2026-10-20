@@ -11,10 +11,10 @@ class HumAporteSerializer(serializers.ModelSerializer):
     select_related_lista = ('sucursal', 'entidad_riesgo', 'entidad_sena', 'entidad_icbf')
     ordenamiento_default_lista = ('-id',)
 
-    sucursal_nombre = serializers.CharField(source='sucursal.nombre', read_only=True, default=None)
-    entidad_riesgo_nombre = serializers.CharField(source='entidad_riesgo.nombre', read_only=True, default=None)
-    entidad_sena_nombre = serializers.CharField(source='entidad_sena.nombre', read_only=True, default=None)
-    entidad_icbf_nombre = serializers.CharField(source='entidad_icbf.nombre', read_only=True, default=None)
+    sucursal_nombre = serializers.CharField(source='sucursal.nombre', read_only=True, allow_null=True)
+    entidad_riesgo_nombre = serializers.CharField(source='entidad_riesgo.nombre', read_only=True, allow_null=True)
+    entidad_sena_nombre = serializers.CharField(source='entidad_sena.nombre', read_only=True, allow_null=True)
+    entidad_icbf_nombre = serializers.CharField(source='entidad_icbf.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = HumAporte

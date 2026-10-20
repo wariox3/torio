@@ -29,7 +29,7 @@ class InvInventarioValorizadoInformeSerializer(InvExistenciaInformeSerializer):
     select_related_lista = ('cuenta_inventario',)
 
     cuenta_inventario_nombre = serializers.CharField(
-        source='cuenta_inventario.nombre', read_only=True, default=None,
+        source='cuenta_inventario.nombre', read_only=True, allow_null=True,
     )
 
     class Meta:

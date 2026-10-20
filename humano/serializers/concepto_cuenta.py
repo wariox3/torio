@@ -9,9 +9,9 @@ class HumConceptoCuentaSerializer(serializers.ModelSerializer):
     select_related_lista = ('concepto', 'tipo_costo', 'cuenta')
     ordenamiento_default_lista = ('-id',)
 
-    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, default=None)
-    tipo_costo_nombre = serializers.CharField(source='tipo_costo.nombre', read_only=True, default=None)
-    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, default=None)
+    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, allow_null=True)
+    tipo_costo_nombre = serializers.CharField(source='tipo_costo.nombre', read_only=True, allow_null=True)
+    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = HumConceptoCuenta

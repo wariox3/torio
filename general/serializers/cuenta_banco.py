@@ -13,12 +13,12 @@ class GenCuentaBancoSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('nombre',)
 
     cuenta_banco_tipo_nombre = serializers.CharField(
-        source='cuenta_banco_tipo.nombre', read_only=True, default=None,
+        source='cuenta_banco_tipo.nombre', read_only=True, allow_null=True,
     )
     cuenta_banco_clase_nombre = serializers.CharField(
-        source='cuenta_banco_clase.nombre', read_only=True, default=None,
+        source='cuenta_banco_clase.nombre', read_only=True, allow_null=True,
     )
-    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, default=None)
+    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = GenCuentaBanco

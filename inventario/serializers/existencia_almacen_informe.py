@@ -36,10 +36,10 @@ class InvExistenciaAlmacenInformeSerializer(serializers.ModelSerializer):
     select_related_lista = ('item', 'almacen')
     ordenamiento_default_lista = ('almacen__nombre', 'item__nombre')
 
-    item_codigo = serializers.CharField(source='item.codigo', read_only=True, default=None)
+    item_codigo = serializers.CharField(source='item.codigo', read_only=True, allow_null=True)
     item_nombre = serializers.CharField(source='item.nombre', read_only=True)
     item_referencia = serializers.CharField(
-        source='item.referencia', read_only=True, default=None,
+        source='item.referencia', read_only=True, allow_null=True,
     )
     almacen_nombre = serializers.CharField(source='almacen.nombre', read_only=True)
     costo_promedio = serializers.DecimalField(

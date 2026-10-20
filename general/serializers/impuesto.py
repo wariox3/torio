@@ -4,9 +4,9 @@ from general.models import GenImpuesto
 
 
 class GenImpuestoSeleccionarSerializer(serializers.ModelSerializer):
-    impuesto_tipo_nombre = serializers.CharField(source='impuesto_tipo.nombre', read_only=True, default=None)
-    cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, default=None)
-    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, default=None)
+    impuesto_tipo_nombre = serializers.CharField(source='impuesto_tipo.nombre', read_only=True, allow_null=True)
+    cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, allow_null=True)
+    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = GenImpuesto
@@ -37,9 +37,9 @@ class GenImpuestoSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('id',)
     select_related_lista = ('impuesto_tipo', 'cuenta')
 
-    impuesto_tipo_nombre = serializers.CharField(source='impuesto_tipo.nombre', read_only=True, default=None)
-    cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, default=None)
-    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, default=None)
+    impuesto_tipo_nombre = serializers.CharField(source='impuesto_tipo.nombre', read_only=True, allow_null=True)
+    cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, allow_null=True)
+    cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = GenImpuesto

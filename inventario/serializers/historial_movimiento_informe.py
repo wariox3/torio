@@ -51,7 +51,7 @@ class InvHistorialMovimientoInformeSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('-documento__fecha', '-documento__numero', '-id')
 
     documento_numero = serializers.IntegerField(
-        source='documento.numero', read_only=True, default=None,
+        source='documento.numero', read_only=True, allow_null=True,
     )
     documento_fecha = serializers.DateField(source='documento.fecha', read_only=True)
     documento_tipo_id = serializers.IntegerField(
@@ -61,9 +61,9 @@ class InvHistorialMovimientoInformeSerializer(serializers.ModelSerializer):
         source='documento.documento_tipo.nombre', read_only=True,
     )
     contacto_nombre_corto = serializers.CharField(
-        source='documento.contacto.nombre_corto', read_only=True, default=None,
+        source='documento.contacto.nombre_corto', read_only=True, allow_null=True,
     )
-    item_codigo = serializers.CharField(source='item.codigo', read_only=True, default=None)
+    item_codigo = serializers.CharField(source='item.codigo', read_only=True, allow_null=True)
     item_nombre = serializers.CharField(source='item.nombre', read_only=True)
     almacen_nombre = serializers.CharField(source='almacen.nombre', read_only=True)
 

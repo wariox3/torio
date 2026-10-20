@@ -9,7 +9,7 @@ class ConConciliacionSerializer(serializers.ModelSerializer):
     select_related_lista = ('cuenta_banco',)
     ordenamiento_default_lista = ('-id',)
 
-    cuenta_banco_nombre = serializers.CharField(source='cuenta_banco.nombre', read_only=True, default=None)
+    cuenta_banco_nombre = serializers.CharField(source='cuenta_banco.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = ConConciliacion
@@ -18,7 +18,7 @@ class ConConciliacionSerializer(serializers.ModelSerializer):
 
 
 class ConConciliacionSeleccionarSerializer(serializers.ModelSerializer):
-    cuenta_banco_nombre = serializers.CharField(source='cuenta_banco.nombre', read_only=True, default=None)
+    cuenta_banco_nombre = serializers.CharField(source='cuenta_banco.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = ConConciliacion

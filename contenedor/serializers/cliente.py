@@ -102,16 +102,16 @@ class CtnClienteAdministrarSerializer(serializers.ModelSerializer):
     dominio = serializers.SerializerMethodField()
     imagen = serializers.SerializerMethodField()
     imagen_thumbnail = serializers.SerializerMethodField()
-    owner_email = serializers.CharField(source='owner.email', read_only=True, default=None)
-    owner_nombre_corto = serializers.CharField(source='owner.nombre_corto', read_only=True, default=None)
+    owner_email = serializers.CharField(source='owner.email', read_only=True, allow_null=True)
+    owner_nombre_corto = serializers.CharField(source='owner.nombre_corto', read_only=True, allow_null=True)
     suscripcion_fecha_fin = serializers.DateField(
-        source='suscripcion.fecha_fin', read_only=True, default=None,
+        source='suscripcion.fecha_fin', read_only=True, allow_null=True,
     )
     suscripcion_frecuencia = serializers.CharField(
-        source='suscripcion.frecuencia', read_only=True, default=None,
+        source='suscripcion.frecuencia', read_only=True, allow_null=True,
     )
     suscripcion_suscripcion_tipo_nombre = serializers.CharField(
-        source='suscripcion.suscripcion_tipo.nombre', read_only=True, default=None,
+        source='suscripcion.suscripcion_tipo.nombre', read_only=True, allow_null=True,
     )
     suscripcion_vigente = serializers.BooleanField(read_only=True)
     usuarios = serializers.IntegerField(read_only=True)

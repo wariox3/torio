@@ -9,13 +9,13 @@ class HumAdicionalSerializer(serializers.ModelSerializer):
     select_related_lista = ('concepto', 'contrato', 'contrato__contacto', 'programacion')
     ordenamiento_default_lista = ('-id',)
 
-    contrato_nombre = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, default=None)
-    contrato_contacto_id = serializers.IntegerField(source='contrato.contacto_id', read_only=True, default=None)
+    contrato_nombre = serializers.CharField(source='contrato.contacto.nombre_corto', read_only=True, allow_null=True)
+    contrato_contacto_id = serializers.IntegerField(source='contrato.contacto_id', read_only=True, allow_null=True)
     contrato_contacto_numero_identificacion = serializers.CharField(
-        source='contrato.contacto.numero_identificacion', read_only=True, default=None,
+        source='contrato.contacto.numero_identificacion', read_only=True, allow_null=True,
     )
-    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, default=None)
-    programacion_nombre = serializers.CharField(source='programacion.nombre', read_only=True, default=None)
+    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, allow_null=True)
+    programacion_nombre = serializers.CharField(source='programacion.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = HumAdicional

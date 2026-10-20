@@ -20,14 +20,14 @@ class GenDocumentoTipoSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('nombre',)
     select_related_lista = ('documento_clase', 'resolucion', 'cuenta_cobrar', 'cuenta_pagar', 'comprobante')
 
-    documento_clase_nombre = serializers.CharField(source='documento_clase.nombre', read_only=True, default=None)
-    resolucion_prefijo = serializers.CharField(source='resolucion.prefijo', read_only=True, default=None)
-    resolucion_numero = serializers.CharField(source='resolucion.numero', read_only=True, default=None)
-    cuenta_cobrar_codigo = serializers.CharField(source='cuenta_cobrar.codigo', read_only=True, default=None)
-    cuenta_cobrar_nombre = serializers.CharField(source='cuenta_cobrar.nombre', read_only=True, default=None)
-    cuenta_pagar_codigo = serializers.CharField(source='cuenta_pagar.codigo', read_only=True, default=None)
-    cuenta_pagar_nombre = serializers.CharField(source='cuenta_pagar.nombre', read_only=True, default=None)
-    comprobante_nombre = serializers.CharField(source='comprobante.nombre', read_only=True, default=None)
+    documento_clase_nombre = serializers.CharField(source='documento_clase.nombre', read_only=True, allow_null=True)
+    resolucion_prefijo = serializers.CharField(source='resolucion.prefijo', read_only=True, allow_null=True)
+    resolucion_numero = serializers.CharField(source='resolucion.numero', read_only=True, allow_null=True)
+    cuenta_cobrar_codigo = serializers.CharField(source='cuenta_cobrar.codigo', read_only=True, allow_null=True)
+    cuenta_cobrar_nombre = serializers.CharField(source='cuenta_cobrar.nombre', read_only=True, allow_null=True)
+    cuenta_pagar_codigo = serializers.CharField(source='cuenta_pagar.codigo', read_only=True, allow_null=True)
+    cuenta_pagar_nombre = serializers.CharField(source='cuenta_pagar.nombre', read_only=True, allow_null=True)
+    comprobante_nombre = serializers.CharField(source='comprobante.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = GenDocumentoTipo

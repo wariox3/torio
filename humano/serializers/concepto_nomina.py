@@ -18,7 +18,7 @@ class HumConceptoNominaSerializer(serializers.ModelSerializer):
 
     # Obligatorio: la nómina no puede liquidar un concepto de nómina sin concepto.
     concepto = serializers.PrimaryKeyRelatedField(queryset=HumConcepto.objects.all())
-    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, default=None)
+    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = HumConceptoNomina

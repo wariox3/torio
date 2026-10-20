@@ -38,16 +38,16 @@ class GenDocumentoDetalleInformeSerializer(serializers.ModelSerializer):
     documento_fecha = serializers.DateField(source='documento.fecha', read_only=True)
     documento_tipo_id = serializers.IntegerField(source='documento.documento_tipo_id', read_only=True)
     documento_tipo_nombre = serializers.CharField(
-        source='documento.documento_tipo.nombre', read_only=True, default=None,
+        source='documento.documento_tipo.nombre', read_only=True, allow_null=True,
     )
     contacto_id = serializers.IntegerField(source='documento.contacto_id', read_only=True)
     contacto_nombre_corto = serializers.CharField(
-        source='documento.contacto.nombre_corto', read_only=True, default=None,
+        source='documento.contacto.nombre_corto', read_only=True, allow_null=True,
     )
-    item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
-    puesto_nombre = serializers.CharField(source='puesto.nombre', read_only=True, default=None)
-    modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, default=None)
-    modalidad_codigo = serializers.CharField(source='modalidad.codigo', read_only=True, default=None)
+    item_nombre = serializers.CharField(source='item.nombre', read_only=True, allow_null=True)
+    puesto_nombre = serializers.CharField(source='puesto.nombre', read_only=True, allow_null=True)
+    modalidad_nombre = serializers.CharField(source='modalidad.nombre', read_only=True, allow_null=True)
+    modalidad_codigo = serializers.CharField(source='modalidad.codigo', read_only=True, allow_null=True)
 
     class Meta:
         model = GenDocumentoDetalle
@@ -146,19 +146,19 @@ class GenDocumentoDetalleNominaInformeSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('-documento__fecha', '-id')
 
     documento_tipo_nombre = serializers.CharField(
-        source='documento.documento_tipo.nombre', read_only=True, default=None,
+        source='documento.documento_tipo.nombre', read_only=True, allow_null=True,
     )
     documento_fecha = serializers.DateField(source='documento.fecha', read_only=True)
     documento_fecha_hasta = serializers.DateField(source='documento.fecha_hasta', read_only=True)
     contacto_id = serializers.IntegerField(source='documento.contacto_id', read_only=True)
     contacto_numero_identificacion = serializers.CharField(
-        source='documento.contacto.numero_identificacion', read_only=True, default=None,
+        source='documento.contacto.numero_identificacion', read_only=True, allow_null=True,
     )
     contacto_nombre_corto = serializers.CharField(
-        source='documento.contacto.nombre_corto', read_only=True, default=None,
+        source='documento.contacto.nombre_corto', read_only=True, allow_null=True,
     )
     contrato_id = serializers.IntegerField(source='documento.contrato_id', read_only=True)
-    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, default=None)
+    concepto_nombre = serializers.CharField(source='concepto.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = GenDocumentoDetalle

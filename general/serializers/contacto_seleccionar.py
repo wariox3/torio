@@ -5,9 +5,9 @@ from general.models import GenContacto
 
 class GenContactoSeleccionarSerializer(serializers.ModelSerializer):
     ciudad_nombre = serializers.CharField(source='ciudad.nombre', read_only=True)
-    plazo_pago_dias = serializers.IntegerField(source='plazo_pago.dias', read_only=True, default=None)
+    plazo_pago_dias = serializers.IntegerField(source='plazo_pago.dias', read_only=True, allow_null=True)
     plazo_pago_proveedor_dias = serializers.IntegerField(
-        source='plazo_pago_proveedor.dias', read_only=True, default=None,
+        source='plazo_pago_proveedor.dias', read_only=True, allow_null=True,
     )
 
     class Meta:

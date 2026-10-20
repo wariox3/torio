@@ -1,9 +1,12 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from humano.models import HumConcepto
-from humano.serializers import HumConceptoSeleccionarSerializer
+from humano.serializers import HumConceptoSeleccionarSerializer, HumConceptoSerializer
+from seguridad.permissions import TienePermisoModelo
+from utilidades.mixins import FiltrosDinamicosMixin
 from utilidades.paginacion import SeleccionarPaginacion
 
 _SELECCIONAR_PARAMS = [
@@ -14,8 +17,27 @@ _SELECCIONAR_PARAMS = [
 
 
 @extend_schema(tags=['Concepto'])
-class HumConceptoViewSet(viewsets.GenericViewSet):
-    serializer_class = HumConceptoSeleccionarSerializer
+class HumConceptoViewSet(FiltrosDinamicosMixin, viewsets.GenericViewSet):
+    """Catálogo de conceptos: `seleccionar`, `lista` y `configuracion`, de solo lectura."""
+
+    serializer_class = HumConceptoSerializer
+
+    def get_queryset(self):
+        return HumConcepto.objects.order_by('orden', 'id')
+
+    def get_permissions(self):
+        # `seleccionar` sigue con los permisos por defecto, como antes; `lista` y
+        # `configuracion` exigen el permiso sobre el modelo, como cualquier administrador.
+        if self.action == 'seleccionar':
+            return super().get_permissions()
+        return [TienePermisoModelo()]
+
+    @extend_schema(responses=HumConceptoSerializer(many=True))
+    @action(detail=False, methods=['get'], pagination_class=None)
+    def configuracion(self, request):
+        """Todos los conceptos, sin paginar ni filtrar: la pantalla de configuración los muestra completos."""
+        qs = self.get_queryset().select_related(*HumConceptoSerializer.select_related_lista)
+        return Response(HumConceptoSerializer(qs, many=True).data)
 
     @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=HumConceptoSeleccionarSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)

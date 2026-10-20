@@ -20,25 +20,25 @@ class TurPrototipoSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('fecha', 'id')
 
     contrato_nombre = serializers.CharField(
-        source='contrato.contacto.nombre_corto', read_only=True, default=None,
+        source='contrato.contacto.nombre_corto', read_only=True, allow_null=True,
     )
     contrato_contacto_numero_identificacion = serializers.CharField(
-        source='contrato.contacto.numero_identificacion', read_only=True, default=None,
+        source='contrato.contacto.numero_identificacion', read_only=True, allow_null=True,
     )
     documento_numero = serializers.IntegerField(
-        source='documento_detalle.documento.numero', read_only=True, default=None,
+        source='documento_detalle.documento.numero', read_only=True, allow_null=True,
     )
     documento_fecha = serializers.DateField(
-        source='documento_detalle.documento.fecha', read_only=True, default=None,
+        source='documento_detalle.documento.fecha', read_only=True, allow_null=True,
     )
     documento_documento_tipo_nombre = serializers.CharField(
-        source='documento_detalle.documento.documento_tipo.nombre', read_only=True, default=None,
+        source='documento_detalle.documento.documento_tipo.nombre', read_only=True, allow_null=True,
     )
     puesto_nombre = serializers.CharField(
-        source='documento_detalle.puesto.nombre', read_only=True, default=None,
+        source='documento_detalle.puesto.nombre', read_only=True, allow_null=True,
     )
     secuencia_nombre = serializers.CharField(
-        source='secuencia.nombre', read_only=True, default=None,
+        source='secuencia.nombre', read_only=True, allow_null=True,
     )
 
     class Meta:

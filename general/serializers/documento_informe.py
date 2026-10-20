@@ -38,15 +38,15 @@ class GenDocumentoInformeSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
-    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
+    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, allow_null=True)
     contacto_numero_identificacion = serializers.CharField(
-        source='contacto.numero_identificacion', read_only=True, default=None,
+        source='contacto.numero_identificacion', read_only=True, allow_null=True,
     )
-    sector_nombre = serializers.CharField(source='sector.nombre', read_only=True, default=None)
-    sede_nombre = serializers.CharField(source='sede.nombre', read_only=True, default=None)
-    plazo_pago_nombre = serializers.CharField(source='plazo_pago.nombre', read_only=True, default=None)
-    metodo_pago_nombre = serializers.CharField(source='metodo_pago.nombre', read_only=True, default=None)
-    forma_pago_nombre = serializers.CharField(source='forma_pago.nombre', read_only=True, default=None)
+    sector_nombre = serializers.CharField(source='sector.nombre', read_only=True, allow_null=True)
+    sede_nombre = serializers.CharField(source='sede.nombre', read_only=True, allow_null=True)
+    plazo_pago_nombre = serializers.CharField(source='plazo_pago.nombre', read_only=True, allow_null=True)
+    metodo_pago_nombre = serializers.CharField(source='metodo_pago.nombre', read_only=True, allow_null=True)
+    forma_pago_nombre = serializers.CharField(source='forma_pago.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = GenDocumento
@@ -157,12 +157,12 @@ class GenDocumentoCarteraCorteInformeSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('vence_corte', 'numero')
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
-    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
+    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, allow_null=True)
     contacto_numero_identificacion = serializers.CharField(
-        source='contacto.numero_identificacion', read_only=True, default=None,
+        source='contacto.numero_identificacion', read_only=True, allow_null=True,
     )
-    sector_nombre = serializers.CharField(source='sector.nombre', read_only=True, default=None)
-    sede_nombre = serializers.CharField(source='sede.nombre', read_only=True, default=None)
+    sector_nombre = serializers.CharField(source='sector.nombre', read_only=True, allow_null=True)
+    sede_nombre = serializers.CharField(source='sede.nombre', read_only=True, allow_null=True)
     afectado_corte = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
     pago_corte = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
     pendiente_corte = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
@@ -252,12 +252,12 @@ class GenDocumentoNominaInformeSerializer(serializers.ModelSerializer):
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     contacto_numero_identificacion = serializers.CharField(
-        source='contacto.numero_identificacion', read_only=True, default=None,
+        source='contacto.numero_identificacion', read_only=True, allow_null=True,
     )
-    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
-    contacto_numero_cuenta = serializers.CharField(source='contacto.numero_cuenta', read_only=True, default=None)
-    contacto_banco_nombre = serializers.CharField(source='contacto.banco.nombre', read_only=True, default=None)
-    contrato_grupo_nombre = serializers.CharField(source='contrato.grupo.nombre', read_only=True, default=None)
+    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, allow_null=True)
+    contacto_numero_cuenta = serializers.CharField(source='contacto.numero_cuenta', read_only=True, allow_null=True)
+    contacto_banco_nombre = serializers.CharField(source='contacto.banco.nombre', read_only=True, allow_null=True)
+    contrato_grupo_nombre = serializers.CharField(source='contrato.grupo.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = GenDocumento

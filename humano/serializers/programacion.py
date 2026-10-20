@@ -12,9 +12,9 @@ class HumProgramacionSerializer(serializers.ModelSerializer):
     select_related_lista = ('grupo', 'pago_tipo', 'periodo')
     ordenamiento_default_lista = ('-id',)
 
-    grupo_nombre = serializers.CharField(source='grupo.nombre', read_only=True, default=None)
-    pago_tipo_nombre = serializers.CharField(source='pago_tipo.nombre', read_only=True, default=None)
-    periodo_nombre = serializers.CharField(source='periodo.nombre', read_only=True, default=None)
+    grupo_nombre = serializers.CharField(source='grupo.nombre', read_only=True, allow_null=True)
+    pago_tipo_nombre = serializers.CharField(source='pago_tipo.nombre', read_only=True, allow_null=True)
+    periodo_nombre = serializers.CharField(source='periodo.nombre', read_only=True, allow_null=True)
 
     class Meta:
         model = HumProgramacion

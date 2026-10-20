@@ -16,12 +16,12 @@ class TurProgramacionSimulacionSerializer(serializers.ModelSerializer):
     )
     ordenamiento_default_lista = ('fecha', 'id')
 
-    turno_nombre = serializers.CharField(source='turno.nombre', read_only=True, default=None)
+    turno_nombre = serializers.CharField(source='turno.nombre', read_only=True, allow_null=True)
     contrato_nombre = serializers.CharField(
-        source='contrato.contacto.nombre_corto', read_only=True, default=None,
+        source='contrato.contacto.nombre_corto', read_only=True, allow_null=True,
     )
     contrato_contacto_numero_identificacion = serializers.CharField(
-        source='contrato.contacto.numero_identificacion', read_only=True, default=None,
+        source='contrato.contacto.numero_identificacion', read_only=True, allow_null=True,
     )
 
     class Meta:

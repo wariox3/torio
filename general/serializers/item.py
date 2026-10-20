@@ -6,18 +6,18 @@ from general.serializers.imagen import ImagenPrincipalSerializerMixin
 
 
 class GenItemImpuestoSerializer(serializers.ModelSerializer):
-    impuesto_nombre = serializers.CharField(source='impuesto.nombre', read_only=True, default=None)
-    impuesto_nombre_extendido = serializers.CharField(source='impuesto.nombre_extendido', read_only=True, default=None)
+    impuesto_nombre = serializers.CharField(source='impuesto.nombre', read_only=True, allow_null=True)
+    impuesto_nombre_extendido = serializers.CharField(source='impuesto.nombre_extendido', read_only=True, allow_null=True)
     impuesto_porcentaje = serializers.DecimalField(
-        source='impuesto.porcentaje', max_digits=10, decimal_places=2, read_only=True, default=None,
+        source='impuesto.porcentaje', max_digits=10, decimal_places=2, read_only=True, allow_null=True,
     )
     impuesto_porcentaje_base = serializers.DecimalField(
-        source='impuesto.porcentaje_base', max_digits=10, decimal_places=2, read_only=True, default=None,
+        source='impuesto.porcentaje_base', max_digits=10, decimal_places=2, read_only=True, allow_null=True,
     )
-    impuesto_venta = serializers.BooleanField(source='impuesto.venta', read_only=True, default=None)
-    impuesto_compra = serializers.BooleanField(source='impuesto.compra', read_only=True, default=None)
-    impuesto_operacion = serializers.IntegerField(source='impuesto.operacion', read_only=True, default=None)
-    impuesto_impuesto_tipo_id = serializers.IntegerField(source='impuesto.impuesto_tipo_id', read_only=True, default=None)
+    impuesto_venta = serializers.BooleanField(source='impuesto.venta', read_only=True, allow_null=True)
+    impuesto_compra = serializers.BooleanField(source='impuesto.compra', read_only=True, allow_null=True)
+    impuesto_operacion = serializers.IntegerField(source='impuesto.operacion', read_only=True, allow_null=True)
+    impuesto_impuesto_tipo_id = serializers.IntegerField(source='impuesto.impuesto_tipo_id', read_only=True, allow_null=True)
 
     class Meta:
         model = GenItemImpuesto

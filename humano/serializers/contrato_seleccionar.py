@@ -4,9 +4,9 @@ from humano.models import HumContrato
 
 
 class HumContratoSeleccionarSerializer(serializers.ModelSerializer):
-    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
+    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, allow_null=True)
     contacto_numero_identificacion = serializers.CharField(
-        source='contacto.numero_identificacion', read_only=True, default=None,
+        source='contacto.numero_identificacion', read_only=True, allow_null=True,
     )
 
     class Meta:
