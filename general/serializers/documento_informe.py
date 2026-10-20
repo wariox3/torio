@@ -127,6 +127,104 @@ class GenDocumentoInformeExportarSerializer(serializers.Serializer):
         return valor
 
 
+class GenDocumentoCarteraCorteInformeSerializer(serializers.ModelSerializer):
+    """
+    Columnas de los informes `cobrar_corte` y `pagar_corte`: un renglón por
+    documento con saldo a la fecha de corte. Los `_corte` y la edad los anota
+    `cartera.corte`; el resto es el documento.
+    """
+
+    campos_filtrables = {
+        'id',
+        'numero',
+        'fecha',
+        'fecha_vence',
+        'documento_tipo_id',
+        'contacto_id',
+        'contacto__nombre_corto',
+        'contacto__numero_identificacion',
+        'sector_id',
+        'sede_id',
+        'total',
+        'afectado_corte',
+        'pago_corte',
+        'pendiente_corte',
+        'vence_corte',
+        'dias_vencido',
+        'edad',
+    }
+    select_related_lista = ('documento_tipo', 'contacto', 'sector', 'sede')
+    ordenamiento_default_lista = ('vence_corte', 'numero')
+
+    documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
+    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, default=None)
+    contacto_numero_identificacion = serializers.CharField(
+        source='contacto.numero_identificacion', read_only=True, default=None,
+    )
+    sector_nombre = serializers.CharField(source='sector.nombre', read_only=True, default=None)
+    sede_nombre = serializers.CharField(source='sede.nombre', read_only=True, default=None)
+    afectado_corte = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
+    pago_corte = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
+    pendiente_corte = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
+    vence_corte = serializers.DateField(read_only=True)
+    dias_vencido = serializers.IntegerField(read_only=True)
+    edad = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = GenDocumento
+        fields = [
+            'id',
+            'numero',
+            'fecha',
+            'fecha_vence',
+            'documento_tipo_id',
+            'documento_tipo_nombre',
+            'contacto_id',
+            'contacto_nombre_corto',
+            'contacto_numero_identificacion',
+            'sector_id',
+            'sector_nombre',
+            'sede_id',
+            'sede_nombre',
+            'subtotal',
+            'impuesto',
+            'total',
+            'afectado_corte',
+            'pago_corte',
+            'pendiente_corte',
+            'vence_corte',
+            'dias_vencido',
+            'edad',
+        ]
+
+
+class GenDocumentoCarteraCorteInformeExportarSerializer(GenDocumentoInformeExportarSerializer):
+    """Excel de los informes `cobrar_corte` y `pagar_corte`."""
+
+    nombre_archivo = 'cartera_corte'
+    hoja = 'Cartera al corte'
+
+    campos_excel = (
+        ('id', 'ID'),
+        ('documento_tipo.nombre', 'Tipo documento'),
+        ('numero', 'Número'),
+        ('fecha', 'Fecha'),
+        ('fecha_vence', 'Fecha vence'),
+        ('contacto.numero_identificacion', 'Identificación'),
+        ('contacto.nombre_corto', 'Contacto'),
+        ('sector.nombre', 'Sector'),
+        ('sede.nombre', 'Sede'),
+        ('subtotal', 'Subtotal'),
+        ('impuesto', 'Impuesto'),
+        ('total', 'Total'),
+        ('afectado_corte', 'Afectado'),
+        ('pago_corte', 'Pago'),
+        ('pendiente_corte', 'Pendiente'),
+        ('dias_vencido', 'Días vencido'),
+        ('edad', 'Edad'),
+    )
+
+
 class GenDocumentoNominaInformeSerializer(serializers.ModelSerializer):
     """
     Columnas del informe `nomina`: un renglón por documento de nómina con el

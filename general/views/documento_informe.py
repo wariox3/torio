@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from rest_framework import viewsets
@@ -5,17 +7,22 @@ from rest_framework.exceptions import ValidationError
 
 from general.models import GenDocumento
 from general.serializers import (
+    GenDocumentoCarteraCorteInformeExportarSerializer,
+    GenDocumentoCarteraCorteInformeSerializer,
     GenDocumentoInformeExportarSerializer,
     GenDocumentoInformeSerializer,
     GenDocumentoNominaInformeExportarSerializer,
     GenDocumentoNominaInformeSerializer,
 )
+from general.servicios import cartera as cartera_servicio
 from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin
 
 # Registro de informes sobre GenDocumento.
 # Cada informe declara su invariante (`filtro`, garantizada por el servidor). Las
 # columnas las aporta el serializer estándar; un informe puede sobreescribirlas
-# con `serializer` / `exportar` si lo necesita.
+# con `serializer` / `exportar` si lo necesita. Un informe con `corte` es la
+# cartera de ese lado a una fecha: no filtra, la arma `cartera.corte` con la
+# `fecha` que manda el cliente.
 INFORMES = {
     'cobrar_pendiente': {
         'filtro': Q(
@@ -32,6 +39,16 @@ INFORMES = {
             estado_aprobado=True,
             estado_anulado=False,
         ),
+    },
+    'cobrar_corte': {
+        'corte': 'cobrar',
+        'serializer': GenDocumentoCarteraCorteInformeSerializer,
+        'exportar': GenDocumentoCarteraCorteInformeExportarSerializer,
+    },
+    'pagar_corte': {
+        'corte': 'pagar',
+        'serializer': GenDocumentoCarteraCorteInformeSerializer,
+        'exportar': GenDocumentoCarteraCorteInformeExportarSerializer,
     },
     # Todas las nóminas, aprobadas o no: así se revisa una programación generada
     # antes de aprobarla. El estado queda como filtro (`estado_aprobado`).
@@ -58,6 +75,9 @@ class GenDocumentoInformeViewSet(
 
         POST /lista/    { "informe": "...", "filtros": [...] }
         POST /excel/    { "informe": "...", "filtros": [...] }
+
+    Los de cartera al corte (`cobrar_corte`, `pagar_corte`) piden además
+    `fecha` (AAAA-MM-DD), la del corte.
     """
 
     def _informe(self):
@@ -88,5 +108,25 @@ class GenDocumentoInformeViewSet(
     def get_serializer_exportar(self):
         return self._informe().get('exportar', GenDocumentoInformeExportarSerializer)()
 
+    def _parametro(self, nombre):
+        """Un parámetro del body o, si no viene, de la query string."""
+        try:
+            valor = self.request.data.get(nombre)
+        except Exception:
+            valor = None
+        return valor or self.request.query_params.get(nombre)
+
+    def _fecha_corte(self):
+        valor = self._parametro('fecha')
+        if not valor:
+            raise ValidationError({'fecha': 'Este campo es requerido para la cartera al corte.'})
+        try:
+            return date.fromisoformat(str(valor))
+        except ValueError:
+            raise ValidationError({'fecha': 'Debe ser una fecha AAAA-MM-DD.'})
+
     def get_queryset(self):
-        return GenDocumento.objects.filter(self._informe()['filtro'])
+        informe = self._informe()
+        if 'corte' in informe:
+            return cartera_servicio.corte(informe['corte'], self._fecha_corte())
+        return GenDocumento.objects.filter(informe['filtro'])

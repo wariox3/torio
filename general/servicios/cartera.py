@@ -28,7 +28,10 @@ from collections import defaultdict
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import (
+    Case, CharField, DateField, DecimalField, F, Func, IntegerField, OuterRef, Q, Subquery, Sum,
+    Value, When,
+)
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -179,3 +182,121 @@ def resumen(tipo, hoy=None):
         'total_pendiente_vencido': agregados['total_pendiente_vencido'] or cero,
         'total_pendiente_vigente': agregados['total_pendiente_vigente'] or cero,
     }
+
+
+# -------------------------------------------------------------- al corte ----
+#
+# La cartera tal como estaba en una fecha: se reconstruye desde lo que origina el
+# saldo, igual que `_esperados`, pero tomando solo lo fechado hasta el corte. Con
+# el corte en hoy da el mismo `pendiente` que `validar`.
+#
+# Lo anulado no cuenta en ningún corte, aunque se haya anulado después: torio no
+# guarda cuándo se anuló un documento.
+
+# Rangos de edad del saldo, por días vencidos al corte: `vigente` aún no vence.
+EDADES = (
+    ('vigente', None, 0),
+    ('1_30', 1, 30),
+    ('31_60', 31, 60),
+    ('61_90', 61, 90),
+    ('mas_90', 91, None),
+)
+
+_DECIMAL = DecimalField(max_digits=20, decimal_places=6)
+_CERO = Value(Decimal('0'), output_field=_DECIMAL)
+
+
+class _DiasEntre(Func):
+    """`fecha - fecha` en PostgreSQL es un entero de días; Django lo volvería intervalo."""
+    arg_joiner = ' - '
+    template = '(%(expressions)s)'
+    output_field = IntegerField()
+
+
+def _suma(queryset, campo, agrupar):
+    """Subconsulta con la suma de `campo` por `agrupar`, o cero si no hay filas."""
+    return Coalesce(
+        Subquery(
+            queryset
+            .order_by()
+            .values(agrupar)
+            .annotate(total=Sum(campo))
+            .values('total')[:1],
+            output_field=_DECIMAL,
+        ),
+        _CERO,
+    )
+
+
+def corte(tipo, fecha):
+    """
+    Los documentos de un lado de la cartera (`cobrar` o `pagar`) con saldo en la
+    `fecha` de corte, anotados con:
+
+    - `afectado_corte`: las líneas con `documento_afectado` de recibos y egresos
+      aprobados y no anulados fechados hasta el corte, por su `precio`; las notas
+      crédito con referencia fechadas hasta el corte, por su `total - pago`; y, si
+      el documento es él mismo una de esas notas, su propio `total - pago`.
+    - `pago_corte`: sus `GenDocumentoPago` no anulados. El pago no tiene fecha
+      propia: se hace con el documento, así que va con su `fecha`.
+    - `pendiente_corte`: `total - (afectado_corte + pago_corte)`. Solo salen los
+      que lo tienen mayor que cero.
+    - `vence_corte`: `fecha_vence`, o `fecha` si no la tiene.
+    - `dias_vencido`: días entre `vence_corte` y el corte; cero o negativo si aún
+      no vence.
+    - `edad`: el rango de `EDADES` en que cae `dias_vencido`.
+
+    Entran los documentos aprobados y no anulados con `fecha` hasta el corte.
+    """
+    lineas = GenDocumentoDetalle.objects.filter(
+        documento_afectado=OuterRef('pk'),
+        documento__estado_aprobado=True,
+        documento__estado_anulado=False,
+        documento__fecha__lte=fecha,
+    )
+    notas = GenDocumento.objects.filter(
+        documento_tipo_id__in=DOCUMENTO_TIPOS_NOTA_CREDITO,
+        documento_referencia=OuterRef('pk'),
+        estado_aprobado=True,
+        estado_anulado=False,
+        fecha__lte=fecha,
+    ).annotate(neto=F('total') - F('pago'))
+    pagos = GenDocumentoPago.objects.filter(documento=OuterRef('pk'), estado_anulado=False)
+    nota_propia = Case(
+        When(
+            documento_tipo_id__in=DOCUMENTO_TIPOS_NOTA_CREDITO,
+            documento_referencia__isnull=False,
+            then=F('total') - F('pago'),
+        ),
+        default=_CERO,
+        output_field=_DECIMAL,
+    )
+    edad = Case(
+        *[
+            When(
+                Q(**({'dias_vencido__gte': desde} if desde is not None else {}))
+                & Q(**({'dias_vencido__lte': hasta} if hasta is not None else {})),
+                then=Value(nombre),
+            )
+            for nombre, desde, hasta in EDADES
+        ],
+        output_field=CharField(),
+    )
+
+    return (
+        _documentos(tipo)
+        .filter(estado_aprobado=True, estado_anulado=False, fecha__lte=fecha)
+        .annotate(
+            afectado_corte=(
+                _suma(lineas, 'precio', 'documento_afectado')
+                + _suma(notas, 'neto', 'documento_referencia')
+                + nota_propia
+            ),
+            pago_corte=_suma(pagos, 'pago', 'documento'),
+        )
+        .annotate(pendiente_corte=F('total') - F('afectado_corte') - F('pago_corte'))
+        .filter(pendiente_corte__gt=0)
+        .annotate(vence_corte=Coalesce('fecha_vence', 'fecha'))
+        .annotate(dias_vencido=_DiasEntre(Value(fecha, output_field=DateField()), F('vence_corte')))
+        .annotate(edad=edad)
+    )

@@ -33,6 +33,8 @@ from .documento_detalle_pendiente import GenDocumentoDetallePendienteSerializer
 from .documento_exportar import GenDocumentoExportarSerializer
 from .documento_importar import GenDocumentoImportarSerializer
 from .documento_informe import (
+    GenDocumentoCarteraCorteInformeExportarSerializer,
+    GenDocumentoCarteraCorteInformeSerializer,
     GenDocumentoInformeExportarSerializer,
     GenDocumentoInformeSerializer,
     GenDocumentoNominaInformeExportarSerializer,
