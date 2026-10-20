@@ -294,6 +294,22 @@ class Rededoc:
         """
         return self._peticion('POST', '/api/documentos/documento/', datos=datos)
 
+    def crear_nomina(self, datos: dict):
+        """
+        Crea una nómina electrónica del emisor, con su empleado y sus conceptos.
+        `POST /api/nomina/nomina/`. Queda en borrador: a diferencia del documento,
+        rededoc no la emite sola, se emite con `emitir_nomina`.
+        """
+        return self._peticion('POST', '/api/nomina/nomina/', datos=datos)
+
+    def emitir_nomina(self, nomina_id):
+        """
+        Firma y envía la nómina a la DIAN, o, si ya se envió sin veredicto (el Set
+        de Pruebas), consulta su estado. `POST /api/nomina/nomina/<id>/emitir/`.
+        Responde `estado` (aceptado, rechazado, enviado…), `cune` y `errores`.
+        """
+        return self._peticion('POST', f'/api/nomina/nomina/{nomina_id}/emitir/')
+
     # Notificar incluye el envío del correo por la pasarela, dentro de la misma
     # llamada: con el timeout general se cortaba antes de que rededoc respondiera.
     TIMEOUT_NOTIFICAR = 30

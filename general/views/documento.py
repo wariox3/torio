@@ -6,7 +6,7 @@ from django.db.models import CharField, Sum
 from django.db.models.functions import Cast, TruncMonth
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
@@ -29,6 +29,7 @@ from general.servicios import documento as documento_servicio
 from general.servicios import documento_imprimir
 from general.servicios import factura_electronica as factura_electronica_servicio
 from general.servicios import resumen as resumen_servicio
+from humano.servicios import nomina_electronica as nomina_electronica_servicio
 from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente, TienePermisoModelo
 from utilidades.filtros import aplicar_filtros
 from utilidades.mixins import (
@@ -93,6 +94,14 @@ _SELECCIONAR_REFERENCIA_PARAMS = [
     OpenApiParameter('con_pendiente', bool, description='Solo los que tienen saldo pendiente'),
     OpenApiParameter('electronico', bool, description='Solo los validados por la DIAN'),
 ]
+
+
+# Generar y desgenerar reciben el tipo y el periodo; hoy solo los usa la nómina electrónica.
+_PERIODO_TIPO = inline_serializer('DocumentoGenerarPeriodo', {
+    'documento_tipo': serializers.IntegerField(),
+    'anio': serializers.IntegerField(),
+    'mes': serializers.IntegerField(min_value=1, max_value=12),
+})
 
 
 @extend_schema(tags=['Documento'])
@@ -171,21 +180,64 @@ class GenDocumentoViewSet(
         return qs
 
     @extend_schema(
-        summary='Obsoleto: use documento/generar-recurrente/',
+        summary='Generar la nómina electrónica de un mes',
         description=(
-            'Reemplazado por `documento/generar-recurrente/`, que recibe los ids y '
-            'resuelve solo qué hacer con cada uno según su tipo. La generación de '
-            'contratos de servicio (tipo 34) vive ahora ahí.'
+            'Con `documento_tipo` 15 (NOMINA ELECTRONICA) crea, por empleado, la '
+            'nómina electrónica del `anio`/`mes` con sus nóminas aprobadas que no se '
+            'han reportado, aprobada y numerada (ver '
+            '`humano.servicios.nomina_electronica`). Todo o nada: si a un empleado le '
+            'falta algo, `errores` dice a quién y no se crea ninguna.\n\n'
+            'Hoy solo genera nómina electrónica; las plantillas recurrentes van por '
+            '`documento/generar-recurrente/`.\n\n'
+            'Responde `{"generados": <n>, "ids": [...]}`.'
         ),
-        request=None,
-        responses={400: OpenApiTypes.OBJECT},
-        deprecated=True,
+        request=_PERIODO_TIPO,
+        responses=OpenApiTypes.OBJECT,
     )
     @action(detail=False, methods=['post'])
     def generar(self, request):
-        raise ValidationError(
-            {'detail': 'Endpoint retirado. Use documento/generar-recurrente/.'}
+        documento_tipo = request.data.get('documento_tipo')
+        anio, mes = request.data.get('anio'), request.data.get('mes')
+        if documento_tipo in (None, '') or anio in (None, '') or mes in (None, ''):
+            raise ValidationError({'detail': 'Los campos documento_tipo, anio y mes son requeridos.'})
+        if str(documento_tipo) != str(nomina_electronica_servicio.DOCUMENTO_TIPO_NOMINA_ELECTRONICA):
+            raise ValidationError({'detail': (
+                'Solo se genera la nómina electrónica. Para las plantillas recurrentes use '
+                'documento/generar-recurrente/.'
+            )})
+        try:
+            generados = nomina_electronica_servicio.generar(anio, mes)
+        except nomina_electronica_servicio.NominaElectronicaError as e:
+            return Response({'detail': e.detail, 'errores': e.errores}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'generados': len(generados), 'ids': [d.id for d in generados]},
+            status=status.HTTP_201_CREATED,
         )
+
+    @extend_schema(
+        summary='Desgenerar la nómina electrónica de un mes',
+        description=(
+            'Con `documento_tipo` 15 borra las nóminas electrónicas del `anio`/`mes` '
+            'que no se han enviado y libera sus nóminas para volver a generar. Las '
+            'enviadas se quedan: lo que las corrige es una nota de ajuste.\n\n'
+            'Responde `{"eliminados": <n>, "enviados": <n>}`.'
+        ),
+        request=_PERIODO_TIPO,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(detail=False, methods=['post'])
+    def desgenerar(self, request):
+        documento_tipo = request.data.get('documento_tipo')
+        anio, mes = request.data.get('anio'), request.data.get('mes')
+        if documento_tipo in (None, '') or anio in (None, '') or mes in (None, ''):
+            raise ValidationError({'detail': 'Los campos documento_tipo, anio y mes son requeridos.'})
+        if str(documento_tipo) != str(nomina_electronica_servicio.DOCUMENTO_TIPO_NOMINA_ELECTRONICA):
+            raise ValidationError({'detail': 'Solo se desgenera la nómina electrónica.'})
+        try:
+            resultado = nomina_electronica_servicio.desgenerar(anio, mes)
+        except nomina_electronica_servicio.NominaElectronicaError as e:
+            raise ValidationError({'detail': e.detail})
+        return Response(resultado)
 
     @extend_schema(request=DocumentoAccionRequestSerializer, responses=GenDocumentoSerializer)
     @extend_schema(

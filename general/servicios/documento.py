@@ -55,6 +55,7 @@ CONCEPTO_CORRECCION_OBLIGATORIO = {
     DOCUMENTO_CLASE_NOTA_CREDITO_VENTA: 'La nota crédito debe indicar el concepto de corrección.',
     DOCUMENTO_CLASE_NOTA_AJUSTE: 'La nota de ajuste debe indicar el concepto de corrección.',
 }
+DOCUMENTO_CLASE_NOMINA = 701
 DOCUMENTO_CLASE_NOMINA_ELECTRONICA = 702
 
 # Clases que se numeran contra una resolución de la DIAN: el consecutivo tiene que
@@ -676,6 +677,13 @@ def desaprobar(documento_id):
         if (documento.documento_tipo.documento_clase_id
                 not in DOCUMENTO_CLASES_QUE_PERMITEN_DESAPROBAR):
             raise ValidationError('El documento no permite desaprobación.')
+        # Una nómina ya reportada en una nómina electrónica: desaprobarla dejaría
+        # la electrónica con un pago que ya no existe. Hay que desgenerarla antes.
+        if (documento.documento_tipo.documento_clase_id == DOCUMENTO_CLASE_NOMINA
+                and documento.documento_referencia_id is not None):
+            raise ValidationError(
+                'La nómina está en una nómina electrónica: desgenérela antes de desaprobar.'
+            )
         # Una remisión que ya se facturó no se desaprueba: la factura ya sacó esa
         # cantidad de `remision`, y devolverla acá la contaría dos veces.
         if documento.documento_tipo_id == DOCUMENTO_TIPO_REMISION:

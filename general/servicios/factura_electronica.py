@@ -20,6 +20,7 @@ from django.conf import settings
 from django.db import connection, transaction
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, ValidationError
 
@@ -34,6 +35,7 @@ from general.models import (
 from general.servicios.documento import (
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
     DOCUMENTO_CLASE_FACTURA_VENTA,
+    DOCUMENTO_CLASE_NOMINA_ELECTRONICA,
     DOCUMENTO_CLASE_NOTA_AJUSTE,
     DOCUMENTO_CLASE_NOTA_CREDITO_VENTA,
     DOCUMENTO_CLASE_NOTA_DEBITO_VENTA,
@@ -683,22 +685,44 @@ def emitir(documento_ids, cliente: Rededoc = None) -> dict:
     """
     if not documento_ids:
         raise ValidationError({'ids': 'Este campo es requerido.'})
-    parametro = _parametro_habilitado()
 
     documentos = GenDocumento.objects.select_related(
         'documento_tipo', 'resolucion', 'plazo_pago', 'metodo_pago',
         'contacto__identificacion', 'contacto__ciudad__estado__pais',
         'documento_referencia', 'documento_concepto_correccion',
     ).in_bulk(documento_ids)
+    # El asistente se revisa antes que los ids. Un lote solo de nóminas exige el
+    # de nómina, no el de facturación.
+    parametro = _parametro_habilitado(nomina=bool(documentos) and all(
+        d.documento_tipo.documento_clase_id == DOCUMENTO_CLASE_NOMINA_ELECTRONICA
+        for d in documentos.values()
+    ))
     for documento_id in documento_ids:
         if documento_id not in documentos:
             raise NotFound(f'El documento {documento_id} no existe.')
 
     cliente = cliente or Rededoc()
-    emitidos, con_error = [], []
+    emitidos, con_error, pendientes = [], [], []
     # Un id repetido en el lote se procesa una sola vez.
     for documento_id in dict.fromkeys(documento_ids):
         documento = documentos[documento_id]
+        if documento.documento_tipo.documento_clase_id == DOCUMENTO_CLASE_NOMINA_ELECTRONICA:
+            try:
+                resultado = _emitir_nomina(documento, parametro, cliente)
+            except _RededocNoResponde as e:
+                raise ErrorFacturaElectronica(
+                    {
+                        'detail': 'El servicio de facturación electrónica no respondió.',
+                        'emitidos': emitidos,
+                        'con_error': con_error,
+                        'error': e.datos,
+                    },
+                    status=502,
+                )
+            {'emitido': emitidos, 'error': con_error, 'pendiente': pendientes}.get(
+                resultado, [],
+            ).append(documento.id)
+            continue
         if documento.estado_electronico_enviado:
             continue
 
@@ -738,7 +762,106 @@ def emitir(documento_ids, cliente: Rededoc = None) -> dict:
                 'electronico_id', 'estado_electronico_enviado', 'estado_electronico_error',
             ])
         emitidos.append(documento.id)
-    return {'emitidos': emitidos, 'con_error': con_error}
+    resultado = {'emitidos': emitidos, 'con_error': con_error}
+    if pendientes:
+        resultado['pendientes'] = pendientes
+    return resultado
+
+
+# ------------------------------------------------------- nómina electrónica ----
+#
+# La nómina va por otro camino que los documentos: rededoc la crea en borrador y
+# no la emite sola, ni avisa por el webhook cuando la DIAN la valida. Torio la
+# crea y la emite en la misma llamada, y el veredicto viene en la respuesta. El
+# payload lo arma `humano.servicios.nomina_electronica`.
+
+class _RededocNoResponde(Exception):
+    def __init__(self, datos):
+        self.datos = datos
+        super().__init__('rededoc no respondió')
+
+
+def _emitir_nomina(documento, parametro, cliente):
+    """
+    Crea la nómina en rededoc si todavía no está y la emite. Devuelve `emitido`
+    (aceptada por la DIAN), `pendiente` (enviada sin veredicto: el Set de Pruebas),
+    `error` o None si ya estaba validada.
+
+    Volver a emitir una que quedó pendiente, o cuyo envío se cortó, no la crea de
+    nuevo: rededoc la tiene con ese número, y `emitir/` consulta su estado.
+    """
+    from humano.servicios import nomina_electronica
+
+    if documento.estado_electronico:
+        return None
+    if not documento.estado_electronico_enviado:
+        if not documento.estado_aprobado:
+            _registrar_errores(documento, GenDocumentoElectronicoError.Fase.VALIDACION, [
+                f'El documento {documento.id} debe estar aprobado.',
+            ])
+            return 'error'
+        try:
+            payload = nomina_electronica.armar(documento, parametro)
+        except nomina_electronica.NominaElectronicaError as e:
+            _registrar_errores(
+                documento, GenDocumentoElectronicoError.Fase.VALIDACION, e.errores or [e.detail],
+            )
+            return 'error'
+        respuesta = cliente.crear_nomina(payload)
+        if respuesta['error'] and not 400 <= respuesta['status'] < 500:
+            raise _RededocNoResponde(respuesta['datos'])
+        if respuesta['error']:
+            _registrar_errores(
+                documento, GenDocumentoElectronicoError.Fase.EMISION,
+                _mensajes_rededoc(respuesta['datos'])
+                or ['El servicio de facturación electrónica rechazó la nómina.'],
+            )
+            return 'error'
+        with transaction.atomic():
+            documento.documentos_electronicos_errores_documento_rel.all().delete()
+            documento.electronico_id = (respuesta['datos'] or {}).get('id')
+            documento.estado_electronico_enviado = True
+            documento.estado_electronico_error = False
+            documento.save(update_fields=[
+                'electronico_id', 'estado_electronico_enviado', 'estado_electronico_error',
+            ])
+
+    respuesta = cliente.emitir_nomina(documento.electronico_id)
+    if respuesta['error'] and not 400 <= respuesta['status'] < 500:
+        # Ya está creada en rededoc: el reintento la emite o consulta.
+        raise _RededocNoResponde(respuesta['datos'])
+    if respuesta['error']:
+        _registrar_errores(
+            documento, GenDocumentoElectronicoError.Fase.EMISION,
+            _mensajes_rededoc(respuesta['datos'])
+            or ['El servicio de facturación electrónica no pudo emitir la nómina.'],
+        )
+        return 'error'
+
+    datos = respuesta['datos'] or {}
+    estado = datos.get('estado')
+    if estado == 'aceptado':
+        with transaction.atomic():
+            documento.documentos_electronicos_errores_documento_rel.all().delete()
+            documento.estado_electronico = True
+            documento.estado_electronico_error = False
+            documento.cue = datos.get('cune')
+            documento.fecha_validacion = (
+                parse_datetime(datos['fecha_validacion']) if datos.get('fecha_validacion')
+                else timezone.now()
+            )
+            documento.save(update_fields=[
+                'estado_electronico', 'estado_electronico_error', 'cue', 'fecha_validacion',
+            ])
+        return 'emitido'
+    if estado == 'rechazado':
+        _registrar_errores(
+            documento, GenDocumentoElectronicoError.Fase.EMISION,
+            _mensajes_rededoc(datos.get('errores'))
+            or [datos.get('descripcion') or 'La DIAN rechazó la nómina.'],
+        )
+        return 'error'
+    return 'pendiente'
 
 
 def _validar_y_armar(documento, parametro):
@@ -805,10 +928,16 @@ def _mensajes_rededoc(datos, ruta=''):
     return [f'{ruta}: {datos}' if ruta else str(datos)]
 
 
-def _parametro_habilitado():
-    """El `GenParametro` de una empresa que puede usar la facturación electrónica."""
+def _parametro_habilitado(nomina=False):
+    """
+    El `GenParametro` de una empresa que puede usar la facturación electrónica, o
+    con `nomina` la nómina electrónica: cada una tiene su asistente.
+    """
     parametro = GenParametro.objects.filter(id=1).first()
-    if parametro is None or parametro.gen_asistente_electronico_venta:
+    if nomina:
+        if parametro is None or parametro.gen_asistente_electronico_nomina:
+            raise ErrorFacturaElectronica('La empresa no ha terminado el asistente de nómina electrónica.')
+    elif parametro is None or parametro.gen_asistente_electronico_venta:
         raise ErrorFacturaElectronica('La empresa no ha terminado el asistente de facturación electrónica.')
     if not parametro.gen_rededoc_emisor:
         raise ErrorFacturaElectronica('La empresa no tiene emisor en el servicio de facturación electrónica.')
