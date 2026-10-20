@@ -16,7 +16,7 @@ from .cargo_exportar import HumCargoExportarSerializer
 from .cargo_importar import HumCargoImportarSerializer
 from .cargo_seleccionar import HumCargoSeleccionarSerializer
 from .concepto import HumConceptoSeleccionarSerializer, HumConceptoSerializer
-from .concepto_cuenta import HumConceptoCuentaSerializer
+from .concepto_cuenta import HumConceptoCuentaActualizarSerializer, HumConceptoCuentaSerializer
 from .concepto_nomina import HumConceptoNominaSeleccionarSerializer, HumConceptoNominaSerializer
 from .concepto_tipo import HumConceptoTipoSeleccionarSerializer
 from .configuracion_aporte import (
