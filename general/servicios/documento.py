@@ -46,6 +46,15 @@ DOCUMENTO_CLASE_FACTURA_VENTA = 100
 DOCUMENTO_CLASE_NOTA_CREDITO_VENTA = 101
 DOCUMENTO_CLASE_NOTA_DEBITO_VENTA = 102
 DOCUMENTO_CLASE_DOCUMENTO_SOPORTE = 303
+DOCUMENTO_CLASE_NOTA_AJUSTE = 304  # Nota de ajuste al documento soporte
+
+# Las notas que no se pueden emitir sin concepto de corrección, con el mensaje
+# que se da si falta. Se exige al guardar porque, aprobada la nota, solo
+# `actualizar_electronico` puede ponérselo, y nadie se entera hasta emitir.
+CONCEPTO_CORRECCION_OBLIGATORIO = {
+    DOCUMENTO_CLASE_NOTA_CREDITO_VENTA: 'La nota crédito debe indicar el concepto de corrección.',
+    DOCUMENTO_CLASE_NOTA_AJUSTE: 'La nota de ajuste debe indicar el concepto de corrección.',
+}
 DOCUMENTO_CLASE_NOMINA_ELECTRONICA = 702
 
 # Clases que se numeran contra una resolución de la DIAN: el consecutivo tiene que
@@ -1317,8 +1326,8 @@ def actualizar_electronico(documento_id, datos):
             concepto = documento.documento_concepto_correccion
             clase_id = documento.documento_tipo.documento_clase_id
             if concepto is None:
-                if clase_id == DOCUMENTO_CLASE_NOTA_CREDITO_VENTA:
-                    raise ValidationError('La nota crédito debe indicar el concepto de corrección.')
+                if clase_id in CONCEPTO_CORRECCION_OBLIGATORIO:
+                    raise ValidationError(CONCEPTO_CORRECCION_OBLIGATORIO[clase_id])
             elif concepto.documento_clase_id != clase_id:
                 raise ValidationError(
                     'El concepto de corrección no corresponde a este tipo de documento.'

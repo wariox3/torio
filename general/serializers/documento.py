@@ -8,7 +8,11 @@ from general.models import (
 from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
 from general.serializers.documento_detalle import GenDocumentoDetalleSerializer
 from general.servicios import crear_detalle
-from general.servicios.documento import DOCUMENTO_CLASE_NOTA_CREDITO_VENTA
+from general.servicios.documento import (
+    CONCEPTO_CORRECCION_OBLIGATORIO,
+    DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
+    DOCUMENTO_CLASE_NOTA_AJUSTE,
+)
 
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
@@ -207,12 +211,14 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
     def validate(self, datos):
         self._heredar_resolucion(datos)
         self._validar_concepto_correccion(datos)
+        self._validar_referencia_nota_ajuste(datos)
         return self._seguir_fecha(datos)
 
     def _validar_concepto_correccion(self, datos):
         """
         El concepto de corrección tiene que ser de la clase del documento, y en
-        la nota crédito es obligatorio.
+        la nota crédito y la nota de ajuste es obligatorio
+        (`CONCEPTO_CORRECCION_OBLIGATORIO`).
 
         Cada clase de nota tiene su lista y los códigos se repiten entre ellas: el
         «2» de la nota crédito anula la factura y el de la nota débito son gastos
@@ -225,18 +231,43 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             concepto = getattr(self.instance, 'documento_concepto_correccion', None)
         tipo = datos.get('documento_tipo') or getattr(self.instance, 'documento_tipo', None)
         if concepto is None:
-            # La nota crédito lo lleva siempre: sin él no se puede emitir, y una
-            # vez aprobada ya no hay cómo ponérselo.
-            if tipo is not None and tipo.documento_clase_id == DOCUMENTO_CLASE_NOTA_CREDITO_VENTA:
+            # Sin él no se puede emitir.
+            if tipo is not None and tipo.documento_clase_id in CONCEPTO_CORRECCION_OBLIGATORIO:
                 raise serializers.ValidationError({
                     'documento_concepto_correccion':
-                        'La nota crédito debe indicar el concepto de corrección.',
+                        CONCEPTO_CORRECCION_OBLIGATORIO[tipo.documento_clase_id],
                 })
             return
         if tipo is None or concepto.documento_clase_id != tipo.documento_clase_id:
             raise serializers.ValidationError({
                 'documento_concepto_correccion':
                     'El concepto de corrección no corresponde a este tipo de documento.',
+            })
+
+    def _validar_referencia_nota_ajuste(self, datos):
+        """
+        La nota de ajuste lleva siempre el documento soporte que ajusta.
+
+        rededoc no tiene «nota de ajuste sin referencia» (las notas de venta sí),
+        y una vez aprobada la referencia ya no se puede cambiar: sin esta regla
+        la nota se aprobaría y nunca se podría emitir. Que ese documento soporte
+        ya esté validado por la DIAN se revisa al emitir, porque puede llegar
+        después de guardar la nota.
+        """
+        tipo = datos.get('documento_tipo') or getattr(self.instance, 'documento_tipo', None)
+        if tipo is None or tipo.documento_clase_id != DOCUMENTO_CLASE_NOTA_AJUSTE:
+            return
+        if 'documento_referencia' in datos:
+            referencia = datos['documento_referencia']
+        else:
+            referencia = getattr(self.instance, 'documento_referencia', None)
+        if referencia is None:
+            raise serializers.ValidationError({
+                'documento_referencia': 'La nota de ajuste debe indicar el documento soporte que ajusta.',
+            })
+        if referencia.documento_tipo.documento_clase_id != DOCUMENTO_CLASE_DOCUMENTO_SOPORTE:
+            raise serializers.ValidationError({
+                'documento_referencia': 'La nota de ajuste solo puede ajustar un documento soporte.',
             })
 
     def _heredar_resolucion(self, datos):

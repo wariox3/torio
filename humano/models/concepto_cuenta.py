@@ -20,6 +20,14 @@ class HumConceptoCuenta(models.Model):
         ordering = ['-id']
         verbose_name = 'Concepto cuenta'
         verbose_name_plural = 'Conceptos cuentas'
+        # Contabilizar busca la cuenta por concepto y tipo de costo
+        # (`contabilizar._movimientos_nomina`): con dos filas tomaría cualquiera.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['concepto', 'tipo_costo'],
+                name='hum_concepto_cuenta_concepto_tipo_costo_unico',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.concepto_id} - {self.cuenta_id}'

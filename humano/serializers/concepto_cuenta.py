@@ -25,3 +25,18 @@ class HumConceptoCuentaSerializer(serializers.ModelSerializer):
             'cuenta_nombre',
         ]
         read_only_fields = ['id']
+        # La unicidad la revisa `validate` con su propio mensaje; sin esto DRF
+        # deduciría de la restricción del modelo otro validador con uno genérico.
+        validators = []
+
+    def validate(self, datos):
+        concepto = datos.get('concepto', getattr(self.instance, 'concepto', None))
+        tipo_costo = datos.get('tipo_costo', getattr(self.instance, 'tipo_costo', None))
+        repetido = HumConceptoCuenta.objects.filter(concepto=concepto, tipo_costo=tipo_costo)
+        if self.instance is not None:
+            repetido = repetido.exclude(pk=self.instance.pk)
+        if repetido.exists():
+            raise serializers.ValidationError(
+                f'El concepto {concepto.nombre} ya tiene cuenta para el tipo de costo {tipo_costo.nombre}.'
+            )
+        return datos

@@ -34,6 +34,7 @@ from general.models import (
 from general.servicios.documento import (
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
     DOCUMENTO_CLASE_FACTURA_VENTA,
+    DOCUMENTO_CLASE_NOTA_AJUSTE,
     DOCUMENTO_CLASE_NOTA_CREDITO_VENTA,
     DOCUMENTO_CLASE_NOTA_DEBITO_VENTA,
 )
@@ -640,6 +641,8 @@ RETENCIONES = {'RTF': '06', 'RTI': '05'}
 PREFIJOS_NOTA = {
     DOCUMENTO_CLASE_NOTA_CREDITO_VENTA: 'NC',
     DOCUMENTO_CLASE_NOTA_DEBITO_VENTA: 'ND',
+    # El de itrio, para que las notas de ajuste sigan la misma serie.
+    DOCUMENTO_CLASE_NOTA_AJUSTE: 'DSAJ',
 }
 # El concepto «Anulación de factura electrónica» de la nota crédito. Es el único
 # que exige la factura referenciada: rededoc deja ir las demás notas crédito y
@@ -978,6 +981,83 @@ def _armar_nota(documento, parametro):
     }
 
 
+def _armar_nota_ajuste(documento, parametro):
+    """
+    La nota de ajuste al documento soporte: corrige un documento soporte y,
+    como él, se lee desde la compra —en `adquiriente` va el proveedor, el no
+    obligado a facturar— y lleva las retenciones.
+
+    A diferencia de las notas de venta, el documento soporte corregido
+    (`documento_referencia`) es obligatorio: rededoc no tiene «nota de ajuste sin
+    referencia», y además exige que la DIAN lo haya aceptado. Se revisa acá para
+    que el error salga en torio y no como un rechazo de rededoc.
+
+    Como las notas de venta, no se numera contra una resolución —va con su
+    prefijo de `PREFIJOS_NOTA`— ni lleva vencimiento.
+    """
+    errores = []
+    if documento.documento_tipo.codigo is None:
+        errores.append(
+            f'El tipo de documento {documento.documento_tipo.nombre} no tiene código de '
+            'facturación electrónica.'
+        )
+    if documento.numero is None:
+        errores.append(f'El documento {documento.id} no tiene número.')
+    if documento.fecha is None:
+        errores.append(f'El documento {documento.id} no tiene fecha.')
+
+    concepto = documento.documento_concepto_correccion
+    if concepto is None:
+        errores.append(f'El documento {documento.id} no tiene concepto de corrección.')
+
+    referencia = documento.documento_referencia
+    if referencia is None:
+        errores.append(
+            f'El documento {documento.id} es una nota de ajuste y no tiene el documento '
+            'soporte que ajusta.'
+        )
+    elif referencia.documento_tipo.documento_clase_id != DOCUMENTO_CLASE_DOCUMENTO_SOPORTE:
+        errores.append(
+            f'El documento {referencia.numero or referencia.id} que ajusta la nota '
+            f'{documento.id} no es un documento soporte.'
+        )
+    elif not referencia.electronico_id:
+        errores.append(
+            f'El documento soporte {referencia.numero or referencia.id} que ajusta la nota '
+            f'{documento.id} no ha sido enviado electrónicamente.'
+        )
+    elif not referencia.estado_electronico:
+        errores.append(
+            f'El documento soporte {referencia.numero or referencia.id} que ajusta la nota '
+            f'{documento.id} todavía no está validado por la DIAN.'
+        )
+
+    adquiriente = _o_error(errores, _adquiriente, documento, 'proveedor')
+    detalles = _o_error(errores, _detalles, documento, True)
+    if errores:
+        raise _ErroresDocumento(errores)
+
+    credito = bool(documento.plazo_pago and documento.plazo_pago.dias > 0)
+    return {
+        'emisor': parametro.gen_rededoc_emisor,
+        'ambiente': settings.REDEDOC_AMBIENTE,
+        'referencia_externa': str(documento.id),
+        'documento_tipo': documento.documento_tipo.codigo,
+        'prefijo': PREFIJOS_NOTA[DOCUMENTO_CLASE_NOTA_AJUSTE],
+        'numero_resolucion': '',
+        'consecutivo': documento.numero,
+        'fecha_emision': documento.fecha.isoformat(),
+        'fecha_vencimiento': None,
+        'forma_pago': FORMA_PAGO_CREDITO if credito else FORMA_PAGO_CONTADO,
+        'medio_pago': getattr(documento.metodo_pago, 'codigo', None) or MEDIO_PAGO_NO_DEFINIDO,
+        'moneda': MONEDA,
+        'documento_referencia': str(referencia.electronico_id),
+        'concepto_correccion': concepto.codigo,
+        'adquiriente': adquiriente,
+        'detalles': detalles,
+    }
+
+
 def _o_error(errores, armar, *args):
     """Lo que devuelva `armar`, o `None` dejando su error en la lista."""
     try:
@@ -1088,6 +1168,7 @@ ARMADORES = {
     DOCUMENTO_CLASE_NOTA_CREDITO_VENTA: _armar_nota,
     DOCUMENTO_CLASE_NOTA_DEBITO_VENTA: _armar_nota,
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE: _armar_documento_soporte,
+    DOCUMENTO_CLASE_NOTA_AJUSTE: _armar_nota_ajuste,
 }
 
 

@@ -125,6 +125,7 @@
       "compra": true,
       "pagar": true,
       "electronico": true,
+      "codigo": 6,
       "operacion": -1,
       "inventario": true,
       "operacion_inventario": -1,

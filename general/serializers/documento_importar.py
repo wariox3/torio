@@ -5,12 +5,18 @@ from general.models import (
     GenAsesor,
     GenContacto,
     GenDocumento,
+    GenDocumentoConceptoCorreccion,
     GenDocumentoTipo,
     GenFormaPago,
     GenPlazoPago,
     GenSector,
 )
 from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
+from general.servicios.documento import (
+    CONCEPTO_CORRECCION_OBLIGATORIO,
+    DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
+    DOCUMENTO_CLASE_NOTA_AJUSTE,
+)
 
 
 class GenDocumentoImportarSerializer(serializers.Serializer):
@@ -26,6 +32,12 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         campos_excel:         tuple[tuple[campo, encabezado], ...]
         campos_requeridos:    set[str]
         procesar_lote(filas)  -> (creados: int, errores: list[{fila, mensaje}])
+
+    Las notas siguen las mismas reglas que al guardarlas por la API
+    (`GenDocumentoSerializer`): concepto de corrección de su clase, obligatorio en
+    la nota crédito y la de ajuste, y la de ajuste con el documento soporte que
+    ajusta. Aprobada, ninguna de las dos cosas se puede completar y la nota
+    nunca se emitiría.
     """
 
     model = GenDocumento
@@ -45,6 +57,8 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         ('asesor.id', 'Asesor'),
         ('sector.id', 'Sector'),
         ('centro_costo.id', 'Centro de costo'),
+        ('documento_concepto_correccion.id', 'Concepto corrección'),
+        ('documento_referencia.id', 'Documento referencia'),
     )
     campos_requeridos = {'documento_tipo.id', 'fecha'}
 
@@ -72,6 +86,8 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         ids_asesor = self._ids_int(filas_validas, 'asesor.id')
         ids_sector = self._ids_int(filas_validas, 'sector.id')
         ids_centro_costo = self._ids_int(filas_validas, 'centro_costo.id')
+        ids_concepto = self._ids_int(filas_validas, 'documento_concepto_correccion.id')
+        ids_referencia = self._ids_int(filas_validas, 'documento_referencia.id')
 
         mapa_documento_tipo = {o.id: o for o in GenDocumentoTipo.objects.filter(id__in=ids_documento_tipo)}
         mapa_contacto = {o.id: o for o in GenContacto.objects.filter(id__in=ids_contacto)}
@@ -80,6 +96,13 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         mapa_asesor = {o.id: o for o in GenAsesor.objects.filter(id__in=ids_asesor)}
         mapa_sector = {o.id: o for o in GenSector.objects.filter(id__in=ids_sector)}
         mapa_centro_costo = {o.id: o for o in ConCentroCosto.objects.filter(id__in=ids_centro_costo)}
+        mapa_concepto = {
+            o.id: o for o in GenDocumentoConceptoCorreccion.objects.filter(id__in=ids_concepto)
+        }
+        mapa_referencia = {
+            o.id: o for o in
+            GenDocumento.objects.select_related('documento_tipo').filter(id__in=ids_referencia)
+        }
 
         # 2) Construir instancias en memoria, recolectar errores
         errores = []
@@ -99,6 +122,21 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
                 sector = self._fk_opcional(datos.get('sector.id'), mapa_sector, 'Sector')
                 centro_costo = self._fk_opcional(
                     datos.get('centro_costo.id'), mapa_centro_costo, 'Centro de costo')
+                concepto = self._fk_opcional(
+                    datos.get('documento_concepto_correccion.id'), mapa_concepto, 'Concepto corrección')
+                referencia = self._fk_opcional(
+                    datos.get('documento_referencia.id'), mapa_referencia, 'Documento referencia')
+
+                clase_id = documento_tipo.documento_clase_id
+                if concepto is None and clase_id in CONCEPTO_CORRECCION_OBLIGATORIO:
+                    raise ValueError(CONCEPTO_CORRECCION_OBLIGATORIO[clase_id])
+                if concepto is not None and concepto.documento_clase_id != clase_id:
+                    raise ValueError('El concepto de corrección no corresponde a este tipo de documento.')
+                if clase_id == DOCUMENTO_CLASE_NOTA_AJUSTE:
+                    if referencia is None:
+                        raise ValueError('La nota de ajuste debe indicar el documento soporte que ajusta.')
+                    if referencia.documento_tipo.documento_clase_id != DOCUMENTO_CLASE_DOCUMENTO_SOPORTE:
+                        raise ValueError('La nota de ajuste solo puede ajustar un documento soporte.')
 
                 fecha = datos.get('fecha')
                 # Mismo default que en `GenDocumentoSerializer`: sin fecha contable
@@ -120,6 +158,8 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
                     asesor=asesor,
                     sector=sector,
                     centro_costo=centro_costo,
+                    documento_concepto_correccion=concepto,
+                    documento_referencia=referencia,
                     # La factura de venta se numera contra la resolución de su
                     # tipo, igual que al guardarla por la API
                     # (`GenDocumentoSerializer._heredar_resolucion`). El Excel no
