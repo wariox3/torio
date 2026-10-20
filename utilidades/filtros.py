@@ -43,9 +43,9 @@ def _construir_q(filtro: dict, campos_permitidos: set) -> Q:
     valor = filtro.get('valor')
 
     if not propiedad or propiedad not in campos_permitidos:
-        raise ValidationError({'filtros': f'Propiedad "{propiedad}" no permitida.'})
+        raise ValidationError({'detail': f'Propiedad "{propiedad}" no permitida.'})
     if operador not in _OPERADORES_VALIDOS:
-        raise ValidationError({'filtros': f'Operador "{operador}" no soportado.'})
+        raise ValidationError({'detail': f'Operador "{operador}" no soportado.'})
 
     if operador == '!=':
         return ~Q(**{f'{propiedad}__exact': valor})
@@ -60,12 +60,12 @@ def aplicar_filtros(queryset, filtros: list, campos_permitidos: set):
         return queryset
 
     if not isinstance(filtros, list):
-        raise ValidationError({'filtros': 'Debe ser una lista.'})
+        raise ValidationError({'detail': 'filtros debe ser una lista.'})
 
     consulta = Q()
     for indice, filtro in enumerate(filtros):
         if not isinstance(filtro, dict):
-            raise ValidationError({'filtros': f'El filtro #{indice} no es un objeto.'})
+            raise ValidationError({'detail': f'El filtro #{indice} no es un objeto.'})
 
         q = _construir_q(filtro, campos_permitidos)
 
@@ -76,7 +76,7 @@ def aplicar_filtros(queryset, filtros: list, campos_permitidos: set):
         operador_logico = (filtro.get('operador_logico') or 'AND').upper()
         if operador_logico not in _OPERADORES_LOGICOS:
             raise ValidationError(
-                {'filtros': f'operador_logico "{operador_logico}" inválido (AND|OR).'}
+                {'detail': f'operador_logico "{operador_logico}" inválido (AND|OR).'}
             )
 
         consulta = consulta | q if operador_logico == 'OR' else consulta & q
@@ -90,13 +90,13 @@ def aplicar_ordenamientos(queryset, ordenamientos, campos_permitidos: set):
         return queryset
 
     if not isinstance(ordenamientos, list):
-        raise ValidationError({'ordenamientos': 'Debe ser una lista.'})
+        raise ValidationError({'detail': 'ordenamientos debe ser una lista.'})
 
     for campo in ordenamientos:
         nombre = campo.lstrip('-')
         if nombre not in campos_permitidos:
             raise ValidationError(
-                {'ordenamientos': f'Campo "{nombre}" no permitido para ordenar.'}
+                {'detail': f'Campo "{nombre}" no permitido para ordenar.'}
             )
 
     return queryset.order_by(*ordenamientos)

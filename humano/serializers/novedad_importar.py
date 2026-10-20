@@ -4,6 +4,8 @@ from decimal import Decimal, InvalidOperation
 from rest_framework import serializers
 
 from humano.models import HumContrato, HumNovedad, HumNovedadTipo
+from humano.servicios import novedad as servicio_novedad
+from humano.servicios.nomina import NOVEDAD_TIPO_VACACION
 
 
 class HumNovedadImportarSerializer(serializers.Serializer):
@@ -19,6 +21,11 @@ class HumNovedadImportarSerializer(serializers.Serializer):
         campos_excel:         tuple[tuple[campo, encabezado], ...]
         campos_requeridos:    set[str]
         procesar_lote(filas)  -> (creados: int, errores: list[{fila, mensaje}])
+
+    Cada novedad se liquida antes de crearla (`servicios.novedad.calcular`), con
+    las mismas reglas que la API: sin eso pagaría cero en la nómina. Por eso no
+    hay columnas de días ni de prórroga: se calculan, y el importar no maneja
+    prórrogas (no tiene novedad de referencia).
     """
 
     model = HumNovedad
@@ -29,13 +36,13 @@ class HumNovedadImportarSerializer(serializers.Serializer):
         ('novedad_tipo.id', 'Tipo novedad'),
         ('fecha_desde', 'Fecha desde'),
         ('fecha_hasta', 'Fecha hasta'),
-        ('dias', 'Días'),
         ('dias_disfrutados', 'Días disfrutados'),
+        ('dias_disfrutados_reales', 'Días disfrutados reales'),
         ('dias_dinero', 'Días dinero'),
-        ('prorroga', 'Prórroga'),
+        ('base_cotizacion_propuesto', 'Base cotización propuesta'),
         ('detalle', 'Detalle'),
     )
-    campos_requeridos = {'contrato.id', 'fecha_desde', 'fecha_hasta'}
+    campos_requeridos = {'contrato.id', 'novedad_tipo.id', 'fecha_desde', 'fecha_hasta'}
 
     LIMITE_ERRORES = 100
     BATCH_BULK_CREATE = 500
@@ -44,8 +51,24 @@ class HumNovedadImportarSerializer(serializers.Serializer):
         if not filas_validas:
             return 0, []
 
+        try:
+            configuracion = servicio_novedad.cargar_configuracion()
+        except servicio_novedad.NovedadError as e:
+            return 0, [{'fila': None, 'mensaje': e.detail}]
+
         mapa_contrato = self._mapa_fk(filas_validas, 'contrato.id', HumContrato)
-        mapa_novedad_tipo = self._mapa_fk(filas_validas, 'novedad_tipo.id', HumNovedadTipo)
+        mapa_novedad_tipo = self._mapa_fk(
+            filas_validas, 'novedad_tipo.id',
+            HumNovedadTipo.objects.select_related('concepto', 'concepto2'),
+        )
+        # Rangos ya ocupados por empleado: los de la base y los de filas anteriores
+        # del mismo archivo. Un empleado no tiene dos novedades el mismo día.
+        contactos = {contrato.contacto_id for contrato in mapa_contrato.values()}
+        ocupados = {}
+        for contacto_id, desde, hasta in HumNovedad.objects.filter(
+            contrato__contacto_id__in=contactos,
+        ).values_list('contrato__contacto_id', 'fecha_desde', 'fecha_hasta'):
+            ocupados.setdefault(contacto_id, []).append((desde, hasta, None))
 
         errores = []
         nuevos = []
@@ -53,18 +76,39 @@ class HumNovedadImportarSerializer(serializers.Serializer):
         for idx, datos in filas_validas:
             try:
                 contrato = self._fk_obligatorio(datos.get('contrato.id'), mapa_contrato, 'Contrato')
-                novedad_tipo = self._fk_opcional(datos.get('novedad_tipo.id'), mapa_novedad_tipo, 'Tipo novedad')
-                nuevos.append(HumNovedad(
+                novedad_tipo = self._fk_obligatorio(datos.get('novedad_tipo.id'), mapa_novedad_tipo, 'Tipo novedad')
+                novedad = HumNovedad(
                     fecha_desde=self._fecha(datos.get('fecha_desde'), 'Fecha desde'),
                     fecha_hasta=self._fecha(datos.get('fecha_hasta'), 'Fecha hasta'),
-                    dias=self._decimal(datos.get('dias'), 'Días'),
                     dias_disfrutados=self._decimal(datos.get('dias_disfrutados'), 'Días disfrutados'),
+                    dias_disfrutados_reales=self._decimal(
+                        datos.get('dias_disfrutados_reales'), 'Días disfrutados reales',
+                    ),
                     dias_dinero=self._decimal(datos.get('dias_dinero'), 'Días dinero'),
-                    prorroga=self._si_no(datos.get('prorroga')),
+                    base_cotizacion_propuesto=self._decimal(
+                        datos.get('base_cotizacion_propuesto'), 'Base cotización propuesta',
+                    ),
                     detalle=self._texto_o_none(datos.get('detalle')),
                     contrato=contrato,
                     novedad_tipo=novedad_tipo,
-                ))
+                )
+                if novedad.fecha_desde > novedad.fecha_hasta:
+                    raise ValueError('La fecha desde no puede ser mayor que la fecha hasta')
+                if novedad_tipo.id == NOVEDAD_TIPO_VACACION and novedad.dias_disfrutados_reales <= 0:
+                    raise ValueError('Las vacaciones necesitan días disfrutados reales mayores que cero')
+                for desde, hasta, fila in ocupados.get(contrato.contacto_id, ()):
+                    if desde <= novedad.fecha_hasta and hasta >= novedad.fecha_desde:
+                        con = f'la fila {fila}' if fila else 'otra novedad del empleado'
+                        raise ValueError(f'El rango de fechas se cruza con {con}')
+                servicio_novedad.calcular(novedad, configuracion)
+                ocupados.setdefault(contrato.contacto_id, []).append(
+                    (novedad.fecha_desde, novedad.fecha_hasta, idx),
+                )
+                nuevos.append(novedad)
+            except servicio_novedad.NovedadError as e:
+                errores.append({'fila': idx, 'mensaje': e.detail})
+                if len(errores) >= self.LIMITE_ERRORES:
+                    break
             except Exception as e:
                 errores.append({'fila': idx, 'mensaje': str(e)})
                 if len(errores) >= self.LIMITE_ERRORES:
@@ -80,10 +124,12 @@ class HumNovedadImportarSerializer(serializers.Serializer):
     # ---- helpers ----
 
     def _mapa_fk(self, filas_validas, campo, modelo):
+        """`modelo` es la clase o un queryset (para traer relaciones de una vez)."""
         ids = self._ids_int(filas_validas, campo)
         if not ids:
             return {}
-        return {o.id: o for o in modelo.objects.filter(id__in=ids)}
+        queryset = modelo.objects.all() if isinstance(modelo, type) else modelo
+        return {o.id: o for o in queryset.filter(id__in=ids)}
 
     @staticmethod
     def _ids_int(filas_validas, campo):
@@ -147,9 +193,3 @@ class HumNovedadImportarSerializer(serializers.Serializer):
             except ValueError:
                 continue
         raise ValueError(f'{etiqueta} con formato inválido: "{v}" (use AAAA-MM-DD)')
-
-    @staticmethod
-    def _si_no(v, defecto=False):
-        if v is None or v == '':
-            return defecto
-        return str(v).strip().lower() in ('sí', 'si', 'true', '1', 'yes', 'verdadero')
