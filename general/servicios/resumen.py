@@ -4,7 +4,9 @@ por mes.
 
 Entran los documentos con `documento_tipo.venta` (o `compra`) aprobados y no
 anulados, por su `fecha`. Cada valor se multiplica por `documento_tipo.operacion`,
-así las notas crédito y de ajuste (-1) restan y el resultado es el neto.
+así las notas crédito y de ajuste (-1) restan y el resultado es el neto. Los tipos
+de operación cero (pedidos, remisiones) no entran: no son la venta ni la compra, y
+aunque no sumarían en los valores sí inflarían el conteo de `documentos`.
 
 - `mes`: del primer al último día del mes de `hoy`, un punto por día.
 - `anio`: de enero a diciembre del año de `hoy`, un punto por mes.
@@ -59,6 +61,7 @@ def resumen(tipo, periodo, hoy=None):
             estado_anulado=False,
             fecha__range=(desde, hasta),
         )
+        .exclude(documento_tipo__operacion=0)
         .annotate(punto=truncar('fecha'))
         .order_by()
         .values('punto')

@@ -24,12 +24,14 @@ INFORMES = {
             documento__estado_aprobado=True,
         ),
     },
+    # Sin los tipos de operación cero (pedidos, remisiones): son de venta pero no
+    # son la venta, que llega con la factura.
     'venta_item': {
         'filtro': Q(
             documento__documento_tipo__venta=True,
             documento__estado_aprobado=True,
             documento__estado_anulado=False,
-        ),
+        ) & ~Q(documento__documento_tipo__operacion=0),
     },
     # Todas las nóminas, aprobadas o no: así se revisa una programación generada
     # antes de aprobarla. El estado queda como filtro (`documento__estado_aprobado`).

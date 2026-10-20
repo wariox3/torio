@@ -95,10 +95,10 @@ class GenDocumentoInformeViewSet(
             if not clave:
                 clave = request.query_params.get('informe')
         if not clave:
-            raise ValidationError({'informe': 'Este campo es requerido.'})
+            raise ValidationError({'detail': 'El campo informe es requerido.'})
         if clave not in INFORMES:
             raise ValidationError(
-                {'informe': f'Informe "{clave}" no existe. Opciones: {sorted(INFORMES)}.'}
+                {'detail': f'Informe "{clave}" no existe. Opciones: {", ".join(sorted(INFORMES))}.'}
             )
         return INFORMES[clave]
 
@@ -119,11 +119,11 @@ class GenDocumentoInformeViewSet(
     def _fecha_corte(self):
         valor = self._parametro('fecha')
         if not valor:
-            raise ValidationError({'fecha': 'Este campo es requerido para la cartera al corte.'})
+            raise ValidationError({'detail': 'El campo fecha es requerido para la cartera al corte.'})
         try:
             return date.fromisoformat(str(valor))
         except ValueError:
-            raise ValidationError({'fecha': 'Debe ser una fecha AAAA-MM-DD.'})
+            raise ValidationError({'detail': 'El campo fecha debe ser una fecha AAAA-MM-DD.'})
 
     def get_queryset(self):
         informe = self._informe()

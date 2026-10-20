@@ -39,14 +39,21 @@ class GenDocumentoDetallePendienteSerializer(serializers.ModelSerializer):
     )
     item_nombre = serializers.CharField(source='item.nombre', read_only=True, default=None)
     # Impuestos del item (no del detalle); [] cuando el detalle no tiene item.
+    # Solo los del lado del documento: de venta en un tipo de venta, de compra en
+    # uno de compra. Un tipo que no es ni venta ni compra no lleva impuestos.
     impuestos = serializers.SerializerMethodField()
 
     def get_impuestos(self, obj):
         if obj.item_id is None:
             return []
-        return GenItemImpuestoSerializer(
-            obj.item.items_impuestos_item_rel.all(), many=True,
-        ).data
+        tipo = obj.documento.documento_tipo
+        # Se filtra en Python para no romper el prefetch con una consulta por fila.
+        items_impuestos = [
+            item_impuesto for item_impuesto in obj.item.items_impuestos_item_rel.all()
+            if (tipo.venta and item_impuesto.impuesto.venta)
+            or (tipo.compra and item_impuesto.impuesto.compra)
+        ]
+        return GenItemImpuestoSerializer(items_impuestos, many=True).data
 
     class Meta:
         model = GenDocumentoDetalle

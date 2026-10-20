@@ -238,7 +238,8 @@
     {
       "id": 26,
       "nombre": "PEDIDO CLIENTE",
-      "documento_clase_id": 106
+      "documento_clase_id": 106,
+      "venta": true
     },
     {
       "id": 27,
@@ -266,6 +267,7 @@
       "id": 29,
       "nombre": "REMISION",
       "documento_clase_id": 107,
+      "venta": true,
       "operacion_remision": -1,
       "afecta_cantidad": true
     },
@@ -304,7 +306,8 @@
     {
       "id": 35,
       "nombre": "PEDIDO SERVICIO",
-      "documento_clase_id": 110
+      "documento_clase_id": 110,
+      "venta": true
     }
   ]
 }
