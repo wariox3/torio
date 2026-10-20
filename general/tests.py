@@ -98,7 +98,9 @@ from general.views.documento_detalle import GenDocumentoDetalleViewSet
 from general.views.documento_electronico_error import GenDocumentoElectronicoErrorViewSet
 from general.views.documento_pago import GenDocumentoPagoViewSet
 from general.views.electronico import GenElectronicoViewSet
+from general.views.electronico_recepcion import GenElectronicoRecepcionViewSet
 from general.views.imagen import GenImagenViewSet
+from general.views.impuesto import GenImpuestoViewSet
 from general.views.item import GenItemViewSet
 from general.views.modelo import GenModeloViewSet
 from general.views.parametro import GenParametroViewSet
@@ -1280,9 +1282,38 @@ class RededocTests(SimpleTestCase):
             (metodo, url), ('POST', 'https://api.rededoc.uk/api/emisores/resolucion/importar-dian/'),
         )
         self.assertEqual(peticion.call_args.kwargs['json'], {'emisor': 77})
+        self.assertIsNone(peticion.call_args.kwargs['params'])
         self.assertEqual(
             peticion.call_args.kwargs['timeout'], rededoc_servicio.Rededoc.TIMEOUT_VALIDAR_RESOLUCIONES,
         )
+
+    def test_importar_resoluciones_manda_en_la_url_solo_los_filtros_que_vienen(self):
+        cliente = rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k')
+        casos = (
+            ((77, 1), {'ambiente': 1}),
+            ((77, 1, 'compras'), {'ambiente': 1, 'modulo': 'compras'}),
+            ((77, 1, None, 3), {'ambiente': 1, 'page': 3}),
+        )
+        for argumentos, esperado in casos:
+            with self.subTest(argumentos=argumentos):
+                with mock.patch.object(
+                    rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {'results': []}),
+                ) as peticion:
+                    cliente.importar_resoluciones(*argumentos)
+
+                # El emisor va en el cuerpo, los filtros del listado en la URL.
+                self.assertEqual(peticion.call_args.kwargs['json'], {'emisor': 77})
+                self.assertEqual(peticion.call_args.kwargs['params'], esperado)
+
+    def test_consultar_resolucion_pide_la_del_id_con_el_emisor(self):
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {'id': 9}),
+        ) as peticion:
+            rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k').consultar_resolucion(9, 77)
+
+        metodo, url = peticion.call_args.args
+        self.assertEqual((metodo, url), ('GET', 'https://api.rededoc.uk/api/emisores/resolucion/9/'))
+        self.assertEqual(peticion.call_args.kwargs['params'], {'emisor': 77})
 
     def test_descargar_xml_devuelve_los_bytes_del_archivo(self):
         respuesta = self._respuesta(200, None, texto='<Invoice/>')
@@ -1386,6 +1417,78 @@ class RededocTests(SimpleTestCase):
         self.assertEqual((metodo, url), ('GET', 'https://api.rededoc.uk/api/recepcion/evento/'))
         self.assertEqual(peticion.call_args.kwargs['params'], parametros)
 
+    def test_consultar_adjuntos_recibidos_pasa_los_parametros(self):
+        parametros = {'emisor': 77, 'documento': '3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8', 'page': 2}
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {'count': 0, 'results': []}),
+        ) as peticion:
+            rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k').consultar_adjuntos_recibidos(parametros)
+
+        metodo, url = peticion.call_args.args
+        self.assertEqual((metodo, url), ('GET', 'https://api.rededoc.uk/api/recepcion/adjunto/'))
+        self.assertEqual(peticion.call_args.kwargs['params'], parametros)
+
+    def test_las_acciones_sobre_un_documento_recibido_mandan_el_emisor_en_la_url(self):
+        """Con `?emisor=` rededoc responde 404 si el documento es de otra empresa."""
+        cliente = rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k')
+        base = 'https://api.rededoc.uk/api/recepcion/documento/d1/'
+        casos = {
+            'descartar': (lambda: cliente.descartar_documento_recibido('d1', 77), 'POST', base + 'descartar/', None),
+            'restaurar': (lambda: cliente.restaurar_documento_recibido('d1', 77), 'POST', base + 'restaurar/', None),
+            'evento': (
+                lambda: cliente.registrar_evento_recibido('d1', 77, {'codigo': '033'}),
+                'POST', base + 'evento/', {'codigo': '033'},
+            ),
+            'eliminar': (lambda: cliente.eliminar_documento_recibido('d1', 77), 'DELETE', base, None),
+        }
+        for nombre, (llamada, metodo, url, cuerpo) in casos.items():
+            with self.subTest(accion=nombre):
+                with mock.patch.object(
+                    rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {}),
+                ) as peticion:
+                    llamada()
+
+                self.assertEqual(peticion.call_args.args, (metodo, url))
+                self.assertEqual(peticion.call_args.kwargs['params'], {'emisor': 77})
+                self.assertEqual(peticion.call_args.kwargs['json'], cuerpo)
+
+    def test_descargar_adjunto_recibido_devuelve_los_bytes_y_las_cabeceras(self):
+        respuesta = self._respuesta(200, {})
+        respuesta.content = b'%PDF-1.7'
+        respuesta.headers = {'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="f.pdf"'}
+        with mock.patch.object(rededoc_servicio.httpx, 'request', return_value=respuesta) as peticion:
+            resultado = rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k').descargar_adjunto_recibido('a1', 77)
+
+        self.assertEqual(
+            peticion.call_args.args, ('GET', 'https://api.rededoc.uk/api/recepcion/adjunto/a1/descargar/'),
+        )
+        self.assertEqual(peticion.call_args.kwargs['params'], {'emisor': 77})
+        self.assertEqual(resultado, {
+            'error': False, 'status': 200, 'datos': b'%PDF-1.7',
+            'cabeceras': {'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="f.pdf"'},
+        })
+
+    def test_peticion_con_cabeceras_trae_en_none_las_que_no_vinieron(self):
+        respuesta = self._respuesta(200, {})
+        respuesta.content = b'x'
+        respuesta.headers = {'Content-Type': 'text/plain'}
+        with mock.patch.object(rededoc_servicio.httpx, 'request', return_value=respuesta):
+            resultado = rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k')._peticion(
+                'GET', '/x/', binario=True, cabeceras=('Content-Type', 'Content-Disposition'),
+            )
+
+        self.assertEqual(resultado['cabeceras'], {'Content-Type': 'text/plain', 'Content-Disposition': None})
+
+    def test_peticion_con_error_no_trae_cabeceras(self):
+        with mock.patch.object(
+            rededoc_servicio.httpx, 'request', return_value=self._respuesta(404, {'detail': 'No encontrado.'}),
+        ):
+            resultado = rededoc_servicio.Rededoc(url='https://api.rededoc.uk', key='k')._peticion(
+                'GET', '/x/', binario=True, cabeceras=('Content-Type',),
+            )
+
+        self.assertEqual(resultado, {'error': True, 'status': 404, 'datos': {'detail': 'No encontrado.'}})
+
     def test_la_llave_viaja_en_el_header_authorization(self):
         with mock.patch.object(
             rededoc_servicio.httpx, 'request', return_value=self._respuesta(200, {}),
@@ -1456,6 +1559,13 @@ class _ParametroViewSinPermisos(GenParametroViewSet):
 
 
 class _ElectronicoViewSinPermisos(GenElectronicoViewSet):
+    """Sin auth ni permisos: acá se prueba la traducción a HTTP, no la membresía."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class _RecepcionViewSinPermisos(GenElectronicoRecepcionViewSet):
     """Sin auth ni permisos: acá se prueba la traducción a HTTP, no la membresía."""
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
@@ -1641,6 +1751,55 @@ class GenConfiguracionViewTests(TenantTestCase):
 
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(GenConfiguracion.objects.get(id=1).gen_uvt, Decimal('47065'))
+
+    def _actualizar(self, cuerpo):
+        vista = _ConfiguracionViewSinPermisos.as_view({'patch': 'actualizar'})
+        peticion = self.factory.patch('/general/configuracion/actualizar/', cuerpo, format='json')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return vista(peticion)
+
+    def test_actualizar_no_escribe_el_id(self):
+        respuesta = self._actualizar({'id': 5, 'gen_uvt': '1'})
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data['id'], 1)
+        self.assertFalse(GenConfiguracion.objects.filter(id=5).exists())
+
+    def test_com_recepcion_recibe_guarda_la_persona_y_null_la_quita(self):
+        GenIdentificacion.objects.update_or_create(id=3, defaults={'nombre': 'Cédula', 'codigo': '13'})
+        persona = {
+            'identificacion': 3, 'numero_identificacion': '1020304050',
+            'nombres': 'Ana', 'apellidos': 'Ruiz', 'cargo': 'Almacén',
+        }
+
+        respuesta = self._actualizar({'com_recepcion_recibe': {**persona, 'sobra': 'x'}})
+
+        self.assertEqual(respuesta.status_code, 200)
+        # Solo los campos de la persona: lo que sobra no se guarda en el JSON.
+        self.assertEqual(GenConfiguracion.objects.get(id=1).com_recepcion_recibe, persona)
+        self.assertEqual(respuesta.data['com_recepcion_recibe'], persona)
+
+        respuesta = self._actualizar({'com_recepcion_recibe': None})
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIsNone(GenConfiguracion.objects.get(id=1).com_recepcion_recibe)
+
+    def test_com_recepcion_recibe_valida_la_persona(self):
+        GenIdentificacion.objects.update_or_create(id=3, defaults={'nombre': 'Cédula', 'codigo': '13'})
+        persona = {'identificacion': 3, 'numero_identificacion': '1020304050', 'nombres': 'Ana', 'apellidos': 'Ruiz'}
+        invalidos = (
+            {**persona, 'identificacion': 999},
+            {k: v for k, v in persona.items() if k != 'apellidos'},
+            {**persona, 'nombres': 'x' * 101},
+            'Ana Ruiz',
+        )
+        for valor in invalidos:
+            with self.subTest(valor=valor):
+                respuesta = self._actualizar({'com_recepcion_recibe': valor})
+
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertIn('detail', respuesta.data)
+                self.assertIsNone(GenConfiguracion.objects.get(id=1).com_recepcion_recibe)
 
 
 class FacturaElectronicaCrearEmisorTests(TenantTestCase):
@@ -2130,6 +2289,226 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
 
                 self.assertEqual(caso.exception.status, esperado)
 
+    def test_software_consultar_ordena_por_id_descendente(self):
+        self.cliente.consultar_software.return_value = {
+            'error': False, 'status': 200,
+            'datos': {'count': 3, 'results': [{'id': 4}, {'id': 9}, {'id': 6}]},
+        }
+
+        datos = factura_electronica.software_consultar(cliente=self.cliente)
+
+        self.assertEqual([software['id'] for software in datos['results']], [9, 6, 4])
+        self.assertEqual(datos['count'], 3)
+
+    def test_recepcion_pasa_los_filtros_de_estado(self):
+        self.cliente.consultar_documentos_recibidos.return_value = {'error': False, 'status': 200, 'datos': {}}
+
+        self._recepcion({
+            'verificacion_estado': 'invalido', 'radian_estado': 'acuse',
+            'estado_recepcion': 'false', 'estado_descartado': 'true',
+        })
+
+        parametros = self.cliente.consultar_documentos_recibidos.call_args.args[0]
+        self.assertEqual(
+            {clave: parametros[clave] for clave in (
+                'verificacion_estado', 'radian_estado', 'estado_recepcion', 'estado_descartado',
+            )},
+            {'verificacion_estado': 'invalido', 'radian_estado': 'acuse',
+             'estado_recepcion': 'false', 'estado_descartado': 'true'},
+        )
+
+    # ---- adjuntos ----
+
+    def test_recepcion_adjunto_manda_el_emisor_guardado_y_el_documento_como_texto(self):
+        self.cliente.consultar_adjuntos_recibidos.return_value = {
+            'error': False, 'status': 200,
+            'datos': {'count': 12, 'next': 'https://api.rededoc.uk/x?page=2', 'previous': None,
+                      'results': [{'id': 'a1'}]},
+        }
+        documento = uuid_lib.UUID('3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8')
+
+        datos = factura_electronica.recepcion_adjunto(
+            {'emisor': 88, 'documento': documento, 'rol': 'pdf', 'search': ''}, cliente=self.cliente,
+        )
+
+        self.cliente.consultar_adjuntos_recibidos.assert_called_once_with({
+            'emisor': 77, 'documento': '3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8', 'rol': 'pdf', 'page': 1,
+        })
+        self.assertEqual(datos, {'count': 12, 'page': 1, 'page_size': 10, 'results': [{'id': 'a1'}]})
+
+    def test_recepcion_adjunto_un_rechazo_de_rededoc_es_400_y_una_caida_502(self):
+        for status_rededoc, esperado in ((400, 400), (0, 502)):
+            with self.subTest(status_rededoc=status_rededoc):
+                self.cliente.consultar_adjuntos_recibidos.return_value = {
+                    'error': True, 'status': status_rededoc, 'datos': {'detail': 'Falló'},
+                }
+
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    factura_electronica.recepcion_adjunto({}, cliente=self.cliente)
+
+                self.assertEqual(caso.exception.status, esperado)
+
+    def _descarga(self, cabeceras):
+        self.cliente.descargar_adjunto_recibido.return_value = {
+            'error': False, 'status': 200, 'datos': b'contenido', 'cabeceras': cabeceras,
+        }
+        return factura_electronica.recepcion_adjunto_descargar('a1', cliente=self.cliente)
+
+    def test_recepcion_adjunto_descargar_devuelve_contenido_tipo_y_disposicion(self):
+        resultado = self._descarga({
+            'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="factura.pdf"',
+        })
+
+        self.cliente.descargar_adjunto_recibido.assert_called_once_with('a1', 77)
+        self.assertEqual(resultado, (b'contenido', 'application/pdf', 'attachment; filename="factura.pdf"'))
+
+    def test_recepcion_adjunto_descargar_siempre_es_descarga(self):
+        """Un HTML o SVG de un tercero nunca se abre en el navegador con el origen de torio."""
+        casos = (
+            ({'Content-Type': 'text/html', 'Content-Disposition': 'inline; filename="x.html"'}, 'text/html'),
+            ({'Content-Type': None, 'Content-Disposition': None}, 'application/octet-stream'),
+            ({}, 'application/octet-stream'),
+        )
+        for cabeceras, tipo in casos:
+            with self.subTest(cabeceras=cabeceras):
+                _, tipo_contenido, disposicion = self._descarga(cabeceras)
+
+                self.assertEqual(tipo_contenido, tipo)
+                self.assertEqual(disposicion, 'attachment')
+
+    def test_recepcion_adjunto_descargar_ajeno_o_inexistente_es_404(self):
+        for status_rededoc, esperado in ((404, 404), (400, 400), (0, 502)):
+            with self.subTest(status_rededoc=status_rededoc):
+                self.cliente.descargar_adjunto_recibido.return_value = {
+                    'error': True, 'status': status_rededoc, 'datos': {'detail': 'Falló'},
+                }
+
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    factura_electronica.recepcion_adjunto_descargar('a1', cliente=self.cliente)
+
+                self.assertEqual(caso.exception.status, esperado)
+                if esperado == 404:
+                    self.assertEqual(caso.exception.cuerpo['detail'], 'El adjunto no existe.')
+
+    # ---- acciones sobre un documento recibido ----
+
+    def _acciones_documento(self):
+        return {
+            'descartar': (
+                'descartar_documento_recibido',
+                lambda: factura_electronica.recepcion_documento_descartar('d1', cliente=self.cliente),
+            ),
+            'restaurar': (
+                'restaurar_documento_recibido',
+                lambda: factura_electronica.recepcion_documento_restaurar('d1', cliente=self.cliente),
+            ),
+            'eliminar': (
+                'eliminar_documento_recibido',
+                lambda: factura_electronica.recepcion_documento_eliminar('d1', cliente=self.cliente),
+            ),
+        }
+
+    def test_recepcion_acciones_sobre_documento_mandan_el_emisor_guardado(self):
+        for nombre, (metodo, llamada) in self._acciones_documento().items():
+            with self.subTest(accion=nombre):
+                getattr(self.cliente, metodo).return_value = {
+                    'error': False, 'status': 200, 'datos': {'id': 'd1', 'estado_descartado': True},
+                }
+
+                resultado = llamada()
+
+                getattr(self.cliente, metodo).assert_called_once_with('d1', 77)
+                if nombre == 'eliminar':
+                    self.assertIsNone(resultado)
+                else:
+                    self.assertEqual(resultado, {'id': 'd1', 'estado_descartado': True})
+
+    def test_recepcion_acciones_sobre_documento_traducen_los_errores(self):
+        for nombre, (metodo, llamada) in self._acciones_documento().items():
+            for status_rededoc, esperado, mensaje in (
+                (404, 404, 'El documento no existe.'),
+                (400, 400, 'Ya está descartado.'),
+                (0, 502, None),
+            ):
+                with self.subTest(accion=nombre, status_rededoc=status_rededoc):
+                    getattr(self.cliente, metodo).return_value = {
+                        'error': True, 'status': status_rededoc, 'datos': {'detail': 'Ya está descartado.'},
+                    }
+
+                    with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                        llamada()
+
+                    self.assertEqual(caso.exception.status, esperado)
+                    if mensaje:
+                        self.assertEqual(caso.exception.cuerpo['detail'], mensaje)
+
+    # ---- evento sobre un documento recibido ----
+
+    def _persona(self, **overrides):
+        GenIdentificacion.objects.update_or_create(id=3, defaults={'nombre': 'Cédula', 'codigo': '13'})
+        persona = {
+            'identificacion': 3, 'numero_identificacion': '1020304050',
+            'nombres': 'Ana', 'apellidos': 'Ruiz', 'cargo': 'Almacén',
+        }
+        persona.update(overrides)
+        return persona
+
+    def test_recepcion_evento_con_persona_convierte_la_identificacion_al_codigo_dian(self):
+        self.cliente.registrar_evento_recibido.return_value = {
+            'error': False, 'status': 201,
+            'datos': {'id': 'e1', 'codigo': '030', 'estado': 'pendiente', 'usuario': 5},
+        }
+        for codigo in ('030', '032'):
+            with self.subTest(codigo=codigo):
+                self.cliente.registrar_evento_recibido.reset_mock()
+
+                evento = factura_electronica.recepcion_documento_evento(
+                    'd1', {'codigo': codigo, 'persona': self._persona(), 'concepto_reclamo': '01'},
+                    cliente=self.cliente,
+                )
+
+                # Torio guarda el id de GenIdentificacion; rededoc espera el código DIAN.
+                # El concepto no viaja: solo es del 031.
+                self.cliente.registrar_evento_recibido.assert_called_once_with('d1', 77, {
+                    'codigo': codigo,
+                    'persona': {
+                        'tipo_identificacion': 13, 'numero_identificacion': '1020304050',
+                        'nombres': 'Ana', 'apellidos': 'Ruiz', 'cargo': 'Almacén',
+                    },
+                })
+                self.assertEqual(evento, {'id': 'e1', 'codigo': '030', 'estado': 'pendiente'})
+
+    def test_recepcion_evento_solo_manda_lo_del_codigo(self):
+        self.cliente.registrar_evento_recibido.return_value = {'error': False, 'status': 201, 'datos': {}}
+        casos = (
+            ({'codigo': '031', 'concepto_reclamo': '02', 'persona': self._persona()},
+             {'codigo': '031', 'concepto_reclamo': '02'}),
+            ({'codigo': '033', 'concepto_reclamo': '02', 'persona': self._persona()}, {'codigo': '033'}),
+        )
+        for datos, cuerpo in casos:
+            with self.subTest(codigo=datos['codigo']):
+                self.cliente.registrar_evento_recibido.reset_mock()
+
+                factura_electronica.recepcion_documento_evento('d1', datos, cliente=self.cliente)
+
+                self.cliente.registrar_evento_recibido.assert_called_once_with('d1', 77, cuerpo)
+
+    def test_recepcion_evento_traduce_los_errores(self):
+        for status_rededoc, esperado in ((404, 404), (400, 400), (0, 502)):
+            with self.subTest(status_rededoc=status_rededoc):
+                self.cliente.registrar_evento_recibido.return_value = {
+                    'error': True, 'status': status_rededoc, 'datos': {'detail': 'Fuera de plazo.'},
+                }
+
+                with self.assertRaises(factura_electronica.ErrorFacturaElectronica) as caso:
+                    factura_electronica.recepcion_documento_evento('d1', {'codigo': '033'}, cliente=self.cliente)
+
+                self.assertEqual(caso.exception.status, esperado)
+                if esperado == 404:
+                    self.assertEqual(caso.exception.cuerpo['detail'], 'El documento no existe.')
+                if esperado == 400:
+                    self.assertEqual(caso.exception.cuerpo['detail'], 'Fuera de plazo.')
+
     def test_sin_emisor_es_404_y_no_llama_a_rededoc(self):
         GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
 
@@ -2144,7 +2523,25 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
             'recepcion_documento': lambda: factura_electronica.recepcion_documento({}, cliente=self.cliente),
             'recepcion_correo': lambda: factura_electronica.recepcion_correo({}, cliente=self.cliente),
             'recepcion_evento': lambda: factura_electronica.recepcion_evento({}, cliente=self.cliente),
+            'recepcion_adjunto': lambda: factura_electronica.recepcion_adjunto({}, cliente=self.cliente),
+            'recepcion_adjunto_descargar': (
+                lambda: factura_electronica.recepcion_adjunto_descargar('a1', cliente=self.cliente)
+            ),
+            'recepcion_documento_descartar': (
+                lambda: factura_electronica.recepcion_documento_descartar('d1', cliente=self.cliente)
+            ),
+            'recepcion_documento_restaurar': (
+                lambda: factura_electronica.recepcion_documento_restaurar('d1', cliente=self.cliente)
+            ),
+            'recepcion_documento_eliminar': (
+                lambda: factura_electronica.recepcion_documento_eliminar('d1', cliente=self.cliente)
+            ),
+            'recepcion_documento_evento': (
+                lambda: factura_electronica.recepcion_documento_evento('d1', {'codigo': '033'}, cliente=self.cliente)
+            ),
             'resoluciones_validar': lambda: factura_electronica.resoluciones_validar(cliente=self.cliente),
+            'resoluciones_consultar': lambda: factura_electronica.resoluciones_consultar(cliente=self.cliente),
+            'resolucion_importar': lambda: factura_electronica.resolucion_importar(9, cliente=self.cliente),
         }
         for nombre, llamada in llamadas.items():
             with self.subTest(funcion=nombre):
@@ -2163,6 +2560,8 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
         self.cliente.consultar_correos_recibidos.assert_not_called()
         self.cliente.consultar_eventos_recibidos.assert_not_called()
         self.cliente.validar_resoluciones.assert_not_called()
+        # Lo de arriba, y cualquier otro método: sin emisor no se llama a rededoc.
+        self.assertEqual(self.cliente.method_calls, [])
 
     def _resolucion(self, vence_en=30, **overrides):
         hoy = timezone.localdate()
@@ -2827,9 +3226,9 @@ class FacturaElectronicaVistaTests(TenantTestCase):
             'pin': '12345',
             'test_set_id': '0d26ba8c-8584-4199-b210-2ddc063c3ddd',
         }
-        casos = [(completo, 201)]
+        casos = [(completo, 201), ({**completo, 'tipo': 'nomina'}, 201), ({**completo, 'tipo': 'documento_equivalente'}, 201)]
         casos += [({k: v for k, v in completo.items() if k != campo}, 400) for campo in completo]
-        casos += [({**completo, 'tipo': 'documento_equivalente'}, 400), ({**completo, 'pin': ''}, 400)]
+        casos += [({**completo, 'tipo': 'otro'}, 400), ({**completo, 'pin': ''}, 400)]
         for campo in ('identificador', 'test_set_id'):
             for invalido in (
                 'sw',
@@ -2848,7 +3247,7 @@ class FacturaElectronicaVistaTests(TenantTestCase):
 
                 self.assertEqual(respuesta.status_code, esperado)
                 if esperado == 201:
-                    servicio.assert_called_once_with(**completo)
+                    servicio.assert_called_once_with(**cuerpo)
                     self.assertEqual(respuesta.data, {'id': 3})
                 else:
                     self.assertIn('detail', respuesta.data)
@@ -2914,7 +3313,7 @@ class FacturaElectronicaVistaTests(TenantTestCase):
         self.assertFalse(GenParametro.objects.exists())
 
     def test_recepcion_documento_valida_la_query(self):
-        vista = _ElectronicoViewSinPermisos.as_view({'get': 'recepcion_documento'})
+        vista = _RecepcionViewSinPermisos.as_view({'get': 'documento'})
         validos = (
             ({}, {'page': 1, 'page_size': 25}),
             ({'desde': '2026-10-01', 'hasta': '2026-10-01', 'page': '2', 'page_size': '100'},
@@ -2923,6 +3322,10 @@ class FacturaElectronicaVistaTests(TenantTestCase):
               'search': 'a1b2'},
              {'documento_tipo': 'factura_venta', 'proveedor': '800111222', 'correo': 4, 'ordering': '-numero',
               'search': 'a1b2', 'page': 1, 'page_size': 25}),
+            ({'verificacion_estado': 'no_verificable', 'radian_estado': 'reclamada',
+              'estado_recepcion': 'false', 'estado_descartado': 'true'},
+             {'verificacion_estado': 'no_verificable', 'radian_estado': 'reclamada',
+              'estado_recepcion': 'false', 'estado_descartado': 'true', 'page': 1, 'page_size': 25}),
         )
         invalidos = (
             {'desde': '2026-10-31', 'hasta': '2026-10-01'},
@@ -2934,11 +3337,15 @@ class FacturaElectronicaVistaTests(TenantTestCase):
             {'correo': 'x'},
             {'ordering': 'proveedor_razon_social'},
             {'search': 'x' * 151},
+            {'verificacion_estado': 'aprobado'},
+            {'radian_estado': 'rechazada'},
+            {'estado_recepcion': 'si'},
+            {'estado_descartado': '1'},
         )
         casos = [(query, 200, filtros) for query, filtros in validos] + [(query, 400, None) for query in invalidos]
         for query, esperado, filtros in casos:
             with self.subTest(query=query):
-                peticion = self.factory.get('/general/electronico/recepcion-documento/', query)
+                peticion = self.factory.get('/general/electronico/recepcion/documento/', query)
                 force_authenticate(peticion, user=SegUsuario(id=1))
                 with mock.patch.object(factura_electronica, 'recepcion_documento', return_value={'count': 0}) as servicio:
                     respuesta = vista(peticion)
@@ -2951,11 +3358,11 @@ class FacturaElectronicaVistaTests(TenantTestCase):
                     servicio.assert_not_called()
 
     def test_recepcion_documento_cargar_responde_con_el_status_del_servicio(self):
-        vista = _ElectronicoViewSinPermisos.as_view({'post': 'recepcion_documento_cargar'})
+        vista = _RecepcionViewSinPermisos.as_view({'post': 'documento_cargar'})
         for codigo in (201, 200):
             with self.subTest(codigo=codigo):
                 peticion = self.factory.post(
-                    '/general/electronico/recepcion-documento-cargar/',
+                    '/general/electronico/recepcion/documento-cargar/',
                     {'archivo': SimpleUploadedFile('factura.zip', b'PK')}, format='multipart',
                 )
                 force_authenticate(peticion, user=SegUsuario(id=1))
@@ -2969,8 +3376,8 @@ class FacturaElectronicaVistaTests(TenantTestCase):
                 self.assertEqual(servicio.call_args.args[0].name, 'factura.zip')
 
     def test_recepcion_documento_cargar_sin_archivo_responde_400_con_detail(self):
-        vista = _ElectronicoViewSinPermisos.as_view({'post': 'recepcion_documento_cargar'})
-        peticion = self.factory.post('/general/electronico/recepcion-documento-cargar/', {}, format='multipart')
+        vista = _RecepcionViewSinPermisos.as_view({'post': 'documento_cargar'})
+        peticion = self.factory.post('/general/electronico/recepcion/documento-cargar/', {}, format='multipart')
         force_authenticate(peticion, user=SegUsuario(id=1))
 
         respuesta = vista(peticion)
@@ -2979,7 +3386,7 @@ class FacturaElectronicaVistaTests(TenantTestCase):
         self.assertEqual(respuesta.data, {'detail': 'Falta el archivo.'})
 
     def test_recepcion_correo_valida_la_query(self):
-        vista = _ElectronicoViewSinPermisos.as_view({'get': 'recepcion_correo'})
+        vista = _RecepcionViewSinPermisos.as_view({'get': 'correo'})
         validos = (
             ({}, {'page': 1, 'page_size': 25}),
             ({'desde': '2026-10-01', 'hasta': '2026-10-31', 'estado': 'confirmacion_reenvio', 'origen': 'carga',
@@ -3000,7 +3407,7 @@ class FacturaElectronicaVistaTests(TenantTestCase):
         casos = [(query, 200, filtros) for query, filtros in validos] + [(query, 400, None) for query in invalidos]
         for query, esperado, filtros in casos:
             with self.subTest(query=query):
-                peticion = self.factory.get('/general/electronico/recepcion-correo/', query)
+                peticion = self.factory.get('/general/electronico/recepcion/correo/', query)
                 force_authenticate(peticion, user=SegUsuario(id=1))
                 with mock.patch.object(factura_electronica, 'recepcion_correo', return_value={'count': 0}) as servicio:
                     respuesta = vista(peticion)
@@ -3013,7 +3420,7 @@ class FacturaElectronicaVistaTests(TenantTestCase):
                     servicio.assert_not_called()
 
     def test_recepcion_evento_valida_la_query(self):
-        vista = _ElectronicoViewSinPermisos.as_view({'get': 'recepcion_evento'})
+        vista = _RecepcionViewSinPermisos.as_view({'get': 'evento'})
         documento = '3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8'
         validos = (
             ({}, {'page': 1, 'page_size': 25}),
@@ -3034,7 +3441,7 @@ class FacturaElectronicaVistaTests(TenantTestCase):
         casos = [(query, 200, filtros) for query, filtros in validos] + [(query, 400, None) for query in invalidos]
         for query, esperado, filtros in casos:
             with self.subTest(query=query):
-                peticion = self.factory.get('/general/electronico/recepcion-evento/', query)
+                peticion = self.factory.get('/general/electronico/recepcion/evento/', query)
                 force_authenticate(peticion, user=SegUsuario(id=1))
                 with mock.patch.object(factura_electronica, 'recepcion_evento', return_value={'count': 0}) as servicio:
                     respuesta = vista(peticion)
@@ -3046,6 +3453,178 @@ class FacturaElectronicaVistaTests(TenantTestCase):
                     self.assertIn('detail', respuesta.data)
                     servicio.assert_not_called()
 
+
+    def test_recepcion_adjunto_valida_la_query(self):
+        vista = _RecepcionViewSinPermisos.as_view({'get': 'adjunto'})
+        documento = '3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8'
+        validos = (
+            ({}, {'page': 1}),
+            ({'page': '2', 'correo': '5', 'documento': documento, 'rol': 'xml_documento', 'search': 'fac'},
+             {'page': 2, 'correo': 5, 'documento': uuid_lib.UUID(documento), 'rol': 'xml_documento', 'search': 'fac'}),
+        )
+        invalidos = (
+            {'page': '0'},
+            {'correo': 'x'},
+            {'documento': '123'},
+            {'rol': 'zip'},
+            {'search': 'x' * 151},
+        )
+        casos = [(query, 200, filtros) for query, filtros in validos] + [(query, 400, None) for query in invalidos]
+        for query, esperado, filtros in casos:
+            with self.subTest(query=query):
+                peticion = self.factory.get('/general/electronico/recepcion/adjunto/', query)
+                force_authenticate(peticion, user=SegUsuario(id=1))
+                with mock.patch.object(factura_electronica, 'recepcion_adjunto', return_value={'count': 0}) as servicio:
+                    respuesta = vista(peticion)
+
+                self.assertEqual(respuesta.status_code, esperado)
+                if esperado == 200:
+                    servicio.assert_called_once_with(filtros)
+                else:
+                    self.assertIn('detail', respuesta.data)
+                    servicio.assert_not_called()
+
+    def _adjunto_descargar(self, query, **servicio_kwargs):
+        vista = _RecepcionViewSinPermisos.as_view({'get': 'adjunto_descargar'})
+        peticion = self.factory.get('/general/electronico/recepcion/adjunto-descargar/', query)
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        with mock.patch.object(factura_electronica, 'recepcion_adjunto_descargar', **servicio_kwargs) as servicio:
+            return vista(peticion), servicio
+
+    def test_recepcion_adjunto_descargar_responde_el_archivo_como_descarga(self):
+        adjunto = '3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8'
+        respuesta, servicio = self._adjunto_descargar(
+            {'id': adjunto},
+            return_value=(b'%PDF-1.7', 'application/pdf', 'attachment; filename="factura.pdf"'),
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        servicio.assert_called_once_with(uuid_lib.UUID(adjunto))
+        self.assertEqual(respuesta.content, b'%PDF-1.7')
+        self.assertEqual(respuesta['Content-Type'], 'application/pdf')
+        self.assertEqual(respuesta['Content-Disposition'], 'attachment; filename="factura.pdf"')
+
+    def test_recepcion_adjunto_descargar_exige_un_id_uuid(self):
+        for query in ({}, {'id': '123'}):
+            with self.subTest(query=query):
+                respuesta, servicio = self._adjunto_descargar(query, return_value=(b'', 'x', 'attachment'))
+
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertIn('detail', respuesta.data)
+                servicio.assert_not_called()
+
+    def test_recepcion_adjunto_descargar_traduce_el_error_del_servicio(self):
+        respuesta, _ = self._adjunto_descargar(
+            {'id': '3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8'},
+            side_effect=factura_electronica.ErrorFacturaElectronica('El adjunto no existe.', status=404),
+        )
+
+        self.assertEqual(respuesta.status_code, 404)
+        self.assertEqual(respuesta.data, {'detail': 'El adjunto no existe.'})
+
+    def test_recepcion_acciones_sobre_documento_validan_el_id_y_responden(self):
+        documento = '3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8'
+        acciones = (
+            ('documento_descartar', 'recepcion_documento_descartar', {'id': documento, 'estado_descartado': True}),
+            ('documento_restaurar', 'recepcion_documento_restaurar', {'id': documento, 'estado_descartado': False}),
+            ('documento_eliminar', 'recepcion_documento_eliminar', None),
+        )
+        for accion, funcion, datos in acciones:
+            vista = _RecepcionViewSinPermisos.as_view({'post': accion})
+            url = f"/general/electronico/recepcion/{accion.replace('_', '-')}/"
+            for cuerpo, esperado in (({'id': documento}, 200), ({}, 400), ({'id': 'abc'}, 400)):
+                with self.subTest(accion=accion, cuerpo=cuerpo):
+                    peticion = self.factory.post(url, cuerpo, format='json')
+                    force_authenticate(peticion, user=SegUsuario(id=1))
+                    with mock.patch.object(factura_electronica, funcion, return_value=datos) as servicio:
+                        respuesta = vista(peticion)
+
+                    self.assertEqual(respuesta.status_code, esperado)
+                    if esperado == 200:
+                        servicio.assert_called_once_with(uuid_lib.UUID(documento))
+                        self.assertEqual(respuesta.data, datos)
+                    else:
+                        self.assertIn('detail', respuesta.data)
+                        servicio.assert_not_called()
+
+    def test_recepcion_acciones_sobre_documento_traducen_el_error_del_servicio(self):
+        for accion, funcion in (
+            ('documento_descartar', 'recepcion_documento_descartar'),
+            ('documento_restaurar', 'recepcion_documento_restaurar'),
+            ('documento_eliminar', 'recepcion_documento_eliminar'),
+        ):
+            with self.subTest(accion=accion):
+                vista = _RecepcionViewSinPermisos.as_view({'post': accion})
+                peticion = self.factory.post(
+                    '/x/', {'id': '3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8'}, format='json',
+                )
+                force_authenticate(peticion, user=SegUsuario(id=1))
+                with mock.patch.object(
+                    factura_electronica, funcion,
+                    side_effect=factura_electronica.ErrorFacturaElectronica('El documento no existe.', status=404),
+                ):
+                    respuesta = vista(peticion)
+
+                self.assertEqual(respuesta.status_code, 404)
+                self.assertEqual(respuesta.data, {'detail': 'El documento no existe.'})
+
+    def _documento_evento(self, cuerpo, **servicio_kwargs):
+        vista = _RecepcionViewSinPermisos.as_view({'post': 'documento_evento'})
+        peticion = self.factory.post('/general/electronico/recepcion/documento-evento/', cuerpo, format='json')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        servicio_kwargs.setdefault('return_value', {'id': 'e1', 'estado': 'pendiente'})
+        with mock.patch.object(factura_electronica, 'recepcion_documento_evento', **servicio_kwargs) as servicio:
+            return vista(peticion), servicio
+
+    def test_recepcion_documento_evento_valida_el_cuerpo(self):
+        GenIdentificacion.objects.update_or_create(id=3, defaults={'nombre': 'Cédula', 'codigo': '13'})
+        documento = '3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8'
+        persona = {'identificacion': 3, 'numero_identificacion': '1020304050', 'nombres': 'Ana', 'apellidos': 'Ruiz'}
+        validos = (
+            {'id': documento, 'codigo': '030', 'persona': persona},
+            {'id': documento, 'codigo': '032', 'persona': {**persona, 'cargo': '', 'area': 'Compras'}},
+            {'id': documento, 'codigo': '031', 'concepto_reclamo': '01'},
+            {'id': documento, 'codigo': '033'},
+        )
+        invalidos = (
+            ({'codigo': '033'}, None),
+            ({'id': 'abc', 'codigo': '033'}, None),
+            ({'id': documento, 'codigo': '034'}, None),
+            ({'id': documento, 'codigo': '030'}, 'El evento 030 lleva la persona que recibe.'),
+            ({'id': documento, 'codigo': '032'}, 'El evento 032 lleva la persona que recibe.'),
+            ({'id': documento, 'codigo': '031'}, 'El reclamo (031) lleva su concepto.'),
+            ({'id': documento, 'codigo': '030', 'persona': {**persona, 'identificacion': 999}}, None),
+            ({'id': documento, 'codigo': '030', 'persona': {k: v for k, v in persona.items() if k != 'nombres'}}, None),
+            ({'id': documento, 'codigo': '030', 'persona': {**persona, 'numero_identificacion': '1' * 21}}, None),
+        )
+        for cuerpo in validos:
+            with self.subTest(cuerpo=cuerpo):
+                respuesta, servicio = self._documento_evento(cuerpo)
+
+                self.assertEqual(respuesta.status_code, 201)
+                self.assertEqual(respuesta.data, {'id': 'e1', 'estado': 'pendiente'})
+                documento_id, datos = servicio.call_args.args
+                self.assertEqual(documento_id, uuid_lib.UUID(documento))
+                self.assertEqual(datos['codigo'], cuerpo['codigo'])
+                self.assertNotIn('id', datos)
+        for cuerpo, mensaje in invalidos:
+            with self.subTest(cuerpo=cuerpo):
+                respuesta, servicio = self._documento_evento(cuerpo)
+
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertIn('detail', respuesta.data)
+                if mensaje:
+                    self.assertEqual(respuesta.data['detail'], mensaje)
+                servicio.assert_not_called()
+
+    def test_recepcion_documento_evento_traduce_el_error_del_servicio(self):
+        respuesta, _ = self._documento_evento(
+            {'id': '3f2a9c1e-8b7d-4e6f-a5b4-c3d2e1f0a9b8', 'codigo': '033'},
+            side_effect=factura_electronica.ErrorFacturaElectronica('Fuera de plazo.', status=400),
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data, {'detail': 'Fuera de plazo.'})
 
 class ResolucionDianTests(TenantTestCase):
     """
@@ -3073,12 +3652,10 @@ class ResolucionDianTests(TenantTestCase):
         datos.update(overrides)
         return datos
 
-    def _cliente(self, resultados=(), importar=None, consultar=None, una=None):
+    def _cliente(self, resultados=(), importar=None, una=None):
         cliente = mock.Mock(spec=rededoc_servicio.Rededoc)
+        # `importar-dian` de rededoc responde como su listado: paginado.
         cliente.importar_resoluciones.return_value = importar or {
-            'error': False, 'status': 200, 'datos': {'creadas': 0},
-        }
-        cliente.consultar_resoluciones.return_value = consultar or {
             'error': False, 'status': 200,
             'datos': {
                 'count': len(resultados), 'next': 'https://rededoc/x?page=2', 'previous': None,
@@ -3098,6 +3675,104 @@ class ResolucionDianTests(TenantTestCase):
         datos.update(overrides)
         return GenResolucion.objects.create(**datos)
 
+    # ---- lista-dian ----
+
+    def _lista(self, query, cliente=None):
+        cliente = cliente or self._cliente()
+        vista = _ResolucionViewSinPermisos.as_view({'get': 'lista_dian'})
+        peticion = self.factory.get('/general/resolucion/lista-dian/', query)
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        with mock.patch.object(factura_electronica, 'Rededoc', return_value=cliente):
+            return vista(peticion)
+
+    def test_lista_importa_en_rededoc_solo_las_de_produccion(self):
+        cliente = self._cliente([self._remota()])
+
+        respuesta = self._lista({}, cliente)
+
+        self.assertEqual(respuesta.status_code, 200)
+        # Ambiente 1, producción: las de habilitación no sirven para numerar.
+        cliente.importar_resoluciones.assert_called_once_with(77, 1, None, None)
+        self.assertEqual([llamada[0] for llamada in cliente.method_calls], ['importar_resoluciones'])
+
+    def test_lista_pasa_el_modulo_y_la_pagina(self):
+        cliente = self._cliente()
+
+        self._lista({'modulo': 'compras', 'page': '2'}, cliente)
+
+        cliente.importar_resoluciones.assert_called_once_with(77, 1, 'compras', 2)
+
+    def test_lista_devuelve_count_y_results_sin_las_direcciones_de_rededoc(self):
+        respuesta = self._lista({}, self._cliente([self._remota()]))
+
+        self.assertEqual(sorted(respuesta.data), ['count', 'results'])
+        self.assertEqual(respuesta.data['count'], 1)
+        self.assertEqual(respuesta.data['results'], [{**self._remota(), 'importada': False}])
+
+    def test_lista_sin_resoluciones_no_es_un_error(self):
+        respuesta = self._lista({}, self._cliente([]))
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, {'count': 0, 'results': []})
+
+    def test_lista_marca_importada_la_que_la_empresa_ya_tiene(self):
+        self._local()
+        self._local(numero='18764000002', prefijo=None)
+        self._local(numero='18764000003', prefijo='OTRO')
+        cliente = self._cliente([
+            self._remota(id=1),
+            # Sin prefijo se guarda nulo o vacío: es la misma resolución.
+            self._remota(id=2, numero_resolucion='18764000002', prefijo=''),
+            # Mismo número con otro prefijo no es la misma.
+            self._remota(id=3, numero_resolucion='18764000003', prefijo='FE'),
+            self._remota(id=4, numero_resolucion='18764000004'),
+        ])
+
+        respuesta = self._lista({}, cliente)
+
+        self.assertEqual(
+            [(r['id'], r['importada']) for r in respuesta.data['results']],
+            [(1, True), (2, True), (3, False), (4, False)],
+        )
+
+    def test_lista_valida_modulo_y_pagina(self):
+        for query in (
+            {'modulo': 'nomina'}, {'modulo': 'FACTURACION'},
+            {'page': '0'}, {'page': '-1'}, {'page': 'abc'}, {'page': '1.5'},
+        ):
+            with self.subTest(query=query):
+                cliente = self._cliente()
+
+                respuesta = self._lista(query, cliente)
+
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertEqual(list(respuesta.data), ['detail'])
+                self.assertEqual(cliente.method_calls, [])
+
+    def test_lista_sube_el_error_de_rededoc(self):
+        for status_rededoc, esperado in ((400, 400), (0, 502)):
+            with self.subTest(status_rededoc=status_rededoc):
+                cliente = self._cliente(importar={
+                    'error': True, 'status': status_rededoc,
+                    'datos': {'detail': 'El emisor no tiene software.'},
+                })
+
+                respuesta = self._lista({}, cliente)
+
+                self.assertEqual(respuesta.status_code, esperado)
+                self.assertIn('detail', respuesta.data)
+                if esperado == 400:
+                    self.assertEqual(respuesta.data['detail'], 'El emisor no tiene software.')
+
+    def test_lista_sin_emisor_responde_404_sin_llamar_a_rededoc(self):
+        GenParametro.objects.filter(id=1).update(gen_rededoc_emisor=None)
+        cliente = self._cliente()
+
+        respuesta = self._lista({}, cliente)
+
+        self.assertEqual(respuesta.status_code, 404)
+        self.assertEqual(cliente.method_calls, [])
+
     # ---- importar-dian ----
 
     def _importar(self, cuerpo, cliente=None):
@@ -3114,7 +3789,8 @@ class ResolucionDianTests(TenantTestCase):
         respuesta = self._importar({'id': 9}, cliente)
 
         self.assertEqual(respuesta.status_code, 201)
-        cliente.consultar_resolucion.assert_called_once_with(9)
+        # Con el emisor: rededoc no encuentra la resolución de otra empresa.
+        cliente.consultar_resolucion.assert_called_once_with(9, 77)
         resolucion = GenResolucion.objects.get()
         self.assertEqual(respuesta.data['id'], resolucion.id)
         self.assertEqual(resolucion.numero, '18764000001')
@@ -10680,3 +11356,116 @@ class ImagenTests(TenantTestCase):
         self.assertEqual(respuesta.status_code, 204)
         self.assertEqual(eliminar.call_count, 4)
         self.assertEqual(list(GenImagen.objects.values_list('pk', flat=True)), [ajena.data['id']])
+
+
+class _ImpuestoViewSinPermisos(GenImpuestoViewSet):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class ImpuestoTests(TenantTestCase):
+    """
+    `GenImpuesto` es catálogo: se lista y se lee, y de él solo se escribe la
+    cuenta contable.
+    """
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.cuenta = ConCuenta.objects.create(codigo='240805', nombre='IVA generado', permite_movimiento=True)
+        self.iva = GenImpuesto.objects.create(
+            nombre='IVA', nombre_extendido='IVA 19%', porcentaje=Decimal('19'), cuenta=self.cuenta,
+        )
+        self.retencion = GenImpuesto.objects.create(
+            nombre='RTEFTE', nombre_extendido='Retención 2.5%', porcentaje=Decimal('2.5'), venta=False,
+        )
+
+    def _vista(self, acciones, metodo, url, datos=None, **kwargs):
+        vista = _ImpuestoViewSinPermisos.as_view(acciones)
+        peticion = getattr(self.factory, metodo)(url, datos, format='json' if metodo != 'get' else None)
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return vista(peticion, **kwargs)
+
+    def _fila(self, filas, impuesto):
+        return next(fila for fila in filas if fila['id'] == impuesto.id)
+
+    def test_lista_trae_la_cuenta_con_codigo_y_nombre(self):
+        respuesta = self._vista({'get': 'list'}, 'get', '/general/impuesto/', {'search': 'IVA'})
+
+        self.assertEqual(respuesta.status_code, 200)
+        filas = respuesta.data['results'] if isinstance(respuesta.data, dict) else respuesta.data
+        fila = self._fila(filas, self.iva)
+        self.assertEqual(
+            (fila['cuenta'], fila['cuenta_codigo'], fila['cuenta_nombre']),
+            (self.cuenta.id, '240805', 'IVA generado'),
+        )
+        self.assertNotIn(self.retencion.id, [f['id'] for f in filas])
+
+    def test_lista_con_filtros_dinamicos_por_cuenta(self):
+        respuesta = self._vista(
+            {'post': 'lista'}, 'post', '/general/impuesto/lista/',
+            {'filtros': [{'propiedad': 'cuenta_id', 'operador': '=', 'valor': self.cuenta.id}]},
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual([fila['id'] for fila in respuesta.data['results']], [self.iva.id])
+
+    def test_detalle_sin_cuenta_trae_sus_nombres_en_null(self):
+        respuesta = self._vista(
+            {'get': 'retrieve'}, 'get', f'/general/impuesto/{self.retencion.id}/', pk=self.retencion.id,
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(
+            (respuesta.data['cuenta'], respuesta.data['cuenta_codigo'], respuesta.data['cuenta_nombre']),
+            (None, None, None),
+        )
+
+    def test_actualizar_solo_escribe_la_cuenta(self):
+        otra = ConCuenta.objects.create(codigo='240810', nombre='IVA descontable', permite_movimiento=True)
+
+        respuesta = self._vista(
+            {'patch': 'partial_update'}, 'patch', f'/general/impuesto/{self.iva.id}/',
+            {'cuenta': otra.id, 'nombre': 'OTRO', 'porcentaje': '5', 'venta': False},
+            pk=self.iva.id,
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.iva.refresh_from_db()
+        self.assertEqual(self.iva.cuenta_id, otra.id)
+        self.assertEqual((self.iva.nombre, self.iva.porcentaje, self.iva.venta), ('IVA', Decimal('19'), True))
+
+    def test_actualizar_con_null_quita_la_cuenta(self):
+        respuesta = self._vista(
+            {'patch': 'partial_update'}, 'patch', f'/general/impuesto/{self.iva.id}/', {'cuenta': None},
+            pk=self.iva.id,
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.iva.refresh_from_db()
+        self.assertIsNone(self.iva.cuenta_id)
+
+    def test_actualizar_con_una_cuenta_que_no_existe_es_400(self):
+        respuesta = self._vista(
+            {'patch': 'partial_update'}, 'patch', f'/general/impuesto/{self.iva.id}/', {'cuenta': 999999},
+            pk=self.iva.id,
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('detail', respuesta.data)
+        self.iva.refresh_from_db()
+        self.assertEqual(self.iva.cuenta_id, self.cuenta.id)
+
+    def test_no_se_crean_ni_se_borran_por_la_api(self):
+        self.assertFalse(hasattr(_ImpuestoViewSinPermisos, 'create'))
+        self.assertFalse(hasattr(_ImpuestoViewSinPermisos, 'destroy'))
+
+    def test_seleccionar_trae_la_cuenta_con_codigo_y_nombre(self):
+        respuesta = self._vista({'get': 'seleccionar'}, 'get', '/general/impuesto/seleccionar/', {'search': 'IVA'})
+
+        self.assertEqual(respuesta.status_code, 200)
+        fila = self._fila(respuesta.data['results'], self.iva)
+        self.assertEqual(
+            (fila['cuenta'], fila['cuenta_codigo'], fila['cuenta_nombre']),
+            (self.cuenta.id, '240805', 'IVA generado'),
+        )

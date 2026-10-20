@@ -270,13 +270,20 @@ def software_consultar(modulo: str = None, cliente: Rededoc = None) -> dict:
     """
     El software DIAN del emisor de `gen_rededoc_emisor`, tal como lo tiene
     rededoc. Con `modulo` (facturacion o nomina) solo el de ese módulo.
+
+    Se ordena por `id` descendente. Rededoc ordena por fecha de creación y no
+    recibe orden; el emisor tiene a lo sumo uno por tipo (tres), así que todos
+    caben en la primera página y ordenarla acá es ordenar la lista entera.
     """
     emisor_id = _emisor_id()
     cliente = cliente or Rededoc()
     respuesta = cliente.consultar_software(emisor_id, modulo)
     if respuesta['error']:
         raise _error_rededoc(respuesta)
-    return respuesta['datos']
+    datos = respuesta['datos']
+    if isinstance(datos, dict) and isinstance(datos.get('results'), list):
+        datos['results'].sort(key=lambda software: software.get('id') or 0, reverse=True)
+    return datos
 
 
 def software_crear(tipo: str, identificador: str, pin: str, test_set_id: str,
