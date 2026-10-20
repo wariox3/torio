@@ -1,6 +1,7 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from general.models import GenImpuesto
 from general.serializers import (
@@ -49,6 +50,13 @@ class GenImpuestoViewSet(
         if search:
             qs = qs.filter(nombre__icontains=search) | qs.filter(nombre_extendido__icontains=search)
         return qs
+
+    @extend_schema(responses=GenImpuestoSerializer(many=True))
+    @action(detail=False, methods=['get'], pagination_class=None)
+    def configuracion(self, request):
+        """Todos los impuestos, sin paginar ni filtrar: la pantalla de configuración los muestra completos."""
+        qs = GenImpuesto.objects.select_related(*GenImpuestoSerializer.select_related_lista).order_by('id')
+        return Response(GenImpuestoSerializer(qs, many=True).data)
 
     @extend_schema(parameters=_LIST_PARAMS)
     def list(self, request, *args, **kwargs):

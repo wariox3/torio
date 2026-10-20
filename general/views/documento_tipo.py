@@ -1,6 +1,7 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from general.models import GenDocumentoTipo
 from general.serializers import (
@@ -49,6 +50,13 @@ class GenDocumentoTipoViewSet(
         if search:
             qs = qs.filter(nombre__icontains=search)
         return qs
+
+    @extend_schema(responses=GenDocumentoTipoSerializer(many=True))
+    @action(detail=False, methods=['get'], pagination_class=None)
+    def configuracion(self, request):
+        """Todos los tipos de documento, sin paginar ni filtrar: la pantalla de configuración los muestra completos."""
+        qs = GenDocumentoTipo.objects.select_related(*GenDocumentoTipoSerializer.select_related_lista).order_by('id')
+        return Response(GenDocumentoTipoSerializer(qs, many=True).data)
 
     @extend_schema(parameters=_LIST_PARAMS)
     def list(self, request, *args, **kwargs):
