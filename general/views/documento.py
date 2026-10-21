@@ -412,9 +412,11 @@ class GenDocumentoViewSet(
         summary='Resumen de ingresos contra costos y gastos',
         description=(
             'Las dos barras del tablero en cada punto del periodo en curso: `ingreso` '
-            'es el subtotal neto de las ventas y `egreso` el de las compras, con los '
-            'mismos documentos de `venta-resumen` y `compra-resumen`. Va antes de '
-            'impuestos: el IVA no es ingreso ni gasto.\n\n'
+            'es el subtotal neto de las ventas (los documentos de `venta-resumen`) y '
+            '`egreso` el de las compras (los de `compra-resumen`) más el gasto de '
+            'personal: el devengado de nómina, primas, cesantías, intereses y '
+            'liquidaciones, y la parte de la empresa en la seguridad social. Va antes '
+            'de impuestos: el IVA no es ingreso ni gasto.\n\n'
             '- `?periodo=mes`: el mes actual, un punto por día en `serie`.\n'
             '- `?periodo=anio`: el año actual, un punto por mes en `serie`.\n\n'
             '`totales` trae `ingreso`, `egreso` y `diferencia` (ingreso - egreso).'

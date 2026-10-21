@@ -17,7 +17,7 @@ import calendar
 from datetime import date
 from decimal import Decimal
 
-from django.db.models import Count, F, Sum
+from django.db.models import Case, Count, F, Sum, When
 from django.db.models.functions import TruncDay, TruncMonth
 from django.utils import timezone
 
@@ -32,6 +32,10 @@ TIPOS = {
 PERIODOS = ('mes', 'anio')
 
 CAMPOS = ('subtotal', 'impuesto', 'total')
+
+# Nómina, primas, cesantías, intereses y liquidaciones (701) y seguridad social (703).
+DOCUMENTO_CLASE_NOMINA = 701
+DOCUMENTO_CLASE_SEGURIDAD_SOCIAL = 703
 
 
 def _rango(periodo, hoy):
@@ -98,22 +102,62 @@ def resumen(tipo, periodo, hoy=None):
     }
 
 
+def _personal(periodo, hoy):
+    """
+    Gasto de personal por punto: el `devengado` de la nómina (clase 701) y el
+    `subtotal` de la seguridad social (clase 703).
+
+    Va el devengado y no el `total`: lo deducido (salud y pensión del empleado,
+    créditos) también lo paga la empresa, solo que a otro. De la seguridad social
+    va el `subtotal`, la parte de la empresa; la del empleado ya está en el devengado.
+    """
+    desde, hasta = _rango(periodo, hoy)
+    truncar = TruncDay if periodo == 'mes' else TruncMonth
+    filas = (
+        GenDocumento.objects
+        .filter(
+            documento_tipo__documento_clase_id__in=(DOCUMENTO_CLASE_NOMINA, DOCUMENTO_CLASE_SEGURIDAD_SOCIAL),
+            estado_aprobado=True,
+            estado_anulado=False,
+            fecha__range=(desde, hasta),
+        )
+        .annotate(punto=truncar('fecha'))
+        .order_by()
+        .values('punto')
+        .annotate(valor=Sum(Case(
+            When(documento_tipo__documento_clase_id=DOCUMENTO_CLASE_NOMINA, then=F('devengado')),
+            default=F('subtotal'),
+        )))
+    )
+    return {fila['punto']: fila['valor'] or Decimal('0') for fila in filas}
+
+
 def resultado(periodo, hoy=None):
     """
-    Ingresos contra costos y gastos, para el gráfico de dos barras: el `subtotal`
-    neto de las ventas (`ingreso`) y de las compras (`egreso`) en cada punto.
+    Ingresos contra costos y gastos, para el gráfico de dos barras en cada punto:
+    `ingreso` es el `subtotal` neto de las ventas y `egreso` el de las compras más
+    el gasto de personal (nómina, primas, cesantías, intereses, liquidaciones y
+    seguridad social, ver `_personal`).
 
     Va antes de impuestos porque el IVA no es ingreso ni gasto: con el `total`
     las dos barras quedarían infladas.
     """
+    hoy = hoy or timezone.localdate()
     ventas = resumen('venta', periodo, hoy)
     compras = resumen('compra', periodo, hoy)
+    personal = _personal(periodo, hoy)
+    puntos = _puntos(periodo, ventas['fecha_desde'], ventas['fecha_hasta'])
+    cero = Decimal('0')
     serie = [
-        {'fecha': venta['fecha'], 'ingreso': venta['subtotal'], 'egreso': compra['subtotal']}
-        for venta, compra in zip(ventas['serie'], compras['serie'])
+        {
+            'fecha': venta['fecha'],
+            'ingreso': venta['subtotal'],
+            'egreso': compra['subtotal'] + personal.get(punto, cero),
+        }
+        for punto, venta, compra in zip(puntos, ventas['serie'], compras['serie'])
     ]
     ingreso = ventas['totales']['subtotal']
-    egreso = compras['totales']['subtotal']
+    egreso = sum((item['egreso'] for item in serie), cero)
     return {
         'periodo': periodo,
         'fecha_desde': ventas['fecha_desde'],
