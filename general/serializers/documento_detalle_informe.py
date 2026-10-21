@@ -32,7 +32,7 @@ class GenDocumentoDetalleInformeSerializer(serializers.ModelSerializer):
         'puesto',
         'modalidad',
     )
-    ordenamiento_default_lista = ('id',)
+    ordenamiento_default_lista = ('-documento__fecha', 'id')
 
     documento_numero = serializers.IntegerField(source='documento.numero', read_only=True)
     documento_fecha = serializers.DateField(source='documento.fecha', read_only=True)
@@ -143,7 +143,7 @@ class GenDocumentoDetalleNominaInformeSerializer(serializers.ModelSerializer):
         'documento__contacto',
         'concepto',
     )
-    ordenamiento_default_lista = ('id',)
+    ordenamiento_default_lista = ('-documento__fecha', 'id')
 
     documento_tipo_nombre = serializers.CharField(
         source='documento.documento_tipo.nombre', read_only=True, allow_null=True,

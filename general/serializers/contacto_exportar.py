@@ -36,6 +36,7 @@ class GenContactoExportarSerializer(serializers.Serializer):
         ('proveedor', 'Proveedor'),
         ('empleado', 'Empleado'),
         ('conductor', 'Conductor'),
+        ('estado_inactivo', 'Inactivo'),
     )
 
     @staticmethod

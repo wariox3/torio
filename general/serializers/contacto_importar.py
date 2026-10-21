@@ -57,6 +57,7 @@ class GenContactoImportarSerializer(serializers.Serializer):
         ('proveedor', 'Proveedor'),
         ('empleado', 'Empleado'),
         ('conductor', 'Conductor'),
+        ('estado_inactivo', 'Inactivo'),
     )
     campos_requeridos = {
         'identificacion.id', 'numero_identificacion', 'nombre_corto',
@@ -194,6 +195,7 @@ class GenContactoImportarSerializer(serializers.Serializer):
                     proveedor=self._si_no(datos.get('proveedor')),
                     empleado=self._si_no(datos.get('empleado')),
                     conductor=self._si_no(datos.get('conductor')),
+                    estado_inactivo=self._si_no(datos.get('estado_inactivo')),
                 ))
             except Exception as e:
                 errores.append({'fila': idx, 'mensaje': str(e)})
