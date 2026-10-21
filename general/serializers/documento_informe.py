@@ -96,6 +96,7 @@ class GenDocumentoInformeExportarSerializer(serializers.Serializer):
         ('fecha', 'Fecha'),
         ('fecha_vence', 'Fecha vence'),
         ('documento_tipo.nombre', 'Tipo documento'),
+        ('orden_compra', 'Orden de compra'),
         ('contacto.nombre_corto', 'Contacto'),
         ('contacto.numero_identificacion', 'Identificación'),
         ('sector.nombre', 'Sector'),

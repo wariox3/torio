@@ -1543,6 +1543,30 @@ RECEPCION_DOCUMENTO_TIPOS = ('factura_venta', 'nota_credito', 'nota_debito')
 RECEPCION_ORDENES = ('fecha_emision', 'numero', 'total_a_pagar', 'creado_en')
 RECEPCION_VERIFICACION_ESTADOS = ('pendiente', 'valido', 'invalido', 'no_verificable', 'error')
 RECEPCION_RADIAN_ESTADOS = ('sin_eventos', 'acuse', 'recibo', 'aceptada', 'reclamada')
+# La consulta se firma con el certificado de un emisor, y en habilitación la DIAN
+# no tiene adquirientes: va siempre con el emisor 1 de producción, sin importar
+# la empresa del tenant. Fuera de producción todo responde que no existe.
+EMISOR_CONSULTA_ADQUIRIENTE = 1
+
+
+def consultar_adquiriente(identificacion: GenIdentificacion, numero_identificacion: str,
+                          cliente: Rededoc = None) -> dict:
+    """
+    Lo que la DIAN tiene registrado de un documento: `{existe, nombre, correo,
+    codigo, mensaje}`, tal como lo responde rededoc. Que no exista no es un
+    error (200 con `existe: false`); rededoc caído o la DIAN fallando es 502.
+    """
+    cliente = cliente or Rededoc()
+    respuesta = cliente.consultar_adquiriente(EMISOR_CONSULTA_ADQUIRIENTE, {
+        # Rededoc identifica el tipo por el código DIAN (NIT = 31).
+        'tipo_identificacion': int(identificacion.codigo),
+        'numero_identificacion': numero_identificacion,
+    })
+    if respuesta['error']:
+        raise _error_rededoc(respuesta)
+    return respuesta['datos']
+
+
 RECEPCION_PAGINA = 25
 RECEPCION_PAGINA_MAXIMA = 100
 

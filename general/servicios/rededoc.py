@@ -57,6 +57,17 @@ class Rededoc:
         """El emisor tal como lo tiene rededoc. `GET /api/emisores/emisor/{id}/`."""
         return self._peticion('GET', f'/api/emisores/emisor/{emisor_id}/')
 
+    def consultar_adquiriente(self, emisor_id, datos: dict):
+        """
+        Nombre y correo que la DIAN tiene registrados para un documento.
+        `POST /api/emisores/emisor/{id}/consultar-adquiriente/` con
+        `{tipo_identificacion, numero_identificacion}`; responde
+        `{existe, nombre, correo, codigo, mensaje}`.
+        """
+        return self._peticion(
+            'POST', f'/api/emisores/emisor/{emisor_id}/consultar-adquiriente/', datos=datos,
+        )
+
     def actualizar_emisor(self, emisor_id, datos: dict):
         """
         Edita un emisor. `PATCH /api/emisores/emisor/{id}/`.
