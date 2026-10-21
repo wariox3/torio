@@ -32,7 +32,7 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
     select_related_lista = ('item', 'modalidad', 'cuenta', 'centro_costo', 'contacto', 'puesto', 'almacen',
                             'activo', 'documento__documento_tipo', 'documento_afectado__documento_tipo',
                             'concepto')
-    ordenamiento_default_lista = ('-id',)
+    ordenamiento_default_lista = ('id',)
 
     documento = serializers.PrimaryKeyRelatedField(
         queryset=GenDocumento.objects.all(), required=False,

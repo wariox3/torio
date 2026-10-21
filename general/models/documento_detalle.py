@@ -164,7 +164,7 @@ class GenDocumentoDetalle(models.Model):
 
     class Meta:
         db_table = 'gen_documento_detalle'
-        ordering = ['-id']
+        ordering = ['id']
         verbose_name = 'Documento detalle'
         verbose_name_plural = 'Documentos detalles'
 
