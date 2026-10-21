@@ -9,7 +9,7 @@ class GenContactoSerializer(ImagenPrincipalSerializerMixin, serializers.ModelSer
     # Config consumida por FiltrosDinamicosMixin y ExportarExcelMixin
     campos_filtrables = {
         'id', 'nombre_corto', 'numero_identificacion',
-        'cliente', 'proveedor', 'empleado', 'conductor', 'ciudad_id',
+        'cliente', 'proveedor', 'empleado', 'conductor', 'estado_inactivo', 'ciudad_id',
     }
     select_related_lista = (
         'identificacion', 'ciudad', 'ciudad__estado', 'tipo_persona', 'responsabilidad',
@@ -59,6 +59,7 @@ class GenContactoSerializer(ImagenPrincipalSerializerMixin, serializers.ModelSer
             'proveedor',
             'empleado',
             'conductor',
+            'estado_inactivo',
             'numero_cuenta',
             'numero_licencia',
             'fecha_vence_licencia',

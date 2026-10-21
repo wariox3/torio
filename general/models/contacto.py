@@ -23,6 +23,7 @@ class GenContacto(models.Model):
     proveedor = models.BooleanField(default=False, db_default=False)
     empleado = models.BooleanField(default=False, db_default=False)
     conductor = models.BooleanField(default=False, db_default=False)
+    estado_inactivo = models.BooleanField(default=False, db_default=False)
     numero_cuenta = models.CharField(max_length=50, null=True)
     numero_licencia = models.CharField(max_length=50, null=True)
     fecha_vence_licencia = models.DateField(null=True)
