@@ -16,6 +16,7 @@ from contabilidad.servicios import depreciacion as depreciacion_servicio
 from contabilidad.models import ConCentroCosto
 from general.models import GenDocumento, GenDocumentoConceptoCorreccion, GenResolucion, GenSede
 from general.serializers import (
+    GenDocumentoConImpuestosSerializer,
     GenDocumentoCrearSerializer,
     GenDocumentoExportarSerializer,
     GenDocumentoGenerarRecurrenteSerializer,
@@ -150,6 +151,21 @@ class GenDocumentoViewSet(
             documento.documentos_pagos_documento.all().delete()
             documento.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        operation_id='general_documento_con_impuestos',
+        summary='Documento con sus impuestos',
+        description=(
+            'Lo mismo que `GET /documento/{id}/` más `documento_impuestos`: un renglón '
+            'por impuesto con la suma de `base`, `total` y `total_operado` de todas las '
+            'líneas. Primero los impuestos que se cobran y después las retenciones.'
+        ),
+        responses=GenDocumentoConImpuestosSerializer,
+    )
+    @action(detail=True, methods=['get'])
+    def detalle(self, request, pk=None):
+        documento = self.get_object()
+        return Response(GenDocumentoConImpuestosSerializer(documento).data)
 
     def _queryset_imprimir(self, request):
         filtros = request.data.get('filtros') or []

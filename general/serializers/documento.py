@@ -1,8 +1,11 @@
 from django.db import transaction
+from django.db.models import F, Sum
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from general.models import (
     GenDocumento,
+    GenDocumentoImpuesto,
     GenDocumentoTipo,
 )
 from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
@@ -321,6 +324,45 @@ class GenDocumentoCrearSerializer(GenDocumentoSerializer):
 
     class Meta(GenDocumentoSerializer.Meta):
         fields = GenDocumentoSerializer.Meta.fields + ['detalles']
+
+
+class GenDocumentoImpuestoResumenSerializer(serializers.Serializer):
+    """Un renglón por impuesto del documento, con base y valores sumados."""
+
+    impuesto_id = serializers.IntegerField()
+    impuesto_nombre = serializers.CharField()
+    impuesto_nombre_extendido = serializers.CharField()
+    impuesto_operacion = serializers.IntegerField()
+    base = serializers.DecimalField(max_digits=20, decimal_places=6)
+    total = serializers.DecimalField(max_digits=20, decimal_places=6)
+    total_operado = serializers.DecimalField(max_digits=20, decimal_places=6)
+
+
+class GenDocumentoConImpuestosSerializer(GenDocumentoSerializer):
+    """El documento de `GET /documento/{id}/` más sus impuestos agrupados."""
+
+    documento_impuestos = serializers.SerializerMethodField()
+
+    class Meta(GenDocumentoSerializer.Meta):
+        fields = GenDocumentoSerializer.Meta.fields + ['documento_impuestos']
+
+    @extend_schema_field(GenDocumentoImpuestoResumenSerializer(many=True))
+    def get_documento_impuestos(self, documento):
+        # Primero los que se cobran (IVA, ICA…) y después las retenciones, como en
+        # la factura impresa.
+        filas = (
+            GenDocumentoImpuesto.objects
+            .filter(documento_detalle__documento=documento)
+            .values(
+                'impuesto_id',
+                impuesto_nombre=F('impuesto__nombre'),
+                impuesto_nombre_extendido=F('impuesto__nombre_extendido'),
+                impuesto_operacion=F('impuesto__operacion'),
+            )
+            .annotate(base=Sum('base'), total=Sum('total'), total_operado=Sum('total_operado'))
+            .order_by('-impuesto_operacion', 'impuesto_id')
+        )
+        return GenDocumentoImpuestoResumenSerializer(filas, many=True).data
 
     @transaction.atomic
     def create(self, validated_data):

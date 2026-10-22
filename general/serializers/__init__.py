@@ -15,6 +15,7 @@ from .cuenta_banco_exportar import GenCuentaBancoExportarSerializer
 from .cuenta_banco_importar import GenCuentaBancoImportarSerializer
 from .cuenta_banco_tipo import GenCuentaBancoTipoSeleccionarSerializer
 from .documento import (
+    GenDocumentoConImpuestosSerializer,
     GenDocumentoCrearSerializer,
     GenDocumentoGenerarRecurrenteSerializer,
     GenDocumentoGenerarSerializer,
