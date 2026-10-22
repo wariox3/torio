@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
 
 # El pago y el egreso no tienen líneas comerciales de las que derivar un total:
 # sus detalles son apuntes contables. Mismos ids que `contabilizar.DOCUMENTO_TIPO_PAGO`
@@ -38,6 +38,11 @@ class GenDocumento(models.Model):
     # solo existen en `ConMovimiento`, después de contabilizar.
     debito = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     credito = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    # Lo cuenta `recalcular_totales`, así que solo es confiable en los documentos
+    # que pasan por ahí (los de `general`). La nómina, la liquidación, el aporte y
+    # la nómina electrónica crean sus detalles en bloque sin recalcular, y en esos
+    # queda en cero.
+    cantidad_detalles = models.IntegerField(default=0, db_default=0)
     afectado =models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     pendiente = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     pago = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
@@ -248,6 +253,7 @@ class GenDocumento(models.Model):
             horas_programadas=Sum('horas_programadas'),
             horas_diurnas_programadas=Sum('horas_diurnas_programadas'),
             horas_nocturnas_programadas=Sum('horas_nocturnas_programadas'),
+            cantidad_detalles=Count('id'),
         )
         cero = Decimal('0')
         self.subtotal = agregados['subtotal'] or cero
@@ -263,6 +269,7 @@ class GenDocumento(models.Model):
         self.horas_programadas = agregados['horas_programadas'] or cero
         self.horas_diurnas_programadas = agregados['horas_diurnas_programadas'] or cero
         self.horas_nocturnas_programadas = agregados['horas_nocturnas_programadas'] or cero
+        self.cantidad_detalles = agregados['cantidad_detalles']
 
         # Débitos y créditos de las líneas de cuenta, en cualquier tipo de
         # documento. Su propia consulta por lo mismo que la del pago: los alias

@@ -5717,6 +5717,16 @@ class TotalDocumentoContableTests(TenantTestCase):
         self.assertEqual(compra.debito, Decimal('0'))
         self.assertEqual(compra.credito, Decimal('0'))
 
+    def test_cuenta_todos_los_detalles_sin_importar_el_tipo(self):
+        compra = self._mixto(5, 'COMPRA', 1, [('D', '10000'), ('C', '500')])
+
+        self.assertEqual(compra.cantidad_detalles, 3)
+
+    def test_sin_detalles_la_cantidad_es_cero(self):
+        documento = self._documento(13, 'ASIENTO', [])
+
+        self.assertEqual(documento.cantidad_detalles, 0)
+
 
 class DocumentoRespuestaTests(TenantTestCase):
     """El GET de documento trae código y nombre del comprobante, no solo el id."""

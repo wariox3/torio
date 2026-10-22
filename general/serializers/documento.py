@@ -149,6 +149,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'total',
             'debito',
             'credito',
+            'cantidad_detalles',
             'afectado',
             'pago',
             'pendiente',
@@ -190,6 +191,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             # Los calcula `recalcular_totales` de las líneas de cuenta.
             'debito',
             'credito',
+            # Lo cuenta `recalcular_totales`.
+            'cantidad_detalles',
             # Saldo de cartera: lo fija `aprobar` y lo mueven las afectaciones y
             # los pagos. Escribible sería dejar que el cliente se invente el saldo.
             'afectado',
