@@ -5698,6 +5698,25 @@ class TotalDocumentoContableTests(TenantTestCase):
 
         self.assertEqual(nota.total, Decimal('11000'))
 
+    def test_debito_y_credito_suman_solo_las_lineas_de_cuenta(self):
+        """El ítem no entra: el asiento completo solo existe al contabilizar."""
+        compra = self._mixto(5, 'COMPRA', 1, [('D', '10000'), ('D', '2000'), ('C', '500')])
+
+        self.assertEqual(compra.debito, Decimal('12000'))
+        self.assertEqual(compra.credito, Decimal('500'))
+
+    def test_un_asiento_guarda_sus_debitos_y_creditos(self):
+        asiento = self._documento(13, 'ASIENTO', [('D', '700'), ('D', '300'), ('C', '1000')])
+
+        self.assertEqual(asiento.debito, Decimal('1000'))
+        self.assertEqual(asiento.credito, Decimal('1000'))
+
+    def test_sin_lineas_de_cuenta_quedan_en_cero(self):
+        compra = self._mixto(5, 'COMPRA', 1, [])
+
+        self.assertEqual(compra.debito, Decimal('0'))
+        self.assertEqual(compra.credito, Decimal('0'))
+
 
 class DocumentoRespuestaTests(TenantTestCase):
     """El GET de documento trae código y nombre del comprobante, no solo el id."""

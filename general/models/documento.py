@@ -33,7 +33,12 @@ class GenDocumento(models.Model):
     impuesto = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     impuesto_retencion = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     impuesto_operado = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
-    afectado = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    # Suma de `precio` de las líneas de cuenta (`tipo_registro='C'`) por
+    # naturaleza. No es el asiento completo: ítems, impuestos y la contrapartida
+    # solo existen en `ConMovimiento`, después de contabilizar.
+    debito = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    credito = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    afectado =models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     pendiente = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     pago = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     guias = models.IntegerField(default=0, db_default=0)
@@ -258,6 +263,16 @@ class GenDocumento(models.Model):
         self.horas_programadas = agregados['horas_programadas'] or cero
         self.horas_diurnas_programadas = agregados['horas_diurnas_programadas'] or cero
         self.horas_nocturnas_programadas = agregados['horas_nocturnas_programadas'] or cero
+
+        # Débitos y créditos de las líneas de cuenta, en cualquier tipo de
+        # documento. Su propia consulta por lo mismo que la del pago: los alias
+        # `debito`/`credito` no pueden chocar con los del `aggregate` de arriba.
+        lineas_cuenta = self.documentos_detalles_documento_rel.filter(tipo_registro='C').aggregate(
+            debito=Sum('precio', filter=Q(naturaleza='D')),
+            credito=Sum('precio', filter=Q(naturaleza='C')),
+        )
+        self.debito = lineas_cuenta['debito'] or cero
+        self.credito = lineas_cuenta['credito'] or cero
 
         if self.documento_tipo_id in (DOCUMENTO_TIPO_PAGO, DOCUMENTO_TIPO_EGRESO):
             # Los detalles del pago y del egreso son apuntes contables, y
