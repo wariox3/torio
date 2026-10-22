@@ -287,3 +287,29 @@ class GenDocumento(models.Model):
                 self.total = debito - credito
             else:
                 self.total = credito - debito
+        elif self.documento_tipo.pagar or self.documento_tipo.cobrar:
+            # Una compra o una venta puede mezclar ítems con líneas de cuenta (un
+            # gasto, una retención digitada a mano). La línea de cuenta deja su
+            # `total` en cero (ver `GenDocumentoDetalle.calcular`), así que la suma
+            # de arriba no la ve, y la contrapartida de `contabilizar` —el
+            # proveedor o el cliente por `documento.total`— quedaría corta y el
+            # asiento descuadrado. Su valor se suma aparte a subtotal y total.
+            #
+            # El signo sale de la misma partida doble de `contabilizar`: la línea
+            # mueve su cuenta por `precio` en su naturaleza, y la contrapartida va
+            # por `-operacion` en la compra y `+operacion` en la venta. Para que
+            # cuadre, en la compra el débito suma y el crédito resta; en la venta,
+            # al revés. Las líneas que cruzan un detalle afectado no cuentan: esas
+            # mueven la cartera del otro documento, no una cuenta propia.
+            por_lado = self.documentos_detalles_documento_rel.filter(
+                tipo_registro='C', documento_detalle_afectado__isnull=True,
+            ).aggregate(
+                debito=Sum('precio', filter=Q(naturaleza='D')),
+                credito=Sum('precio', filter=Q(naturaleza='C')),
+            )
+            neto = (por_lado['debito'] or cero) - (por_lado['credito'] or cero)
+            if not self.documento_tipo.pagar:
+                neto = -neto
+            neto *= self.documento_tipo.operacion
+            self.subtotal += neto
+            self.total += neto

@@ -5661,6 +5661,43 @@ class TotalDocumentoContableTests(TenantTestCase):
 
         self.assertEqual(asiento.total, Decimal('0'))
 
+    def _mixto(self, tipo_id, nombre, operacion, lineas, venta=False):
+        """Un ítem de 10.000 más líneas de cuenta, en una compra o una venta."""
+        tipo = GenDocumentoTipo.objects.create(
+            id=tipo_id, nombre=nombre, operacion=operacion, pagar=not venta, cobrar=venta,
+        )
+        documento = GenDocumento.objects.create(documento_tipo=tipo, fecha=date(2026, 1, 15))
+        GenDocumentoDetalle.objects.create(
+            documento=documento, tipo_registro='I', cantidad=1, precio=Decimal('10000'),
+            subtotal=Decimal('10000'), total_bruto=Decimal('10000'), total=Decimal('10000'),
+        )
+        for naturaleza, precio in lineas:
+            GenDocumentoDetalle.objects.create(
+                documento=documento, tipo_registro='C', naturaleza=naturaleza,
+                precio=Decimal(precio),
+            )
+        documento.recalcular_totales()
+        return documento
+
+    def test_en_la_compra_la_cuenta_debito_suma_y_la_credito_resta(self):
+        """El proveedor se acredita por el total: tiene que cubrir el gasto y descontar la retención."""
+        compra = self._mixto(5, 'COMPRA', 1, [('D', '10000'), ('C', '500')])
+
+        self.assertEqual(compra.subtotal, Decimal('19500'))
+        self.assertEqual(compra.total, Decimal('19500'))
+
+    def test_en_la_venta_la_cuenta_credito_suma_y_la_debito_resta(self):
+        venta = self._mixto(1, 'FACTURA', 1, [('C', '2000'), ('D', '300')], venta=True)
+
+        self.assertEqual(venta.subtotal, Decimal('11700'))
+        self.assertEqual(venta.total, Decimal('11700'))
+
+    def test_en_la_nota_de_compra_el_signo_se_invierte_con_la_operacion(self):
+        """Con operación -1 el ítem va al crédito y el proveedor al débito: ahí suma la cuenta crédito."""
+        nota = self._mixto(6, 'NOTA CREDITO COMPRA', -1, [('C', '1000')])
+
+        self.assertEqual(nota.total, Decimal('11000'))
+
 
 class DocumentoRespuestaTests(TenantTestCase):
     """El GET de documento trae código y nombre del comprobante, no solo el id."""
