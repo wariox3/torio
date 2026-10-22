@@ -325,6 +325,16 @@ class GenDocumentoCrearSerializer(GenDocumentoSerializer):
     class Meta(GenDocumentoSerializer.Meta):
         fields = GenDocumentoSerializer.Meta.fields + ['detalles']
 
+    @transaction.atomic
+    def create(self, validated_data):
+        detalles_data = validated_data.pop('documentos_detalles_documento_rel', [])
+        documento = GenDocumento.objects.create(**validated_data)
+        for detalle_data in detalles_data:
+            crear_detalle(documento, detalle_data)
+        documento.recalcular_totales()
+        documento.save()
+        return documento
+
 
 class GenDocumentoImpuestoResumenSerializer(serializers.Serializer):
     """Un renglón por impuesto del documento, con base y valores sumados."""
@@ -363,16 +373,6 @@ class GenDocumentoConImpuestosSerializer(GenDocumentoSerializer):
             .order_by('-impuesto_operacion', 'impuesto_id')
         )
         return GenDocumentoImpuestoResumenSerializer(filas, many=True).data
-
-    @transaction.atomic
-    def create(self, validated_data):
-        detalles_data = validated_data.pop('documentos_detalles_documento_rel', [])
-        documento = GenDocumento.objects.create(**validated_data)
-        for detalle_data in detalles_data:
-            crear_detalle(documento, detalle_data)
-        documento.recalcular_totales()
-        documento.save()
-        return documento
 
 
 class GenDocumentoGenerarSerializer(serializers.Serializer):
