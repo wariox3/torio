@@ -6,4 +6,4 @@ from contabilidad.models import ConCuenta
 class ConCuentaSeleccionarSerializer(serializers.ModelSerializer):
     class Meta:
         model = ConCuenta
-        fields = ['id', 'codigo', 'nombre']
+        fields = ['id', 'codigo', 'nombre', 'exige_base', 'exige_contacto', 'exige_centro_costo']
