@@ -27,6 +27,7 @@ _SELECCIONAR_PARAMS = [
     OpenApiParameter('proveedor', bool, description='Filtrar por proveedor'),
     OpenApiParameter('empleado', bool, description='Filtrar por empleado'),
     OpenApiParameter('conductor', bool, description='Filtrar por conductor'),
+    OpenApiParameter('estado_inactivo', bool, description='Filtrar por inactivo'),
 ]
 
 _LIST_PARAMS = [
@@ -96,7 +97,7 @@ class GenContactoViewSet(
                 numero_identificacion__icontains=search
             )
 
-        for filtro in ('cliente', 'proveedor', 'empleado', 'conductor'):
+        for filtro in ('cliente', 'proveedor', 'empleado', 'conductor', 'estado_inactivo'):
             valor = request.query_params.get(filtro)
             if valor is not None:
                 qs = qs.filter(**{filtro: valor.lower() == 'true'})
