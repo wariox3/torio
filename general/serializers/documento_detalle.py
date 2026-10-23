@@ -67,6 +67,11 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
     centro_costo_codigo = serializers.CharField(source='centro_costo.codigo', read_only=True, allow_null=True)
     cuenta_codigo = serializers.CharField(source='cuenta.codigo', read_only=True, allow_null=True)
     cuenta_nombre = serializers.CharField(source='cuenta.nombre', read_only=True, allow_null=True)
+    cuenta_exige_base = serializers.BooleanField(source='cuenta.exige_base', read_only=True, allow_null=True)
+    cuenta_exige_contacto = serializers.BooleanField(source='cuenta.exige_contacto', read_only=True, allow_null=True)
+    cuenta_exige_centro_costo = serializers.BooleanField(
+        source='cuenta.exige_centro_costo', read_only=True, allow_null=True,
+    )
     contacto_numero_identificacion = serializers.CharField(
         source='contacto.numero_identificacion', read_only=True, allow_null=True,
     )
@@ -137,6 +142,9 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'cuenta',
             'cuenta_codigo',
             'cuenta_nombre',
+            'cuenta_exige_base',
+            'cuenta_exige_contacto',
+            'cuenta_exige_centro_costo',
             'centro_costo',
             'centro_costo_nombre',
             'centro_costo_codigo',
