@@ -433,6 +433,7 @@ def _fechas_novedad(linea, documento):
 
 def _conceptos(lineas, documento, errores):
     sumados = {}
+    otros = {}
     filas = []
     for linea in lineas:
         concepto = linea.concepto
@@ -471,12 +472,21 @@ def _conceptos(lineas, documento, errores):
                           'porcentaje': _decimal(recargo), 'valor': _decimal(linea.pago)})
         elif concepto.id == CONCEPTO_COMISION:
             filas.append({'grupo': DEVENGADO, 'concepto': 'comision', 'valor': _decimal(linea.pago)})
-        elif tipo == CONCEPTO_TIPO_SALARIAL:
-            filas.append({'grupo': DEVENGADO, 'concepto': 'otro_concepto', 'descripcion': concepto.nombre,
-                          'valor': _decimal(linea.pago)})
-        elif tipo == CONCEPTO_TIPO_NO_SALARIAL:
-            filas.append({'grupo': DEVENGADO, 'concepto': 'otro_concepto', 'descripcion': concepto.nombre,
-                          'valor': _decimal(CERO), 'valor_no_salarial': _decimal(linea.pago)})
+        elif tipo in (CONCEPTO_TIPO_SALARIAL, CONCEPTO_TIPO_NO_SALARIAL):
+            # Rededoc identifica el otro concepto por la descripción y rechaza
+            # repetidos: el mismo concepto pagado en dos quincenas va sumado.
+            clave = ' '.join(concepto.nombre.lower().split())
+            fila = otros.get(clave)
+            if fila is None:
+                fila = otros[clave] = {
+                    'grupo': DEVENGADO, 'concepto': 'otro_concepto',
+                    'descripcion': concepto.nombre, 'valor': CERO,
+                }
+                filas.append(fila)
+            if tipo == CONCEPTO_TIPO_SALARIAL:
+                fila['valor'] += linea.pago
+            else:
+                fila['valor_no_salarial'] = fila.get('valor_no_salarial', CERO) + linea.pago
         elif tipo == CONCEPTO_TIPO_DESCUENTO:
             filas.append({'grupo': DEDUCCION, 'concepto': 'otra_deduccion', 'valor': _decimal(linea.pago)})
         else:
@@ -485,8 +495,8 @@ def _conceptos(lineas, documento, errores):
                 'equivalente en la nómina electrónica.'
             )
 
-    for fila in sumados.values():
-        for campo in ('valor', 'cantidad', 'porcentaje'):
+    for fila in [*sumados.values(), *otros.values()]:
+        for campo in ('valor', 'valor_no_salarial', 'cantidad', 'porcentaje'):
             if campo in fila:
                 fila[campo] = _decimal(fila[campo])
     return list(sumados.values()) + filas
