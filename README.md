@@ -90,7 +90,7 @@ Definidas en `.env` (ver `.env.example`):
 | `SECRET_KEY` | Clave secreta de Django. Generar con `get_random_secret_key()`. |
 | `DEBUG` | `True` solo en dev. |
 | `ALLOWED_HOSTS` | CSV de hosts permitidos. |
-| `DATABASE_*` | Credenciales PostgreSQL (`USER`, `CLAVE`, `HOST`, `NAME`, `PORT`). |
+| `DATABASE_URL` | Conexión PostgreSQL: `postgres://usuario:clave@host:5432/bd` (opcional `?sslmode=require`). |
 | `LOG_LEVEL`, `DJANGO_LOG_LEVEL` | Nivel de logging (default `INFO`). |
 | `BACKEND_URL` | URL base del backend. |
 | `FRONTEND_URL` | URL base del frontend (usada en links de correo). |

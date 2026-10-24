@@ -270,12 +270,9 @@ SECRET_KEY=<generar con: python -c "from django.core.management.utils import get
 ALLOWED_HOSTS=reddocapi2.co
 
 # ── Base de datos (servicio externo/gestionado) ────────
-DATABASE_NAME=bdtorio
-DATABASE_USER=torio
-DATABASE_CLAVE=CLAVE_FUERTE_AQUI
-# host del PostgreSQL gestionado (no localhost)
-DATABASE_HOST=db.tu-proveedor.com
-DATABASE_PORT=5432
+# postgres://usuario:clave@host:puerto/bd — host del PostgreSQL gestionado (no localhost).
+# La clave sin @ : / # ? (o codificada: @ → %40). sslmode=require para el gestionado.
+DATABASE_URL=postgres://torio:CLAVE_FUERTE_AQUI@db.tu-proveedor.com:5432/bdtorio?sslmode=require
 
 # ── Logging ────────────────────────────────────────────
 LOG_LEVEL=INFO

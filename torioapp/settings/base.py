@@ -2,6 +2,7 @@ import sys
 from datetime import timedelta
 from pathlib import Path
 
+import dj_database_url
 from decouple import Csv, config
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -100,15 +101,13 @@ TEMPLATES = [
 WSGI_APPLICATION = 'torioapp.wsgi.application'
 ASGI_APPLICATION = 'torioapp.asgi.application'
 
+# DATABASE_URL=postgres://usuario:clave@host:5432/bd[?sslmode=require]
+# El engine se fuerza: la URL dice postgres:// y django-tenants necesita su backend.
 DATABASES = {
-    'default': {
-        'ENGINE': 'django_tenants.postgresql_backend',
-        'NAME': config('DATABASE_NAME'),
-        'USER': config('DATABASE_USER'),
-        'PASSWORD': config('DATABASE_CLAVE'),
-        'HOST': config('DATABASE_HOST'),
-        'PORT': config('DATABASE_PORT'),
-    }
+    'default': dj_database_url.parse(
+        config('DATABASE_URL'),
+        engine='django_tenants.postgresql_backend',
+    )
 }
 
 # Cache en Redis, compartido por todos los workers de gunicorn. Con el LocMemCache
