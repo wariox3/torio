@@ -596,9 +596,9 @@ def _contabilizar_automaticamente(documento):
     try:
         contabilizar_servicio.contabilizar([documento.pk])
     except ValidationError as error:
+        # `detail` ya dice qué documento es y por qué falló.
         logger.warning(
-            'El documento %s se aprobó pero no se pudo contabilizar automáticamente: %s',
-            documento.pk, error.detail,
+            'Aprobado sin contabilizar automáticamente. %s', error.detail['detail'],
         )
         return
     # `contabilizar` guarda sobre su propia copia de la fila: se refleja acá para

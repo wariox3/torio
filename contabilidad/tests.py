@@ -1801,6 +1801,45 @@ class ContabilizarTests(_ContabilizarBase):
         self.assertFalse(bueno.estado_contabilizado)
         self.assertEqual(ConMovimiento.objects.filter(documento=bueno).count(), 0)
 
+    def test_el_error_dice_que_documento_fallo(self):
+        """«El periodo contable 202602 no existe.» solo no dice de cuál documento es."""
+        bueno = self._crear_documento(self.factura_tipo)
+        self._crear_detalle_item(bueno, self._crear_item())
+        malo = self._crear_documento(
+            self.factura_tipo, numero=1024,
+            fecha=date(2026, 2, 15), fecha_contable=date(2026, 2, 15),
+        )
+
+        with self.assertRaises(ValidationError) as caso:
+            contabilizar.contabilizar([bueno.pk, malo.pk])
+
+        self.assertEqual(
+            caso.exception.detail['detail'],
+            f'Documento {malo.pk} (FACTURA 1024): el periodo contable 202602 no existe.',
+        )
+        self.assertEqual(caso.exception.detail['errores'], [{
+            'documento_id': malo.pk,
+            'mensaje': 'El periodo contable 202602 no existe.',
+        }])
+
+    def test_un_documento_inexistente_sigue_siendo_404(self):
+        with self.assertRaises(NotFound) as caso:
+            contabilizar.contabilizar([999999])
+
+        self.assertEqual(caso.exception.detail['detail'], 'Documento 999999: no existe.')
+        self.assertEqual(caso.exception.detail['errores'][0]['documento_id'], 999999)
+
+    def test_descontabilizar_tambien_dice_que_documento_fallo(self):
+        documento = self._crear_documento(self.factura_tipo)
+
+        with self.assertRaises(ValidationError) as caso:
+            contabilizar.descontabilizar([documento.pk])
+
+        self.assertEqual(
+            caso.exception.detail['detail'],
+            f'Documento {documento.pk} (FACTURA 1): no está contabilizado.',
+        )
+
     def test_un_documento_anulado_se_marca_sin_generar_movimientos(self):
         documento = self._crear_documento(self.factura_tipo, estado_anulado=True)
         self._crear_detalle_item(documento, self._crear_item())

@@ -6,6 +6,7 @@ El asiento no está guardado en ninguna parte: se deriva del documento cada vez,
 partir de su tipo, sus detalles y sus impuestos. Por eso todo lo que decide una
 cuenta o una naturaleza vive en este archivo y no repartido entre serializers.
 """
+from contextlib import contextmanager
 from decimal import Decimal
 
 from django.db import transaction
@@ -20,6 +21,7 @@ from humano.models import (
     HumConfiguracionProvision,
 )
 from seguridad.contexto import obtener_usuario_actual
+from utilidades.excepciones import con_detail
 from utilidades.moneda import redondear_moneda
 
 CERO = Decimal('0')
@@ -75,12 +77,15 @@ def contabilizar(documento_ids):
     contabilizado. El sistema anterior cortaba en el primer error dejando
     contabilizados los anteriores, que es un estado a medias imposible de deshacer
     desde la respuesta.
+
+    El error dice qué documento falló (ver `_identificar_error`).
     """
     if not documento_ids:
         raise ValidationError({'ids': 'Este campo es requerido.'})
     with transaction.atomic():
         for documento_id in documento_ids:
-            _contabilizar_documento(documento_id)
+            with _identificar_error(documento_id):
+                _contabilizar_documento(documento_id)
     return len(documento_ids)
 
 
@@ -88,14 +93,54 @@ def descontabilizar(documento_ids):
     """
     Borra los movimientos de los documentos dados y les quita el contabilizado.
 
-    Mismo criterio de atomicidad que `contabilizar`.
+    Mismo criterio de atomicidad y de mensaje de error que `contabilizar`.
     """
     if not documento_ids:
         raise ValidationError({'ids': 'Este campo es requerido.'})
     with transaction.atomic():
         for documento_id in documento_ids:
-            _descontabilizar_documento(documento_id)
+            with _identificar_error(documento_id):
+                _descontabilizar_documento(documento_id)
     return len(documento_ids)
+
+
+@contextmanager
+def _identificar_error(documento_id):
+    """
+    Antepone al error de un documento cuál documento es.
+
+    En un lote, un mensaje como «El periodo contable 202602 no existe.» no dice
+    a cuál de los documentos se refiere. Acá se envuelve una vez para todos los
+    errores, así que los mensajes de abajo no repiten el documento:
+
+        {"detail": "Documento 15 (FACTURA VENTA 1024): el periodo ...",
+         "errores": [{"documento_id": 15, "mensaje": "El periodo ..."}]}
+
+    Conserva la clase del error, para que un 404 siga siendo 404.
+    """
+    try:
+        yield
+    except (ValidationError, NotFound) as error:
+        mensaje = con_detail(error.detail)['detail']
+        documento = (
+            GenDocumento.objects.select_related('documento_tipo')
+            .filter(pk=documento_id).first()
+        )
+        etiqueta = f'Documento {documento_id}'
+        if documento is not None:
+            nombre = ' '.join(
+                str(parte) for parte in (documento.documento_tipo.nombre, documento.numero)
+                if parte is not None
+            )
+            etiqueta += f' ({nombre})'
+        # El `detail` se asigna después de construir: pasado al constructor, DRF
+        # vuelve texto todo lo que encuentra y `documento_id` saldría "15".
+        nuevo = type(error)()
+        nuevo.detail = {
+            'detail': f'{etiqueta}: {mensaje[:1].lower()}{mensaje[1:]}',
+            'errores': [{'documento_id': documento_id, 'mensaje': mensaje}],
+        }
+        raise nuevo from error
 
 
 # ------------------------------------------------------ un solo documento ----
@@ -104,9 +149,9 @@ def _contabilizar_documento(documento_id):
     documento = _documento_bloqueado(documento_id)
 
     if not documento.estado_aprobado:
-        raise ValidationError(f'El documento {documento_id} debe estar aprobado.')
+        raise ValidationError('Debe estar aprobado.')
     if documento.estado_contabilizado:
-        raise ValidationError(f'El documento {documento_id} ya está contabilizado.')
+        raise ValidationError('Ya está contabilizado.')
 
     periodo = _periodo(documento)
 
@@ -128,7 +173,7 @@ def _descontabilizar_documento(documento_id):
     documento = _documento_bloqueado(documento_id)
 
     if not documento.estado_contabilizado:
-        raise ValidationError(f'El documento {documento_id} no está contabilizado.')
+        raise ValidationError('No está contabilizado.')
 
     # El periodo sale de los propios movimientos y no de recalcularlo desde la
     # fecha: `fecha_contable` pudo cambiar después de contabilizar, y entonces
@@ -142,7 +187,7 @@ def _descontabilizar_documento(documento_id):
         if periodo is not None and periodo.estado_bloqueado:
             raise ValidationError(
                 f'El periodo {periodo_id} está bloqueado y no es posible '
-                f'descontabilizar el documento {documento_id}.'
+                f'descontabilizarlo.'
             )
 
     ConMovimiento.objects.filter(documento_id=documento_id).delete()
@@ -166,7 +211,7 @@ def _documento_bloqueado(documento_id):
         .first()
     )
     if documento is None:
-        raise NotFound(f'El documento {documento_id} no existe.')
+        raise NotFound('No existe.')
     return documento
 
 
@@ -178,14 +223,14 @@ def _periodo(documento):
     # `fecha_contable` es nullable y de ella sale el periodo: sin fecha no hay
     # periodo que afectar, y conviene decirlo en vez de fallar al derivarlo.
     if fecha is None:
-        raise ValidationError(f'El documento {documento.pk} no tiene `fecha_contable` y no se puede determinar el periodo contable.')
+        raise ValidationError('No tiene `fecha_contable` y no se puede determinar el periodo contable.')
 
     periodo_id = ConPeriodo.calcular_id(fecha.year, fecha.month)
     periodo = ConPeriodo.objects.filter(pk=periodo_id).first()
     if periodo is None:
         raise ValidationError(f'El periodo contable {periodo_id} no existe.')
     if periodo.estado_bloqueado:
-        raise ValidationError(f'El periodo {periodo_id} está bloqueado y no es posible contabilizar el documento {documento.pk}.')
+        raise ValidationError(f'El periodo {periodo_id} está bloqueado y no es posible contabilizarlo.')
     return periodo
 
 
@@ -205,7 +250,7 @@ def _verificar_cuadre(documento, movimientos):
     diferencia = debito - credito
     if abs(diferencia) > TOLERANCIA_DESCUADRE:
         raise ValidationError(
-            f'El documento {documento.pk} queda descuadrado: débito {debito} '
+            f'Queda descuadrado: débito {debito} '
             f'contra crédito {credito} (diferencia {diferencia}).'
         )
 
@@ -274,13 +319,13 @@ def _comprobante_id(documento):
     if documento.documento_tipo_id == DOCUMENTO_TIPO_ASIENTO:
         if documento.comprobante_id is None:
             raise ValidationError(
-                f'El asiento {documento.pk} no tiene comprobante: escoja uno antes de contabilizar'
+                'No tiene comprobante: escoja uno antes de contabilizar.'
             )
         return documento.comprobante_id
 
     comprobante_id = documento.documento_tipo.comprobante_id
     if comprobante_id is None:
-        raise ValidationError(f'El documento {documento.pk} no tiene comprobante')
+        raise ValidationError('No tiene comprobante.')
     return comprobante_id
 
 
@@ -506,7 +551,7 @@ def _movimientos_nomina(documento, detalle, comun):
     if detalle.operacion == 0:
         return []
 
-    contrato = _contrato_exigido(documento.contrato, f'Documento {documento.pk}')
+    contrato = _contrato_exigido(documento.contrato, 'Encabezado')
     concepto_cuenta = (
         HumConceptoCuenta.objects.select_related('cuenta')
         .filter(concepto_id=detalle.concepto_id, tipo_costo_id=contrato.tipo_costo_id)
@@ -622,7 +667,7 @@ def _movimientos_banco(documento, comun):
         return []
 
     if documento.cuenta_banco_id is None:
-        raise ValidationError(f'El documento {documento.pk} no tiene cuenta banco.')
+        raise ValidationError('No tiene cuenta banco.')
     return [_movimiento(
         comun, documento.cuenta_banco.cuenta, signo, documento.total, 'CUENTA BANCO',
         f'La cuenta banco «{documento.cuenta_banco.nombre}»',
@@ -641,7 +686,7 @@ def _movimientos_provisiones(documento, comun):
         if valor <= 0:
             continue
         if contrato is None:
-            contrato = _contrato_exigido(documento.contrato, f'Documento {documento.pk}')
+            contrato = _contrato_exigido(documento.contrato, 'Encabezado')
         configuracion = (
             HumConfiguracionProvision.objects
             .select_related('cuenta_debito', 'cuenta_credito')
