@@ -648,6 +648,71 @@ class EditarProgramacionDetalleTests(TenantTestCase):
         self.assertEqual(HumProgramacionDetalle.objects.count(), 1)
 
 
+class EliminarProgramacionTests(TenantTestCase):
+    """
+    Una programación con contratos cargados no se elimina: los detalles la protegen
+    y, sin el control, el borrado salía como un 500 por `ProtectedError`.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test'
+        tenant.celular = '0'
+        tenant.correo = 'test@test.com'
+
+    def setUp(self):
+        from humano.views.programacion import HumProgramacionViewSet
+
+        class Vista(HumProgramacionViewSet):
+            authentication_classes = []
+            permission_classes = [permissions.AllowAny]
+            throttle_classes = []
+
+        self.eliminar = Vista.as_view({'delete': 'destroy'})
+        self.factory = APIRequestFactory()
+
+        pais = GenPais.objects.create(id=1, nombre='Colombia')
+        ciudad = GenCiudad.objects.create(
+            id=1, nombre='Bogotá', estado=GenEstado.objects.create(id=1, nombre='Cundinamarca', pais=pais),
+        )
+        contacto = GenContacto.objects.create(
+            numero_identificacion='1', nombre_corto='1', direccion='x', telefono='1', correo='e@e.com',
+            identificacion=GenIdentificacion.objects.create(id=1, nombre='CC'), ciudad=ciudad,
+            tipo_persona=GenTipoPersona.objects.create(id=1, nombre='Natural'), empleado=True,
+        )
+        grupo = HumGrupo.objects.create(nombre='Grupo 1')
+        HumPagoTipo.objects.create(id=1, nombre='Nomina')
+        self.contrato = HumContrato.objects.create(
+            fecha_desde=date(2026, 1, 1), fecha_hasta=date(2026, 1, 1),
+            contrato_tipo=HumContratoTipo.objects.create(id=1, nombre='Indefinido'),
+            contacto=contacto, grupo=grupo,
+        )
+        self.programacion = HumProgramacion.objects.create(
+            fecha_desde=date(2026, 3, 1), fecha_hasta=date(2026, 3, 15), fecha_hasta_periodo=date(2026, 3, 15),
+            grupo=grupo, pago_tipo_id=1,
+        )
+
+    def _eliminar(self):
+        return self.eliminar(self.factory.delete('/'), pk=self.programacion.pk)
+
+    def test_con_contratos_cargados_no_se_elimina(self):
+        HumProgramacionDetalle.objects.create(programacion=self.programacion, contrato=self.contrato)
+
+        respuesta = self._eliminar()
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(
+            respuesta.data['detail'], 'No se puede eliminar una programación con contratos cargados.',
+        )
+        self.assertTrue(HumProgramacion.objects.filter(pk=self.programacion.pk).exists())
+
+    def test_sin_contratos_se_elimina(self):
+        respuesta = self._eliminar()
+
+        self.assertEqual(respuesta.status_code, 204)
+        self.assertFalse(HumProgramacion.objects.filter(pk=self.programacion.pk).exists())
+
+
 class ImportarHorasProgramacionDetalleTests(TenantTestCase):
     """
     `programacion-detalle/importar-horas/`: actualiza las horas de los detalles de

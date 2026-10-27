@@ -6,7 +6,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from general.models import GenDocumento
@@ -109,6 +109,16 @@ class HumProgramacionViewSet(
     @extend_schema(parameters=_LIST_PARAMS)
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    def perform_destroy(self, instance):
+        # Los detalles protegen a la programación (`on_delete=PROTECT`): sin esto el
+        # borrado falla con `ProtectedError` y responde 500. Se eliminan primero con
+        # `eliminar-detalle/`.
+        if instance.pogramaciones_detalles_programacion_rel.exists():
+            raise ValidationError({
+                'detail': 'No se puede eliminar una programación con contratos cargados.',
+            })
+        super().perform_destroy(instance)
 
     @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=HumProgramacionSeleccionarSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)
