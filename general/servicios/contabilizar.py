@@ -84,7 +84,7 @@ def contabilizar(documento_ids):
         raise ValidationError({'ids': 'Este campo es requerido.'})
     with transaction.atomic():
         for documento_id in documento_ids:
-            with _identificar_error(documento_id):
+            with _identificar_error(documento_id, 'contabilizar'):
                 _contabilizar_documento(documento_id)
     return len(documento_ids)
 
@@ -99,21 +99,23 @@ def descontabilizar(documento_ids):
         raise ValidationError({'ids': 'Este campo es requerido.'})
     with transaction.atomic():
         for documento_id in documento_ids:
-            with _identificar_error(documento_id):
+            with _identificar_error(documento_id, 'descontabilizar'):
                 _descontabilizar_documento(documento_id)
     return len(documento_ids)
 
 
 @contextmanager
-def _identificar_error(documento_id):
+def _identificar_error(documento_id, accion):
     """
-    Antepone al error de un documento cuál documento es.
+    Convierte el error de un documento en uno que dice cuál documento falló.
 
     En un lote, un mensaje como «El periodo contable 202602 no existe.» no dice
     a cuál de los documentos se refiere. Acá se envuelve una vez para todos los
-    errores, así que los mensajes de abajo no repiten el documento:
+    errores, así que los mensajes de abajo no repiten el documento. `detail` solo
+    dice qué documento no se pudo `accion` (contabilizar o descontabilizar), y la
+    causa va en `errores`:
 
-        {"detail": "Documento 15 (FACTURA VENTA 1024): el periodo ...",
+        {"detail": "Documento 15 (FACTURA VENTA 1024) no se pudo contabilizar.",
          "errores": [{"documento_id": 15, "mensaje": "El periodo ..."}]}
 
     Conserva la clase del error, para que un 404 siga siendo 404.
@@ -137,7 +139,7 @@ def _identificar_error(documento_id):
         # vuelve texto todo lo que encuentra y `documento_id` saldría "15".
         nuevo = type(error)()
         nuevo.detail = {
-            'detail': f'{etiqueta}: {mensaje[:1].lower()}{mensaje[1:]}',
+            'detail': f'{etiqueta} no se pudo {accion}.',
             'errores': [{'documento_id': documento_id, 'mensaje': mensaje}],
         }
         raise nuevo from error

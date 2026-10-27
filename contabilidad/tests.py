@@ -1815,7 +1815,7 @@ class ContabilizarTests(_ContabilizarBase):
 
         self.assertEqual(
             caso.exception.detail['detail'],
-            f'Documento {malo.pk} (FACTURA 1024): el periodo contable 202602 no existe.',
+            f'Documento {malo.pk} (FACTURA 1024) no se pudo contabilizar.',
         )
         self.assertEqual(caso.exception.detail['errores'], [{
             'documento_id': malo.pk,
@@ -1826,7 +1826,10 @@ class ContabilizarTests(_ContabilizarBase):
         with self.assertRaises(NotFound) as caso:
             contabilizar.contabilizar([999999])
 
-        self.assertEqual(caso.exception.detail['detail'], 'Documento 999999: no existe.')
+        self.assertEqual(
+            caso.exception.detail['detail'], 'Documento 999999 no se pudo contabilizar.',
+        )
+        self.assertEqual(caso.exception.detail['errores'][0]['mensaje'], 'No existe.')
         self.assertEqual(caso.exception.detail['errores'][0]['documento_id'], 999999)
 
     def test_descontabilizar_tambien_dice_que_documento_fallo(self):
@@ -1837,7 +1840,10 @@ class ContabilizarTests(_ContabilizarBase):
 
         self.assertEqual(
             caso.exception.detail['detail'],
-            f'Documento {documento.pk} (FACTURA 1): no está contabilizado.',
+            f'Documento {documento.pk} (FACTURA 1) no se pudo descontabilizar.',
+        )
+        self.assertEqual(
+            caso.exception.detail['errores'][0]['mensaje'], 'No está contabilizado.',
         )
 
     def test_un_documento_anulado_se_marca_sin_generar_movimientos(self):
