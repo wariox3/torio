@@ -21,7 +21,18 @@ from rest_framework.throttling import ScopedRateThrottle
 
 from contenedor.models import CtnCliente
 from contenedor.views.rededoc import CtnRededocViewSet
-from general.models import GenDocumento, GenDocumentoClase, GenDocumentoTipo, GenParametro
+from general.models import (
+    GenCiudad,
+    GenContacto,
+    GenDocumento,
+    GenDocumentoClase,
+    GenDocumentoTipo,
+    GenEstado,
+    GenIdentificacion,
+    GenPais,
+    GenParametro,
+    GenTipoPersona,
+)
 from general.servicios.rededoc import firmar_aviso
 
 SECRETO = 'secreto-de-prueba'
@@ -379,6 +390,48 @@ class WebhookRededocTests(TenantTestCase):
         self.documento.refresh_from_db()
         self.assertTrue(self.documento.estado_electronico)
         self.assertEqual(self.documento.cue, 'abc123')
+        self.assertFalse(self.documento.estado_electronico_notificado)
+
+    def _pos_electronica_a(self, numero_identificacion):
+        """Vuelve el documento una factura POS electrónica del contacto con ese NIT."""
+        # El tenant de pruebas no carga catálogos: la cadena de la ciudad va acá.
+        pais, _ = GenPais.objects.get_or_create(id=250, nombre='Colombia', codigo='CO')
+        estado, _ = GenEstado.objects.get_or_create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        ciudad, _ = GenCiudad.objects.get_or_create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        identificacion, _ = GenIdentificacion.objects.get_or_create(id=6, nombre='NIT', codigo='31')
+        tipo_persona, _ = GenTipoPersona.objects.get_or_create(id=1, nombre='Jurídica')
+        contacto = GenContacto.objects.create(
+            numero_identificacion=numero_identificacion, nombre_corto='Contacto',
+            ciudad=ciudad, identificacion=identificacion, tipo_persona=tipo_persona,
+            direccion='calle 1', telefono='1', correo='t@t.com',
+        )
+        pos = GenDocumentoTipo.objects.create(id=24, nombre='FACTURA POS ELECTRONICO', venta=True)
+        GenDocumento.objects.filter(pk=self.documento.pk).update(documento_tipo=pos, contacto=contacto)
+
+    def test_la_pos_electronica_a_consumidor_final_no_programa_notificacion(self):
+        """Consumidor final es un NIT genérico: no hay nadie a quien entregarle el documento."""
+        self._pos_electronica_a('222222222222')
+
+        with mock.patch('general.tasks.notificar_documento.delay') as delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                respuesta = self._validacion()
+
+        self.assertEqual(respuesta.status_code, 200)
+        delay.assert_not_called()
+        self.documento.refresh_from_db()
+        self.assertTrue(self.documento.estado_electronico)
+        # Nunca se va a notificar: no puede quedar en los pendientes por notificar.
+        self.assertTrue(self.documento.estado_electronico_notificado)
+
+    def test_la_pos_electronica_a_otro_nit_si_programa_notificacion(self):
+        self._pos_electronica_a('900123456')
+
+        with mock.patch('general.tasks.notificar_documento.delay') as delay:
+            with self.captureOnCommitCallbacks(execute=True):
+                self._validacion()
+
+        delay.assert_called_once_with(self.tenant.schema_name, self.documento.id)
+        self.documento.refresh_from_db()
         self.assertFalse(self.documento.estado_electronico_notificado)
 
     def test_la_notificacion_no_se_programa_antes_de_confirmar(self):

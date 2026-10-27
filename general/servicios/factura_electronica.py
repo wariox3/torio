@@ -1316,6 +1316,12 @@ AVISO_PRUEBA = 'prueba'
 # La DIAN habilitó al emisor para una operación. Tampoco es de un documento: lo
 # aplica `procesar_habilitacion`, no `procesar_aviso`.
 AVISO_HABILITACION = 'habilitacion'
+
+# La factura POS electrónica casi siempre sale a consumidor final, que es un NIT
+# genérico sin nadie detrás para recibir el correo: esa no se notifica. Mismo id
+# que `documento_imprimir.DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO`.
+DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO = 24
+NIT_CONSUMIDOR_FINAL = '222222222222'
 # Operación de rededoc → campo de `GenParametro` que enciende.
 CAMPO_HABILITADO_POR_OPERACION = {
     'facturacion': 'gen_electronico_habilitado_facturacion',
@@ -1338,14 +1344,15 @@ def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenD
 
     - `validacion`: la DIAN aceptó el documento; guarda su CUFE y la fecha, y, si
       es de venta, programa su notificación al adquiriente (`general.tasks`). Un
-      documento soporte o una nómina solo quedan validados. Si el documento ya
-      estaba validado no se reescribe: responde 409, porque un CUFE no cambia, y
-      uno distinto para el mismo documento es un error que hay que ver.
+      documento soporte o una nómina solo quedan validados, y una factura POS
+      electrónica a consumidor final queda además marcada como notificada. Si el documento ya estaba validado no se
+      reescribe: responde 409, porque un CUFE no cambia, y uno distinto para el
+      mismo documento es un error que hay que ver.
     - `notificacion`: el documento se le entregó al adquiriente. Repetirla deja el
       documento igual.
     """
     documento = (
-        GenDocumento.objects.select_related('documento_tipo')
+        GenDocumento.objects.select_related('documento_tipo', 'contacto')
         .filter(electronico_id=documento_id).first()
     )
     if documento is None:
@@ -1357,7 +1364,14 @@ def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenD
         documento.estado_electronico = True
         documento.fecha_validacion = fecha_validacion
         documento.cue = cufe
-        documento.save(update_fields=['estado_electronico', 'fecha_validacion', 'cue'])
+        campos = ['estado_electronico', 'fecha_validacion', 'cue']
+        # La POS a consumidor final nunca se va a notificar: queda notificada de
+        # una vez para que no se quede para siempre en los pendientes por notificar.
+        consumidor_final = _es_pos_a_consumidor_final(documento)
+        if consumidor_final:
+            documento.estado_electronico_notificado = True
+            campos.append('estado_electronico_notificado')
+        documento.save(update_fields=campos)
         # Validado, ya se le puede entregar al adquiriente. Va por la cola y no
         # acá: armar el PDF y esperar a rededoc y a su pasarela de correo no
         # tiene por qué demorar la respuesta del webhook.
@@ -1365,7 +1379,7 @@ def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenD
         # Solo los de venta: son los que tienen un cliente esperando el documento.
         # En el documento soporte el adquiriente es la propia empresa, y la nómina
         # no se le entrega a nadie por este camino.
-        if documento.documento_tipo.venta:
+        if documento.documento_tipo.venta and not consumidor_final:
             from general.tasks import programar_notificacion
 
             programar_notificacion(documento.id)
@@ -1374,6 +1388,17 @@ def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenD
         documento.save(update_fields=['estado_electronico_notificado'])
     return documento
 
+
+def _es_pos_a_consumidor_final(documento) -> bool:
+    """
+    Una factura POS electrónica a consumidor final. Se compara el NIT y no el
+    contacto semilla: cualquier contacto con ese NIT es el mismo consumidor final.
+    """
+    return (
+        documento.documento_tipo_id == DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO
+        and documento.contacto is not None
+        and (documento.contacto.numero_identificacion or '').strip() == NIT_CONSUMIDOR_FINAL
+    )
 
 
 def procesar_habilitacion(emisor_id, operacion) -> GenParametro:
