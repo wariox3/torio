@@ -8863,8 +8863,8 @@ class EmitirTests(TenantTestCase):
 
     # ---- documento equivalente P.O.S. ----
 
-    def _documento_pos(self, sede=True, usuario=True, **overrides):
-        """Factura POS electrónica (tipo 24, clase 105) con su caja y su cajero."""
+    def _documento_pos(self, sede=True, **overrides):
+        """Factura POS electrónica (tipo 24, clase 105) con su caja."""
         tipo = GenDocumentoTipo.objects.create(
             id=24, nombre='FACTURA POS ELECTRONICO', venta=True, electronico=True, pos=True,
             codigo=7, documento_clase=GenDocumentoClase.objects.create(id=105, nombre='Factura POS'),
@@ -8877,13 +8877,6 @@ class EmitirTests(TenantTestCase):
             )
         if sede:
             overrides['sede'] = sede
-        # `usuario` igual: True (uno con nombre), False (sin usuario) o el usuario.
-        if usuario is True:
-            usuario = SegUsuario.objects.create(
-                email='cajero@ejemplo.com', nombre_corto='Ana Cajera',
-            )
-        if usuario:
-            overrides['usuario'] = usuario
         return self._documento(documento_tipo=tipo, **overrides)
 
     def test_payload_del_documento_pos(self):
@@ -8902,7 +8895,7 @@ class EmitirTests(TenantTestCase):
             'caja_placa': 'CAJA-01',
             'caja_ubicacion': 'Piso 1',
             'caja_tipo': 'Caja principal',
-            'cajero': 'Ana Cajera',
+            'cajero': 'Cajero general',
             'codigo_venta': 'SETP990000011',
             'comprador_puntos': 0,
         })
@@ -8930,20 +8923,6 @@ class EmitirTests(TenantTestCase):
             self._documento_pos(sede=sede),
             'ubicación de la caja en la sede Norte, tipo de la caja en la sede Norte',
         )
-
-    def test_un_pos_sin_cajero_no_se_emite(self):
-        self._con_error(self._documento_pos(usuario=False), 'usuario, que es el cajero')
-
-    def test_un_cajero_sin_nombre_va_con_su_correo(self):
-        usuario = SegUsuario.objects.create(email='caja@ejemplo.com', nombre_corto='  ')
-        documento = self._documento_pos(usuario=usuario)
-        cliente = self._cliente()
-
-        respuesta = self._llamar({'ids': [documento.id]}, cliente)
-
-        self.assertEqual(respuesta.data, {'emitidos': [documento.id], 'con_error': []})
-        payload = cliente.crear_documento.call_args.args[0]
-        self.assertEqual(payload['pos']['cajero'], 'caja@ejemplo.com')
 
     def test_los_errores_del_pos_salen_junto_a_los_de_la_factura(self):
         """Quien corrige tiene que ver de una vez todo lo que le falta."""

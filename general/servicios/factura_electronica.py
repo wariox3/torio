@@ -691,7 +691,7 @@ def emitir(documento_ids, cliente: Rededoc = None) -> dict:
         'documento_tipo', 'resolucion', 'plazo_pago', 'metodo_pago',
         'contacto__identificacion', 'contacto__ciudad__estado__pais',
         'documento_referencia', 'documento_concepto_correccion',
-        'sede', 'usuario',
+        'sede',
     ).in_bulk(documento_ids)
     # El asistente se revisa antes que los ids. Un lote solo de nóminas exige el
     # de nómina, no el de facturación.
@@ -976,13 +976,15 @@ def _armar_documento_pos(documento, parametro):
     return payload
 
 
+CAJERO_POS = 'Cajero general'
+
+
 def _bloque_pos(documento):
     """
     La caja, el cajero y el código de la venta.
 
     - La caja sale de la sede del documento: es la que estaba en esa venta.
-    - El cajero es el usuario que hizo el documento: su nombre, o su correo si
-      no tiene nombre.
+    - El cajero es fijo (`CAJERO_POS`): torio no lleva quién atendió cada caja.
     - El código de la venta es el número del tiquete, con su prefijo (`POS1024`).
 
     El comprador y el subtotal no se mandan: rededoc los toma del adquiriente y
@@ -1000,12 +1002,6 @@ def _bloque_pos(documento):
         ):
             if not (getattr(sede, campo) or '').strip():
                 faltantes.append(f'{nombre} de la caja en la sede {sede.nombre}')
-    usuario = documento.usuario
-    cajero = ''
-    if usuario is not None:
-        cajero = (usuario.nombre_corto or '').strip() or (usuario.email or '').strip()
-    if not cajero:
-        faltantes.append('usuario, que es el cajero')
     if faltantes:
         raise ErrorFacturaElectronica(
             f'El documento {documento.id} no tiene ' + ', '.join(faltantes) + '.'
@@ -1016,7 +1012,7 @@ def _bloque_pos(documento):
         'caja_placa': sede.caja_placa.strip(),
         'caja_ubicacion': sede.caja_ubicacion.strip(),
         'caja_tipo': sede.caja_tipo.strip(),
-        'cajero': cajero,
+        'cajero': CAJERO_POS,
         'codigo_venta': f'{prefijo}{documento.numero or ""}',
         'comprador_puntos': 0,
     }
