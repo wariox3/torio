@@ -44,6 +44,7 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
             'gen_empresa_ciudad',
             'gen_empresa_tipo_persona',
             'gen_emitir_automaticamente',
+            'gen_contabilizar_automaticamente',
             'ven_factura_informacion_superior',
             'ven_factura_informacion_inferior',
             'ven_pos_informacion_superior',

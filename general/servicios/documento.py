@@ -1,4 +1,5 @@
 import calendar
+import logging
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -8,6 +9,7 @@ from django.utils import timezone
 from rest_framework.exceptions import NotFound, ValidationError
 
 from general.models import (
+    GenConfiguracion,
     GenDocumento,
     GenDocumentoDetalle,
     GenDocumentoImpuesto,
@@ -16,9 +18,12 @@ from general.models import (
     GenItem,
 )
 from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
+from general.servicios import contabilizar as contabilizar_servicio
 from general.servicios.supervigilancia import LiquidadorSupervigilancia
 from inventario.models import InvExistencia
 from utilidades.moneda import redondear_moneda
+
+logger = logging.getLogger(__name__)
 
 
 def sincronizar_impuestos(detalle, impuestos):
@@ -565,7 +570,40 @@ def aprobar(documento_id):
         # Después de guardar: el activo se recalcula desde los documentos
         # aprobados, y este ya tiene que contar.
         depreciacion.afectar_activos(documento)
+
+        _contabilizar_automaticamente(documento)
     return documento
+
+
+def _contabilizar_automaticamente(documento):
+    """
+    Contabiliza el documento recién aprobado si la empresa tiene activo
+    `gen_contabilizar_automaticamente` y su tipo lleva contabilidad.
+
+    Si la contabilización falla (sin periodo, periodo bloqueado, falta una cuenta,
+    asiento descuadrado) el documento se queda aprobado y sin contabilizar: se
+    contabiliza después a mano. `contabilizar` corre en su propio `atomic`, que
+    acá es un savepoint, así que el fallo deshace solo lo suyo y no la aprobación.
+    """
+    activo = (
+        GenConfiguracion.objects.filter(pk=1)
+        .values_list('gen_contabilizar_automaticamente', flat=True)
+        .first()
+    )
+    if not activo or not documento.documento_tipo.contabilidad:
+        return
+
+    try:
+        contabilizar_servicio.contabilizar([documento.pk])
+    except ValidationError as error:
+        logger.warning(
+            'El documento %s se aprobó pero no se pudo contabilizar automáticamente: %s',
+            documento.pk, error.detail,
+        )
+        return
+    # `contabilizar` guarda sobre su propia copia de la fila: se refleja acá para
+    # que la respuesta de aprobar diga que quedó contabilizado.
+    documento.estado_contabilizado = True
 
 
 def _agrupar_afectados(documento):

@@ -1812,6 +1812,80 @@ class ContabilizarTests(_ContabilizarBase):
         self.assertEqual(self._movimientos(documento), [])
 
 
+class ContabilizarAlAprobarTests(_ContabilizarBase):
+    """
+    Con `gen_contabilizar_automaticamente`, aprobar un documento de un tipo con
+    contabilidad lo contabiliza en el mismo momento. Si contabilizar falla, el
+    documento queda aprobado igual y sin contabilizar.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.factura_tipo.contabilidad = True
+        self.factura_tipo.save(update_fields=['contabilidad'])
+        self._configurar(True)
+
+    def _configurar(self, activo):
+        GenConfiguracion.objects.update_or_create(
+            pk=1, defaults={'gen_contabilizar_automaticamente': activo},
+        )
+
+    def _por_aprobar(self, documento_tipo=None, **extra):
+        documento = self._crear_documento(
+            documento_tipo or self.factura_tipo, estado_aprobado=False, **extra,
+        )
+        self._crear_detalle_item(documento, self._crear_item())
+        return documento
+
+    def test_aprobar_contabiliza(self):
+        documento = self._por_aprobar()
+
+        aprobado = documento_servicio.aprobar(documento.pk)
+
+        # La respuesta de aprobar ya lo dice, sin volver a leer la fila.
+        self.assertTrue(aprobado.estado_contabilizado)
+        documento.refresh_from_db()
+        self.assertTrue(documento.estado_aprobado)
+        self.assertTrue(documento.estado_contabilizado)
+        self.assertNotEqual(self._movimientos(documento), [])
+
+    def test_sin_el_check_no_contabiliza(self):
+        self._configurar(False)
+        documento = self._por_aprobar()
+
+        documento_servicio.aprobar(documento.pk)
+
+        documento.refresh_from_db()
+        self.assertTrue(documento.estado_aprobado)
+        self.assertFalse(documento.estado_contabilizado)
+        self.assertEqual(self._movimientos(documento), [])
+
+    def test_un_tipo_sin_contabilidad_no_se_contabiliza(self):
+        """Una cotización o un pedido no tienen asiento: aprobarlos no debe fallar."""
+        documento = self._por_aprobar(self.compra_tipo)
+
+        documento_servicio.aprobar(documento.pk)
+
+        documento.refresh_from_db()
+        self.assertTrue(documento.estado_aprobado)
+        self.assertFalse(documento.estado_contabilizado)
+
+    def test_si_contabilizar_falla_queda_aprobado_sin_contabilizar(self):
+        # Febrero no tiene periodo creado: contabilizar falla.
+        documento = self._por_aprobar(
+            fecha=date(2026, 2, 15), fecha_contable=date(2026, 2, 15),
+        )
+
+        with self.assertLogs('general.servicios.documento', level='WARNING'):
+            aprobado = documento_servicio.aprobar(documento.pk)
+
+        self.assertFalse(aprobado.estado_contabilizado)
+        documento.refresh_from_db()
+        self.assertTrue(documento.estado_aprobado)
+        self.assertFalse(documento.estado_contabilizado)
+        self.assertEqual(self._movimientos(documento), [])
+
+
 class ComprobanteDelAsientoTests(_ContabilizarBase):
     """
     El comprobante sale del tipo del documento, menos en el asiento: ese lo

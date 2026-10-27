@@ -59,6 +59,10 @@ class GenConfiguracion(models.Model):
     # Si está activo, aprobar un documento de tipo electrónico dispara la emisión
     # sin que el usuario tenga que pedirla.
     gen_emitir_automaticamente = models.BooleanField(default=False, db_default=False)
+    # Si está activo, aprobar un documento de un tipo con `contabilidad` lo
+    # contabiliza en ese momento. Si la contabilización falla, el documento queda
+    # aprobado y sin contabilizar (ver `documento.aprobar`).
+    gen_contabilizar_automaticamente = models.BooleanField(default=False, db_default=False)
     gen_empresa_tipo_persona = models.ForeignKey(
         'general.GenTipoPersona', null=True, on_delete=models.PROTECT,
         related_name='configuraciones_empresa_tipo_persona_rel',
