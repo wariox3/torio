@@ -6109,7 +6109,7 @@ class ValidarAprobacionTests(TenantTestCase):
     def test_la_vigencia_por_fecha_solo_se_exige_a_la_factura_de_venta(self):
         """Otro tipo de la misma clase conserva solo las reglas de siempre."""
         otro = GenDocumentoTipo.objects.create(
-            id=2, nombre='OTRA FACTURA', venta=True, documento_clase=self.clase_factura,
+            id=99, nombre='OTRA FACTURA', venta=True, documento_clase=self.clase_factura,
         )
         documento = self._documento(
             tipo=otro, fecha=date(2019, 12, 31), resolucion=self._resolucion(fecha_desde=date(2020, 1, 1)),
@@ -6197,6 +6197,60 @@ class ValidarAprobacionTests(TenantTestCase):
             documento_servicio.aprobar(nota.id)
 
         self.assertIn('pendiente', str(caso.exception))
+
+    def _tipo_nota_venta(self):
+        return GenDocumentoTipo.objects.create(
+            id=2, nombre='NOTA CRÉDITO DE VENTA', venta=True,
+            documento_clase=GenDocumentoClase.objects.create(id=101, nombre='Nota credito venta'),
+        )
+
+    def _nota_contra(self, referencia, **overrides):
+        nota = self._documento(
+            tipo=self._tipo_nota_venta(), documento_referencia=referencia,
+            total=Decimal('100'), **overrides,
+        )
+        self._detalle(nota)
+        return nota
+
+    def test_una_nota_credito_sin_referencia_se_aprueba(self):
+        nota = self._nota_contra(None)
+
+        self.assertTrue(documento_servicio.aprobar(nota.id).estado_aprobado)
+
+    def test_una_nota_credito_contra_otro_contacto_no_se_aprueba(self):
+        contacto = self._contacto()
+        factura = self._documento(contacto=contacto, pendiente=Decimal('1000'))
+        otro = GenContacto.objects.create(
+            numero_identificacion='900999888', nombre_corto='Otro', ciudad=contacto.ciudad,
+            direccion='x', telefono='1', correo='o@b.com',
+            identificacion=contacto.identificacion, tipo_persona=contacto.tipo_persona,
+        )
+        nota = self._nota_contra(factura, contacto=otro)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(nota.id)
+
+        self.assertIn('es de otro contacto', str(caso.exception))
+
+    def test_una_nota_credito_de_venta_no_afecta_una_compra(self):
+        tipo_compra = GenDocumentoTipo.objects.create(
+            id=5, nombre='COMPRA', compra=True,
+            documento_clase=GenDocumentoClase.objects.create(id=300, nombre='Compra'),
+        )
+        compra = self._documento(tipo=tipo_compra, pendiente=Decimal('1000'))
+        nota = self._nota_contra(compra)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(nota.id)
+
+        self.assertIn('no puede afectar el documento referencia', str(caso.exception))
+
+    def test_una_nota_credito_del_mismo_contacto_contra_una_factura_se_aprueba(self):
+        contacto = self._contacto()
+        factura = self._documento(contacto=contacto, pendiente=Decimal('1000'))
+        nota = self._nota_contra(factura, contacto=contacto)
+
+        self.assertTrue(documento_servicio.aprobar(nota.id).estado_aprobado)
 
 
 class CarteraTests(TenantTestCase):
@@ -7177,6 +7231,85 @@ class EfectosAprobarTests(TenantTestCase):
 
         self.assertEqual(aprobada.afectado, Decimal('400'))
         self.assertEqual(aprobada.pendiente, Decimal('0'))
+
+    def _documento_soporte_y_nota_ajuste(self, total_soporte, total_nota):
+        tipo_soporte = GenDocumentoTipo.objects.create(
+            id=11, nombre='DOCUMENTO SOPORTE', compra=True,
+            documento_clase=GenDocumentoClase.objects.create(id=303, nombre='Documento soporte'),
+        )
+        tipo_ajuste = GenDocumentoTipo.objects.create(
+            id=12, nombre='NOTA AJUSTE', compra=True,
+            documento_clase=GenDocumentoClase.objects.create(id=304, nombre='Nota ajuste'),
+        )
+        soporte = self._documento(tipo=tipo_soporte, total=Decimal(total_soporte))
+        self._detalle(soporte)
+        soporte = documento_servicio.aprobar(soporte.id)
+        nota = self._documento(
+            tipo=tipo_ajuste, documento_referencia=soporte, total=Decimal(total_nota),
+        )
+        self._detalle(nota)
+        return soporte, nota
+
+    def test_una_nota_de_ajuste_descarga_el_documento_soporte(self):
+        soporte, nota = self._documento_soporte_y_nota_ajuste('1000', '400')
+
+        aprobada = documento_servicio.aprobar(nota.id)
+
+        soporte.refresh_from_db()
+        self.assertEqual((soporte.afectado, soporte.pendiente), (Decimal('400'), Decimal('600')))
+        self.assertEqual((aprobada.afectado, aprobada.pendiente), (Decimal('400'), Decimal('0')))
+
+    def test_una_nota_de_ajuste_no_devuelve_mas_de_lo_pendiente(self):
+        _, nota = self._documento_soporte_y_nota_ajuste('1000', '1500')
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(nota.id)
+
+        self.assertIn('pendiente', str(caso.exception))
+
+    def test_desaprobar_la_nota_de_ajuste_devuelve_el_saldo_al_soporte(self):
+        soporte, nota = self._documento_soporte_y_nota_ajuste('1000', '400')
+        documento_servicio.aprobar(nota.id)
+
+        documento_servicio.desaprobar(nota.id)
+
+        soporte.refresh_from_db()
+        self.assertEqual((soporte.afectado, soporte.pendiente), (Decimal('0'), Decimal('1000')))
+
+    def test_anular_la_nota_de_ajuste_devuelve_el_saldo_al_soporte(self):
+        soporte, nota = self._documento_soporte_y_nota_ajuste('1000', '400')
+        documento_servicio.aprobar(nota.id)
+
+        documento_servicio.anular(nota.id)
+
+        soporte.refresh_from_db()
+        self.assertEqual((soporte.afectado, soporte.pendiente), (Decimal('0'), Decimal('1000')))
+
+    def test_una_nota_de_ajuste_no_afecta_una_factura(self):
+        factura = self._factura_aprobada('1000')
+        _, nota = self._documento_soporte_y_nota_ajuste('1000', '400')
+        GenDocumento.objects.filter(pk=nota.pk).update(documento_referencia=factura)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(nota.id)
+
+        self.assertIn('no puede afectar el documento referencia', str(caso.exception))
+
+    def test_una_nota_credito_de_compra_no_afecta_un_documento_soporte(self):
+        soporte, _ = self._documento_soporte_y_nota_ajuste('1000', '400')
+        tipo_nota_compra = GenDocumentoTipo.objects.create(
+            id=6, nombre='NOTA CREDITO COMPRA', compra=True,
+            documento_clase=GenDocumentoClase.objects.create(id=301, nombre='Nota credito compra'),
+        )
+        nota = self._documento(
+            tipo=tipo_nota_compra, documento_referencia=soporte, total=Decimal('400'),
+        )
+        self._detalle(nota)
+
+        with self.assertRaises(ValidationError) as caso:
+            documento_servicio.aprobar(nota.id)
+
+        self.assertIn('no puede afectar el documento referencia', str(caso.exception))
 
     def test_desaprobar_la_nota_devuelve_el_saldo_a_la_factura(self):
         factura = self._factura_aprobada('1000')
@@ -8744,10 +8877,13 @@ class EmitirTests(TenantTestCase):
             )
         if sede:
             overrides['sede'] = sede
-        if usuario:
-            overrides.setdefault('usuario', SegUsuario.objects.create(
+        # `usuario` igual: True (uno con nombre), False (sin usuario) o el usuario.
+        if usuario is True:
+            usuario = SegUsuario.objects.create(
                 email='cajero@ejemplo.com', nombre_corto='Ana Cajera',
-            ))
+            )
+        if usuario:
+            overrides['usuario'] = usuario
         return self._documento(documento_tipo=tipo, **overrides)
 
     def test_payload_del_documento_pos(self):
@@ -8796,7 +8932,18 @@ class EmitirTests(TenantTestCase):
         )
 
     def test_un_pos_sin_cajero_no_se_emite(self):
-        self._con_error(self._documento_pos(usuario=False), 'usuario con nombre, que es el cajero')
+        self._con_error(self._documento_pos(usuario=False), 'usuario, que es el cajero')
+
+    def test_un_cajero_sin_nombre_va_con_su_correo(self):
+        usuario = SegUsuario.objects.create(email='caja@ejemplo.com', nombre_corto='  ')
+        documento = self._documento_pos(usuario=usuario)
+        cliente = self._cliente()
+
+        respuesta = self._llamar({'ids': [documento.id]}, cliente)
+
+        self.assertEqual(respuesta.data, {'emitidos': [documento.id], 'con_error': []})
+        payload = cliente.crear_documento.call_args.args[0]
+        self.assertEqual(payload['pos']['cajero'], 'caja@ejemplo.com')
 
     def test_los_errores_del_pos_salen_junto_a_los_de_la_factura(self):
         """Quien corrige tiene que ver de una vez todo lo que le falta."""

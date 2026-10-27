@@ -981,7 +981,8 @@ def _bloque_pos(documento):
     La caja, el cajero y el código de la venta.
 
     - La caja sale de la sede del documento: es la que estaba en esa venta.
-    - El cajero es el usuario que hizo el documento.
+    - El cajero es el usuario que hizo el documento: su nombre, o su correo si
+      no tiene nombre.
     - El código de la venta es el número del tiquete, con su prefijo (`POS1024`).
 
     El comprador y el subtotal no se mandan: rededoc los toma del adquiriente y
@@ -999,9 +1000,12 @@ def _bloque_pos(documento):
         ):
             if not (getattr(sede, campo) or '').strip():
                 faltantes.append(f'{nombre} de la caja en la sede {sede.nombre}')
-    cajero = (getattr(documento.usuario, 'nombre_corto', None) or '').strip()
+    usuario = documento.usuario
+    cajero = ''
+    if usuario is not None:
+        cajero = (usuario.nombre_corto or '').strip() or (usuario.email or '').strip()
     if not cajero:
-        faltantes.append('usuario con nombre, que es el cajero')
+        faltantes.append('usuario, que es el cajero')
     if faltantes:
         raise ErrorFacturaElectronica(
             f'El documento {documento.id} no tiene ' + ', '.join(faltantes) + '.'

@@ -77,11 +77,22 @@ DOCUMENTO_CLASES_CON_RESOLUCION = (
 DOCUMENTO_TIPOS_PARTIDA_DOBLE = (13,)  # ASIENTO
 
 # Notas crédito: devuelven contra el documento que referencian, y no pueden
-# devolver más de lo que ese documento tiene pendiente.
+# devolver más de lo que ese documento tiene pendiente. La nota de ajuste hace lo
+# mismo contra el documento soporte, así que se trata igual en cartera.
 DOCUMENTO_TIPOS_NOTA_CREDITO = (
-    2,  # NOTA CRÉDITO DE VENTA
-    6,  # NOTA CREDITO COMPRA
+    2,   # NOTA CRÉDITO DE VENTA
+    6,   # NOTA CREDITO COMPRA
+    12,  # NOTA AJUSTE (al documento soporte)
 )
+
+# A qué clases de documento puede devolver cada nota: los de su mismo lado que
+# dejan saldo en cartera, nunca otra nota. El documento soporte solo lo corrige
+# su nota de ajuste, no la nota crédito de compra.
+DOCUMENTO_CLASES_REFERENCIA_NOTA_CREDITO = {
+    2: (100, 102, 104, 105),  # factura, nota débito, cuenta de cobro, POS
+    6: (300, 302),            # compra, nota débito compra
+    12: (303,),               # documento soporte
+}
 
 # Clases que llevan cartera: al aprobarse el documento queda con saldo pendiente
 # de cobro o de pago. Son las de venta (100-105), las de compra (300-304), la
@@ -117,7 +128,7 @@ DOCUMENTO_CLASES_QUE_PERMITEN_DESAPROBAR = (
     100, 101, 102, 104, 105,  # venta
     107,                      # remisión
     200,                      # pago
-    300, 301, 303,            # compra
+    300, 301, 302, 303, 304,  # compra, notas y documento soporte
     400,                      # egreso
     500, 501,                 # entrada y salida de almacén
     601, 602, 603,            # asiento, depreciación y cierre contable
@@ -294,25 +305,40 @@ def _validar_cantidad_afectada(documento):
 
 def _validar_nota_credito(documento):
     """
-    Una nota crédito no puede devolver más de lo que el documento referenciado
-    debe todavía.
+    Una nota crédito con documento referencia tiene que apuntar a uno del mismo
+    contacto y del mismo lado (venta o compra), y no puede devolver más de lo que
+    ese documento debe todavía. Sin referencia se aprueba sin afectar a nadie.
 
-    Se compara contra `GenDocumento.pendiente` del referenciado, que es el mismo
-    campo que `_asignar_cartera` llena al aprobarlo: validar por un lado y
-    aplicar por otro es como se desincronizan estas dos mitades.
+    El monto se compara contra `GenDocumento.pendiente` del referenciado, que es
+    el mismo campo que `_asignar_cartera` llena al aprobarlo: validar por un lado
+    y aplicar por otro es como se desincronizan estas dos mitades.
     """
     if documento.documento_referencia_id is None:
         return
     if documento.documento_tipo_id not in DOCUMENTO_TIPOS_NOTA_CREDITO:
         return
 
+    referencia = documento.documento_referencia
+
+    if referencia.contacto_id != documento.contacto_id:
+        raise ValidationError(
+            f'El documento referencia {referencia.pk} es de otro contacto que la nota.'
+        )
+
+    clases_permitidas = DOCUMENTO_CLASES_REFERENCIA_NOTA_CREDITO[documento.documento_tipo_id]
+    if referencia.documento_tipo.documento_clase_id not in clases_permitidas:
+        raise ValidationError(
+            f'La nota no puede afectar el documento referencia {referencia.pk} '
+            f'({referencia.documento_tipo.nombre}).'
+        )
+
     # El pago ya cobrado de la factura vuelve por la nota, así que no cuenta
     # contra el pendiente.
     afectar = documento.total - documento.pago
-    pendiente = documento.documento_referencia.pendiente
+    pendiente = referencia.pendiente
     if pendiente < afectar:
         raise ValidationError(
-            f'El documento referencia tiene {pendiente} pendiente y la nota crédito '
+            f'El documento referencia tiene {pendiente} pendiente y la nota '
             f'intenta afectar {afectar}.'
         )
 
