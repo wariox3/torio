@@ -34,6 +34,7 @@ from general.models import (
 )
 from general.servicios.documento import (
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
+    DOCUMENTO_CLASE_FACTURA_POS,
     DOCUMENTO_CLASE_FACTURA_VENTA,
     DOCUMENTO_CLASE_NOMINA_ELECTRONICA,
     DOCUMENTO_CLASE_NOTA_AJUSTE,
@@ -690,6 +691,7 @@ def emitir(documento_ids, cliente: Rededoc = None) -> dict:
         'documento_tipo', 'resolucion', 'plazo_pago', 'metodo_pago',
         'contacto__identificacion', 'contacto__ciudad__estado__pais',
         'documento_referencia', 'documento_concepto_correccion',
+        'sede', 'usuario',
     ).in_bulk(documento_ids)
     # El asistente se revisa antes que los ids. Un lote solo de nóminas exige el
     # de nómina, no el de facturación.
@@ -950,6 +952,70 @@ def _armar(documento, parametro):
 
 def _armar_factura_venta(documento, parametro):
     return _armar_con_resolucion(documento, parametro, contacto='cliente', con_retenciones=False)
+
+
+def _armar_documento_pos(documento, parametro):
+    """
+    El documento equivalente electrónico P.O.S.: viaja con la forma de la factura
+    de venta —se numera contra su propia resolución, sin retenciones— más el
+    bloque `pos` que rededoc exige para las extensiones de la caja.
+
+    Los errores de la factura y los del bloque `pos` salen juntos.
+    """
+    errores = []
+    pos = _o_error(errores, _bloque_pos, documento)
+    try:
+        payload = _armar_con_resolucion(
+            documento, parametro, contacto='cliente', con_retenciones=False,
+        )
+    except _ErroresDocumento as e:
+        raise _ErroresDocumento(e.mensajes + errores)
+    if errores:
+        raise _ErroresDocumento(errores)
+    payload['pos'] = pos
+    return payload
+
+
+def _bloque_pos(documento):
+    """
+    La caja, el cajero y el código de la venta.
+
+    - La caja sale de la sede del documento: es la que estaba en esa venta.
+    - El cajero es el usuario que hizo el documento.
+    - El código de la venta es el número del tiquete, con su prefijo (`POS1024`).
+
+    El comprador y el subtotal no se mandan: rededoc los toma del adquiriente y
+    de los totales del documento, y pedirlos dos veces solo daría ocasión de que
+    no coincidan. Los puntos van en cero porque torio no tiene programa de
+    fidelización, y el par es obligatorio.
+    """
+    faltantes = []
+    sede = documento.sede
+    if sede is None:
+        faltantes.append('sede, de la que sale la caja')
+    else:
+        for campo, nombre in (
+            ('caja_placa', 'placa'), ('caja_ubicacion', 'ubicación'), ('caja_tipo', 'tipo'),
+        ):
+            if not (getattr(sede, campo) or '').strip():
+                faltantes.append(f'{nombre} de la caja en la sede {sede.nombre}')
+    cajero = (getattr(documento.usuario, 'nombre_corto', None) or '').strip()
+    if not cajero:
+        faltantes.append('usuario con nombre, que es el cajero')
+    if faltantes:
+        raise ErrorFacturaElectronica(
+            f'El documento {documento.id} no tiene ' + ', '.join(faltantes) + '.'
+        )
+
+    prefijo = getattr(documento.resolucion, 'prefijo', None) or ''
+    return {
+        'caja_placa': sede.caja_placa.strip(),
+        'caja_ubicacion': sede.caja_ubicacion.strip(),
+        'caja_tipo': sede.caja_tipo.strip(),
+        'cajero': cajero,
+        'codigo_venta': f'{prefijo}{documento.numero or ""}',
+        'comprador_puntos': 0,
+    }
 
 
 def _armar_documento_soporte(documento, parametro):
@@ -1296,6 +1362,7 @@ ARMADORES = {
     DOCUMENTO_CLASE_FACTURA_VENTA: _armar_factura_venta,
     DOCUMENTO_CLASE_NOTA_CREDITO_VENTA: _armar_nota,
     DOCUMENTO_CLASE_NOTA_DEBITO_VENTA: _armar_nota,
+    DOCUMENTO_CLASE_FACTURA_POS: _armar_documento_pos,
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE: _armar_documento_soporte,
     DOCUMENTO_CLASE_NOTA_AJUSTE: _armar_nota_ajuste,
 }

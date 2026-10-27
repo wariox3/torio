@@ -8728,6 +8728,84 @@ class EmitirTests(TenantTestCase):
     def test_sin_resolucion_no_se_emite(self):
         self._con_error(self._documento(resolucion=None), 'no tiene resolución')
 
+    # ---- documento equivalente P.O.S. ----
+
+    def _documento_pos(self, sede=True, usuario=True, **overrides):
+        """Factura POS electrónica (tipo 24, clase 105) con su caja y su cajero."""
+        tipo = GenDocumentoTipo.objects.create(
+            id=24, nombre='FACTURA POS ELECTRONICO', venta=True, electronico=True, pos=True,
+            codigo=7, documento_clase=GenDocumentoClase.objects.create(id=105, nombre='Factura POS'),
+        )
+        # `sede` es True (una con la caja completa), False (sin sede) o la sede.
+        if sede is True:
+            sede = GenSede.objects.create(
+                nombre='Principal', caja_placa='CAJA-01', caja_ubicacion='Piso 1',
+                caja_tipo='Caja principal',
+            )
+        if sede:
+            overrides['sede'] = sede
+        if usuario:
+            overrides.setdefault('usuario', SegUsuario.objects.create(
+                email='cajero@ejemplo.com', nombre_corto='Ana Cajera',
+            ))
+        return self._documento(documento_tipo=tipo, **overrides)
+
+    def test_payload_del_documento_pos(self):
+        """La forma de la factura de venta, con su tipo de rededoc y el bloque `pos`."""
+        documento = self._documento_pos()
+        cliente = self._cliente()
+
+        respuesta = self._llamar({'ids': [documento.id]}, cliente)
+
+        self.assertEqual(respuesta.data, {'emitidos': [documento.id], 'con_error': []})
+        payload = cliente.crear_documento.call_args.args[0]
+        self.assertEqual(payload['documento_tipo'], 7)
+        self.assertEqual(payload['consecutivo'], 990000011)
+        self.assertEqual(payload['adquiriente']['numero_identificacion'], '70143086')
+        self.assertEqual(payload['pos'], {
+            'caja_placa': 'CAJA-01',
+            'caja_ubicacion': 'Piso 1',
+            'caja_tipo': 'Caja principal',
+            'cajero': 'Ana Cajera',
+            'codigo_venta': 'SETP990000011',
+            'comprador_puntos': 0,
+        })
+        # Sin retenciones, igual que la factura de venta.
+        self.assertEqual(
+            [i['tributo'] for i in payload['detalles'][0]['impuestos']], ['01'],
+        )
+
+    def test_la_factura_de_venta_no_lleva_bloque_pos(self):
+        """rededoc rechaza el bloque `pos` en cualquier tipo que no sea el P.O.S."""
+        documento = self._documento()
+        cliente = self._cliente()
+
+        self._llamar({'ids': [documento.id]}, cliente)
+
+        self.assertNotIn('pos', cliente.crear_documento.call_args.args[0])
+
+    def test_un_pos_sin_sede_no_se_emite(self):
+        self._con_error(self._documento_pos(sede=False), 'sede, de la que sale la caja')
+
+    def test_un_pos_con_la_caja_incompleta_dice_que_le_falta(self):
+        sede = GenSede.objects.create(nombre='Norte', caja_placa='CAJA-02')
+
+        self._con_error(
+            self._documento_pos(sede=sede),
+            'ubicación de la caja en la sede Norte, tipo de la caja en la sede Norte',
+        )
+
+    def test_un_pos_sin_cajero_no_se_emite(self):
+        self._con_error(self._documento_pos(usuario=False), 'usuario con nombre, que es el cajero')
+
+    def test_los_errores_del_pos_salen_junto_a_los_de_la_factura(self):
+        """Quien corrige tiene que ver de una vez todo lo que le falta."""
+        documento = self._documento_pos(sede=False, resolucion=None)
+
+        self._con_error(documento, 'no tiene resolución')
+        mensajes = [mensaje for _, mensaje in self._errores(documento)]
+        self.assertTrue(any('de la que sale la caja' in m for m in mensajes), mensajes)
+
     def test_sin_numero_no_se_emite(self):
         self._con_error(self._documento(numero=None), 'no tiene número')
 

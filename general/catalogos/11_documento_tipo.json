@@ -227,6 +227,7 @@
       "inventario": true,
       "operacion_inventario": -1,
       "electronico": true,
+      "codigo": 7,
       "pos": true
     },
     {
