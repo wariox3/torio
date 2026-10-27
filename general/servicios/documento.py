@@ -1010,7 +1010,7 @@ def _clonar(instancia, excluir, overrides):
 
 
 def generar_recurrente(
-    documento_tipo_destino_id, anio, mes,
+    documento_tipo_destino_id, anio, mes, *, validar_fechas,
     documento_ids=None, documento_tipo_origen_id=None,
 ):
     """
@@ -1030,13 +1030,18 @@ def generar_recurrente(
     - **Factura recurrente (16 y 32)**: se copia entera —mismas cantidades, mismos
       precios, mismos impuestos— y solo se mueven las fechas.
 
-    En los dos caminos la fecha de la plantilla marca hasta dónde ya se generó: se
+    Con `validar_fechas` la fecha de la plantilla marca hasta dónde ya se generó: se
     toma la que tenga fecha hasta el último día de `anio`/`mes`, y la que genera
     avanza al primer día del mes siguiente, así que volver a pedir el mismo periodo
-    ya no la toma. Es lo único que se le toca a la plantilla.
+    ya no la toma. Es lo único que se le toca a la plantilla. Sin `validar_fechas`
+    se generan todas las seleccionadas sin mirar su fecha y la plantilla no se
+    toca; el contrato igual se recorta a `anio`/`mes`.
 
-    El documento nuevo nace sin numerar y sin aprobar. La fecha difiere según el
-    camino: el contrato genera al cierre del periodo (último día de `anio`/`mes`)
+    El documento nuevo nace sin numerar y sin aprobar, y no apunta a la plantilla:
+    ni `documento_referencia` en el encabezado ni `documento_detalle_afectado` en
+    los detalles.
+
+    La fecha difiere según el camino: el contrato genera al cierre del periodo (último día de `anio`/`mes`)
     y la factura recurrente se emite hoy, con su vencimiento a los días del plazo
     de pago del origen. Todo va en una transacción: si un documento falla, no se
     crea ninguno.
@@ -1132,7 +1137,7 @@ def generar_recurrente(
         and documento_tipo_origen_id not in DOCUMENTO_TIPOS_RECURRENTES
     ):
         raise ValidationError({
-            'documento_tipo_origen': (
+            'detail': (
                 f'El tipo {documento_tipo_origen_id} no es recurrente. '
                 f'Solo se generan desde los tipos {DOCUMENTO_TIPOS_RECURRENTES}.'
             ),
@@ -1189,7 +1194,7 @@ def generar_recurrente(
         ]
         if no_recurrentes:
             raise ValidationError({
-                'documento_ids': (
+                'detail': (
                     f'Los documentos {", ".join(no_recurrentes)} no son recurrentes. '
                     f'Solo se generan desde los tipos {DOCUMENTO_TIPOS_RECURRENTES}.'
                 ),
@@ -1198,8 +1203,9 @@ def generar_recurrente(
         for origen in documentos:
             # Una plantilla fechada después del periodo es una que otra corrida ya
             # avanzó: no se vuelve a generar. `fecha` es opcional en el documento, y
-            # una plantilla sin ella nunca se ha generado.
-            if origen.fecha is not None and origen.fecha > fecha:
+            # una plantilla sin ella nunca se ha generado. Sin `validar_fechas` se
+            # genera igual.
+            if validar_fechas and origen.fecha is not None and origen.fecha > fecha:
                 continue
 
             if origen.documento_tipo_id == DOCUMENTO_TIPO_CONTRATO_SERVICIO:
@@ -1218,13 +1224,11 @@ def generar_recurrente(
                     'documento_tipo_id': documento_tipo_destino_id,
                     'fecha': fecha,
                     'fecha_contable': fecha,
-                    'documento_referencia_id': origen.id,
                 })
                 nuevo.save()
                 for detalle, (fecha_desde, fecha_hasta) in detalles:
                     nuevo_detalle = _clonar(detalle, _EXCLUIR_DETALLE, {
                         'documento_id': nuevo.id,
-                        'documento_detalle_afectado_id': detalle.id,
                         'fecha_desde': fecha_desde,
                         'fecha_hasta': fecha_hasta,
                         **calcular_horas(detalle, fecha_desde, fecha_hasta),
@@ -1249,7 +1253,6 @@ def generar_recurrente(
                     'fecha': hoy,
                     'fecha_contable': hoy,
                     'fecha_vence': hoy + timedelta(days=dias_plazo),
-                    'documento_referencia_id': origen.id,
                 })
                 nuevo.save()
                 for detalle in origen.documentos_detalles_documento_rel.all():
@@ -1267,9 +1270,11 @@ def generar_recurrente(
             generados.append(nuevo)
 
             # La plantilla avanza al mes siguiente: queda marcada como generada para
-            # este periodo y lista para la próxima corrida.
-            origen.fecha = fecha_origen
-            origen.save(update_fields=['fecha'])
+            # este periodo y lista para la próxima corrida. Sin `validar_fechas` la
+            # fecha no se usó, así que tampoco se mueve.
+            if validar_fechas:
+                origen.fecha = fecha_origen
+                origen.save(update_fields=['fecha'])
 
     if not generados:
         raise ValidationError(

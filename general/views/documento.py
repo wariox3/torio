@@ -255,7 +255,6 @@ class GenDocumentoViewSet(
             raise ValidationError({'detail': e.detail})
         return Response(resultado)
 
-    @extend_schema(request=DocumentoAccionRequestSerializer, responses=GenDocumentoSerializer)
     @extend_schema(
         summary='Generar documentos desde plantillas recurrentes',
         description=(
@@ -270,10 +269,14 @@ class GenDocumentoViewSet(
             '- **34** (contrato de servicio): los detalles se recortan a la ventana del '
             'periodo y se les recalculan horas, diurnas, nocturnas y días contra el '
             'calendario real con sus festivos.\n\n'
-            'Solo se toman las plantillas con fecha hasta el último día del periodo, y '
-            'cada una que genera avanza su fecha al primer día del mes siguiente: volver '
-            'a generar el mismo periodo no la toma otra vez.\n\n'
-            'El documento nuevo nace sin numerar y sin aprobar. Es una sola transacción: '
+            '`validar_fechas` es requerido. Con `true` solo se toman las plantillas con '
+            'fecha hasta el último día del periodo, y cada una que genera avanza su fecha '
+            'al primer día del mes siguiente: volver a generar el mismo periodo no la toma '
+            'otra vez. Con `false` se generan todas las plantillas seleccionadas sin mirar '
+            'su fecha, y la fecha no se mueve; el contrato igual se recorta al periodo.\n\n'
+            'El documento nuevo nace sin numerar y sin aprobar, y no apunta a la '
+            'plantilla: ni `documento_referencia` en el encabezado ni '
+            '`documento_detalle_afectado` en los detalles. Es una sola transacción: '
             'si un documento falla, no se crea ninguno.\n\n'
             'Responde `{"generados": <n>}` con la cantidad creada.'
         ),
@@ -290,6 +293,7 @@ class GenDocumentoViewSet(
             documento_tipo_destino_id=datos['documento_tipo_destino'].pk,
             anio=datos['anio'],
             mes=datos['mes'],
+            validar_fechas=datos['validar_fechas'],
             documento_ids=datos.get('documento_ids'),
             documento_tipo_origen_id=tipo_origen.pk if tipo_origen else None,
         )

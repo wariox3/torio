@@ -167,7 +167,7 @@ class GenerarDocumentoTests(TenantTestCase):
         datos.update(overrides)
         return GenDocumentoDetalle.objects.create(**datos)
 
-    def _generar(self, anio=2026, mes=6):
+    def _generar(self, anio=2026, mes=6, validar_fechas=True):
         return documento_servicio.generar_recurrente(
             documento_ids=list(
                 GenDocumento.objects
@@ -177,6 +177,7 @@ class GenerarDocumentoTests(TenantTestCase):
             documento_tipo_destino_id=self.tipo_destino.id,
             anio=anio,
             mes=mes,
+            validar_fechas=validar_fechas,
         )
 
     def test_acota_fechas_al_mes(self):
@@ -213,23 +214,23 @@ class GenerarDocumentoTests(TenantTestCase):
         # Empieza en julio y se genera junio: no aplica.
         self._detalle(date(2026, 7, 1), date(2026, 12, 30))
         # Uno vigente para que el documento sí se genere.
-        vigente = self._detalle(date(2026, 6, 1), date(2026, 6, 30))
+        self._detalle(date(2026, 6, 1), date(2026, 6, 30))
 
         generados = self._generar()
 
         detalles = list(generados[0].documentos_detalles_documento_rel.all())
         self.assertEqual(len(detalles), 1)
-        self.assertEqual(detalles[0].documento_detalle_afectado_id, vigente.id)
+        self.assertEqual(detalles[0].fecha_hasta, date(2026, 6, 30))
 
     def test_no_genera_detalle_que_termino_antes_del_mes(self):
         self._detalle(date(2026, 1, 1), date(2026, 5, 20))
-        vigente = self._detalle(date(2026, 6, 1), date(2026, 6, 30))
+        self._detalle(date(2026, 6, 1), date(2026, 6, 30))
 
         generados = self._generar()
 
         detalles = list(generados[0].documentos_detalles_documento_rel.all())
         self.assertEqual(len(detalles), 1)
-        self.assertEqual(detalles[0].documento_detalle_afectado_id, vigente.id)
+        self.assertEqual(detalles[0].fecha_desde, date(2026, 6, 1))
 
     def test_documento_sin_detalles_vigentes_no_se_genera(self):
         self._detalle(date(2026, 7, 1), date(2026, 12, 30))
@@ -241,6 +242,32 @@ class GenerarDocumentoTests(TenantTestCase):
         # El origen tampoco se toca.
         self.documento.refresh_from_db()
         self.assertEqual(self.documento.fecha, date(2026, 1, 1))
+
+    def test_el_contrato_generado_no_apunta_al_origen(self):
+        self._detalle(date(2026, 6, 1), date(2026, 6, 30))
+
+        nuevo = self._generar()[0]
+
+        self.assertIsNone(nuevo.documento_referencia_id)
+        detalle = nuevo.documentos_detalles_documento_rel.get()
+        self.assertIsNone(detalle.documento_detalle_afectado_id)
+
+    def test_sin_validar_fechas_el_contrato_se_recorta_igual_y_no_avanza(self):
+        """
+        Sin validar fechas se toma aunque esté fechado después del periodo, pero sus
+        detalles se siguen acotando a `anio`/`mes` y su fecha no se mueve.
+        """
+        self.documento.fecha = date(2026, 8, 1)
+        self.documento.save(update_fields=['fecha'])
+        self._detalle(date(2026, 1, 1), date(2026, 12, 31))
+
+        generados = self._generar(validar_fechas=False)
+
+        detalle = generados[0].documentos_detalles_documento_rel.get()
+        self.assertEqual(detalle.fecha_desde, date(2026, 6, 1))
+        self.assertEqual(detalle.fecha_hasta, date(2026, 6, 30))
+        self.documento.refresh_from_db()
+        self.assertEqual(self.documento.fecha, date(2026, 8, 1))
 
     def test_detalle_sin_fechas_aborta(self):
         self._detalle(date(2026, 6, 1), date(2026, 6, 30))
@@ -394,13 +421,16 @@ class GenerarRecurrenteTests(TenantTestCase):
         documento.save()
         return documento
 
-    def _generar(self, documentos=None, tipo_origen=None, anio=2026, mes=9):
+    def _generar(
+        self, documentos=None, tipo_origen=None, anio=2026, mes=9, validar_fechas=True,
+    ):
         if documentos is None and tipo_origen is None:
             documentos = [self.plantilla]
         return documento_servicio.generar_recurrente(
             documento_tipo_destino_id=self.tipo_destino.id,
             anio=anio,
             mes=mes,
+            validar_fechas=validar_fechas,
             documento_ids=[d.id for d in documentos] if documentos else None,
             documento_tipo_origen_id=tipo_origen.id if tipo_origen else None,
         )
@@ -441,10 +471,18 @@ class GenerarRecurrenteTests(TenantTestCase):
         self.assertFalse(nuevo.estado_contabilizado)
         self.assertFalse(nuevo.estado_anulado)
 
-    def test_apunta_al_documento_que_lo_origino(self):
+    def test_no_apunta_a_la_plantilla(self):
+        """
+        Ni el encabezado ni los detalles quedan amarrados a la plantilla: si no, al
+        aprobar la factura se afectaría el saldo de la plantilla como si fuera una nota.
+        """
         nuevo = self._generar()[0]
 
-        self.assertEqual(nuevo.documento_referencia_id, self.plantilla.id)
+        self.assertIsNone(nuevo.documento_referencia_id)
+        self.assertFalse(
+            nuevo.documentos_detalles_documento_rel
+            .filter(documento_detalle_afectado__isnull=False).exists()
+        )
 
     def test_la_resolucion_sale_del_tipo_destino(self):
         """La del origen es de otro tipo y numeraría contra el rango equivocado."""
@@ -532,7 +570,7 @@ class GenerarRecurrenteTests(TenantTestCase):
 
         self.assertIn('pendientes', str(caso.exception))
         self.assertEqual(
-            GenDocumento.objects.filter(documento_referencia=self.plantilla).count(), 1,
+            GenDocumento.objects.filter(documento_tipo=self.tipo_destino).count(), 1,
         )
 
     def test_una_plantilla_fechada_despues_del_periodo_se_salta(self):
@@ -541,9 +579,11 @@ class GenerarRecurrenteTests(TenantTestCase):
 
         generados = self._generar(documentos=[self.plantilla, otra], anio=2026, mes=10)
 
-        self.assertEqual([g.documento_referencia_id for g in generados], [self.plantilla.id])
+        self.assertEqual(len(generados), 1)
         otra.refresh_from_db()
         self.assertEqual(otra.fecha, date(2026, 11, 1))
+        self.plantilla.refresh_from_db()
+        self.assertEqual(self.plantilla.fecha, date(2026, 11, 1))
 
     def test_una_plantilla_sin_fecha_se_genera(self):
         """`fecha` es opcional: sin ella la plantilla nunca se ha generado."""
@@ -566,9 +606,11 @@ class GenerarRecurrenteTests(TenantTestCase):
             self._generar([self.plantilla, ajeno])
 
         self.assertIn(str(ajeno.id), str(caso.exception))
-        # No quedó nada: la validación corre antes de crear.
+        # No quedó nada: la validación corre antes de crear. `ajeno` es del tipo
+        # destino, así que se descuenta.
         self.assertFalse(
-            GenDocumento.objects.filter(documento_referencia=self.plantilla).exists(),
+            GenDocumento.objects.filter(documento_tipo=self.tipo_destino)
+            .exclude(pk=ajeno.pk).exists(),
         )
 
     def test_un_id_inexistente_da_404(self):
@@ -576,11 +618,11 @@ class GenerarRecurrenteTests(TenantTestCase):
             documento_servicio.generar_recurrente(
                 documento_ids=[self.plantilla.id, 999999],
                 documento_tipo_destino_id=self.tipo_destino.id,
-                anio=2026, mes=9,
+                anio=2026, mes=9, validar_fechas=True,
             )
 
         self.assertFalse(
-            GenDocumento.objects.filter(documento_referencia=self.plantilla).exists(),
+            GenDocumento.objects.filter(documento_tipo=self.tipo_destino).exists(),
         )
 
     # ----------------------------------------------- los dos caminos juntos ----
@@ -590,13 +632,14 @@ class GenerarRecurrenteTests(TenantTestCase):
 
         generados = self._generar([self.plantilla, contrato])
 
-        por_origen = {g.documento_referencia_id: g for g in generados}
+        # Se generan en orden de id de la plantilla: primero la factura.
         self.assertEqual(len(generados), 2)
+        factura, programacion = generados
         # La factura se emite hoy; el contrato cierra el periodo.
-        self.assertEqual(por_origen[self.plantilla.id].fecha, timezone.localdate())
-        self.assertEqual(por_origen[contrato.id].fecha, date(2026, 9, 30))
+        self.assertEqual(factura.fecha, timezone.localdate())
+        self.assertEqual(programacion.fecha, date(2026, 9, 30))
         # Solo el contrato recalcula horas; los dos avanzan su fecha.
-        detalle = por_origen[contrato.id].documentos_detalles_documento_rel.get()
+        detalle = programacion.documentos_detalles_documento_rel.get()
         self.assertEqual(detalle.fecha_desde, date(2026, 9, 1))
         self.assertEqual(detalle.fecha_hasta, date(2026, 9, 30))
         self.assertGreater(detalle.horas, 0)
@@ -618,7 +661,7 @@ class GenerarRecurrenteTests(TenantTestCase):
             self._generar([self.plantilla, contrato])
 
         self.assertFalse(
-            GenDocumento.objects.filter(documento_referencia=self.plantilla).exists(),
+            GenDocumento.objects.filter(documento_tipo=self.tipo_destino).exists(),
         )
         contrato.refresh_from_db()
         self.assertEqual(contrato.fecha, date(2026, 1, 1))
@@ -631,21 +674,24 @@ class GenerarRecurrenteTests(TenantTestCase):
 
         generados = self._generar(tipo_origen=self.tipo_venta)
 
-        self.assertEqual(
-            sorted(g.documento_referencia_id for g in generados),
-            sorted([self.plantilla.id, otra.id]),
-        )
+        self.assertEqual(len(generados), 2)
+        for plantilla in (self.plantilla, otra):
+            plantilla.refresh_from_db()
+            self.assertEqual(plantilla.fecha, date(2026, 10, 1))
 
     def test_los_ids_acotan_la_seleccion_del_tipo(self):
         """Mandando los dos, los ids recortan lo que el tipo trajo."""
-        self._plantilla(self.tipo_venta)
+        otra = self._plantilla(self.tipo_venta)
 
         generados = self._generar(
             documentos=[self.plantilla], tipo_origen=self.tipo_venta,
         )
 
         self.assertEqual(len(generados), 1)
-        self.assertEqual(generados[0].documento_referencia_id, self.plantilla.id)
+        self.plantilla.refresh_from_db()
+        self.assertEqual(self.plantilla.fecha, date(2026, 10, 1))
+        otra.refresh_from_db()
+        self.assertEqual(otra.fecha, date(2020, 1, 1))
 
     def test_un_id_de_otro_tipo_no_entra_por_el_filtro(self):
         """
@@ -683,24 +729,66 @@ class GenerarRecurrenteTests(TenantTestCase):
             'documento_ids': [],
             'documento_tipo_destino': self.tipo_destino.id,
             'anio': 2026, 'mes': 9,
+            'validar_fechas': True,
         })
 
         self.assertTrue(serializador.is_valid(), serializador.errors)
 
-    def test_sin_tipo_ni_ids_se_rechaza_en_el_serializer(self):
-        """Con la lista vacía y sin tipo no queda de dónde sacar las plantillas."""
+    def test_validar_fechas_es_requerido(self):
         serializador = GenDocumentoGenerarRecurrenteSerializer(data={
-            'documento_ids': [],
+            'documento_tipo_origen': self.tipo_venta.id,
             'documento_tipo_destino': self.tipo_destino.id,
             'anio': 2026, 'mes': 9,
         })
 
         self.assertFalse(serializador.is_valid())
+        self.assertIn('validar_fechas', serializador.errors)
+
+    # ------------------------------------------------- sin validar fechas ----
+
+    def test_sin_validar_fechas_toma_la_plantilla_fechada_despues(self):
+        """Se genera aunque su fecha diga que el periodo ya salió, y la fecha no se mueve."""
+        self.plantilla.fecha = date(2026, 11, 1)
+        self.plantilla.save(update_fields=['fecha'])
+
+        generados = self._generar(anio=2026, mes=10, validar_fechas=False)
+
+        self.assertEqual(len(generados), 1)
+        self.plantilla.refresh_from_db()
+        self.assertEqual(self.plantilla.fecha, date(2026, 11, 1))
+
+    def test_sin_validar_fechas_generar_dos_veces_duplica(self):
+        """Sin la fecha como marca de "ya generado", cada corrida genera de nuevo."""
+        self._generar(anio=2026, mes=10, validar_fechas=False)
+        self._generar(anio=2026, mes=10, validar_fechas=False)
+
+        self.assertEqual(
+            GenDocumento.objects.filter(documento_tipo=self.tipo_destino).count(), 2,
+        )
+        self.plantilla.refresh_from_db()
+        self.assertEqual(self.plantilla.fecha, date(2020, 1, 1))
+
+    def test_lista_vacia_sin_tipo_se_rechaza_con_detail(self):
+        """
+        Con la lista vacía y sin tipo no queda de dónde sacar las plantillas. Lo
+        ataja el servicio, no el serializer, para que `detail` salga como texto.
+        """
+        with self.assertRaises(ValidationError) as ctx:
+            documento_servicio.generar_recurrente(
+                documento_tipo_destino_id=self.tipo_destino.id, anio=2026, mes=9,
+                validar_fechas=True, documento_ids=[],
+            )
+
+        self.assertEqual(
+            ctx.exception.detail['detail'],
+            'Debe enviar documento_tipo_origen o documento_ids.',
+        )
 
     def test_sin_tipo_ni_ids_se_rechaza(self):
         with self.assertRaises(ValidationError):
             documento_servicio.generar_recurrente(
                 documento_tipo_destino_id=self.tipo_destino.id, anio=2026, mes=9,
+                validar_fechas=True,
             )
 
     def _contrato(self):
@@ -7792,7 +7880,7 @@ class FechaContableTests(TenantTestCase):
         generados = documento_servicio.generar_recurrente(
             documento_ids=[origen.id],
             documento_tipo_destino_id=tipo_destino.id,
-            anio=2026, mes=6,
+            anio=2026, mes=6, validar_fechas=True,
         )
 
         self.assertEqual(generados[0].fecha_contable, date(2026, 6, 30))

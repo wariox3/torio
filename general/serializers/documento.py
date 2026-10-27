@@ -402,13 +402,16 @@ class GenDocumentoGenerarRecurrenteSerializer(serializers.Serializer):
     Las plantillas se eligen por tipo, por ids, o por los dos. Con
     `documento_tipo_origen` se toman todas las de ese tipo y los ids dejan de ser
     necesarios; mandando los dos, los ids acotan la selección del tipo.
+
+    Que falten los dos lo ataja el servicio (`generar_recurrente`) y no un
+    `validate()`: desde acá DRF devolvería `detail` como lista y no como texto.
     """
 
     documento_tipo_origen = serializers.PrimaryKeyRelatedField(
         queryset=GenDocumentoTipo.objects.all(), required=False,
     )
     # `allow_empty` a propósito: mandar `documento_ids: []` junto con el tipo es la
-    # forma natural de decir "sin ids". Que falten los dos lo ataja `validate`.
+    # forma natural de decir "sin ids". Que falten los dos lo ataja el servicio.
     documento_ids = serializers.ListField(
         child=serializers.IntegerField(min_value=1), required=False, allow_empty=True,
     )
@@ -417,10 +420,6 @@ class GenDocumentoGenerarRecurrenteSerializer(serializers.Serializer):
     )
     anio = serializers.IntegerField(min_value=1900, max_value=9999)
     mes = serializers.IntegerField(min_value=1, max_value=12)
-
-    def validate(self, datos):
-        if not datos.get('documento_tipo_origen') and not datos.get('documento_ids'):
-            raise serializers.ValidationError(
-                'Debe enviar documento_tipo_origen o documento_ids.'
-            )
-        return datos
+    # Requerido a propósito: decide si se respeta la fecha de cada plantilla, y
+    # un default escondería esa decisión.
+    validar_fechas = serializers.BooleanField()
