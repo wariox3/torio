@@ -3,7 +3,7 @@ from datetime import date
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from rest_framework import viewsets
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ParseError, UnsupportedMediaType, ValidationError
 
 from general.models import GenDocumento
 from general.serializers import (
@@ -90,7 +90,7 @@ class GenDocumentoInformeViewSet(
         if request is not None:
             try:
                 clave = request.data.get('informe')
-            except Exception:
+            except (ParseError, UnsupportedMediaType, AttributeError):  # body mal formado o que no es un objeto
                 clave = None
             if not clave:
                 clave = request.query_params.get('informe')
@@ -112,7 +112,7 @@ class GenDocumentoInformeViewSet(
         """Un parámetro del body o, si no viene, de la query string."""
         try:
             valor = self.request.data.get(nombre)
-        except Exception:
+        except (ParseError, UnsupportedMediaType, AttributeError):  # body mal formado o que no es un objeto
             valor = None
         return valor or self.request.query_params.get(nombre)
 

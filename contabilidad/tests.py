@@ -2505,7 +2505,7 @@ class CertificadoRetencionPdfTests(_InformeBase):
 
         filas = self._filas()
         self.assertEqual(len(filas), 2)  # el informe sí las trae
-        self.assertIsNone([f for f in filas if f['contacto_id'] is None][0]['contacto'])
+        self.assertIsNone(next(f for f in filas if f['contacto_id'] is None)['contacto'])
 
         elementos = self._formato(filas).construir()
         self.assertEqual(sum(1 for e in elementos if isinstance(e, PageBreak)), 0)

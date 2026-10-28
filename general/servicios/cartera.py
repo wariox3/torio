@@ -29,8 +29,19 @@ from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import (
-    Case, CharField, DateField, DecimalField, F, Func, IntegerField, OuterRef, Q, Subquery, Sum,
-    Value, When,
+    Case,
+    CharField,
+    DateField,
+    DecimalField,
+    F,
+    Func,
+    IntegerField,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+    When,
 )
 from django.db.models.functions import Coalesce
 from django.utils import timezone

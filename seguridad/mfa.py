@@ -28,9 +28,7 @@ from rest_framework_simplejwt.token_blacklist.models import (
 )
 
 from seguridad.models import (
-    METODO_CORREO,
     METODO_SMS,
-    METODO_TOTP,
     METODOS_ENVIADOS,
     SegMfaCodigoRespaldo,
     SegMfaDesafio,
@@ -224,7 +222,7 @@ def codigos_respaldo_restantes(usuario) -> int:
 # Desafíos
 # --------------------------------------------------------------------------- #
 
-def crear_desafio(usuario, metodo: str, ip: str = None) -> tuple[SegMfaDesafio, str | None]:
+def crear_desafio(usuario, metodo: str, ip: str | None = None) -> tuple[SegMfaDesafio, str | None]:
     """
     Abre el segundo paso de un login cuya clave ya fue validada.
 
@@ -384,7 +382,7 @@ def verificar_desafio(mfa_token: str, codigo: str, permitir_respaldo: bool = Tru
 # Dispositivos recordados
 # --------------------------------------------------------------------------- #
 
-def recordar_dispositivo(usuario, user_agent: str = None, ip: str = None) -> str:
+def recordar_dispositivo(usuario, user_agent: str | None = None, ip: str | None = None) -> str:
     """
     Registra el navegador y devuelve el token firmado para la cookie.
 
@@ -476,7 +474,7 @@ def enviar_codigo(usuario, codigo: str, metodo: str):
             return
         try:
             Zinc().sms(numero, f'Torio: tu codigo de verificacion es {codigo}. Vence en {minutos} minutos.')
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — un envío que falla no tumba la petición
             logger.warning('No se pudo enviar el SMS MFA al usuario %s: %s', usuario.pk, e)
         return
 
@@ -488,5 +486,5 @@ def enviar_codigo(usuario, codigo: str, metodo: str):
     )
     try:
         Zinc().correo(usuario.email, 'Código de verificación', contenido)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — un envío que falla no tumba la petición
         logger.warning('No se pudo enviar el código MFA a %s: %s', usuario.email, e)

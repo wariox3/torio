@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.db import connection
 from django_tenants.utils import get_public_schema_name
 from rest_framework import serializers

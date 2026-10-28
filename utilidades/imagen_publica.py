@@ -97,5 +97,5 @@ def borrar(prefijo: str, imagen_uuid) -> None:
     for key in (key_original(prefijo, imagen_uuid), key_thumbnail(prefijo, imagen_uuid)):
         try:
             backblaze.eliminar(bucket, key)
-        except Exception:
+        except Exception:  # noqa: BLE001 — borrar en B2 nunca corta el flujo
             logger.warning('No se pudo borrar la imagen en B2: %s', key)

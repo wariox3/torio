@@ -1,7 +1,7 @@
 from decouple import Csv, config
 from django.core.exceptions import ImproperlyConfigured
 
-from .base import *  # noqa: F401,F403
+from .base import *
 
 DEBUG = False
 
@@ -15,7 +15,7 @@ CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
 REDIS_URL = config('REDIS_URL')
 if not REDIS_URL.startswith('rediss://'):
     raise ImproperlyConfigured('REDIS_URL tiene que ser rediss:// (TLS) en producción.')
-CACHES['default']['LOCATION'] = REDIS_URL  # noqa: F405
+CACHES['default']['LOCATION'] = REDIS_URL
 
 # HTTPS / cookies
 SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=True, cast=bool)

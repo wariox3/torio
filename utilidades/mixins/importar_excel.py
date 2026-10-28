@@ -4,6 +4,7 @@ Mixin para importar datos a un ViewSet desde un archivo .xlsx.
 from io import BytesIO
 from zipfile import BadZipFile
 
+from django.core.exceptions import FieldDoesNotExist
 from django.db import models as dj_models
 from django.db import transaction
 from django.http import HttpResponse
@@ -215,14 +216,14 @@ class ImportarExcelMixin:
         for parte in partes[:-1]:
             try:
                 f = actual._meta.get_field(parte)
-            except Exception:
+            except FieldDoesNotExist:
                 return None
             if not (f.is_relation and f.related_model):
                 return None
             actual = f.related_model
         try:
             return actual._meta.get_field(partes[-1])
-        except Exception:
+        except FieldDoesNotExist:
             return None
 
     @staticmethod
@@ -319,7 +320,7 @@ class ImportarExcelMixin:
             wb = load_workbook(archivo, data_only=False, read_only=True)
         except (InvalidFileException, BadZipFile):
             return self._error_importar('El archivo no es un Excel válido o está corrupto')
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — cualquier otro fallo de lectura se informa al usuario
             return self._error_importar(f'No se pudo leer el archivo: {e}')
 
         try:

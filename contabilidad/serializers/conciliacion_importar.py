@@ -51,7 +51,7 @@ class ConConciliacionImportarSerializer(serializers.Serializer):
                     fecha_hasta=self._fecha(datos.get('fecha_hasta'), 'Fecha hasta'),
                     cuenta_banco=cuenta_banco,
                 ))
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — el error de la fila se reporta al usuario
                 errores.append({'fila': idx, 'mensaje': str(e)})
                 if len(errores) >= self.LIMITE_ERRORES:
                     break

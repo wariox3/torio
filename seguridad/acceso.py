@@ -52,8 +52,8 @@ def registrar_acceso(
     resultado: str,
     *,
     usuario=None,
-    email: str = None,
-    metodo_mfa: str = None,
+    email: str | None = None,
+    metodo_mfa: str | None = None,
     dispositivo_recordado: bool = False,
     codigo_respaldo: bool = False,
 ) -> SegAcceso:

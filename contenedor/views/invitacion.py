@@ -137,7 +137,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         )
         try:
             Zinc().correo(usuario.email, f'Invitación a {cliente.nombre}', html)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — un envío que falla no tumba la petición
             logger.warning('No se pudo enviar correo de invitación a %s: %s', usuario.email, e)
 
         return Response(CtnInvitacionSerializer(invitacion).data, status=status.HTTP_201_CREATED)

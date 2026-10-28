@@ -33,7 +33,7 @@ class Rededoc:
     ESQUEMA_AUTH = 'Api-Key'
     TIMEOUT = 10
 
-    def __init__(self, url: str = None, key: str = None, timeout: float = None):
+    def __init__(self, url: str | None = None, key: str | None = None, timeout: float | None = None):
         self.url = (url or settings.REDEDOC_URL).rstrip('/')
         self.key = key if key is not None else settings.REDEDOC_KEY
         self.timeout = timeout or self.TIMEOUT
@@ -98,7 +98,7 @@ class Rededoc:
         """
         return self._peticion('GET', '/api/emisores/certificado/', parametros={'emisor': emisor_id})
 
-    def consultar_software(self, emisor_id, modulo: str = None):
+    def consultar_software(self, emisor_id, modulo: str | None = None):
         """
         Los registros de software DIAN de un emisor.
         `GET /api/emisores/software/?emisor={id}&modulo={facturacion|nomina}`;
@@ -381,8 +381,8 @@ class Rededoc:
             'GET', f'/api/documentos/documento/{documento_id}/xml/', binario=True,
         )
 
-    def _peticion(self, metodo: str, ruta: str, datos: dict = None, parametros: dict = None,
-                  archivos: dict = None, timeout: float = None, binario: bool = False,
+    def _peticion(self, metodo: str, ruta: str, datos: dict | None = None, parametros: dict | None = None,
+                  archivos: dict | None = None, timeout: float | None = None, binario: bool = False,
                   cabeceras: tuple = ()):
         """
         Con `archivos` la petición sale como multipart y `datos` son los campos del
@@ -405,7 +405,7 @@ class Rededoc:
                 headers=self._headers(),
                 timeout=timeout or self.timeout,
             )
-        except Exception as e:
+        except (httpx.HTTPError, httpx.InvalidURL) as e:
             logger.error('RedEDoc %s %s falló: %s', metodo, url_completa, e)
             return {'error': True, 'status': 0, 'datos': {'mensaje': f'No se pudo contactar el servicio RedEDoc: {e}'}}
 
@@ -425,7 +425,7 @@ class Rededoc:
         """El API responde JSON, pero un 502 del proxy o un 404 de Apache llega en HTML."""
         try:
             return respuesta.json()
-        except Exception:
+        except ValueError:  # JSONDecodeError y UnicodeDecodeError
             return {'mensaje': respuesta.text[:500]}
 
 
@@ -453,7 +453,7 @@ def firmar_aviso(cuerpo: bytes, fecha: str, secreto: str) -> str:
     return f'{VERSION_FIRMA}={digest}'
 
 
-def firma_valida(cuerpo: bytes, fecha: str, firma: str, ahora: float = None) -> bool:
+def firma_valida(cuerpo: bytes, fecha: str, firma: str, ahora: float | None = None) -> bool:
     """
     ¿Viene el aviso de rededoc y es reciente?
 

@@ -29,7 +29,7 @@ from .riesgo import HumRiesgoViewSet
 from .salud import HumSaludViewSet
 from .subtipo_cotizante import HumSubtipoCotizanteViewSet
 from .sucursal import HumSucursalViewSet
+from .tablero import HumTableroViewSet
 from .tiempo import HumTiempoViewSet
 from .tipo_costo import HumTipoCostoViewSet
-from .tablero import HumTableroViewSet
 from .tipo_cotizante import HumTipoCotizanteViewSet

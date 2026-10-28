@@ -627,11 +627,13 @@ class SolicitudYArchivoTests(_Base):
     def test_si_falla_el_insert_se_borra_de_b2(self):
         solicitud = CtnSolicitud.objects.create(cliente=self.cliente, solicitud_tipo=self.certificado)
 
-        with mock.patch.object(backblaze, 'subir') as subir, \
-                mock.patch.object(backblaze, 'eliminar') as eliminar, \
-                mock.patch.object(CtnArchivo.objects, 'create', side_effect=DatabaseError('caída')):
-            with self.assertRaises(DatabaseError):
-                archivo_servicio.subir(_pdf(), self.modelo, solicitud, self.camara)
+        with (
+            mock.patch.object(backblaze, 'subir') as subir,
+            mock.patch.object(backblaze, 'eliminar') as eliminar,
+            mock.patch.object(CtnArchivo.objects, 'create', side_effect=DatabaseError('caída')),
+            self.assertRaises(DatabaseError),
+        ):
+            archivo_servicio.subir(_pdf(), self.modelo, solicitud, self.camara)
 
         eliminar.assert_called_once_with('privado', subir.call_args.kwargs['key'])
 

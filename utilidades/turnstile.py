@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 _VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
 
 
-def verify_turnstile(token: str, ip: str = None):
+def verify_turnstile(token: str, ip: str | None = None):
     if not settings.TURNSTILE_ENABLED:
         return
 
@@ -23,7 +23,7 @@ def verify_turnstile(token: str, ip: str = None):
     try:
         respuesta = httpx.post(_VERIFY_URL, data=data, timeout=5)
         resultado = respuesta.json()
-    except Exception as e:
+    except (httpx.HTTPError, httpx.InvalidURL, ValueError) as e:
         logger.error('Error al verificar Turnstile: %s', e)
         raise ValidationError({'turnstile_token': 'No se pudo verificar el token. Intenta de nuevo.'})
 

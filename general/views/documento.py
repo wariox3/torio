@@ -12,8 +12,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
-from contabilidad.servicios import depreciacion as depreciacion_servicio
 from contabilidad.models import ConCentroCosto
+from contabilidad.servicios import depreciacion as depreciacion_servicio
 from general.models import GenDocumento, GenDocumentoConceptoCorreccion, GenResolucion, GenSede
 from general.serializers import (
     GenDocumentoConImpuestosSerializer,

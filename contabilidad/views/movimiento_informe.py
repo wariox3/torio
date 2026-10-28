@@ -3,7 +3,7 @@ from django.utils import timezone
 from drf_spectacular.utils import OpenApiTypes, extend_schema, inline_serializer
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ParseError, UnsupportedMediaType, ValidationError
 from rest_framework.response import Response
 
 from contabilidad.formatos import FormatoCertificadoRetencion
@@ -226,7 +226,7 @@ class ConMovimientoInformeViewSet(FiltrosDinamicosMixin, viewsets.GenericViewSet
             return None
         try:
             valor = request.data.get(clave)
-        except Exception:
+        except (ParseError, UnsupportedMediaType, AttributeError):  # body mal formado o que no es un objeto
             valor = None
         # Comparar contra None y no por verdad: `solo_con_saldo: false` en el body
         # es un valor, no una ausencia, y con `or` se perdería.
@@ -266,7 +266,7 @@ class ConMovimientoInformeViewSet(FiltrosDinamicosMixin, viewsets.GenericViewSet
     def _rechazar_ordenamientos(self, request):
         try:
             ordenamientos = request.data.get('ordenamientos')
-        except Exception:
+        except (ParseError, UnsupportedMediaType, AttributeError):  # body mal formado o que no es un objeto
             ordenamientos = None
         if ordenamientos:
             raise ValidationError({

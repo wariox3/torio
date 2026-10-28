@@ -29,10 +29,13 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from contabilidad.models import ConCentroCosto, ConComprobante, ConCuenta
 from general import tasks as tareas
 from general.formatos import (
-    FormatoDocumentoCuentaCobro, FormatoDocumentoFactura, FormatoDocumentoPos,
-    FormatoDocumentoPosElectronico, FormatoDocumentoSoporte,
+    FormatoDocumentoCuentaCobro,
+    FormatoDocumentoFactura,
+    FormatoDocumentoPos,
+    FormatoDocumentoPosElectronico,
+    FormatoDocumentoSoporte,
+    documento_pos,
 )
-from general.formatos import documento_pos
 from general.formatos.documento_factura import URL_CONSULTA_DIAN
 from general.models import (
     GenArchivo,
@@ -59,7 +62,6 @@ from general.models import (
     GenImpuesto,
     GenImpuestoTipo,
     GenItem,
-    GenModalidad,
     GenModelo,
     GenPais,
     GenParametro,
@@ -1075,11 +1077,13 @@ class SubirArchivoTests(TenantTestCase):
 
     def test_si_falla_la_fila_se_borra_el_objeto_de_b2(self):
         """Sin esto el objeto queda en el bucket sin nada que lo referencie."""
-        with mock.patch.object(backblaze, 'subir'), \
-             mock.patch.object(backblaze, 'eliminar') as eliminar, \
-             mock.patch.object(GenArchivo.objects, 'create', side_effect=RuntimeError('boom')):
-            with self.assertRaises(RuntimeError):
-                archivo_servicio.subir_archivo(self._pdf(), modelo=self.modelo, objeto_id=self.objeto.pk)
+        with (
+            mock.patch.object(backblaze, 'subir'),
+            mock.patch.object(backblaze, 'eliminar') as eliminar,
+            mock.patch.object(GenArchivo.objects, 'create', side_effect=RuntimeError('boom')),
+            self.assertRaises(RuntimeError),
+        ):
+            archivo_servicio.subir_archivo(self._pdf(), modelo=self.modelo, objeto_id=self.objeto.pk)
         self.assertEqual(eliminar.call_count, 1)
         self.assertEqual(eliminar.call_args.args[1].split('/')[-1][-4:], '.pdf')
 
@@ -4121,11 +4125,10 @@ class CrudPrecioDetalleTests(_PrecioDetalleBaseTests):
     def test_la_bd_tambien_rechaza_el_duplicado(self):
         self._crear_detalle()
 
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                GenPrecioDetalle.objects.create(
-                    precio=self.precio, item=self.item, vr_precio=Decimal('50.00'),
-                )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            GenPrecioDetalle.objects.create(
+                precio=self.precio, item=self.item, vr_precio=Decimal('50.00'),
+            )
 
 
 class ImportarPrecioDetalleTests(_PrecioDetalleBaseTests):
@@ -11599,7 +11602,7 @@ class ImagenTests(TenantTestCase):
         self.assertEqual(self._principales(), [primera.data['id']])
 
     def test_marcar_principal_deja_una_sola(self):
-        primera, _ = self._subir()
+        self._subir()  # la primera queda principal; se marca la segunda
         segunda, _ = self._subir()
 
         respuesta, _ = self._accion('post', 'principal', segunda.data['id'])
@@ -11631,9 +11634,11 @@ class ImagenTests(TenantTestCase):
 
     def test_si_b2_falla_al_eliminar_la_fila_se_conserva(self):
         primera, _ = self._subir()
-        with mock.patch.object(backblaze, 'eliminar', side_effect=backblaze.ErrorDeAlmacenamiento()):
-            with self.assertRaises(backblaze.ErrorDeAlmacenamiento):
-                imagen_servicio.eliminar_imagen(GenImagen.objects.get(pk=primera.data['id']))
+        with (
+            mock.patch.object(backblaze, 'eliminar', side_effect=backblaze.ErrorDeAlmacenamiento()),
+            self.assertRaises(backblaze.ErrorDeAlmacenamiento),
+        ):
+            imagen_servicio.eliminar_imagen(GenImagen.objects.get(pk=primera.data['id']))
         self.assertTrue(GenImagen.objects.filter(pk=primera.data['id']).exists())
 
     def test_tope_de_imagenes_por_registro(self):

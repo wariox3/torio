@@ -92,7 +92,7 @@ class ConCuentaImportarSerializer(serializers.Serializer):
                     cuenta_grupo_id=grupo_id if grupo_id in grupos else None,
                     cuenta_cuenta_id=cuenta_id if cuenta_id in cuentas else None,
                 ))
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — el error de la fila se reporta al usuario
                 errores.append({'fila': idx, 'mensaje': str(e)})
                 if len(errores) >= self.LIMITE_ERRORES:
                     break

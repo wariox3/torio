@@ -71,9 +71,11 @@ class CifradoTests(MfaBaseTests):
 
     def test_otra_clave_no_descifra(self):
         cifrado = servicio_mfa.cifrar_secreto(self.secreto)
-        with override_settings(MFA_ENCRYPTION_KEY=Fernet.generate_key().decode()):
-            with self.assertRaises(servicio_mfa.MfaError):
-                servicio_mfa.descifrar_secreto(cifrado)
+        with (
+            override_settings(MFA_ENCRYPTION_KEY=Fernet.generate_key().decode()),
+            self.assertRaises(servicio_mfa.MfaError),
+        ):
+            servicio_mfa.descifrar_secreto(cifrado)
 
 
 class TotpTests(MfaBaseTests):
@@ -339,7 +341,7 @@ class MfaEndpointsTests(TestCase):
         )
 
     def test_activar_con_codigo_valido(self):
-        secreto, codigos = self._activar_totp()
+        _, codigos = self._activar_totp()
         self.assertEqual(len(codigos), servicio_mfa.CANTIDAD_CODIGOS_RESPALDO)
 
         estado = self.client.get('/seguridad/mfa/').data
@@ -1254,9 +1256,8 @@ class FotoDePerfilTests(TestCase):
 
         corte = ConnectionClosedError(endpoint_url='https://s3.us-east-005.backblazeb2.com/x')
         with patch.object(backblaze, 'subir', side_effect=[None, corte]), \
-             patch.object(backblaze, 'eliminar') as eliminar:
-            with self.assertRaises(ConnectionClosedError):
-                foto.subir_foto(self._imagen(), self.usuario)
+             patch.object(backblaze, 'eliminar') as eliminar, self.assertRaises(ConnectionClosedError):
+            foto.subir_foto(self._imagen(), self.usuario)
 
         self.usuario.refresh_from_db()
         self.assertEqual(self.usuario.imagen_uuid, original, 'la foto vieja tiene que seguir vigente')
@@ -1274,9 +1275,8 @@ class FotoDePerfilTests(TestCase):
         }
         for nombre, archivo in casos.items():
             with self.subTest(caso=nombre):
-                with patch.object(backblaze, 'subir') as subir:
-                    with self.assertRaises(ValueError):
-                        foto.subir_foto(archivo, self.usuario)
+                with patch.object(backblaze, 'subir') as subir, self.assertRaises(ValueError):
+                    foto.subir_foto(archivo, self.usuario)
                 subir.assert_not_called()
 
     def test_rechaza_la_bomba_de_descompresion(self):
@@ -1287,9 +1287,8 @@ class FotoDePerfilTests(TestCase):
         grande = self._imagen(tamano=(8000, 8000), formato='PNG', color='white')
         self.assertLess(grande.size, imagenes.TAMANO_MAXIMO, 'el caso pierde sentido si no pasa el límite de peso')
 
-        with patch.object(backblaze, 'subir') as subir:
-            with self.assertRaises(ValueError) as c:
-                foto.subir_foto(grande, self.usuario)
+        with patch.object(backblaze, 'subir') as subir, self.assertRaises(ValueError) as c:
+            foto.subir_foto(grande, self.usuario)
         self.assertIn('megapíxeles', str(c.exception))
         subir.assert_not_called()
 

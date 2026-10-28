@@ -68,7 +68,7 @@ class HumProgramacionImportarSerializer(serializers.Serializer):
                     # Sin periodo, el del grupo, igual que al crear por la API.
                     periodo_id=periodo.id if periodo else grupo.periodo_id,
                 ))
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — el error de la fila se reporta al usuario
                 errores.append({'fila': idx, 'mensaje': str(e)})
                 if len(errores) >= self.LIMITE_ERRORES:
                     break

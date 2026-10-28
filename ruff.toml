@@ -1,11 +1,23 @@
 target-version = "py312"
+# El ancho que de verdad usa el código; con el de ruff (88) isort parte imports que caben.
+line-length = 120
+# Código generado por Django, y una migración ya generada no se edita.
+extend-exclude = ["*/migrations/*"]
 
 [lint]
 extend-select = ["I"]
 # RUF012 (atributo de clase mutable): en Django y DRF es la forma normal de declarar
 # `Meta.fields`, `ordering`, `permission_classes`, las `operations` de una migración…
 # El framework los lee y nunca los modifica, así que la regla solo da falsos positivos.
-ignore = ["RUF012"]
+#
+# FURB157 (`Decimal('100')` → `Decimal(100)`): el valor es el mismo, y escribirlo
+# siempre como texto es consistente con `Decimal('12.50')`, que sí lo necesita.
+ignore = ["RUF012", "FURB157"]
+
+[lint.per-file-ignores]
+# Los `__init__.py` de models, views, serializers y servicios re-exportan: de eso
+# dependen imports como `from general.models import GenDocumento`.
+"__init__.py" = ["F401"]
 
 [lint.isort]
 known-first-party = [

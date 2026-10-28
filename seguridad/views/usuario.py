@@ -158,7 +158,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         )
         try:
             Zinc().correo(usuario.email, 'Verifica tu cuenta', contenido_html)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — un envío que falla no tumba la petición
             logger.warning('No se pudo enviar correo de verificación a %s: %s', usuario.email, e)
 
         cabeceras = self.get_success_headers(serializador.data)
@@ -241,7 +241,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         )
         try:
             Zinc().correo(usuario.email, 'Verifica tu cuenta', contenido_html)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — un envío que falla no tumba la petición
             logger.warning('No se pudo enviar correo de verificación a %s: %s', usuario.email, e)
 
         return _RESPUESTA_GENERICA
@@ -280,7 +280,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         )
         try:
             Zinc().correo(email, 'Recuperación de clave', html_content)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — un envío que falla no tumba la petición
             logger.warning('No se pudo enviar correo de recuperación a %s: %s', email, e)
 
         return Response({'detail': 'Se envía correo para recuperar la clave.'})

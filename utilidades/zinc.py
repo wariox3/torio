@@ -8,13 +8,13 @@ logger = logging.getLogger(__name__)
 
 class Zinc:
 
-    def correo(self, correo: str, asunto: str, contenido: str, aplicacion='reddoc', archivos: list = []):
+    def correo(self, correo: str, asunto: str, contenido: str, aplicacion='reddoc', archivos: list | None = None):
         datos = {
             'correo': correo,
             'asunto': asunto,
             'contenido': contenido,
             'aplicacion': aplicacion,
-            'archivos': archivos,
+            'archivos': archivos or [],
         }
         respuesta = self._post(datos, '/api/correo/itrio')
         if respuesta['status'] == 200:
@@ -81,6 +81,6 @@ class Zinc:
         try:
             respuesta = httpx.post(url_completa, json=data, timeout=10)
             return {'status': respuesta.status_code, 'datos': respuesta.json()}
-        except Exception as e:
+        except (httpx.HTTPError, httpx.InvalidURL, ValueError) as e:
             logger.error('Zinc error: %s', e)
             return {'status': 500, 'datos': {}}

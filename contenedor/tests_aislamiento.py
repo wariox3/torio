@@ -1220,9 +1220,11 @@ class ContenidoPorEndpointTests(AislamientoBase):
     def _campo_testigo(instancia):
         """El campo de texto donde quedó el marcador, para comprobar que no lo pisaron."""
         for campo in instancia._meta.concrete_fields:
-            if isinstance(campo, (campos_db.CharField, campos_db.TextField)):
-                if getattr(instancia, campo.name, None) == MARCADOR[ESQUEMA_A]:
-                    return campo.name, MARCADOR[ESQUEMA_A]
+            if (
+                isinstance(campo, (campos_db.CharField, campos_db.TextField))
+                and getattr(instancia, campo.name, None) == MARCADOR[ESQUEMA_A]
+            ):
+                return campo.name, MARCADOR[ESQUEMA_A]
         return None, None
 
     def test_los_permisos_de_un_usuario_de_otro_contenedor_no_se_ven(self):

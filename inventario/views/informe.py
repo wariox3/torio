@@ -1,7 +1,7 @@
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from rest_framework import viewsets
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ParseError, UnsupportedMediaType, ValidationError
 
 from general.models import GenDocumentoDetalle, GenItem
 from inventario.models import InvExistencia
@@ -122,7 +122,7 @@ class InvInformeViewSet(
         if request is not None:
             try:
                 clave = request.data.get('informe')
-            except Exception:
+            except (ParseError, UnsupportedMediaType, AttributeError):  # body mal formado o que no es un objeto
                 clave = None
             if not clave:
                 clave = request.query_params.get('informe')

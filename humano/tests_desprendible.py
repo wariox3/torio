@@ -5,9 +5,9 @@ los documentos reales de una programación, `programacion/imprimir-nominas/` y
 """
 import base64
 import io
-from unittest import mock
 from datetime import date
 from decimal import Decimal
+from unittest import mock
 
 from celery.exceptions import Retry
 from django.core.management import call_command
@@ -18,8 +18,8 @@ from rest_framework.test import APIRequestFactory
 from general.formatos import FormatoDocumentoGenerico, FormatoDocumentoNomina
 from general.models import GenConfiguracion, GenContacto, GenDocumento, GenIdentificacion, GenTipoPersona
 from general.servicios import documento_imprimir
-from humano.models import HumContrato, HumGrupo, HumMotivoTerminacion, HumProgramacion
 from humano import tasks
+from humano.models import HumContrato, HumGrupo, HumMotivoTerminacion, HumProgramacion
 from humano.servicios import (
     aprobar_programacion,
     cargar_contratos,

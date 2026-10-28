@@ -162,10 +162,8 @@ class CrearTests(CreacionBase):
         """Si quedara en `creando`, no habría forma de reintentarlo por 30 minutos."""
         with patch.object(
             tasks.crear_contenedor, 'delay', side_effect=OperationalError('sin RabbitMQ'),
-        ):
-            with self.assertLogs('contenedor.tasks', level='ERROR'):
-                with self.captureOnCommitCallbacks(execute=True):
-                    respuesta = self._crear('nuevo')
+        ), self.assertLogs('contenedor.tasks', level='ERROR'), self.captureOnCommitCallbacks(execute=True):
+            respuesta = self._crear('nuevo')
 
         self.assertEqual(respuesta.status_code, 202)
         self.assertEqual(
@@ -277,9 +275,8 @@ class EstadoTests(CreacionBase):
 class ReintentarTests(CreacionBase):
 
     def _reintentar(self, cliente, usuario=None):
-        with patch.object(tasks.crear_contenedor, 'delay') as delay:
-            with self.captureOnCommitCallbacks(execute=True):
-                respuesta = self._accion('post', 'reintentar', cliente, usuario)
+        with patch.object(tasks.crear_contenedor, 'delay') as delay, self.captureOnCommitCallbacks(execute=True):
+            respuesta = self._accion('post', 'reintentar', cliente, usuario)
         return respuesta, delay
 
     def test_uno_fallido_vuelve_a_creando_y_se_encola(self):
@@ -430,9 +427,11 @@ class TareaTests(CreacionBase):
     def test_una_falla_persistente_se_reintenta_y_termina_en_error(self):
         cliente = self._cliente('nuevo', self.duenio, CtnCliente.ESTADO_CREANDO)
 
-        with patch.object(tasks, '_construir', side_effect=RuntimeError('sin disco')) as construir:
-            with self.assertLogs('contenedor.tasks', level='ERROR') as registro:
-                tasks.crear_contenedor.apply(args=[cliente.pk])
+        with (
+            patch.object(tasks, '_construir', side_effect=RuntimeError('sin disco')) as construir,
+            self.assertLogs('contenedor.tasks', level='ERROR') as registro,
+        ):
+            tasks.crear_contenedor.apply(args=[cliente.pk])
 
         # El intento original más los reintentos.
         self.assertEqual(construir.call_count, tasks.MAXIMO_REINTENTOS + 1)
@@ -483,9 +482,11 @@ class TareaTests(CreacionBase):
         """Incluso si la construcción falla: si no, el reintento lo encontraría tomado."""
         cliente = self._cliente('nuevo', self.duenio, CtnCliente.ESTADO_CREANDO)
 
-        with patch.object(tasks, '_construir', side_effect=RuntimeError('corte')):
-            with self.assertLogs('contenedor.tasks', level='ERROR'):
-                tasks.crear_contenedor.apply(args=[cliente.pk])
+        with (
+            patch.object(tasks, '_construir', side_effect=RuntimeError('corte')),
+            self.assertLogs('contenedor.tasks', level='ERROR'),
+        ):
+            tasks.crear_contenedor.apply(args=[cliente.pk])
 
         with tasks._candado(cliente.pk) as tomado:
             self.assertTrue(tomado)

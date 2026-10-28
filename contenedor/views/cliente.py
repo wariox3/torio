@@ -4,11 +4,13 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db import IntegrityError, connection, transaction
 from django.db.models import BooleanField, Case, Count, OuterRef, Prefetch, Q, Subquery, Value, When
+from django.http import Http404
 from django.utils import timezone
 from django_tenants.utils import get_public_schema_name, schema_exists
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -349,7 +351,7 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         try:
             cliente = self.get_object()
-        except Exception:
+        except (Http404, PermissionDenied):
             return Response(
                 {'detail': f'El cliente con id "{kwargs.get("pk")}" no existe.'},
                 status=status.HTTP_404_NOT_FOUND,

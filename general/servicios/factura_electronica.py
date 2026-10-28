@@ -270,7 +270,7 @@ def certificado_consultar(cliente: Rededoc = None) -> dict:
     return respuesta['datos']
 
 
-def software_consultar(modulo: str = None, cliente: Rededoc = None) -> dict:
+def software_consultar(modulo: str | None = None, cliente: Rededoc = None) -> dict:
     """
     El software DIAN del emisor de `gen_rededoc_emisor`, tal como lo tiene
     rededoc. Con `modulo` (facturacion o nomina) solo el de ese módulo.
@@ -338,7 +338,7 @@ def software_actualizar(software_id: int, datos: dict, cliente: Rededoc = None) 
     return respuesta['datos']
 
 
-def resoluciones_validar(venta: bool = None, compra: bool = None, cliente: Rededoc = None) -> dict:
+def resoluciones_validar(venta: bool | None = None, compra: bool | None = None, cliente: Rededoc = None) -> dict:
     """
     Valida contra la DIAN, a través de rededoc, las resoluciones vigentes del
     tenant, y marca como inactivas las que ya vencieron.
@@ -432,7 +432,7 @@ AMBIENTE_RESOLUCIONES = 1
 MODULOS_RESOLUCIONES = ('facturacion', 'compras')
 
 
-def resoluciones_consultar(modulo: str = None, pagina: int = None, cliente: Rededoc = None) -> dict:
+def resoluciones_consultar(modulo: str | None = None, pagina: int | None = None, cliente: Rededoc = None) -> dict:
     """
     Le pide a rededoc que traiga de la DIAN las resoluciones del emisor de
     `gen_rededoc_emisor` y devuelve una página de las que le quedan registradas.
@@ -585,7 +585,7 @@ def certificado_cargar(archivo, clave, cliente: Rededoc = None) -> dict:
         )
     if archivo.size > TAMANO_MAXIMO_CERTIFICADO:
         raise ErrorFacturaElectronica(
-            'El certificado supera el límite de {} MB.'.format(TAMANO_MAXIMO_CERTIFICADO // (1024 * 1024)),
+            f'El certificado supera el límite de {TAMANO_MAXIMO_CERTIFICADO // (1024 * 1024)} MB.',
         )
 
     # El certificado se cuelga del emisor, así que sin emisor no hay dónde ponerlo.
@@ -1975,7 +1975,7 @@ def recepcion_documento_cargar(archivo, cliente: Rededoc = None) -> tuple:
         raise ErrorFacturaElectronica('El archivo debe ser un .zip o un .xml.')
     if archivo.size > TAMANO_MAXIMO_RECEPCION:
         raise ErrorFacturaElectronica(
-            'El archivo supera el límite de {} MB.'.format(TAMANO_MAXIMO_RECEPCION // (1024 * 1024)),
+            f'El archivo supera el límite de {TAMANO_MAXIMO_RECEPCION // (1024 * 1024)} MB.',
         )
 
     emisor_id = _emisor_id()

@@ -32,9 +32,9 @@ from humano.views import (
     HumSaludViewSet,
     HumSubtipoCotizanteViewSet,
     HumSucursalViewSet,
+    HumTableroViewSet,
     HumTiempoViewSet,
     HumTipoCostoViewSet,
-    HumTableroViewSet,
     HumTipoCotizanteViewSet,
 )
 

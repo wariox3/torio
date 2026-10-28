@@ -9,6 +9,7 @@ from .cuenta_banco_clase import GenCuentaBancoClaseViewSet
 from .cuenta_banco_tipo import GenCuentaBancoTipoViewSet
 from .documento import GenDocumentoViewSet
 from .documento_clase import GenDocumentoClaseViewSet
+from .documento_concepto_correccion import GenDocumentoConceptoCorreccionViewSet
 from .documento_detalle import GenDocumentoDetalleViewSet
 from .documento_detalle_informe import GenDocumentoDetalleInformeViewSet
 from .documento_electronico_error import GenDocumentoElectronicoErrorViewSet
@@ -26,7 +27,6 @@ from .impuesto import GenImpuestoViewSet
 from .impuesto_tipo import GenImpuestoTipoViewSet
 from .item import GenItemViewSet
 from .log import GenLogViewSet
-from .documento_concepto_correccion import GenDocumentoConceptoCorreccionViewSet
 from .metodo_pago import GenMetodoPagoViewSet
 from .modalidad import GenModalidadViewSet
 from .modelo import GenModeloViewSet

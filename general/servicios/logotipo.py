@@ -70,5 +70,5 @@ def bytes_logotipo(configuracion) -> bytes | None:
         return None
     try:
         return base64.b64decode(codificado, validate=True)
-    except Exception:
+    except (ValueError, TypeError):  # binascii.Error es un ValueError
         return None

@@ -255,7 +255,7 @@ class EncabezadoEmpresa:
             escala = min(LADO_LOGO / ancho_px, LADO_LOGO / alto_px)
             alto = alto_px * escala
             imagen = Image(io.BytesIO(datos), width=ancho_px * escala, height=alto)
-        except Exception:
+        except Exception:  # noqa: BLE001 — un logo dañado se omite, no tumba el PDF
             return Spacer(LADO_LOGO, LADO_LOGO)
 
         imagen.hAlign = 'LEFT'

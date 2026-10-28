@@ -218,7 +218,7 @@ def _crear_electronica(tipo, desde, hasta, nominas):
     # El contrato de la última nómina del mes: si el empleado cambió de contrato,
     # el salario y las condiciones que se reportan son las vigentes al cierre.
     contrato = nominas[-1].contrato
-    suma = lambda campo: sum((getattr(n, campo) for n in nominas), CERO)  # noqa: E731
+    suma = lambda campo: sum((getattr(n, campo) for n in nominas), CERO)
     documento = GenDocumento.objects.create(
         documento_tipo=tipo,
         fecha=hasta, fecha_contable=hasta, fecha_desde=desde, fecha_hasta=hasta,

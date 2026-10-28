@@ -65,41 +65,40 @@ def notificar_documento(self, schema_name, documento_id):
     from general.models import GenDocumento
     from general.servicios import factura_electronica
 
-    with schema_context(schema_name):
-        with transaction.atomic():
-            documento = (
-                GenDocumento.objects.select_for_update(skip_locked=True, of=('self',))
-                .select_related('contacto')
-                .filter(pk=documento_id).first()
+    with schema_context(schema_name), transaction.atomic():
+        documento = (
+            GenDocumento.objects.select_for_update(skip_locked=True, of=('self',))
+            .select_related('contacto')
+            .filter(pk=documento_id).first()
+        )
+        if documento is None:
+            # O no existe, o la tiene otro worker en este momento.
+            return
+        if documento.estado_electronico_notificado:
+            return
+        # Sin correo —ni de facturación electrónica ni general— no se notifica,
+        # y no es un error: queda pendiente y la pantalla de pendientes lo muestra.
+        if not factura_electronica.correo_notificacion(documento):
+            logger.info(
+                'Documento %s (schema %s) sin correo: no se notifica',
+                documento_id, schema_name,
             )
-            if documento is None:
-                # O no existe, o la tiene otro worker en este momento.
-                return
-            if documento.estado_electronico_notificado:
-                return
-            # Sin correo —ni de facturación electrónica ni general— no se notifica,
-            # y no es un error: queda pendiente y la pantalla de pendientes lo muestra.
-            if not factura_electronica.correo_notificacion(documento):
-                logger.info(
-                    'Documento %s (schema %s) sin correo: no se notifica',
-                    documento_id, schema_name,
+            return
+        try:
+            factura_electronica.notificar([documento_id])
+        except factura_electronica.ErrorFacturaElectronica as error:
+            if error.status >= 500:
+                raise self.retry(
+                    exc=error, countdown=ESPERA_BASE_REINTENTO * 2 ** self.request.retries,
                 )
-                return
-            try:
-                factura_electronica.notificar([documento_id])
-            except factura_electronica.ErrorFacturaElectronica as error:
-                if error.status >= 500:
-                    raise self.retry(
-                        exc=error, countdown=ESPERA_BASE_REINTENTO * 2 ** self.request.retries,
-                    )
-                logger.warning(
-                    'Rededoc rechazó la notificación del documento %s (schema %s): %s',
-                    documento_id, schema_name, error.cuerpo,
-                )
-            except APIException as error:
-                # Una validación de torio: el documento dejó de cumplir algo entre
-                # que se encoló y que se corrió. Reintentar no lo arregla.
-                logger.warning(
-                    'La notificación del documento %s (schema %s) no procede: %s',
-                    documento_id, schema_name, error.detail,
-                )
+            logger.warning(
+                'Rededoc rechazó la notificación del documento %s (schema %s): %s',
+                documento_id, schema_name, error.cuerpo,
+            )
+        except APIException as error:
+            # Una validación de torio: el documento dejó de cumplir algo entre
+            # que se encoló y que se corrió. Reintentar no lo arregla.
+            logger.warning(
+                'La notificación del documento %s (schema %s) no procede: %s',
+                documento_id, schema_name, error.detail,
+            )

@@ -109,7 +109,7 @@ class HumNovedadImportarSerializer(serializers.Serializer):
                 errores.append({'fila': idx, 'mensaje': e.detail})
                 if len(errores) >= self.LIMITE_ERRORES:
                     break
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — el error de la fila se reporta al usuario
                 errores.append({'fila': idx, 'mensaje': str(e)})
                 if len(errores) >= self.LIMITE_ERRORES:
                     break

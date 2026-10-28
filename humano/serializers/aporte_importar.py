@@ -60,7 +60,7 @@ class HumAporteImportarSerializer(serializers.Serializer):
                     comentario=self._texto_o_none(datos.get('comentario')),
                     sucursal=sucursal,
                 ))
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — el error de la fila se reporta al usuario
                 errores.append({'fila': idx, 'mensaje': str(e)})
                 if len(errores) >= self.LIMITE_ERRORES:
                     break

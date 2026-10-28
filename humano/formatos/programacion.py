@@ -16,7 +16,7 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
 from humano.models import HumProgramacionDetalle
 from utilidades.formatos import EncabezadoEmpresa
-from utilidades.formatos.pagina import ANCHO_CONTENIDO, CanvasNumerado, MarcaDocumento, anchos, documento_pdf
+from utilidades.formatos.pagina import CanvasNumerado, MarcaDocumento, anchos, documento_pdf
 
 _GRIS_LINEA = colors.HexColor('#9e9e9e')
 

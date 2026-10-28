@@ -1,3 +1,4 @@
+from django.http import Http404
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiResponse,
@@ -6,6 +7,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tenant_users.tenants.models import DeleteError
@@ -78,7 +80,7 @@ class SegUsuarioClienteViewSet(
     def destroy(self, request, *args, **kwargs):
         try:
             membresia = self.get_object()
-        except Exception:
+        except (Http404, PermissionDenied):
             return Response(
                 {'detail': 'No se encontró el acceso de usuario a cliente.'},
                 status=status.HTTP_404_NOT_FOUND,

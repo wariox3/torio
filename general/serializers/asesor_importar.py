@@ -50,7 +50,7 @@ class GenAsesorImportarSerializer(serializers.Serializer):
                     celular=normalizar_para_importar(datos.get('celular')) or '',
                     correo=self._texto(datos.get('correo')),
                 ))
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — el error de la fila se reporta al usuario
                 errores.append({'fila': idx, 'mensaje': str(e)})
                 if len(errores) >= self.LIMITE_ERRORES:
                     break

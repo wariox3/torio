@@ -22,6 +22,7 @@ from .documento import (
     GenDocumentoSerializer,
 )
 from .documento_clase import GenDocumentoClaseSeleccionarSerializer
+from .documento_concepto_correccion_seleccionar import GenDocumentoConceptoCorreccionSeleccionarSerializer
 from .documento_detalle import GenDocumentoDetalleSerializer
 from .documento_detalle_importar import GenDocumentoDetalleImportarSerializer
 from .documento_detalle_informe import (
@@ -31,6 +32,7 @@ from .documento_detalle_informe import (
     GenDocumentoDetalleNominaInformeSerializer,
 )
 from .documento_detalle_pendiente import GenDocumentoDetallePendienteSerializer
+from .documento_electronico_error import GenDocumentoElectronicoErrorSerializer
 from .documento_exportar import GenDocumentoExportarSerializer
 from .documento_importar import GenDocumentoImportarSerializer
 from .documento_informe import (
@@ -41,7 +43,6 @@ from .documento_informe import (
     GenDocumentoNominaInformeExportarSerializer,
     GenDocumentoNominaInformeSerializer,
 )
-from .documento_electronico_error import GenDocumentoElectronicoErrorSerializer
 from .documento_pago import GenDocumentoPagoSerializer
 from .documento_referencia_seleccionar import GenDocumentoReferenciaSeleccionarSerializer
 from .documento_tipo import (
@@ -68,7 +69,6 @@ from .item_exportar import GenItemExportarSerializer
 from .item_importar import GenItemImportarSerializer
 from .item_seleccionar import GenItemSeleccionarSerializer
 from .log import GenLogSerializer
-from .documento_concepto_correccion_seleccionar import GenDocumentoConceptoCorreccionSeleccionarSerializer
 from .metodo_pago import GenMetodoPagoSerializer
 from .metodo_pago_seleccionar import GenMetodoPagoSeleccionarSerializer
 from .modalidad import GenModalidadSeleccionarSerializer

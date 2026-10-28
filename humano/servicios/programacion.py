@@ -2,9 +2,7 @@ from decimal import Decimal
 
 from dateutil.relativedelta import relativedelta
 from django.db import transaction
-from django.db.models import Q, Sum
-
-from django.db.models import Max
+from django.db.models import Max, Q, Sum
 from rest_framework.exceptions import ValidationError
 
 from general.models import GenConfiguracion, GenDocumento, GenDocumentoDetalle

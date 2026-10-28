@@ -78,7 +78,7 @@ class TurTurnoImportarSerializer(serializers.Serializer):
                     descanso=self._si_no(datos.get('descanso')),
                     estado_inactivo=self._si_no(datos.get('estado_inactivo')),
                 ))
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — el error de la fila se reporta al usuario
                 errores.append({'fila': idx, 'mensaje': str(e)})
                 if len(errores) >= self.LIMITE_ERRORES:
                     break

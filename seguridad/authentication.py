@@ -1,5 +1,6 @@
 from drf_spectacular.contrib.rest_framework_simplejwt import SimpleJWTScheme
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import InvalidToken
 
 from seguridad.contexto import _usuario_actual
 
@@ -45,7 +46,7 @@ class SegCookieJWTAuthentication(JWTAuthentication):
 
         try:
             token_validado = self.get_validated_token(token_sin_procesar)
-        except Exception:
+        except InvalidToken:
             return None
 
         usuario = self.get_user(token_validado)

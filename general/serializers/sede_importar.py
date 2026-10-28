@@ -84,7 +84,7 @@ class GenSedeImportarSerializer(serializers.Serializer):
                     codigo=codigo,
                     centro_costo=centro_costo,
                 ))
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — el error de la fila se reporta al usuario
                 errores.append({'fila': idx, 'mensaje': str(e)})
                 if len(errores) >= self.LIMITE_ERRORES:
                     break

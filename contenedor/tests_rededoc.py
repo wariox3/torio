@@ -237,9 +237,11 @@ class WebhookRededocTests(TenantTestCase):
     # ---- aviso de prueba ----
 
     def test_la_prueba_con_firma_valida_responde_200_sin_tocar_el_documento(self):
-        with mock.patch('general.tasks.notificar_documento.delay') as delay:
-            with self.captureOnCommitCallbacks(execute=True):
-                respuesta = self._llamar(tipo='prueba')
+        with (
+            mock.patch('general.tasks.notificar_documento.delay') as delay,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            respuesta = self._llamar(tipo='prueba')
 
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(respuesta.data, {'detail': 'Aviso de prueba recibido.'})
@@ -365,9 +367,11 @@ class WebhookRededocTests(TenantTestCase):
     # ---- notificación programada ----
 
     def test_la_validacion_programa_la_notificacion_al_confirmar(self):
-        with mock.patch('general.tasks.notificar_documento.delay') as delay:
-            with self.captureOnCommitCallbacks(execute=True):
-                respuesta = self._validacion()
+        with (
+            mock.patch('general.tasks.notificar_documento.delay') as delay,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            respuesta = self._validacion()
 
         self.assertEqual(respuesta.status_code, 200)
         delay.assert_called_once_with(self.tenant.schema_name, self.documento.id)
@@ -380,9 +384,11 @@ class WebhookRededocTests(TenantTestCase):
         )
         GenDocumento.objects.filter(pk=self.documento.pk).update(documento_tipo=soporte)
 
-        with mock.patch('general.tasks.notificar_documento.delay') as delay:
-            with self.captureOnCommitCallbacks(execute=True) as pendientes:
-                respuesta = self._validacion()
+        with (
+            mock.patch('general.tasks.notificar_documento.delay') as delay,
+            self.captureOnCommitCallbacks(execute=True) as pendientes,
+        ):
+            respuesta = self._validacion()
 
         self.assertEqual(respuesta.status_code, 200)
         delay.assert_not_called()
@@ -412,9 +418,11 @@ class WebhookRededocTests(TenantTestCase):
         """Consumidor final es un NIT genérico: no hay nadie a quien entregarle el documento."""
         self._pos_electronica_a('222222222222')
 
-        with mock.patch('general.tasks.notificar_documento.delay') as delay:
-            with self.captureOnCommitCallbacks(execute=True):
-                respuesta = self._validacion()
+        with (
+            mock.patch('general.tasks.notificar_documento.delay') as delay,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            respuesta = self._validacion()
 
         self.assertEqual(respuesta.status_code, 200)
         delay.assert_not_called()
@@ -426,9 +434,11 @@ class WebhookRededocTests(TenantTestCase):
     def test_la_pos_electronica_a_otro_nit_si_programa_notificacion(self):
         self._pos_electronica_a('900123456')
 
-        with mock.patch('general.tasks.notificar_documento.delay') as delay:
-            with self.captureOnCommitCallbacks(execute=True):
-                self._validacion()
+        with (
+            mock.patch('general.tasks.notificar_documento.delay') as delay,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            self._validacion()
 
         delay.assert_called_once_with(self.tenant.schema_name, self.documento.id)
         self.documento.refresh_from_db()
@@ -436,34 +446,42 @@ class WebhookRededocTests(TenantTestCase):
 
     def test_la_notificacion_no_se_programa_antes_de_confirmar(self):
         """Encolar antes del commit dejaría al worker leer el documento sin validar."""
-        with mock.patch('general.tasks.notificar_documento.delay') as delay:
-            with self.captureOnCommitCallbacks(execute=False) as pendientes:
-                self._validacion()
+        with (
+            mock.patch('general.tasks.notificar_documento.delay') as delay,
+            self.captureOnCommitCallbacks(execute=False) as pendientes,
+        ):
+            self._validacion()
 
         delay.assert_not_called()
         self.assertEqual(len(pendientes), 1)
 
     def test_con_el_broker_caido_la_validacion_responde_200_y_queda_guardada(self):
         """Un error acá haría que rededoc reintente y reciba 409: la notificación se perdería."""
-        with mock.patch('general.tasks.notificar_documento.delay', side_effect=ConnectionRefusedError()):
-            with self.captureOnCommitCallbacks(execute=True):
-                respuesta = self._validacion()
+        with (
+            mock.patch('general.tasks.notificar_documento.delay', side_effect=ConnectionRefusedError()),
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            respuesta = self._validacion()
 
         self.assertEqual(respuesta.status_code, 200)
         self.documento.refresh_from_db()
         self.assertTrue(self.documento.estado_electronico)
 
     def test_la_notificacion_de_rededoc_no_programa_otra(self):
-        with mock.patch('general.tasks.notificar_documento.delay') as delay:
-            with self.captureOnCommitCallbacks(execute=True):
-                self._llamar(tipo='notificacion')
+        with (
+            mock.patch('general.tasks.notificar_documento.delay') as delay,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            self._llamar(tipo='notificacion')
         delay.assert_not_called()
 
     def test_una_validacion_repetida_no_programa_otra(self):
         self._validacion()
-        with mock.patch('general.tasks.notificar_documento.delay') as delay:
-            with self.captureOnCommitCallbacks(execute=True):
-                respuesta = self._validacion()
+        with (
+            mock.patch('general.tasks.notificar_documento.delay') as delay,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            respuesta = self._validacion()
 
         self.assertEqual(respuesta.status_code, 409)
         delay.assert_not_called()

@@ -622,7 +622,7 @@ class GenDocumentoDetalleImportarSerializer(serializers.Serializer):
                 continue
             try:
                 crear_detalle(documento, campos)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — el error de la línea se reporta al usuario
                 # Un error de BD deja la transacción inutilizable, así que acá se
                 # corta en vez de seguir recolectando errores como arriba.
                 errores.append({'fila': idx, 'mensaje': str(e)})

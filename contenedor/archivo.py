@@ -89,6 +89,6 @@ def subir(archivo, modelo, objeto, archivo_tipo):
         # queda huérfano para siempre, porque nadie sabe que existe.
         try:
             backblaze.eliminar(settings.B2_BUCKET_PRIVADO, key)
-        except Exception:
+        except Exception:  # noqa: BLE001 — la limpieza no puede tapar el error original
             logger.error('Quedó un objeto huérfano en B2: %s', key)
         raise
