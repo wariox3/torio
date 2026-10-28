@@ -19,7 +19,8 @@ from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin
 
 # Registro de informes de inventario.
 # Cada informe declara su invariante (`filtro`, garantizada por el servidor) y,
-# opcionalmente, sus columnas con `serializer` / `exportar`.
+# opcionalmente, sus columnas con `serializer` / `exportar`. `titulo` va encima
+# de la tabla en el Excel (`ExportarExcelMixin`).
 #
 # A diferencia de los otros informes planos, acá cada uno declara además su
 # `modelo`: el inventario no vive en una sola tabla —el saldo consolidado está en
@@ -29,6 +30,7 @@ from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin
 # informes son de inventario y se sirven de acá.
 INFORMES = {
     'existencia': {
+        'titulo': 'Existencias',
         'modelo': GenItem,
         # `inventario` es lo que decide si el item lleva saldo. Un servicio, o un
         # producto que no maneja inventario, tiene los tres saldos en cero para
@@ -40,6 +42,7 @@ INFORMES = {
         'filtro': Q(inventario=True),
     },
     'existencia_almacen': {
+        'titulo': 'Existencias por almacén',
         'modelo': InvExistencia,
         # La misma invariante que `existencia`, un nivel más abajo: así los dos
         # cubren el mismo universo de items y el desglose por almacén suma
@@ -50,6 +53,7 @@ INFORMES = {
         'exportar': InvExistenciaAlmacenInformeExportarSerializer,
     },
     'inventario_valorizado': {
+        'titulo': 'Inventario valorizado',
         'modelo': GenItem,
         # Las mismas filas de `existencia`: lo que cambia son las columnas, no la
         # invariante. Valorizar un universo distinto haría que el total del
@@ -59,6 +63,7 @@ INFORMES = {
         'exportar': InvInventarioValorizadoInformeExportarSerializer,
     },
     'historial_movimiento': {
+        'titulo': 'Historial de movimientos',
         'modelo': GenDocumentoDetalle,
         # Qué es "mover inventario" lo define `_afectar_inventario`, y esta
         # invariante es su espejo: línea con item y almacén, en un documento
@@ -136,6 +141,9 @@ class InvInformeViewSet(
 
     def get_serializer_class(self):
         return self._informe().get('serializer', InvExistenciaInformeSerializer)
+
+    def get_titulo_excel(self, serializer):
+        return self._informe().get('titulo')
 
     def get_serializer_exportar(self):
         return self._informe().get('exportar', InvExistenciaInformeExportarSerializer)()

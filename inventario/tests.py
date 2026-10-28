@@ -8,6 +8,7 @@ from rest_framework import permissions
 from rest_framework.test import APIRequestFactory
 
 from general.models import (
+    GenConfiguracion,
     GenDocumento,
     GenDocumentoDetalle,
     GenDocumentoTipo,
@@ -470,9 +471,65 @@ class InformeContratoTests(_InformeBase):
         response = self._post('excel', informe=informe)
         self.assertEqual(response.status_code, 200)
         hoja = load_workbook(BytesIO(response.content)).active
-        encabezados = [celda.value for celda in hoja[1]]
-        ids = {hoja.cell(row=f, column=1).value for f in range(2, hoja.max_row + 1)}
+        # Encima de los encabezados va el bloque del título: tres filas.
+        encabezados = [celda.value for celda in hoja[4]]
+        ids = {hoja.cell(row=f, column=1).value for f in range(5, hoja.max_row + 1)}
         return encabezados, ids
+
+    def test_el_excel_lleva_titulo_empresa_y_generado_a_lo_ancho_de_la_tabla(self):
+        GenConfiguracion.objects.update_or_create(id=1, defaults={
+            'gen_empresa_razon_social': 'SEMANTICA DIGITAL S.A.S',
+            'gen_empresa_numero_identificacion': '901192048',
+            'gen_empresa_digito_verificacion': '4',
+        })
+
+        response = self._post('excel', informe='existencia')
+
+        hoja = load_workbook(BytesIO(response.content)).active
+        ultima = hoja.cell(row=4, column=hoja.max_column).column_letter
+        self.assertEqual(hoja['A1'].value, 'Existencias')
+        self.assertEqual(hoja['A2'].value, 'SEMANTICA DIGITAL S.A.S · NIT 901192048-4')
+        self.assertRegex(hoja['A3'].value, rf'^Generado: \d{{4}}/\d{{2}}/\d{{2}} \d{{2}}:\d{{2}} · {hoja.max_row - 4} registros?$')
+        self.assertEqual(
+            {str(rango) for rango in hoja.merged_cells.ranges},
+            {f'A{fila}:{ultima}{fila}' for fila in (1, 2, 3)},
+        )
+        self.assertEqual(hoja['A4'].value, 'ID')
+
+    def test_las_columnas_se_ajustan_al_contenido(self):
+        self._item('Tornillo', 'CORTO')
+        self._item('Arandela ' * 20, 'ENORME', inventario=True)
+
+        response = self._post('excel', informe='existencia')
+
+        hoja = load_workbook(BytesIO(response.content)).active
+        encabezados = [celda.value for celda in hoja[4]]
+        ancho = {
+            encabezado: hoja.column_dimensions[hoja.cell(row=4, column=col).column_letter].width
+            for col, encabezado in enumerate(encabezados, start=1)
+        }
+        # Un texto largo ensancha su columna hasta el tope; el ID se queda en el mínimo.
+        self.assertEqual(ancho['Nombre'], 60)
+        self.assertEqual(ancho['Referencia'], len('REF-ENORME') + 2)
+        self.assertEqual(ancho['ID'], 10)
+
+    def test_los_encabezados_llevan_el_azul_de_reddoc(self):
+        response = self._post('excel', informe='existencia')
+
+        celda = load_workbook(BytesIO(response.content)).active['A4']
+        self.assertEqual(celda.fill.fgColor.rgb, '00CCECFD')
+        self.assertTrue(celda.font.bold)
+
+    def test_cada_informe_lleva_su_titulo(self):
+        for informe, titulo in (
+            ('existencia', 'Existencias'),
+            ('existencia_almacen', 'Existencias por almacén'),
+            ('inventario_valorizado', 'Inventario valorizado'),
+            ('historial_movimiento', 'Historial de movimientos'),
+        ):
+            with self.subTest(informe=informe):
+                response = self._post('excel', informe=informe)
+                self.assertEqual(load_workbook(BytesIO(response.content)).active['A1'].value, titulo)
 
     def test_cada_informe_exporta_su_propia_forma(self):
         """

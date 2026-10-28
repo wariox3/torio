@@ -20,11 +20,13 @@ from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin
 # Registro de informes sobre GenDocumento.
 # Cada informe declara su invariante (`filtro`, garantizada por el servidor). Las
 # columnas las aporta el serializer estándar; un informe puede sobreescribirlas
-# con `serializer` / `exportar` si lo necesita. Un informe con `corte` es la
+# con `serializer` / `exportar` si lo necesita. `titulo` va encima de la tabla
+# en el Excel (`ExportarExcelMixin`). Un informe con `corte` es la
 # cartera de ese lado a una fecha: no filtra, la arma `cartera.corte` con la
 # `fecha` que manda el cliente.
 INFORMES = {
     'cobrar_pendiente': {
+        'titulo': 'Cuentas por cobrar',
         'filtro': Q(
             pendiente__gt=0,
             documento_tipo__cobrar=True,
@@ -33,6 +35,7 @@ INFORMES = {
         ),
     },
     'pagar_pendiente': {
+        'titulo': 'Cuentas por pagar',
         'filtro': Q(
             pendiente__gt=0,
             documento_tipo__pagar=True,
@@ -41,11 +44,13 @@ INFORMES = {
         ),
     },
     'cobrar_corte': {
+        'titulo': 'Cartera por cobrar al corte',
         'corte': 'cobrar',
         'serializer': GenDocumentoCarteraCorteInformeSerializer,
         'exportar': GenDocumentoCarteraCorteInformeExportarSerializer,
     },
     'pagar_corte': {
+        'titulo': 'Cartera por pagar al corte',
         'corte': 'pagar',
         'serializer': GenDocumentoCarteraCorteInformeSerializer,
         'exportar': GenDocumentoCarteraCorteInformeExportarSerializer,
@@ -53,6 +58,7 @@ INFORMES = {
     # Todas las nóminas, aprobadas o no: así se revisa una programación generada
     # antes de aprobarla. El estado queda como filtro (`estado_aprobado`).
     'nomina': {
+        'titulo': 'Nóminas',
         'filtro': Q(documento_tipo__documento_clase_id=701),  # Nómina
         'serializer': GenDocumentoNominaInformeSerializer,
         'exportar': GenDocumentoNominaInformeExportarSerializer,
@@ -104,6 +110,14 @@ class GenDocumentoInformeViewSet(
 
     def get_serializer_class(self):
         return self._informe().get('serializer', GenDocumentoInformeSerializer)
+
+    def get_titulo_excel(self, serializer):
+        informe = self._informe()
+        titulo = informe.get('titulo')
+        # El Excel de la cartera al corte no sirve sin saber a qué fecha es.
+        if titulo and 'corte' in informe:
+            return f'{titulo} {self._fecha_corte():%Y/%m/%d}'
+        return titulo
 
     def get_serializer_exportar(self):
         return self._informe().get('exportar', GenDocumentoInformeExportarSerializer)()

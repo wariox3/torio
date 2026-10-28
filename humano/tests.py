@@ -1124,7 +1124,8 @@ class InformesNominaTests(TenantTestCase):
 
         self.assertEqual(respuesta.status_code, 200)
         self.assertIn('nomina_detalles.xlsx', respuesta['Content-Disposition'])
-        filas = list(load_workbook(io.BytesIO(respuesta.content)).active.iter_rows(values_only=True))
+        # Las tres primeras filas son el bloque del título.
+        filas = list(load_workbook(io.BytesIO(respuesta.content)).active.iter_rows(values_only=True))[3:]
         self.assertEqual(len(filas), 2)
         fila = dict(zip(filas[0], filas[1], strict=True))
         self.assertEqual(fila['ID'], self.de_la_programacion.id)
@@ -1153,7 +1154,8 @@ class InformesNominaTests(TenantTestCase):
 
         self.assertEqual(respuesta.status_code, 200)
         self.assertIn('nominas.xlsx', respuesta['Content-Disposition'])
-        filas = list(load_workbook(io.BytesIO(respuesta.content)).active.iter_rows(values_only=True))
+        # Las tres primeras filas son el bloque del título.
+        filas = list(load_workbook(io.BytesIO(respuesta.content)).active.iter_rows(values_only=True))[3:]
         self.assertEqual(len(filas), 2)
         fila = dict(zip(filas[0], filas[1], strict=True))
         self.assertEqual(fila['ID'], self.de_la_programacion.documento_id)

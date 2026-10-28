@@ -15,9 +15,11 @@ from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin
 # Registro de informes sobre GenDocumentoDetalle.
 # Cada informe declara su invariante (`filtro`, garantizada por el servidor). Las
 # columnas las aporta el serializer estándar; un informe puede sobreescribirlas
-# con `serializer` / `exportar` si lo necesita.
+# con `serializer` / `exportar` si lo necesita. `titulo` va encima de la tabla
+# en el Excel (`ExportarExcelMixin`).
 INFORMES = {
     'pendiente_facturar': {
+        'titulo': 'Pendiente por facturar',
         'filtro': Q(
             pendiente__gt=0,
             documento__documento_tipo_id=35,
@@ -27,6 +29,7 @@ INFORMES = {
     # Sin los tipos de operación cero (pedidos, remisiones): son de venta pero no
     # son la venta, que llega con la factura.
     'venta_item': {
+        'titulo': 'Ventas por ítem',
         'filtro': Q(
             documento__documento_tipo__venta=True,
             documento__estado_aprobado=True,
@@ -36,6 +39,7 @@ INFORMES = {
     # Todas las nóminas, aprobadas o no: así se revisa una programación generada
     # antes de aprobarla. El estado queda como filtro (`documento__estado_aprobado`).
     'nomina_detalle': {
+        'titulo': 'Detalle de nómina',
         'filtro': Q(documento__documento_tipo__documento_clase_id=701),  # Nómina
         'serializer': GenDocumentoDetalleNominaInformeSerializer,
         'exportar': GenDocumentoDetalleNominaInformeExportarSerializer,
@@ -86,6 +90,9 @@ class GenDocumentoDetalleInformeViewSet(
 
     def get_serializer_class(self):
         return self._informe().get('serializer', GenDocumentoDetalleInformeSerializer)
+
+    def get_titulo_excel(self, serializer):
+        return self._informe().get('titulo')
 
     def get_serializer_exportar(self):
         return self._informe().get('exportar', GenDocumentoDetalleInformeExportarSerializer)()
