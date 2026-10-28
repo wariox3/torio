@@ -51,6 +51,7 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
         source='documento.documento_tipo.nombre', read_only=True, allow_null=True,
     )
     documento_fecha = serializers.DateField(source='documento.fecha', read_only=True, allow_null=True)
+    documento_numero = serializers.IntegerField(source='documento.numero', read_only=True, allow_null=True)
     # Datos del documento que cruza esta línea, para que el front liste las
     # afectaciones sin ir a buscarlos documento por documento.
     documento_afectado_numero = serializers.IntegerField(
@@ -111,6 +112,7 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'documento',
             'documento_documento_tipo_nombre',
             'documento_fecha',
+            'documento_numero',
             'documento_detalle_afectado',
             'documento_afectado',
             'documento_afectado_numero',

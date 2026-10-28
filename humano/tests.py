@@ -1233,9 +1233,14 @@ class InformesNominaTests(TenantTestCase):
             ),
         )
 
+        type(self.de_la_programacion.documento).objects.filter(
+            pk=self.de_la_programacion.documento_id,
+        ).update(numero=57)
+
         respuesta = VistaDetalle.as_view({'get': 'retrieve'})(self.factory.get('/'), pk=self.de_la_programacion.pk)
 
         self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertEqual(respuesta.data['documento_numero'], 57)
         self.assertEqual(respuesta.data['concepto_id'], 1)
         self.assertEqual(respuesta.data['concepto_nombre'], 'SALARIO')
         self.assertEqual(Decimal(respuesta.data['devengado']), 1000)

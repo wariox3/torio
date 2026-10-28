@@ -386,7 +386,16 @@ def desgenerar_programacion(programacion):
 
 
 def _afectar_creditos(programacion, signo):
-    """Abona (o desabona, con `signo` -1) a cada crédito lo que le descontó la programación."""
+    """
+    Abona (o desabona, con `signo` -1) a cada crédito lo que le descontó la programación.
+
+    `pagado` sigue al saldo: queda en verdadero cuando el saldo llega a cero.
+
+    Al abonar, ningún crédito puede pasar de su total. Al generar, la cuota ya se
+    limita al saldo, pero dos programaciones generadas antes de aprobar la
+    primera leen el mismo saldo, y la línea del crédito se puede editar a mano:
+    el tope se revisa acá, con el crédito bloqueado, que es donde no hay carrera.
+    """
     lineas = GenDocumentoDetalle.objects.filter(
         documento__programacion_detalle__programacion=programacion, credito__isnull=False,
     )
@@ -394,12 +403,37 @@ def _afectar_creditos(programacion, signo):
     for credito_id, pago in lineas.values_list('credito_id', 'pago'):
         cuotas, total = pagos.get(credito_id, (0, Decimal('0')))
         pagos[credito_id] = (cuotas + 1, total + pago)
-    for credito in HumCredito.objects.select_for_update().filter(id__in=pagos):
+    creditos = list(
+        HumCredito.objects.select_for_update(of=('self',)).filter(id__in=pagos)
+        .select_related('contrato__contacto').order_by('id')
+    )
+
+    if signo > 0:
+        errores = []
+        for credito in creditos:
+            _, total = pagos[credito.id]
+            disponible = credito.total - credito.abono
+            if total > disponible:
+                errores.append({
+                    'contrato_id': credito.contrato_id,
+                    'contrato': credito.contrato.contacto.nombre_corto,
+                    'mensaje': (
+                        f'Descuenta {total:,.2f} del crédito {credito.id}, pero al crédito solo '
+                        f'le quedan {disponible:,.2f} por pagar.'
+                    ),
+                })
+        if errores:
+            raise ProgramacionError('La programación descuenta más de lo que deben algunos créditos.', errores)
+
+    for credito in creditos:
         cuotas, total = pagos[credito.id]
         credito.abono += total * signo
         credito.saldo -= total * signo
         credito.cuota_actual += cuotas * signo
-        credito.save(update_fields=['abono', 'saldo', 'cuota_actual'])
+        # Al aprobar, el que queda sin saldo está pagado; al desaprobar, el que
+        # recupera saldo vuelve a estar pendiente y la nómina lo descuenta otra vez.
+        credito.pagado = credito.saldo <= 0
+        credito.save(update_fields=['abono', 'saldo', 'cuota_actual', 'pagado'])
 
 
 def aprobar_programacion(programacion):

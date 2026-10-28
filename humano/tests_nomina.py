@@ -189,6 +189,62 @@ class GenerarProgramacionTests(TenantTestCase):
         self.assertFalse(serializador.is_valid())
         self.assertIn('abonado', str(serializador.errors['detail']))
 
+    # ---- tope del crédito al aprobar ----
+
+    def _dos_quincenas_con_credito(self, total):
+        """Las dos quincenas de marzo generadas antes de aprobar: las dos leen el mismo saldo."""
+        credito = HumCredito.objects.create(
+            contrato=self._contrato(), concepto_id=self._concepto_credito(), fecha_inicio=date(2026, 1, 1),
+            total=Decimal(total), cuota=Decimal('100000'), saldo=Decimal(total), cantidad_cuotas=2,
+        )
+        primera = generar_programacion(self._programacion())
+        segunda = generar_programacion(self._programacion(
+            fecha_desde=date(2026, 3, 16), fecha_hasta=date(2026, 3, 31),
+        ))
+        return credito, primera, segunda
+
+    def test_no_se_aprueba_si_el_credito_pasaria_de_su_total(self):
+        credito, primera, segunda = self._dos_quincenas_con_credito('150000')
+        aprobar_programacion(primera)
+
+        with self.assertRaises(ProgramacionError) as caso:
+            aprobar_programacion(segunda)
+
+        self.assertIn('más de lo que deben', caso.exception.detail)
+        self.assertEqual(len(caso.exception.errores), 1)
+        self.assertIn('solo le quedan 50,000.00', caso.exception.errores[0]['mensaje'])
+        # No queda nada a medias: ni la programación ni sus documentos aprobados, ni el crédito abonado.
+        segunda.refresh_from_db()
+        self.assertFalse(segunda.estado_aprobado)
+        self.assertFalse(
+            GenDocumento.objects.filter(programacion_detalle__programacion=segunda, estado_aprobado=True).exists()
+        )
+        credito.refresh_from_db()
+        self.assertEqual((credito.abono, credito.saldo), (Decimal('100000'), Decimal('50000')))
+
+    def test_se_aprueba_si_el_credito_llega_justo_a_su_total(self):
+        credito, primera, segunda = self._dos_quincenas_con_credito('200000')
+        aprobar_programacion(primera)
+        aprobar_programacion(segunda)
+
+        credito.refresh_from_db()
+        self.assertEqual((credito.abono, credito.saldo, credito.cuota_actual), (Decimal('200000'), 0, 2))
+
+    def test_el_credito_sin_saldo_queda_pagado_y_al_desaprobar_vuelve_a_pendiente(self):
+        credito, primera, segunda = self._dos_quincenas_con_credito('200000')
+
+        aprobar_programacion(primera)
+        credito.refresh_from_db()
+        self.assertFalse(credito.pagado)
+
+        segunda = aprobar_programacion(segunda)
+        credito.refresh_from_db()
+        self.assertTrue(credito.pagado)
+
+        desaprobar_programacion(segunda)
+        credito.refresh_from_db()
+        self.assertEqual((credito.saldo, credito.pagado), (Decimal('100000'), False))
+
     # ---- validar créditos ----
 
     def _credito_abonado(self):
