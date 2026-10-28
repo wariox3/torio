@@ -189,6 +189,66 @@ class GenerarProgramacionTests(TenantTestCase):
         self.assertFalse(serializador.is_valid())
         self.assertIn('abonado', str(serializador.errors['detail']))
 
+    # ---- validar créditos ----
+
+    def _credito_abonado(self):
+        """Un crédito de 300.000 con una cuota de 100.000 descontada en una nómina aprobada."""
+        credito = HumCredito.objects.create(
+            contrato=self._contrato(), concepto_id=self._concepto_credito(), fecha_inicio=date(2026, 1, 1),
+            total=Decimal('300000'), cuota=Decimal('100000'), saldo=Decimal('300000'), cantidad_cuotas=3,
+        )
+        programacion = aprobar_programacion(generar_programacion(self._programacion()))
+        credito.refresh_from_db()
+        return credito, programacion
+
+    def test_validar_creditos_corrige_el_que_quedo_desfasado(self):
+        from humano.servicios import credito as credito_servicio
+
+        credito, _ = self._credito_abonado()
+        HumCredito.objects.filter(pk=credito.pk).update(abono=0, saldo=0, cuota_actual=0)
+
+        self.assertEqual(credito_servicio.validar(), 1)
+
+        credito.refresh_from_db()
+        self.assertEqual(
+            (credito.abono, credito.saldo, credito.cuota_actual),
+            (Decimal('100000'), Decimal('200000'), 1),
+        )
+
+    def test_validar_creditos_no_toca_los_que_cuadran(self):
+        from humano.servicios import credito as credito_servicio
+
+        self._credito_abonado()
+
+        self.assertEqual(credito_servicio.validar(), 0)
+
+    def test_validar_creditos_no_cuenta_nominas_sin_aprobar_ni_anuladas(self):
+        from humano.servicios import credito as credito_servicio
+
+        credito, programacion = self._credito_abonado()
+        GenDocumento.objects.filter(programacion_detalle__programacion=programacion).update(estado_anulado=True)
+        # Una nómina generada y sin aprobar tampoco abona.
+        generar_programacion(self._programacion(fecha_desde=date(2026, 3, 16), fecha_hasta=date(2026, 3, 31)))
+
+        self.assertEqual(credito_servicio.validar(), 1)
+
+        credito.refresh_from_db()
+        self.assertEqual((credito.abono, credito.saldo, credito.cuota_actual), (0, Decimal('300000'), 0))
+
+    def test_validar_creditos_por_la_api(self):
+        from humano.views.credito import HumCreditoViewSet
+
+        credito, _ = self._credito_abonado()
+        HumCredito.objects.filter(pk=credito.pk).update(saldo=0)
+        vista = type('Vista', (HumCreditoViewSet,), {
+            'authentication_classes': [], 'permission_classes': [permissions.AllowAny], 'throttle_classes': [],
+        }).as_view({'post': 'validar'})
+
+        respuesta = vista(APIRequestFactory().post('/', {}, format='json'))
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, {'ejecutado': True, 'corregidos': 1})
+
     def test_prima(self):
         self._contrato()
         programacion = self._programacion(

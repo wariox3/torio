@@ -1,6 +1,8 @@
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from humano.models import HumCredito
 from humano.serializers import (
@@ -9,7 +11,8 @@ from humano.serializers import (
     HumCreditoSeleccionarSerializer,
     HumCreditoSerializer,
 )
-from seguridad.permissions import TienePermisoModelo
+from humano.servicios import credito as credito_servicio
+from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente, TienePermisoModelo
 from utilidades.mixins import (
     ExportarExcelMixin,
     FiltrosDinamicosMixin,
@@ -73,3 +76,25 @@ class HumCreditoViewSet(
         pagina = self.paginate_queryset(qs)
         serializer = HumCreditoSeleccionarSerializer(pagina, many=True)
         return self.get_paginated_response(serializer.data)
+
+    @extend_schema(
+        summary='Validar los saldos de los créditos',
+        description=(
+            'Recalcula desde su origen `abono`, `cuota_actual` y `saldo` de todos los '
+            'créditos y corrige los que no coinciden con lo guardado; los que cuadran '
+            'no se tocan. El abono es la suma de lo descontado por el crédito en '
+            'documentos de nómina aprobados y sin anular, `cuota_actual` cuántas veces '
+            'se descontó, y el saldo es `total - abono`. Lo puede correr cualquier '
+            'miembro del contenedor.\n\n'
+            'Responde `{"ejecutado": true, "corregidos": <n>}` cuando el proceso termina.'
+        ),
+        request=None,
+        responses=OpenApiTypes.OBJECT,
+    )
+    @action(
+        detail=False, methods=['post'], url_path='validar',
+        permission_classes=[EsMiembroDelTenant, SuscripcionVigente],
+    )
+    def validar(self, request):
+        corregidos = credito_servicio.validar()
+        return Response({'ejecutado': True, 'corregidos': corregidos}, status=status.HTTP_200_OK)
