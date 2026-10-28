@@ -106,7 +106,12 @@ from general.views.modelo import GenModeloViewSet
 from general.views.parametro import GenParametroViewSet
 from general.views.precio_detalle import GenPrecioDetalleViewSet
 from general.views.resolucion import GenResolucionViewSet
-from general.views.tablero import GenTableroViewSet
+from general.views.tablero import (
+    CarteraRespuestaSerializer,
+    GenTableroViewSet,
+    ResultadoRespuestaSerializer,
+    ResumenRespuestaSerializer,
+)
 from inventario.models import InvAlmacen, InvExistencia
 from seguridad.models import SegUsuario
 from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente
@@ -6552,6 +6557,10 @@ class CarteraResumenTests(TenantTestCase):
         """Es el tablero de inicio: lo ve cualquier miembro con suscripción."""
         self.assertEqual(GenTableroViewSet.permission_classes, [EsMiembroDelTenant, SuscripcionVigente])
 
+    def test_la_respuesta_es_la_que_documenta_swagger(self):
+        """Si el servicio cambia sus claves, el serializer de respuesta también."""
+        self.assertEqual(set(self._resumen()), set(CarteraRespuestaSerializer().fields))
+
 
 class VentaResumenTests(TenantTestCase):
     """
@@ -6776,6 +6785,27 @@ class VentaResumenTests(TenantTestCase):
                 respuesta = vista(APIRequestFactory().get('/general/tablero/resultado/', query))
                 self.assertEqual(respuesta.status_code, 400)
                 self.assertEqual(list(respuesta.data), ['detail'])
+
+    def test_las_respuestas_son_las_que_documenta_swagger(self):
+        """Si el servicio cambia sus claves, el serializer de respuesta también."""
+        def claves(serializer):
+            return {
+                nombre: set(getattr(campo, 'child', campo).fields) if hasattr(getattr(campo, 'child', campo), 'fields') else None
+                for nombre, campo in serializer().fields.items()
+            }
+
+        def claves_dato(dato):
+            return {
+                nombre: set(valor[0] if isinstance(valor, list) else valor) if isinstance(valor, (dict, list)) else None
+                for nombre, valor in dato.items()
+            }
+
+        for tipo in ('venta', 'compra'):
+            with self.subTest(tipo=tipo):
+                dato = resumen_servicio.resumen(tipo, 'mes', hoy=self.HOY)
+                self.assertEqual(claves_dato(dato), claves(ResumenRespuestaSerializer))
+        dato = resumen_servicio.resultado('mes', hoy=self.HOY)
+        self.assertEqual(claves_dato(dato), claves(ResultadoRespuestaSerializer))
 
 
 class DocumentoListaTests(TenantTestCase):

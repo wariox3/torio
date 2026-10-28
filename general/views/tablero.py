@@ -6,8 +6,8 @@ Es el tablero de inicio: lo ve cualquier miembro con suscripción, sin el permis
 de modelo.
 """
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import status, viewsets
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -15,6 +15,72 @@ from rest_framework.response import Response
 from general.servicios import cartera as cartera_servicio
 from general.servicios import resumen as resumen_servicio
 from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente
+
+# Serializers de solo documentación: la vista responde el dict del servicio tal cual.
+# Los montos salen como número en el JSON, de ahí `coerce_to_string=False`.
+
+
+def _monto():
+    return serializers.DecimalField(max_digits=20, decimal_places=6, coerce_to_string=False)
+
+
+class TableroErrorRespuestaSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+
+
+class CarteraRespuestaSerializer(serializers.Serializer):
+    fecha = serializers.DateField(help_text='Hoy: el corte entre vencido y vigente.')
+    total_pendiente = _monto()
+    total_pendiente_vencido = _monto()
+    total_pendiente_vigente = _monto()
+
+
+class ResumenPuntoSerializer(serializers.Serializer):
+    fecha = serializers.CharField(help_text='`AAAA-MM-DD` con `periodo=mes`, `AAAA-MM` con `periodo=anio`.')
+    documentos = serializers.IntegerField()
+    subtotal = _monto()
+    impuesto = _monto()
+    total = _monto()
+
+
+class ResumenTotalesSerializer(serializers.Serializer):
+    documentos = serializers.IntegerField()
+    subtotal = _monto()
+    impuesto = _monto()
+    total = _monto()
+
+
+class ResumenRespuestaSerializer(serializers.Serializer):
+    periodo = serializers.ChoiceField(choices=resumen_servicio.PERIODOS)
+    fecha_desde = serializers.DateField()
+    fecha_hasta = serializers.DateField()
+    serie = ResumenPuntoSerializer(many=True)
+    totales = ResumenTotalesSerializer()
+
+
+class ResultadoPuntoSerializer(serializers.Serializer):
+    fecha = serializers.CharField(help_text='`AAAA-MM-DD` con `periodo=mes`, `AAAA-MM` con `periodo=anio`.')
+    ingreso = _monto()
+    egreso = _monto()
+
+
+class ResultadoTotalesSerializer(serializers.Serializer):
+    ingreso = _monto()
+    egreso = _monto()
+    diferencia = _monto()
+
+
+class ResultadoRespuestaSerializer(serializers.Serializer):
+    periodo = serializers.ChoiceField(choices=resumen_servicio.PERIODOS)
+    fecha_desde = serializers.DateField()
+    fecha_hasta = serializers.DateField()
+    serie = ResultadoPuntoSerializer(many=True)
+    totales = ResultadoTotalesSerializer()
+
+
+RESPUESTA_400 = OpenApiResponse(
+    TableroErrorRespuestaSerializer, description='Parámetro ausente o fuera de los valores aceptados',
+)
 
 PARAMETRO_PERIODO = OpenApiParameter(
     'periodo', OpenApiTypes.STR, required=True, enum=list(resumen_servicio.PERIODOS),
@@ -43,7 +109,7 @@ class GenTableroViewSet(viewsets.ViewSet):
                 description='Lado de la cartera.',
             ),
         ],
-        responses=OpenApiTypes.OBJECT,
+        responses={200: CarteraRespuestaSerializer, 400: RESPUESTA_400},
     )
     @action(detail=False, methods=['get'], url_path='cartera')
     def cartera(self, request):
@@ -62,7 +128,7 @@ class GenTableroViewSet(viewsets.ViewSet):
             'Los días o meses sin ventas salen en cero. `totales` suma la serie.'
         ),
         parameters=[PARAMETRO_PERIODO],
-        responses=OpenApiTypes.OBJECT,
+        responses={200: ResumenRespuestaSerializer, 400: RESPUESTA_400},
     )
     @action(detail=False, methods=['get'], url_path='venta')
     def venta(self, request):
@@ -82,7 +148,7 @@ class GenTableroViewSet(viewsets.ViewSet):
             'Los días o meses sin compras salen en cero. `totales` suma la serie.'
         ),
         parameters=[PARAMETRO_PERIODO],
-        responses=OpenApiTypes.OBJECT,
+        responses={200: ResumenRespuestaSerializer, 400: RESPUESTA_400},
     )
     @action(detail=False, methods=['get'], url_path='compra')
     def compra(self, request):
@@ -105,7 +171,7 @@ class GenTableroViewSet(viewsets.ViewSet):
             '`totales` trae `ingreso`, `egreso` y `diferencia` (ingreso - egreso).'
         ),
         parameters=[PARAMETRO_PERIODO],
-        responses=OpenApiTypes.OBJECT,
+        responses={200: ResultadoRespuestaSerializer, 400: RESPUESTA_400},
     )
     @action(detail=False, methods=['get'], url_path='resultado')
     def resultado(self, request):

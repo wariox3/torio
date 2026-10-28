@@ -5,14 +5,23 @@ bajo `/humano/tablero/<indicador>/`, con la lógica en `humano/servicios/`.
 Es el tablero de inicio: lo ve cualquier miembro con suscripción, sin el permiso
 de modelo.
 """
-from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from humano.servicios import contrato as contrato_servicio
 from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente
+
+
+# De solo documentación: la vista responde el dict del servicio tal cual.
+class ContratoRespuestaSerializer(serializers.Serializer):
+    fecha = serializers.DateField(help_text='Hoy: el mes de `ingresos_mes` y `retiros_mes`.')
+    contratos = serializers.IntegerField()
+    contratos_activos = serializers.IntegerField()
+    contratos_terminados = serializers.IntegerField()
+    ingresos_mes = serializers.IntegerField()
+    retiros_mes = serializers.IntegerField()
 
 
 @extend_schema(tags=['Tablero'])
@@ -30,7 +39,7 @@ class HumTableroViewSet(viewsets.ViewSet):
             '- `retiros_mes`: contratos terminados cuya `fecha_hasta` cae en ese mes.\n\n'
             'Activos y terminados suman `contratos`.'
         ),
-        responses=OpenApiTypes.OBJECT,
+        responses=ContratoRespuestaSerializer,
     )
     @action(detail=False, methods=['get'], url_path='contrato')
     def contrato(self, request):

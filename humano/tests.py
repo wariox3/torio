@@ -29,7 +29,7 @@ from humano.serializers import HumProgramacionSerializer
 from humano.servicios import ProgramacionError, cargar_contratos, eliminar_detalles
 from humano.servicios import contrato as contrato_servicio
 from humano.views.contrato import HumContratoViewSet
-from humano.views.tablero import HumTableroViewSet
+from humano.views.tablero import ContratoRespuestaSerializer, HumTableroViewSet
 from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente
 from utilidades.fechas import dias_prestacionales
 
@@ -228,6 +228,10 @@ class ValidacionContratoTests(TenantTestCase):
     def test_resumen_no_exige_el_permiso_del_modelo(self):
         """Es el tablero de inicio: lo ve cualquier miembro con suscripción, como `tablero/cartera`."""
         self.assertEqual(HumTableroViewSet.permission_classes, [EsMiembroDelTenant, SuscripcionVigente])
+
+    def test_resumen_es_el_que_documenta_swagger(self):
+        """Si el servicio cambia sus claves, el serializer de respuesta también."""
+        self.assertEqual(set(contrato_servicio.resumen()), set(ContratoRespuestaSerializer().fields))
 
 class CargarContratosTests(TenantTestCase):
     """`cargar_contratos`: un detalle por contrato del grupo según el tipo de pago."""
