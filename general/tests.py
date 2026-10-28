@@ -6215,7 +6215,7 @@ class ValidarAprobacionTests(TenantTestCase):
     def test_no_se_afecta_mas_cantidad_de_la_que_tiene_el_detalle_afectado(self):
         origen = self._documento()
         afectado = self._detalle(origen, cantidad=Decimal('10'))
-        documento = self._documento()
+        documento = self._documento(resolucion=self._resolucion())
         self._detalle(documento, cantidad=Decimal('6'), documento_detalle_afectado=afectado)
         self._detalle(documento, cantidad=Decimal('5'), documento_detalle_afectado=afectado)
 
