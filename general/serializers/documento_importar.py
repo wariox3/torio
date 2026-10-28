@@ -11,11 +11,11 @@ from general.models import (
     GenPlazoPago,
     GenSector,
 )
-from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
 from general.servicios.documento import (
     CONCEPTO_CORRECCION_OBLIGATORIO,
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
     DOCUMENTO_CLASE_NOTA_AJUSTE,
+    DOCUMENTO_CLASES_CON_RESOLUCION,
 )
 
 
@@ -160,13 +160,14 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
                     centro_costo=centro_costo,
                     documento_concepto_correccion=concepto,
                     documento_referencia=referencia,
-                    # La factura de venta se numera contra la resolución de su
-                    # tipo, igual que al guardarla por la API
-                    # (`GenDocumentoSerializer._heredar_resolucion`). El Excel no
-                    # trae resolución: los demás tipos quedan sin ella, como antes.
+                    # La factura de venta y el documento soporte se numeran
+                    # contra la resolución de su tipo, igual que al guardarlos por
+                    # la API (`GenDocumentoSerializer._heredar_resolucion`). El
+                    # Excel no trae resolución: los demás tipos quedan sin ella.
                     resolucion_id=(
                         documento_tipo.resolucion_id
-                        if documento_tipo.pk == DOCUMENTO_TIPO_FACTURA_VENTA else None
+                        if documento_tipo.documento_clase_id in DOCUMENTO_CLASES_CON_RESOLUCION
+                        else None
                     ),
                 ))
             except Exception as e:  # noqa: BLE001 — el error de la fila se reporta al usuario

@@ -8,13 +8,13 @@ from general.models import (
     GenDocumentoImpuesto,
     GenDocumentoTipo,
 )
-from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
 from general.serializers.documento_detalle import GenDocumentoDetalleSerializer
 from general.servicios import crear_detalle
 from general.servicios.documento import (
     CONCEPTO_CORRECCION_OBLIGATORIO,
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
     DOCUMENTO_CLASE_NOTA_AJUSTE,
+    DOCUMENTO_CLASES_CON_RESOLUCION,
 )
 
 
@@ -283,17 +283,18 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
 
     def _heredar_resolucion(self, datos):
         """
-        La factura de venta toma siempre la resolución de su tipo.
+        La factura de venta y el documento soporte toman siempre la resolución de
+        su tipo (`DOCUMENTO_CLASES_CON_RESOLUCION`).
 
         Es contra esa resolución que se valida el consecutivo al aprobar y la que
-        viaja a rededoc al emitir: si la eligiera quien digita, una factura podría
-        numerarse contra otra resolución que la configurada. La que mande el front
-        se descarta. Solo corre al guardar por la API, y un documento aprobado ya
-        no se edita, así que la factura conserva la resolución con la que se numeró
-        aunque después cambie la del tipo.
+        viaja a rededoc al emitir: si la eligiera quien digita, el documento podría
+        numerarse contra otra resolución que la configurada —un soporte contra una
+        de venta, por ejemplo—. La que mande el front se descarta. Solo corre al
+        guardar por la API, y un documento aprobado ya no se edita, así que conserva
+        la resolución con la que se numeró aunque después cambie la del tipo.
         """
         tipo = datos.get('documento_tipo') or getattr(self.instance, 'documento_tipo', None)
-        if tipo is not None and tipo.pk == DOCUMENTO_TIPO_FACTURA_VENTA:
+        if tipo is not None and tipo.documento_clase_id in DOCUMENTO_CLASES_CON_RESOLUCION:
             datos['resolucion'] = tipo.resolucion
 
     def _seguir_fecha(self, datos):

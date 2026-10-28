@@ -242,9 +242,15 @@ def _validar_numeracion(documento, consecutivo):
     if documento.documento_tipo.documento_clase_id not in DOCUMENTO_CLASES_CON_RESOLUCION:
         return
 
+    # Sin resolución la DIAN no lo recibe: `_armar_con_resolucion` lo rechaza al
+    # emitir, cuando ya tiene el consecutivo gastado. Se frena acá, donde todavía
+    # se puede configurar en el tipo y volver a guardar.
     resolucion = documento.resolucion
     if resolucion is None:
-        return
+        raise ValidationError(
+            f'El documento no tiene resolución. Configúrela en el tipo de documento '
+            f'{documento.documento_tipo.nombre}.'
+        )
 
     if resolucion.fecha_hasta <= date.today():
         raise ValidationError('La fecha de la resolución está vencida.')
