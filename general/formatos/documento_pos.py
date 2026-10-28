@@ -47,7 +47,7 @@ _GRIS_GUION = colors.HexColor('#595959')
 # «Cantidad x precio» y el valor de la línea; la descripción va arriba a todo el ancho.
 _ANCHO_DETALLES = [ANCHO * 0.62, ANCHO * 0.38]
 # Etiqueta y valor de los datos de la venta.
-_ANCHO_DATOS = [ANCHO * 0.34, ANCHO * 0.66]
+_ANCHO_DATOS = [ANCHO * 0.37, ANCHO * 0.63]
 # Descripción del impuesto, base y valor.
 _ANCHO_IMPUESTOS = [ANCHO * 0.44, ANCHO * 0.28, ANCHO * 0.28]
 # Etiqueta y valor de los totales.
@@ -134,20 +134,20 @@ class FormatoDocumentoPos(FormatoBase):
         base = getSampleStyleSheet()['Normal']
 
         def estilo(nombre, **kwargs):
-            return ParagraphStyle(f'pos_{nombre}', parent=base, fontSize=8, leading=10.5, **kwargs)
+            return ParagraphStyle(f'pos_{nombre}', parent=base, fontSize=9, leading=11.5, **kwargs)
 
         return {
             'razon_social': ParagraphStyle(
-                'pos_razon_social', parent=base, fontName='Helvetica-Bold', fontSize=11, leading=14,
+                'pos_razon_social', parent=base, fontName='Helvetica-Bold', fontSize=12, leading=15,
                 alignment=TA_CENTER,
             ),
             'titulo': ParagraphStyle(
-                'pos_titulo', parent=base, fontName='Helvetica-Bold', fontSize=10, leading=13,
+                'pos_titulo', parent=base, fontName='Helvetica-Bold', fontSize=11, leading=14,
                 alignment=TA_CENTER,
             ),
             'etiqueta': estilo('etiqueta', fontName='Helvetica-Bold'),
             'aviso': ParagraphStyle(
-                'pos_aviso', parent=base, fontSize=8.5, leading=11, alignment=TA_CENTER,
+                'pos_aviso', parent=base, fontSize=9.5, leading=12, alignment=TA_CENTER,
             ),
             'linea': estilo('linea', leftIndent=3 * mm),
             'empresa': estilo('empresa', alignment=TA_CENTER),
@@ -158,23 +158,23 @@ class FormatoDocumentoPos(FormatoBase):
             'cifra': estilo('cifra', alignment=TA_RIGHT),
             # Los totales, un punto y medio más grandes que el resto: es lo que se busca.
             'total': ParagraphStyle(
-                'pos_total', parent=base, fontName='Helvetica-Bold', fontSize=9.5, leading=12.5,
+                'pos_total', parent=base, fontName='Helvetica-Bold', fontSize=10.5, leading=13.5,
             ),
             'total_cifra': ParagraphStyle(
-                'pos_total_cifra', parent=base, fontName='Helvetica-Bold', fontSize=9.5, leading=12.5,
+                'pos_total_cifra', parent=base, fontName='Helvetica-Bold', fontSize=10.5, leading=13.5,
                 alignment=TA_RIGHT,
             ),
             'gran_total': ParagraphStyle(
-                'pos_gran_total', parent=base, fontName='Helvetica-Bold', fontSize=11, leading=14,
+                'pos_gran_total', parent=base, fontName='Helvetica-Bold', fontSize=12, leading=15,
             ),
             'gran_total_cifra': ParagraphStyle(
-                'pos_gran_total_cifra', parent=base, fontName='Helvetica-Bold', fontSize=11, leading=14,
+                'pos_gran_total_cifra', parent=base, fontName='Helvetica-Bold', fontSize=12, leading=15,
                 alignment=TA_RIGHT,
             ),
             'centro': estilo('centro', alignment=TA_CENTER),
             'pie': estilo('pie', fontName='Helvetica-Bold', alignment=TA_CENTER),
             'cufe': ParagraphStyle(
-                'pos_cufe', parent=base, fontName='Courier-Bold', fontSize=6.5, leading=8,
+                'pos_cufe', parent=base, fontName='Courier-Bold', fontSize=7, leading=8.5,
             ),
         }
 
