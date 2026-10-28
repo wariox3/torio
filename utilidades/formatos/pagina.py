@@ -85,6 +85,9 @@ def plantilla_hoja(identificador):
 
 ANCHO_ROLLO = 80 * mm
 MARGEN_ROLLO = 4 * mm
+# Arriba y abajo va más aire que a los lados: el tiquete no queda pegado al corte
+# del papel, y a los lados cada milímetro es ancho que se le quita al contenido.
+MARGEN_VERTICAL_ROLLO = 10 * mm
 ANCHO_CONTENIDO_ROLLO = ANCHO_ROLLO - 2 * MARGEN_ROLLO
 # Holgura sobre lo medido: si el alto quedara justo, un redondeo de reportlab
 # podría mandar la última línea a una segunda página.
@@ -97,10 +100,10 @@ def plantilla_rollo(identificador, elementos):
     return PageTemplate(
         id=identificador,
         frames=[Frame(
-            MARGEN_ROLLO, MARGEN_ROLLO, ANCHO_CONTENIDO_ROLLO, alto,
+            MARGEN_ROLLO, MARGEN_VERTICAL_ROLLO, ANCHO_CONTENIDO_ROLLO, alto,
             leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
         )],
-        pagesize=(ANCHO_ROLLO, alto + 2 * MARGEN_ROLLO),
+        pagesize=(ANCHO_ROLLO, alto + 2 * MARGEN_VERTICAL_ROLLO),
     )
 
 

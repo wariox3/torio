@@ -2,10 +2,12 @@
 Formato del tiquete del punto de venta (POS): la factura que sale por la impresora
 térmica, en rollo de 80 mm.
 
-Es una columna angosta que se lee de arriba a abajo —empresa, cliente, ítems,
-totales e impuestos—, separada por renglones de guiones como los tiquetes de caja.
-No hay espacio para la tarjeta del adquiriente ni para la tabla de siete columnas
-de la factura en hoja: cada ítem es su descripción, la cantidad y el subtotal.
+Es una columna angosta que se lee de arriba a abajo —empresa, título con el
+número, datos de la venta, ítems, impuestos y totales—, separada por renglones de
+guiones como los tiquetes de caja. No hay espacio para la tarjeta del adquiriente
+ni para la tabla de siete columnas de la factura en hoja: cada ítem ocupa dos
+renglones, la descripción a todo el ancho y debajo «cantidad x precio» con el
+valor, para que las cifras nunca se peguen.
 
 El POS electrónico (`FormatoDocumentoPosElectronico`) es el mismo tiquete con lo
 que lo identifica ante la DIAN al final: la resolución, el CUFE, la fecha de
@@ -42,13 +44,23 @@ CERO = Decimal('0')
 
 _GRIS_GUION = colors.HexColor('#595959')
 
-# Ítem, cantidad y subtotal. La descripción se lleva lo que sobra: es lo que se
-# parte en renglones.
-_ANCHO_DETALLES = [ANCHO * 0.56, ANCHO * 0.16, ANCHO * 0.28]
+# «Cantidad x precio» y el valor de la línea; la descripción va arriba a todo el ancho.
+_ANCHO_DETALLES = [ANCHO * 0.62, ANCHO * 0.38]
+# Etiqueta y valor de los datos de la venta.
+_ANCHO_DATOS = [ANCHO * 0.34, ANCHO * 0.66]
 # Descripción del impuesto, base y valor.
 _ANCHO_IMPUESTOS = [ANCHO * 0.44, ANCHO * 0.28, ANCHO * 0.28]
 # Etiqueta y valor de los totales.
 _ANCHO_TOTALES = [ANCHO * 0.65, ANCHO * 0.35]
+
+# Las tablas del tiquete van pegadas al margen y con poco aire entre renglones.
+_ESTILO_TABLA = TableStyle([
+    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ('LEFTPADDING', (0, 0), (-1, -1), 0),
+    ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+    ('TOPPADDING', (0, 0), (-1, -1), 1),
+    ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+])
 
 LADO_QR = 3.5 * cm
 # El CUFE son 96 caracteres sin espacios: `Paragraph` no parte una palabra, así
@@ -98,18 +110,19 @@ class FormatoDocumentoPos(FormatoBase):
 
         elementos = [
             *self._empresa(configuracion, estilos),
-            Spacer(1, 2 * mm),
-            *self._datos(documento, estilos),
+            _Guiones(),
+            Paragraph(self._titulo(documento), estilos['titulo']),
+            *self._aviso(estilos),
+            _Guiones(),
+            self._datos(documento, estilos),
             _Guiones(),
             self._detalles(documento, estilos),
-            _Guiones(),
-            self._totales(self._filas_total(documento), estilos),
-            _Guiones(),
-            self._totales(self._filas_base(documento), estilos),
         ]
         impuestos = self._impuestos(documento, estilos)
         if impuestos is not None:
             elementos += [_Guiones(), impuestos]
+        elementos += [_Guiones(), self._totales(documento, estilos)]
+        elementos += self._observaciones(documento, estilos)
         elementos += self._electronico(documento, configuracion, estilos)
         elementos += self._pie(configuracion, estilos)
         return elementos
@@ -124,15 +137,40 @@ class FormatoDocumentoPos(FormatoBase):
             return ParagraphStyle(f'pos_{nombre}', parent=base, fontSize=8, leading=10.5, **kwargs)
 
         return {
-            'razon_social': estilo('razon_social', fontName='Helvetica-Bold', alignment=TA_CENTER),
+            'razon_social': ParagraphStyle(
+                'pos_razon_social', parent=base, fontName='Helvetica-Bold', fontSize=11, leading=14,
+                alignment=TA_CENTER,
+            ),
+            'titulo': ParagraphStyle(
+                'pos_titulo', parent=base, fontName='Helvetica-Bold', fontSize=10, leading=13,
+                alignment=TA_CENTER,
+            ),
+            'etiqueta': estilo('etiqueta', fontName='Helvetica-Bold'),
+            'aviso': ParagraphStyle(
+                'pos_aviso', parent=base, fontSize=8.5, leading=11, alignment=TA_CENTER,
+            ),
+            'linea': estilo('linea', leftIndent=3 * mm),
             'empresa': estilo('empresa', alignment=TA_CENTER),
             'dato': estilo('dato'),
             'columna': estilo('columna', fontName='Helvetica-Bold'),
             'columna_cifra': estilo('columna_cifra', fontName='Helvetica-Bold', alignment=TA_RIGHT),
             'celda': estilo('celda'),
             'cifra': estilo('cifra', alignment=TA_RIGHT),
-            'total': estilo('total', fontName='Helvetica-Bold'),
-            'total_cifra': estilo('total_cifra', fontName='Helvetica-Bold', alignment=TA_RIGHT),
+            # Los totales, un punto y medio más grandes que el resto: es lo que se busca.
+            'total': ParagraphStyle(
+                'pos_total', parent=base, fontName='Helvetica-Bold', fontSize=9.5, leading=12.5,
+            ),
+            'total_cifra': ParagraphStyle(
+                'pos_total_cifra', parent=base, fontName='Helvetica-Bold', fontSize=9.5, leading=12.5,
+                alignment=TA_RIGHT,
+            ),
+            'gran_total': ParagraphStyle(
+                'pos_gran_total', parent=base, fontName='Helvetica-Bold', fontSize=11, leading=14,
+            ),
+            'gran_total_cifra': ParagraphStyle(
+                'pos_gran_total_cifra', parent=base, fontName='Helvetica-Bold', fontSize=11, leading=14,
+                alignment=TA_RIGHT,
+            ),
             'centro': estilo('centro', alignment=TA_CENTER),
             'pie': estilo('pie', fontName='Helvetica-Bold', alignment=TA_CENTER),
             'cufe': ParagraphStyle(
@@ -195,27 +233,55 @@ class FormatoDocumentoPos(FormatoBase):
             *self._informacion(configuracion, self.campo_informacion_superior, estilos),
         ]
 
+    def _titulo(self, documento):
+        """
+        «PRE CUENTA N° FEPS1284». Sin `TITULO` va el nombre del tipo de documento,
+        como en el electrónico. Sin número lo dice, porque un tiquete sin número
+        tiene que verse así.
+        """
+        titulo = self.TITULO or documento.documento_tipo.nombre.upper()
+        numero = self._numero(documento) or 'SIN NÚMERO'
+        return f'{self._texto(titulo)} N° {self._texto(numero)}'
+
+    # El POS sin validar ante la DIAN no sirve de soporte fiscal: el tiquete se
+    # titula pre-cuenta y lo dice bajo el título.
+    TITULO = 'PRE CUENTA'
+    AVISO = (
+        'Este documento es una pre-cuenta y no reemplaza una factura de venta '
+        'ni un documento equivalente.'
+    )
+
+    def _aviso(self, estilos):
+        """Bajo el título, el aviso de que no es un documento fiscal. El electrónico no lo lleva."""
+        if not self.AVISO:
+            return []
+        return [Spacer(1, 1 * mm), Paragraph(self._texto(self.AVISO), estilos['aviso'])]
+
     def _datos(self, documento, estilos):
-        """Número, fecha, cómo se paga y a quién se le vende."""
+        """
+        Fecha, cómo se paga, a quién se le vende y el soporte, en dos columnas: la etiqueta en
+        negrita y el valor alineado, que se parte en renglones sin meterse debajo
+        de la etiqueta.
+        """
         contacto = documento.contacto
         plazo = documento.plazo_pago
         credito = bool(plazo and plazo.dias > 0)
         pares = (
-            ('Número', self._numero(documento)),
             ('Fecha', documento.fecha and documento.fecha.strftime('%Y/%m/%d')),
             ('Forma de pago', 'Crédito' if credito else 'Contado'),
-            ('Medio de pago', documento.metodo_pago and documento.metodo_pago.nombre),
             ('Cliente', contacto and contacto.nombre_corto),
             ('Nit/C.C', contacto and contacto.numero_identificacion),
+            ('Soporte', documento.soporte),
             ('Dirección', contacto and contacto.direccion),
             ('Teléfono', contacto and contacto.telefono),
         )
-        # El número sale aunque falte: un tiquete sin número tiene que verse así.
-        return [
-            Paragraph(f'{etiqueta}: {self._texto(valor)}', estilos['dato'])
-            for etiqueta, valor in pares
-            if valor or etiqueta == 'Número'
-        ]
+        tabla = Table(
+            [[Paragraph(f'{etiqueta}:', estilos['etiqueta']), Paragraph(self._texto(valor), estilos['dato'])]
+             for etiqueta, valor in pares if valor],
+            colWidths=_ANCHO_DATOS,
+        )
+        tabla.setStyle(_ESTILO_TABLA)
+        return tabla
 
     # -------------------------------------------------------------- detalles ----
 
@@ -229,14 +295,15 @@ class FormatoDocumentoPos(FormatoBase):
 
     def _detalles(self, documento, estilos):
         """
-        Cada ítem con sus impuestos entre paréntesis —«CAFÉ (IVA 19%)»—, la cantidad
-        y el subtotal antes de impuestos.
+        Dos renglones por ítem: la descripción con sus impuestos entre paréntesis
+        —«CAFÉ (IVA 19%)»— a todo el ancho, y debajo «4 x 18,000» con el valor de
+        la línea antes de impuestos.
         """
         filas = [[
-            Paragraph('Ítem', estilos['columna']),
-            Paragraph('Cant', estilos['columna_cifra']),
-            Paragraph('Subtotal', estilos['columna_cifra']),
+            Paragraph('Descripción', estilos['columna']),
+            Paragraph('Valor', estilos['columna_cifra']),
         ]]
+        unir = []
         for detalle in self._lineas(documento):
             impuestos = ', '.join(
                 impuesto.impuesto.nombre
@@ -245,57 +312,72 @@ class FormatoDocumentoPos(FormatoBase):
             descripcion = self._texto(detalle.detalle or detalle.item.nombre)
             if impuestos:
                 descripcion = f'{descripcion} ({self._texto(impuestos)})'
+            # La descripción une las dos columnas y toma aire arriba: separa un ítem del anterior.
+            unir += [('SPAN', (0, len(filas)), (1, len(filas))), ('TOPPADDING', (0, len(filas)), (1, len(filas)), 3)]
+            filas.append([Paragraph(descripcion, estilos['celda']), ''])
             filas.append([
-                Paragraph(descripcion, estilos['celda']),
-                Paragraph(self._cantidad(detalle.cantidad), estilos['cifra']),
+                Paragraph(
+                    f'{self._cantidad(detalle.cantidad)} x {self._moneda(detalle.precio)}', estilos['linea'],
+                ),
                 Paragraph(self._moneda(detalle.subtotal), estilos['cifra']),
             ])
 
         tabla = Table(filas, colWidths=_ANCHO_DETALLES, repeatRows=1)
         tabla.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-            ('TOPPADDING', (0, 0), (-1, -1), 1),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+            *_ESTILO_TABLA.getCommands(),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
+            *unir,
         ]))
         return tabla
 
     # --------------------------------------------------------------- totales ----
 
     def _filas_total(self, documento):
-        return (
-            ('Total', self._moneda(documento.total)),
-            ('Total items', str(len(self._lineas(documento)))),
-        )
-
-    def _filas_base(self, documento):
         """
-        Lo que se vendió antes de impuestos y lo que suman. El descuento solo
-        sale si lo hay: en caja casi nunca, y un «Descuento: 0» es ruido.
+        De lo vendido al total, en el orden en que se suma: subtotal, descuento,
+        impuestos y retención. El descuento y la retención solo salen si los hay:
+        en caja casi nunca, y un «Descuento: 0» es ruido.
         """
         descuento = documento.descuento or CERO
-        filas = [('Vta antes de impuestos', self._moneda((documento.subtotal or CERO) - descuento))]
+        retencion = documento.impuesto_retencion or CERO
+        filas = [
+            ('Total ítems', str(len(self._lineas(documento)))),
+            ('Subtotal', self._moneda(documento.subtotal)),
+        ]
         if descuento:
-            filas.insert(0, ('Descuento', self._moneda(descuento)))
+            filas.append(('Descuento', self._moneda(-descuento)))
         filas.append(('Impuestos', self._moneda(documento.impuesto)))
+        if retencion:
+            filas.append(('Retención', self._moneda(-retencion)))
         return filas
 
-    @staticmethod
-    def _totales(filas, estilos):
-        tabla = Table(
-            [[Paragraph(f'{etiqueta}:', estilos['total']), Paragraph(valor, estilos['total_cifra'])]
-             for etiqueta, valor in filas],
-            colWidths=_ANCHO_TOTALES,
-        )
+    def _totales(self, documento, estilos):
+        """Las filas de `_filas_total` y, al final y más grande, el TOTAL a pagar."""
+        filas = [
+            [Paragraph(f'{etiqueta}:', estilos['total']), Paragraph(valor, estilos['total_cifra'])]
+            for etiqueta, valor in self._filas_total(documento)
+        ]
+        filas.append([
+            Paragraph('TOTAL:', estilos['gran_total']),
+            Paragraph(self._moneda(documento.total), estilos['gran_total_cifra']),
+        ])
+        tabla = Table(filas, colWidths=_ANCHO_TOTALES)
         tabla.setStyle(TableStyle([
-            ('LEFTPADDING', (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-            ('TOPPADDING', (0, 0), (-1, -1), 1),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+            *_ESTILO_TABLA.getCommands(),
+            ('TOPPADDING', (0, -1), (-1, -1), 3),
         ]))
         return tabla
+
+    def _observaciones(self, documento, estilos):
+        """El comentario del documento, solo si lo tiene."""
+        comentario = (documento.comentario or '').strip()
+        if not comentario:
+            return []
+        return [
+            _Guiones(),
+            Paragraph('Observaciones', estilos['columna']),
+            Paragraph('<br/>'.join(self._texto(linea) for linea in comentario.splitlines()), estilos['dato']),
+        ]
 
     def _impuestos(self, documento, estilos):
         """
@@ -320,13 +402,7 @@ class FormatoDocumentoPos(FormatoBase):
             Paragraph('Vr impto', estilos['columna_cifra']),
         ])
         tabla = Table(filas, colWidths=_ANCHO_IMPUESTOS)
-        tabla.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-            ('TOPPADDING', (0, 0), (-1, -1), 1),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-        ]))
+        tabla.setStyle(_ESTILO_TABLA)
         return tabla
 
     # ------------------------------------------------------------------- pie ----
@@ -354,7 +430,13 @@ class FormatoDocumentoPosElectronico(FormatoDocumentoPos):
     Sin CUFE el documento no está validado: en su lugar sale el aviso, y el QR
     lleva los datos del documento sin nada que lo haga pasar por válido, igual
     que en la factura electrónica.
+
+    No es una pre-cuenta: validado ante la DIAN, es el documento equivalente. Se
+    titula con el nombre de su tipo y no lleva el aviso.
     """
+
+    TITULO = None
+    AVISO = None
 
     def _electronico(self, documento, configuracion, estilos):
         resolucion = documento.resolucion

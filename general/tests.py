@@ -10113,11 +10113,49 @@ class FormatoPosTests(TenantTestCase):
     def test_montos_sin_decimales_cantidad_sin_ceros_y_numero_con_prefijo(self):
         texto = self._texto(self._pos())
 
-        self.assertIn('Número: FEPS1284', texto)
+        self.assertIn('PRE CUENTA N° FEPS1284', texto)
         self.assertIn('11,900', texto)
         self.assertNotIn('11,900.00', texto)
-        self.assertIn('| 1 |', texto)
+        self.assertIn('1 x 10,000', texto)
         self.assertNotIn('1.000000', texto)
+
+    def test_el_titulo_lleva_el_tipo_y_sin_numero_lo_dice(self):
+        textos = self._textos(FormatoDocumentoPos(self._pos(numero=None)))
+
+        self.assertIn('PRE CUENTA N° SIN NÚMERO', textos)
+        # Va después de la empresa y antes de los datos de la venta.
+        self.assertLess(textos.index('PRE CUENTA N° SIN NÚMERO'), textos.index('Fecha:'))
+
+    def test_el_pos_lleva_el_aviso_de_pre_cuenta_bajo_el_titulo_y_el_electronico_no(self):
+        textos = self._textos(FormatoDocumentoPos(self._pos()))
+
+        aviso = FormatoDocumentoPos.AVISO
+        self.assertEqual(textos[textos.index('PRE CUENTA N° FEPS1284') + 1], aviso)
+        electronico = self._textos(FormatoDocumentoPosElectronico(self._pos(tipo=self.tipo_pos_electronico)))
+        self.assertNotIn(aviso, electronico)
+        self.assertIn('FACTURA POS ELECTRÓNICA N° FEPS1284', electronico)
+
+    def test_cada_item_es_su_descripcion_y_debajo_cantidad_por_precio_con_el_valor(self):
+        textos = self._textos(FormatoDocumentoPos(self._pos()))
+
+        descripcion = textos.index('CAFÉ (IVA 19%)')
+        self.assertEqual(textos[descripcion + 1:descripcion + 3], ['1 x 10,000', '10,000'])
+
+    def test_los_datos_van_en_dos_columnas_y_los_vacios_no_salen(self):
+        self.contacto.telefono = ''
+        self.contacto.save()
+
+        textos = self._textos(FormatoDocumentoPos(self._pos()))
+
+        self.assertEqual(textos[textos.index('Cliente:') + 1], 'JUAN PÉREZ')
+        self.assertNotIn('Teléfono:', textos)
+        self.assertNotIn('Soporte:', textos)
+
+    def test_el_soporte_va_despues_del_nit_y_no_sale_el_medio_de_pago(self):
+        texto = self._texto(self._pos(soporte='OC-4512'))
+
+        self.assertIn('Nit/C.C: | 1036000000 | Soporte: | OC-4512 | Dirección:', texto)
+        self.assertNotIn('Medio de pago', texto)
 
     def test_los_impuestos_van_entre_parentesis_y_con_su_bloque_de_bases(self):
         texto = self._texto(self._pos())
@@ -10137,8 +10175,20 @@ class FormatoPosTests(TenantTestCase):
         self.assertNotIn('Descuento', self._texto(self._pos()))
 
         texto = self._texto(self._pos(descuento=Decimal('500')))
-        self.assertIn('Descuento: | 500', texto)
-        self.assertIn('Vta antes de impuestos: | 9,500', texto)
+        self.assertIn('Subtotal: | 10,000 | Descuento: | -500 | Impuestos: | 1,900', texto)
+
+    def test_el_total_va_al_final_y_la_retencion_solo_si_la_hay(self):
+        self.assertNotIn('Retención', self._texto(self._pos()))
+
+        texto = self._texto(self._pos(impuesto_retencion=Decimal('250'), total=Decimal('11650')))
+        self.assertIn('Impuestos: | 1,900 | Retención: | -250 | TOTAL: | 11,650', texto)
+
+    def test_las_observaciones_solo_salen_si_hay_comentario(self):
+        self.assertNotIn('Observaciones', self._texto(self._pos()))
+
+        texto = self._texto(self._pos(comentario='Entregar antes de las 6\nFrágil & caro'))
+        # El texto plano del párrafo no trae el `<br/>` del salto de línea.
+        self.assertIn('TOTAL: | 11,900 | Observaciones | Entregar antes de las 6Frágil & caro', texto)
 
     def test_informacion_superior_e_inferior_impresas(self):
         GenConfiguracion.objects.update_or_create(id=1, defaults={
@@ -10151,7 +10201,7 @@ class FormatoPosTests(TenantTestCase):
         self.assertIn('Régimen común & IVA', textos)
         self.assertIn('Gracias por su compra', textos)
         # Arriba, antes de los datos de la venta; abajo, después de los totales.
-        self.assertLess(textos.index('Régimen común & IVA'), textos.index('Número: FEPS1284'))
+        self.assertLess(textos.index('Régimen común & IVA'), textos.index('PRE CUENTA N° FEPS1284'))
         self.assertGreater(textos.index('Gracias por su compra'), textos.index('Vr base'))
 
     def test_la_configuracion_expone_la_informacion_del_pos(self):
