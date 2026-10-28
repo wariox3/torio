@@ -40,4 +40,5 @@ from .resolucion import GenResolucionViewSet
 from .responsabilidad import GenResponsabilidadViewSet
 from .sector import GenSectorViewSet
 from .sede import GenSedeViewSet
+from .tablero import GenTableroViewSet
 from .tipo_persona import GenTipoPersonaViewSet

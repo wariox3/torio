@@ -34,6 +34,7 @@ from humano.views import (
     HumSucursalViewSet,
     HumTiempoViewSet,
     HumTipoCostoViewSet,
+    HumTableroViewSet,
     HumTipoCotizanteViewSet,
 )
 
@@ -69,6 +70,7 @@ router.register(r'riesgo', HumRiesgoViewSet, basename='riesgo')
 router.register(r'salud', HumSaludViewSet, basename='salud')
 router.register(r'subtipo-cotizante', HumSubtipoCotizanteViewSet, basename='subtipo-cotizante')
 router.register(r'sucursal', HumSucursalViewSet, basename='sucursal')
+router.register(r'tablero', HumTableroViewSet, basename='tablero')
 router.register(r'tiempo', HumTiempoViewSet, basename='tiempo')
 router.register(r'tipo-costo', HumTipoCostoViewSet, basename='tipo-costo')
 router.register(r'tipo-cotizante', HumTipoCotizanteViewSet, basename='tipo-cotizante')

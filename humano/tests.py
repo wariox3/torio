@@ -29,12 +29,19 @@ from humano.serializers import HumProgramacionSerializer
 from humano.servicios import ProgramacionError, cargar_contratos, eliminar_detalles
 from humano.servicios import contrato as contrato_servicio
 from humano.views.contrato import HumContratoViewSet
+from humano.views.tablero import HumTableroViewSet
 from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente
 from utilidades.fechas import dias_prestacionales
 
 
 class _ContratoViewSinPermisos(HumContratoViewSet):
     """Variante de la vista sin auth/permiso/throttle para probar los actions aislados."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class _TableroViewSinPermisos(HumTableroViewSet):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
     throttle_classes = []
@@ -179,8 +186,8 @@ class ValidacionContratoTests(TenantTestCase):
         self._crear_contrato(contacto=self.contacto2, estado_terminado=False)
         self._crear_contrato(fecha_desde=date(2026, 7, 1), fecha_hasta=date(2026, 12, 31), estado_terminado=False)
 
-        respuesta = _ContratoViewSinPermisos.as_view({'get': 'resumen'})(
-            self.factory.get('/humano/contrato/resumen/'),
+        respuesta = _TableroViewSinPermisos.as_view({'get': 'contrato'})(
+            self.factory.get('/humano/tablero/contrato/'),
         )
 
         self.assertEqual(respuesta.status_code, 200)
@@ -219,10 +226,8 @@ class ValidacionContratoTests(TenantTestCase):
         self.assertEqual(datos['contratos'], 6)
 
     def test_resumen_no_exige_el_permiso_del_modelo(self):
-        """Es el tablero de inicio: lo ve cualquier miembro con suscripción, como `cartera-resumen`."""
-        self.assertEqual(
-            HumContratoViewSet.resumen.kwargs['permission_classes'], [EsMiembroDelTenant, SuscripcionVigente],
-        )
+        """Es el tablero de inicio: lo ve cualquier miembro con suscripción, como `tablero/cartera`."""
+        self.assertEqual(HumTableroViewSet.permission_classes, [EsMiembroDelTenant, SuscripcionVigente])
 
 class CargarContratosTests(TenantTestCase):
     """`cargar_contratos`: un detalle por contrato del grupo según el tipo de pago."""

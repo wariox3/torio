@@ -223,6 +223,16 @@ instead of a query per row). Neither feature cascades on its own — there is no
 viewset whose records have images calls `eliminar_imagenes_de` in `perform_destroy`
 (`GenItem` and `GenContacto` do today).
 
+### Module dashboards (tablero)
+
+The cards and charts on each module's home page get their data from
+`<app>/views/tablero.py`: a model-less `ViewSet` registered as `tablero`, one
+`@action` per indicator at `GET /<app>/tablero/<indicador>/` (`/general/tablero/venta/`,
+`/humano/tablero/contrato/`…). The computation lives in `<app>/servicios/`, aggregated in
+the database, and takes an optional `hoy` so tests can pin the date. Permissions are
+`EsMiembroDelTenant` + `SuscripcionVigente` on the class — no model permission, it's the
+home page. Don't hang new summaries off a model viewset as `xxx-resumen`.
+
 ### Development notes
 
 - Cookie domain is set to `.localhost` so JWT cookies work across all tenant subdomains.

@@ -31,4 +31,5 @@ from .subtipo_cotizante import HumSubtipoCotizanteViewSet
 from .sucursal import HumSucursalViewSet
 from .tiempo import HumTiempoViewSet
 from .tipo_costo import HumTipoCostoViewSet
+from .tablero import HumTableroViewSet
 from .tipo_cotizante import HumTipoCotizanteViewSet

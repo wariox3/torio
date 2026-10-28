@@ -106,8 +106,10 @@ from general.views.modelo import GenModeloViewSet
 from general.views.parametro import GenParametroViewSet
 from general.views.precio_detalle import GenPrecioDetalleViewSet
 from general.views.resolucion import GenResolucionViewSet
+from general.views.tablero import GenTableroViewSet
 from inventario.models import InvAlmacen, InvExistencia
 from seguridad.models import SegUsuario
+from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente
 from utilidades import backblaze, mime
 from utilidades.formatos import EncabezadoEmpresa, datos_empresa
 from utilidades.formatos.empresa import LADO_LOGO, SEPARACION_LOGO
@@ -5407,6 +5409,12 @@ class _DocumentoViewSinPermisos(GenDocumentoViewSet):
     throttle_classes = []
 
 
+class _TableroViewSinPermisos(GenTableroViewSet):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
 class _DocumentoElectronicoErrorViewSinPermisos(GenDocumentoElectronicoErrorViewSet):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
@@ -6523,8 +6531,8 @@ class CarteraResumenTests(TenantTestCase):
 
     def test_la_vista_lee_el_tipo_de_la_url(self):
         self._factura('100', dias_vencido=5)
-        vista = _DocumentoViewSinPermisos.as_view({'get': 'cartera_resumen'})
-        peticion = APIRequestFactory().get('/general/documento/cartera-resumen/', {'tipo': 'cobrar'})
+        vista = _TableroViewSinPermisos.as_view({'get': 'cartera'})
+        peticion = APIRequestFactory().get('/general/tablero/cartera/', {'tipo': 'cobrar'})
 
         respuesta = vista(peticion)
 
@@ -6532,13 +6540,17 @@ class CarteraResumenTests(TenantTestCase):
         self.assertEqual(respuesta.data['total_pendiente'], Decimal('100'))
 
     def test_un_tipo_que_no_es_cobrar_ni_pagar_se_rechaza(self):
-        vista = _DocumentoViewSinPermisos.as_view({'get': 'cartera_resumen'})
-        peticion = APIRequestFactory().get('/general/documento/cartera-resumen/', {'tipo': 'todo'})
+        vista = _TableroViewSinPermisos.as_view({'get': 'cartera'})
+        peticion = APIRequestFactory().get('/general/tablero/cartera/', {'tipo': 'todo'})
 
         respuesta = vista(peticion)
 
         self.assertEqual(respuesta.status_code, 400)
         self.assertIn('cobrar', respuesta.data['detail'])
+
+    def test_el_tablero_no_exige_el_permiso_del_modelo(self):
+        """Es el tablero de inicio: lo ve cualquier miembro con suscripción."""
+        self.assertEqual(GenTableroViewSet.permission_classes, [EsMiembroDelTenant, SuscripcionVigente])
 
 
 class VentaResumenTests(TenantTestCase):
@@ -6635,8 +6647,8 @@ class VentaResumenTests(TenantTestCase):
         self.assertEqual(resumen['totales']['documentos'], 1)
 
     def test_la_vista_lee_el_periodo_de_la_url(self):
-        vista = _DocumentoViewSinPermisos.as_view({'get': 'venta_resumen'})
-        peticion = APIRequestFactory().get('/general/documento/venta-resumen/', {'periodo': 'anio'})
+        vista = _TableroViewSinPermisos.as_view({'get': 'venta'})
+        peticion = APIRequestFactory().get('/general/tablero/venta/', {'periodo': 'anio'})
 
         respuesta = vista(peticion)
 
@@ -6645,15 +6657,15 @@ class VentaResumenTests(TenantTestCase):
         self.assertEqual(len(respuesta.data['serie']), 12)
 
     def test_un_periodo_que_no_es_mes_ni_anio_se_rechaza(self):
-        vista = _DocumentoViewSinPermisos.as_view({'get': 'venta_resumen'})
+        vista = _TableroViewSinPermisos.as_view({'get': 'venta'})
         for query in ({'periodo': 'semana'}, {}):
             with self.subTest(query=query):
-                respuesta = vista(APIRequestFactory().get('/general/documento/venta-resumen/', query))
+                respuesta = vista(APIRequestFactory().get('/general/tablero/venta/', query))
 
                 self.assertEqual(respuesta.status_code, 400)
                 self.assertEqual(list(respuesta.data), ['detail'])
 
-    # --- compra-resumen ---
+    # --- tablero/compra ---
 
     def _tipos_nota_compra(self):
         nota_credito = GenDocumentoTipo.objects.create(
@@ -6707,19 +6719,19 @@ class VentaResumenTests(TenantTestCase):
         self.assertEqual(resumen['totales']['documentos'], 1)
 
     def test_compra_vista(self):
-        vista = _DocumentoViewSinPermisos.as_view({'get': 'compra_resumen'})
+        vista = _TableroViewSinPermisos.as_view({'get': 'compra'})
 
-        respuesta = vista(APIRequestFactory().get('/general/documento/compra-resumen/', {'periodo': 'mes'}))
+        respuesta = vista(APIRequestFactory().get('/general/tablero/compra/', {'periodo': 'mes'}))
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(respuesta.data['periodo'], 'mes')
 
         for query in ({'periodo': 'semana'}, {}):
             with self.subTest(query=query):
-                respuesta = vista(APIRequestFactory().get('/general/documento/compra-resumen/', query))
+                respuesta = vista(APIRequestFactory().get('/general/tablero/compra/', query))
                 self.assertEqual(respuesta.status_code, 400)
                 self.assertEqual(list(respuesta.data), ['detail'])
 
-    # --- resultado-resumen ---
+    # --- tablero/resultado ---
 
     def test_resultado_usa_el_subtotal_neto_alineado_por_fecha(self):
         nota_credito, _ = self._tipos_nota_compra()
@@ -6752,16 +6764,16 @@ class VentaResumenTests(TenantTestCase):
         self.assertEqual(resultado['totales']['diferencia'], Decimal('-729'))
 
     def test_resultado_vista(self):
-        vista = _DocumentoViewSinPermisos.as_view({'get': 'resultado_resumen'})
+        vista = _TableroViewSinPermisos.as_view({'get': 'resultado'})
 
-        respuesta = vista(APIRequestFactory().get('/general/documento/resultado-resumen/', {'periodo': 'anio'}))
+        respuesta = vista(APIRequestFactory().get('/general/tablero/resultado/', {'periodo': 'anio'}))
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(len(respuesta.data['serie']), 12)
         self.assertEqual(set(respuesta.data['totales']), {'ingreso', 'egreso', 'diferencia'})
 
         for query in ({'periodo': 'semana'}, {}):
             with self.subTest(query=query):
-                respuesta = vista(APIRequestFactory().get('/general/documento/resultado-resumen/', query))
+                respuesta = vista(APIRequestFactory().get('/general/tablero/resultado/', query))
                 self.assertEqual(respuesta.status_code, 400)
                 self.assertEqual(list(respuesta.data), ['detail'])
 

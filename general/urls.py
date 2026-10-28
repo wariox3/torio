@@ -43,6 +43,7 @@ from general.views import (
     GenResponsabilidadViewSet,
     GenSectorViewSet,
     GenSedeViewSet,
+    GenTableroViewSet,
     GenTipoPersonaViewSet,
 )
 
@@ -103,6 +104,7 @@ router.register(r'resolucion', GenResolucionViewSet, basename='resolucion')
 router.register(r'responsabilidad', GenResponsabilidadViewSet, basename='responsabilidad')
 router.register(r'sector', GenSectorViewSet, basename='sector')
 router.register(r'sede', GenSedeViewSet, basename='sede')
+router.register(r'tablero', GenTableroViewSet, basename='tablero')
 router.register(r'tipo-persona', GenTipoPersonaViewSet, basename='tipo-persona')
 
 urlpatterns = router.urls
