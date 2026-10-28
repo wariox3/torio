@@ -39,3 +39,24 @@ class HumCreditoSerializer(serializers.ModelSerializer):
             'contrato_contacto_numero_identificacion',
         ]
         read_only_fields = ['id', 'abono', 'saldo', 'cuota_actual', 'pagado']
+
+    # `saldo` es de solo lectura: lo calcula el servidor. Sin esto quedaba en
+    # cero y la nómina, que solo toma créditos con saldo, nunca lo descontaba.
+
+    def validate(self, datos):
+        total = datos.get('total')
+        if self.instance is not None and total is not None and total < self.instance.abono:
+            raise serializers.ValidationError({
+                'detail': f'El total no puede ser menor a lo ya abonado ({self.instance.abono:,.2f}).',
+            })
+        return datos
+
+    def create(self, validated_data):
+        validated_data['saldo'] = validated_data.get('total', 0)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        # Lo abonado lo escriben las nóminas: cambiar el total solo mueve lo que falta.
+        total = validated_data.get('total', instance.total)
+        validated_data['saldo'] = total - instance.abono
+        return super().update(instance, validated_data)

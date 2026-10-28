@@ -141,6 +141,54 @@ class GenerarProgramacionTests(TenantTestCase):
 
         self.assertEqual(programacion.deduccion, Decimal('180000'))
 
+    def _crear_credito(self, contrato, **datos):
+        from humano.serializers import HumCreditoSerializer
+
+        serializador = HumCreditoSerializer(data={
+            'contrato': contrato.id, 'concepto': self._concepto_credito(), 'fecha_inicio': '2026-01-01',
+            'total': '300000', 'cuota': '100000', 'cantidad_cuotas': 3, **datos,
+        })
+        serializador.is_valid(raise_exception=True)
+        return serializador.save()
+
+    def test_el_credito_creado_por_la_api_queda_con_saldo_y_se_descuenta(self):
+        """Con saldo en cero la nómina no lo tomaba: el saldo lo calcula el servidor."""
+        credito = self._crear_credito(self._contrato(), saldo='0', abono='50')
+
+        self.assertEqual((credito.saldo, credito.abono), (Decimal('300000'), 0))
+        programacion = generar_programacion(self._programacion())
+        self.assertEqual(programacion.deduccion, Decimal('180000'))
+
+    def test_al_cambiar_el_total_el_saldo_descuenta_lo_abonado(self):
+        from humano.serializers import HumCreditoSerializer
+
+        credito = self._crear_credito(self._contrato())
+        HumCredito.objects.filter(pk=credito.pk).update(abono=Decimal('100000'), saldo=Decimal('200000'))
+        credito.refresh_from_db()
+
+        serializador = HumCreditoSerializer(credito, data={'total': '500000'}, partial=True)
+        serializador.is_valid(raise_exception=True)
+        credito = serializador.save()
+
+        self.assertEqual(credito.saldo, Decimal('400000'))
+
+        # Editar otra cosa no toca el saldo.
+        serializador = HumCreditoSerializer(credito, data={'comentario': 'x'}, partial=True)
+        serializador.is_valid(raise_exception=True)
+        self.assertEqual(serializador.save().saldo, Decimal('400000'))
+
+    def test_el_total_no_puede_quedar_por_debajo_de_lo_abonado(self):
+        from humano.serializers import HumCreditoSerializer
+
+        credito = self._crear_credito(self._contrato())
+        HumCredito.objects.filter(pk=credito.pk).update(abono=Decimal('100000'), saldo=Decimal('200000'))
+        credito.refresh_from_db()
+
+        serializador = HumCreditoSerializer(credito, data={'total': '50000'}, partial=True)
+
+        self.assertFalse(serializador.is_valid())
+        self.assertIn('abonado', str(serializador.errors['detail']))
+
     def test_prima(self):
         self._contrato()
         programacion = self._programacion(
