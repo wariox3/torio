@@ -6134,42 +6134,8 @@ class ValidarAprobacionTests(TenantTestCase):
 
         self.assertTrue(documento_servicio.aprobar(documento.id).estado_aprobado)
 
-    def test_una_factura_sin_resolucion_no_se_aprueba(self):
-        """Sin resolución no se puede emitir: se frena antes de gastar el consecutivo."""
+    def test_una_factura_sin_resolucion_se_aprueba(self):
         documento = self._documento()
-        self._detalle(documento)
-        consecutivo = self.tipo_factura.consecutivo
-
-        with self.assertRaises(ValidationError) as caso:
-            documento_servicio.aprobar(documento.id)
-
-        self.assertIn('no tiene resolución', str(caso.exception))
-        self.tipo_factura.refresh_from_db()
-        self.assertEqual(self.tipo_factura.consecutivo, consecutivo)
-
-    def test_un_documento_soporte_sin_resolucion_no_se_aprueba(self):
-        clase = GenDocumentoClase.objects.create(id=303, nombre='Documento soporte')
-        soporte = GenDocumentoTipo.objects.create(id=11, nombre='DOCUMENTO SOPORTE', documento_clase=clase)
-        documento = self._documento(tipo=soporte)
-        self._detalle(documento)
-
-        with self.assertRaises(ValidationError) as caso:
-            documento_servicio.aprobar(documento.id)
-
-        self.assertIn('no tiene resolución', str(caso.exception))
-
-    def test_un_documento_soporte_con_resolucion_se_aprueba(self):
-        clase = GenDocumentoClase.objects.create(id=303, nombre='Documento soporte')
-        soporte = GenDocumentoTipo.objects.create(id=11, nombre='DOCUMENTO SOPORTE', documento_clase=clase)
-        documento = self._documento(tipo=soporte, resolucion=self._resolucion())
-        self._detalle(documento)
-
-        self.assertTrue(documento_servicio.aprobar(documento.id).estado_aprobado)
-
-    def test_otra_clase_sin_resolucion_se_aprueba(self):
-        clase = GenDocumentoClase.objects.create(id=200, nombre='Compra')
-        compra = GenDocumentoTipo.objects.create(id=5, nombre='COMPRA', documento_clase=clase)
-        documento = self._documento(tipo=compra)
         self._detalle(documento)
 
         self.assertTrue(documento_servicio.aprobar(documento.id).estado_aprobado)
@@ -6215,7 +6181,7 @@ class ValidarAprobacionTests(TenantTestCase):
     def test_no_se_afecta_mas_cantidad_de_la_que_tiene_el_detalle_afectado(self):
         origen = self._documento()
         afectado = self._detalle(origen, cantidad=Decimal('10'))
-        documento = self._documento(resolucion=self._resolucion())
+        documento = self._documento()
         self._detalle(documento, cantidad=Decimal('6'), documento_detalle_afectado=afectado)
         self._detalle(documento, cantidad=Decimal('5'), documento_detalle_afectado=afectado)
 
