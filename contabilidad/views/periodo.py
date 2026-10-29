@@ -7,8 +7,9 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from contabilidad.models import ConPeriodo
+from contabilidad.models import ConInconsistencia, ConPeriodo
 from contabilidad.serializers import (
+    ConInconsistenciaSerializer,
     ConPeriodoExportarSerializer,
     ConPeriodoImportarSerializer,
     ConPeriodoSeleccionarSerializer,
@@ -192,25 +193,51 @@ class ConPeriodoViewSet(
         description=(
             'Corre el mismo análisis que `bloquear`, reemplaza las inconsistencias '
             'guardadas del periodo (`con_inconsistencia`) y actualiza '
-            '`estado_inconsistencia`, sin bloquear. Devuelve lo encontrado.'
+            '`estado_inconsistencia`, sin bloquear. Responde lo guardado igual que '
+            '`inconsistencia/lista`, paginado (`?page=`).'
         ),
         request=None,
-        responses=InconsistenciasResponse,
+        responses=ConInconsistenciaSerializer(many=True),
     )
     @action(detail=True, methods=['post'])
     def analizar(self, request, pk=None):
         periodo = self.get_object()
-        return Response({'inconsistencias': guardar_inconsistencias(periodo)})
+        guardar_inconsistencias(periodo)
+        return self._inconsistencias_guardadas(periodo)
+
+    def _inconsistencias_guardadas(self, periodo):
+        """Las inconsistencias guardadas del periodo, con la forma y paginación de su lista."""
+        qs = (
+            ConInconsistencia.objects
+            .filter(periodo=periodo)
+            .select_related(*ConInconsistenciaSerializer.select_related_lista)
+            .order_by(*ConInconsistenciaSerializer.ordenamiento_default_lista)
+        )
+        pagina = self.paginate_queryset(qs)
+        return self.get_paginated_response(ConInconsistenciaSerializer(pagina, many=True).data)
 
     @extend_schema(
         summary='Bloquear un periodo',
         description=(
             'Bloquea el periodo si no tiene inconsistencias. En los dos casos guarda '
             'el análisis (`con_inconsistencia`) y actualiza `estado_inconsistencia`; '
-            'si las tiene, no bloquea y devuelve el detalle.'
+            'si las tiene, no bloquea y responde 400 con `detail` y lo guardado igual '
+            'que `inconsistencia/lista`, paginado (`?page=`).'
         ),
         request=ConPeriodoAccionRequestSerializer,
-        responses=ConPeriodoSerializer,
+        responses={
+            200: ConPeriodoSerializer,
+            400: inline_serializer(
+                name='PeriodoBloquearInconsistenciasResponse',
+                fields={
+                    'detail': serializers.CharField(),
+                    'count': serializers.IntegerField(),
+                    'next': serializers.URLField(allow_null=True),
+                    'previous': serializers.URLField(allow_null=True),
+                    'results': ConInconsistenciaSerializer(many=True),
+                },
+            ),
+        },
     )
     @action(detail=False, methods=['post'])
     def bloquear(self, request):
@@ -221,12 +248,12 @@ class ConPeriodoViewSet(
         if periodo.estado_bloqueado:
             raise ValidationError({'detail': 'El periodo ya estaba bloqueado previamente'})
 
-        inconsistencias = guardar_inconsistencias(periodo)
-        if inconsistencias:
+        if guardar_inconsistencias(periodo):
+            respuesta = self._inconsistencias_guardadas(periodo)
             return Response(
                 {
                     'detail': 'No se puede bloquear el periodo porque tiene inconsistencias',
-                    'inconsistencias': inconsistencias,
+                    **respuesta.data,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
