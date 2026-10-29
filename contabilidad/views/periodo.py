@@ -63,10 +63,13 @@ InconsistenciasResponse = inline_serializer(
 _LIST_PARAMS = [
     OpenApiParameter('anio', int, description='Filtrar por año'),
     OpenApiParameter('estado_cerrado', bool, description='Filtrar por cerrado'),
+    OpenApiParameter('estado_bloqueado', bool, description='Filtrar por bloqueado'),
 ]
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por año'),
+    OpenApiParameter('estado_cerrado', bool, description='Filtrar por cerrado'),
+    OpenApiParameter('estado_bloqueado', bool, description='Filtrar por bloqueado'),
 ]
 
 
@@ -98,6 +101,10 @@ class ConPeriodoViewSet(
         if valor is not None:
             qs = qs.filter(estado_cerrado=valor.lower() == 'true')
 
+        valor = self.request.query_params.get('estado_bloqueado')
+        if valor is not None:
+            qs = qs.filter(estado_bloqueado=valor.lower() == 'true')
+
         return qs
 
     @extend_schema(parameters=_LIST_PARAMS)
@@ -111,6 +118,12 @@ class ConPeriodoViewSet(
         search = request.query_params.get('search', '').strip()
         if search:
             qs = qs.filter(anio__icontains=search)
+        estado_cerrado = request.query_params.get('estado_cerrado')
+        if estado_cerrado is not None:
+            qs = qs.filter(estado_cerrado=estado_cerrado.lower() == 'true')
+        estado_bloqueado = request.query_params.get('estado_bloqueado')
+        if estado_bloqueado is not None:
+            qs = qs.filter(estado_bloqueado=estado_bloqueado.lower() == 'true')
         pagina = self.paginate_queryset(qs)
         serializer = ConPeriodoSeleccionarSerializer(pagina, many=True)
         return self.get_paginated_response(serializer.data)
