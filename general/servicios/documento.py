@@ -604,7 +604,58 @@ def aprobar(documento_id):
         depreciacion.afectar_activos(documento)
 
         _contabilizar_automaticamente(documento)
+        # Después del commit y no dentro: emitir sale a rededoc, y un documento que
+        # llegara a la DIAN no se puede deshacer si la aprobación se revierte.
+        transaction.on_commit(lambda: _emitir_automaticamente(documento))
     return documento
+
+
+def _emitir_automaticamente(documento):
+    """
+    Emite el documento electrónico recién aprobado si la empresa tiene activo
+    `gen_emitir_automaticamente`.
+
+    Entran los tipos electrónicos cuya clase se emite con `emitir` (los de
+    `factura_electronica.ARMADORES`: factura de venta, notas, POS, documento
+    soporte y nota de ajuste). Quedan fuera la compra, que es electrónica pero se
+    recibe, no se emite, y la nómina electrónica, que se aprueba en lote al
+    generarla y tiene su propia emisión.
+
+    Corre con la aprobación ya confirmada, así que nada de lo que pase acá la
+    deshace: si la emisión falla el documento queda aprobado y se emite después a
+    mano. Lo que es del documento (le falta la resolución, la caja, rededoc lo
+    rechaza) `emitir` lo deja en sus errores electrónicos, donde lo lee el front;
+    lo que no es del documento (la empresa no puede emitir, rededoc no responde)
+    solo se registra en el log.
+    """
+    # El import va acá y no arriba: `factura_electronica` importa este módulo.
+    from general.servicios import factura_electronica
+
+    tipo = documento.documento_tipo
+    if not tipo.electronico or tipo.documento_clase_id not in factura_electronica.ARMADORES:
+        return
+    activo = (
+        GenConfiguracion.objects.filter(pk=1)
+        .values_list('gen_emitir_automaticamente', flat=True)
+        .first()
+    )
+    if not activo:
+        return
+
+    try:
+        factura_electronica.emitir([documento.pk])
+    except factura_electronica.ErrorFacturaElectronica as error:
+        # Esperable: la empresa no terminó el asistente o rededoc no respondió.
+        logger.warning(
+            'Aprobado sin emitir automáticamente el documento %s: %s', documento.pk, error.cuerpo,
+        )
+    except Exception:  # La aprobación ya quedó; la emisión se reintenta a mano.
+        logger.exception('Aprobado sin emitir automáticamente el documento %s.', documento.pk)
+    # `emitir` guarda sobre su propia copia de la fila: se refleja acá para que la
+    # respuesta de aprobar diga cómo quedó el envío.
+    documento.refresh_from_db(fields=[
+        'electronico_id', 'estado_electronico_enviado', 'estado_electronico_error',
+    ])
 
 
 def _contabilizar_automaticamente(documento):
