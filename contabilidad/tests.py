@@ -25,11 +25,14 @@ from contabilidad.models import (
 )
 from contabilidad.serializers import ConActivoImportarSerializer, ConActivoSerializer
 from contabilidad.servicios import balance, depreciacion
+from contabilidad.servicios import tablero as tablero_servicio
+from contabilidad.servicios import movimiento as movimiento_servicio
 from contabilidad.servicios.movimiento import analizar_inconsistencias
 from contabilidad.views.comprobante import ConComprobanteViewSet
 from contabilidad.views.cuenta import ConCuentaViewSet
 from contabilidad.views.movimiento import ConMovimientoViewSet
 from contabilidad.views.movimiento_informe import ConMovimientoInformeViewSet
+from contabilidad.views.tablero import ConTableroViewSet
 from general.models import (
     GenCiudad,
     GenConfiguracion,
@@ -1404,6 +1407,16 @@ class EstadoResultadosTests(_InformePlanoMixin, _InformeBase):
 
         self.assertEqual(Decimal(self._lista()[0]['saldo']), Decimal(100))
 
+    def test_el_asiento_de_cierre_no_cancela_el_resultado(self):
+        """
+        El cierre lleva la cuenta de resultado a cero contra el ejercicio. Si
+        entrara, un rango que lo incluya mostraría el resultado del año en cero.
+        """
+        self._poblar()
+        self._movimiento(self.venta, date(2026, 1, 31), debito=100, cierre=True)
+
+        self.assertEqual(Decimal(self._lista()[0]['saldo']), Decimal(100))
+
 
 class EstadoSituacionFinancieraTests(_InformePlanoMixin, _InformeBase):
     """
@@ -1447,6 +1460,145 @@ class EstadoSituacionFinancieraTests(_InformePlanoMixin, _InformeBase):
 
         self.assertEqual(Decimal(self._lista()[0]['saldo']), Decimal(-100))
 
+
+
+class _TableroViewSinPermisos(ConTableroViewSet):
+    """Variante de la vista sin auth/permiso/throttle para probar el action aislado."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+
+class TableroEstadoResultadosTests(_InformeBase):
+    """
+    El estado de resultados del tablero: los rubros del PUC sumados en la base,
+    sin asientos de cierre, y las filas de la cascada que tienen que cuadrar.
+    """
+
+    def setUp(self):
+        super().setUp()
+        clases = {
+            id_: ConCuentaClase.objects.create(id=id_, nombre=f'Clase {id_}') for id_ in (4, 5, 6)
+        }
+        self.cuentas = {}
+        for grupo_id in (41, 42, 51, 53, 54, 61):
+            grupo = ConCuentaGrupo.objects.create(id=grupo_id, nombre=f'Grupo {grupo_id}')
+            cuenta_cuenta = ConCuentaCuenta.objects.create(id=grupo_id * 100 + 5, nombre=f'Cuenta {grupo_id}')
+            self.cuentas[grupo_id] = self._cuenta(
+                f'{grupo_id}050505', cuenta_cuenta,
+                cuenta_clase=clases[grupo_id // 10], cuenta_grupo=grupo,
+            )
+
+    def _ingreso(self, grupo_id, valor, fecha=date(2026, 1, 10), cierre=False):
+        return self._movimiento(self.cuentas[grupo_id], fecha, credito=valor, cierre=cierre)
+
+    def _gasto(self, grupo_id, valor, fecha=date(2026, 1, 10), cierre=False):
+        return self._movimiento(self.cuentas[grupo_id], fecha, debito=valor, cierre=cierre)
+
+    def _poblar(self):
+        self._ingreso(41, 1000)
+        self._gasto(61, 400)
+        self._gasto(51, 200)
+        self._ingreso(42, 50)
+        self._gasto(53, 30)
+        self._gasto(54, 100)
+
+    def _get(self, params=None, esperado=200):
+        params = {'fecha_desde': '2026-01-01', 'fecha_hasta': '2026-01-31'} if params is None else params
+        request = APIRequestFactory().get('/contabilidad/tablero/estado-resultados/', params)
+        response = _TableroViewSinPermisos.as_view({'get': 'estado_resultados'})(request)
+        self.assertEqual(response.status_code, esperado)
+        return response.data
+
+    def _cascada(self, datos):
+        return {fila['clave']: fila for fila in datos['cascada']}
+
+    def test_la_cascada_cuadra(self):
+        """Las filas de entrada y salida suman la ganancia; los subtotales no se suman."""
+        self._poblar()
+        datos = self._get()
+        cascada = self._cascada(datos)
+
+        movimientos = sum(
+            fila['valor'] for fila in datos['cascada'] if fila['tipo'] in ('entrada', 'salida')
+        )
+        self.assertEqual(movimientos, cascada['utilidad_neta']['valor'])
+        self.assertEqual(cascada['utilidad_neta']['valor'], Decimal(320))
+        self.assertEqual(cascada['utilidad_bruta']['valor'], Decimal(600))
+        self.assertEqual(cascada['utilidad_operacional']['valor'], Decimal(400))
+        self.assertEqual(cascada['costo_ventas']['valor'], Decimal(-400))
+        self.assertEqual(cascada['otros_netos']['valor'], Decimal(20))
+        self.assertEqual(cascada['otros_netos']['tipo'], 'entrada')
+        self.assertEqual(
+            datos['tarjetas'],
+            {
+                'vendimos': Decimal(1050), 'gastamos': Decimal(730),
+                'nos_quedo': Decimal(320), 'margen_neto': Decimal('32.00'),
+            },
+        )
+
+    def test_el_asiento_de_cierre_no_altera_el_resultado(self):
+        self._poblar()
+        antes = self._get()
+        # El cierre cancela las cuentas de resultado: si entrara, todo quedaría en cero.
+        self._gasto(41, 1000, fecha=date(2026, 1, 31), cierre=True)
+        self._ingreso(61, 400, fecha=date(2026, 1, 31), cierre=True)
+
+        self.assertEqual(self._get(), antes)
+
+    def test_sin_ventas_el_margen_es_nulo(self):
+        self._gasto(51, 200)
+        datos = self._get()
+
+        self.assertIsNone(datos['tarjetas']['margen_neto'])
+        self.assertEqual(datos['tarjetas']['nos_quedo'], Decimal(-200))
+
+    def test_otros_netos_negativo_es_salida(self):
+        self._ingreso(42, 100)
+        self._gasto(53, 300)
+        fila = self._cascada(self._get())['otros_netos']
+
+        self.assertEqual(fila['valor'], Decimal(-200))
+        self.assertEqual(fila['tipo'], 'salida')
+
+    def test_rango_sin_movimientos_todo_en_cero(self):
+        self._poblar()
+        datos = self._get({'fecha_desde': '2026-03-01', 'fecha_hasta': '2026-03-31'})
+
+        self.assertTrue(all(fila['valor'] == 0 for fila in datos['cascada']))
+        self.assertEqual(
+            datos['tarjetas'],
+            {'vendimos': 0, 'gastamos': 0, 'nos_quedo': 0, 'margen_neto': None},
+        )
+        self.assertEqual(
+            {clave: datos['comparativo'][clave] for clave in ('vendimos', 'gastamos', 'nos_quedo')},
+            {'vendimos': 0, 'gastamos': 0, 'nos_quedo': 0},
+        )
+
+    def test_el_comparativo_es_el_mismo_rango_del_anio_anterior(self):
+        self._ingreso(41, 1000)
+        self._ingreso(41, 700, fecha=date(2025, 1, 10))
+        comparativo = self._get()['comparativo']
+
+        self.assertEqual(comparativo['fecha_desde'], date(2025, 1, 1))
+        self.assertEqual(comparativo['fecha_hasta'], date(2025, 1, 31))
+        self.assertEqual(comparativo['vendimos'], Decimal(700))
+
+    def test_sin_fechas_va_del_primero_de_enero_a_hoy(self):
+        datos = tablero_servicio.estado_resultados(hoy=date(2026, 5, 20))
+
+        self.assertEqual(datos['fecha_desde'], date(2026, 1, 1))
+        self.assertEqual(datos['fecha_hasta'], date(2026, 5, 20))
+
+    def test_cuenta_sin_grupo_se_resuelve_por_el_codigo(self):
+        """El CRUD de cuentas no llena los FK del PUC: el código los suple."""
+        cuenta = ConCuenta.objects.create(codigo='41359505', nombre='Sin grupo', permite_movimiento=True)
+        self._movimiento(cuenta, date(2026, 1, 10), credito=500)
+
+        self.assertEqual(self._get()['tarjetas']['vendimos'], Decimal(500))
+
+    def test_rango_invertido_es_400(self):
+        datos = self._get({'fecha_desde': '2026-02-01', 'fecha_hasta': '2026-01-01'}, esperado=400)
+        self.assertIn('detail', datos)
 
 
 class _ContabilizarBase(TenantTestCase):
@@ -2167,8 +2319,11 @@ class InconsistenciasMovimientoTests(TenantTestCase):
     def _inconsistencias(self):
         return [i['inconsistencia'] for i in self._get({'periodo': self.periodo.id})['inconsistencias']]
 
-    def _codigos(self):
-        return [i['codigo'] for i in self._get({'periodo': self.periodo.id})['inconsistencias']]
+    def _tipos(self):
+        return [
+            i['inconsistencia_tipo_id']
+            for i in self._get({'periodo': self.periodo.id})['inconsistencias']
+        ]
 
     def _get(self, params=None, esperado=200):
         request = APIRequestFactory().get('/contabilidad/movimiento/inconsistencias/', params or {})
@@ -2188,7 +2343,7 @@ class InconsistenciasMovimientoTests(TenantTestCase):
         self.assertEqual(len(inconsistencias), 1)
         self.assertEqual(inconsistencias[0]['comprobante_id'], self.comprobante.id)
         self.assertEqual(inconsistencias[0]['comprobante_nombre'], 'Comprobante')
-        self.assertEqual(inconsistencias[0]['codigo'], 'descuadre')
+        self.assertEqual(inconsistencias[0]['inconsistencia_tipo_id'], movimiento_servicio.TIPO_DESCUADRE)
         self.assertEqual(inconsistencias[0]['inconsistencia'], 'El total de débito y crédito no coinciden')
 
     def test_reporta_tambien_las_reglas_de_la_cuenta(self):
@@ -2240,7 +2395,7 @@ class InconsistenciasMovimientoTests(TenantTestCase):
             self._inconsistencias(),
             ['La cuenta 11050510 no permite movimientos y tiene movimientos en el periodo'],
         )
-        self.assertEqual(self._codigos(), ['cuenta_no_permite_movimiento'])
+        self.assertEqual(self._tipos(), [movimiento_servicio.TIPO_CUENTA_NO_PERMITE_MOVIMIENTO])
 
     def test_reporta_el_centro_de_costo_que_la_cuenta_no_exige(self):
         """La exigencia se revisa en los dos sentidos: lo que no se exige tampoco puede estar."""
@@ -2293,8 +2448,12 @@ class InconsistenciasMovimientoTests(TenantTestCase):
             ],
         )
         self.assertEqual(
-            self._codigos(),
-            ['centro_costo_faltante', 'contacto_faltante', 'base_faltante'],
+            self._tipos(),
+            [
+                movimiento_servicio.TIPO_CENTRO_COSTO_FALTANTE,
+                movimiento_servicio.TIPO_CONTACTO_FALTANTE,
+                movimiento_servicio.TIPO_BASE_FALTANTE,
+            ],
         )
 
     def test_reporta_las_tres_que_sobran(self):
@@ -2312,8 +2471,12 @@ class InconsistenciasMovimientoTests(TenantTestCase):
             ],
         )
         self.assertEqual(
-            self._codigos(),
-            ['centro_costo_sobrante', 'contacto_sobrante', 'base_sobrante'],
+            self._tipos(),
+            [
+                movimiento_servicio.TIPO_CENTRO_COSTO_SOBRANTE,
+                movimiento_servicio.TIPO_CONTACTO_SOBRANTE,
+                movimiento_servicio.TIPO_BASE_SOBRANTE,
+            ],
         )
 
     def _documento(self, numero=1, fecha=None, contabilizado=False, contabilidad=True):
@@ -2349,8 +2512,8 @@ class InconsistenciasMovimientoTests(TenantTestCase):
             'El documento de tipo FACTURA número 1 no está contabilizado',
         )
         self.assertEqual(
-            [i['codigo'] for i in inconsistencias],
-            ['documento_sin_contabilizar', 'documento_sin_contabilizar'],
+            [i['inconsistencia_tipo_id'] for i in inconsistencias],
+            [movimiento_servicio.TIPO_DOCUMENTO_SIN_CONTABILIZAR] * 2,
         )
 
     def test_el_comprobante_del_movimiento_va_con_su_nombre(self):
@@ -2410,14 +2573,17 @@ class InconsistenciasMovimientoTests(TenantTestCase):
         self.assertEqual(
             filas[0],
             [
-                'Comprobante', 'Nombre comprobante', 'Numero', 'Cuenta', 'Documento',
-                'Tipo de documento', 'Codigo', 'Inconsistencia',
+                'Comprobante', 'Nombre comprobante', 'Numero', 'Cuenta', 'Movimiento', 'Documento',
+                'Tipo de documento', 'Tipo de inconsistencia', 'Resolver automatico',
+                'Inconsistencia',
             ],
         )
         self.assertEqual(
             filas[1],
             [
-                self.comprobante.id, 'Comprobante', 1, None, None, None, 'descuadre',
+                self.comprobante.id, 'Comprobante', 1, None, None, None, None,
+                # El tenant de pruebas no carga el catálogo de tipos: sin nombre.
+                None, False,
                 'El total de débito y crédito no coinciden',
             ],
         )

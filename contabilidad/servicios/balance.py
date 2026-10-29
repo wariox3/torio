@@ -255,8 +255,14 @@ def estado_resultados(fecha_desde, fecha_hasta):
 
     No arrastra saldo anterior por la misma razón: el resultado es del periodo,
     no acumulado desde el principio de la historia.
+
+    Deja fuera los asientos de cierre (`_SIN_CIERRE`): el cierre cancela justo
+    estas cuentas contra el ejercicio, así que un rango que lo incluya —el año
+    completo— mostraría el resultado en cero.
     """
-    return _por_cuenta_del_periodo(fecha_desde, fecha_hasta, CLASE_RESULTADO)
+    return _por_cuenta_del_periodo(
+        fecha_desde, fecha_hasta, CLASE_RESULTADO, sin_cierre=True,
+    )
 
 
 def estado_situacion_financiera(fecha_desde, fecha_hasta):
@@ -274,9 +280,11 @@ def estado_situacion_financiera(fecha_desde, fecha_hasta):
     return _por_cuenta_del_periodo(fecha_desde, fecha_hasta)
 
 
-def _por_cuenta_del_periodo(fecha_desde, fecha_hasta, clase_minima=None):
+def _por_cuenta_del_periodo(fecha_desde, fecha_hasta, clase_minima=None, sin_cierre=False):
     """Movimiento del rango agrupado por cuenta, con los nombres de clase y grupo."""
     qs = ConMovimiento.objects.filter(fecha__gte=fecha_desde, fecha__lte=fecha_hasta)
+    if sin_cierre:
+        qs = qs.filter(_SIN_CIERRE)
     if clase_minima is not None:
         qs = qs.filter(cuenta__cuenta_clase_id__gte=clase_minima)
     return (
