@@ -32,18 +32,22 @@ from .movimiento import ConMovimientoSerializer
 from .movimiento_exportar import ConMovimientoExportarSerializer
 from .movimiento_importar import ConMovimientoImportarSerializer
 from .movimiento_informe import (
-    ConMovimientoInformeAuxiliarContactoSerializer,
-    ConMovimientoInformeAuxiliarCuentaSerializer,
-    ConMovimientoInformeAuxiliarGeneralSerializer,
-    ConMovimientoInformeBalanceContactoSerializer,
-    ConMovimientoInformeBalanceSerializer,
-    ConMovimientoInformeBalanceTotalesSerializer,
-    ConMovimientoInformeBasesSerializer,
-    ConMovimientoInformeBasesTotalesSerializer,
-    ConMovimientoInformeCertificadoSerializer,
-    ConMovimientoInformeCertificadoTotalesSerializer,
-    ConMovimientoInformeEstadoSerializer,
-    ConMovimientoInformeEstadoTotalesSerializer,
+    ConMovimientoInformeExportarSerializer,
+    ConMovimientoInformeSerializer,
+)
+from .movimiento_informe_personalizado import (
+    ConMovimientoInformePersonalizadoAuxiliarContactoSerializer,
+    ConMovimientoInformePersonalizadoAuxiliarCuentaSerializer,
+    ConMovimientoInformePersonalizadoAuxiliarGeneralSerializer,
+    ConMovimientoInformePersonalizadoBalanceContactoSerializer,
+    ConMovimientoInformePersonalizadoBalanceSerializer,
+    ConMovimientoInformePersonalizadoBalanceTotalesSerializer,
+    ConMovimientoInformePersonalizadoBasesSerializer,
+    ConMovimientoInformePersonalizadoBasesTotalesSerializer,
+    ConMovimientoInformePersonalizadoCertificadoSerializer,
+    ConMovimientoInformePersonalizadoCertificadoTotalesSerializer,
+    ConMovimientoInformePersonalizadoEstadoSerializer,
+    ConMovimientoInformePersonalizadoEstadoTotalesSerializer,
 )
 from .movimiento_seleccionar import ConMovimientoSeleccionarSerializer
 from .periodo import ConPeriodoSerializer

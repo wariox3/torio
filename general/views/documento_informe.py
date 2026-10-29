@@ -11,6 +11,8 @@ from general.serializers import (
     GenDocumentoCarteraCorteInformeSerializer,
     GenDocumentoInformeExportarSerializer,
     GenDocumentoInformeSerializer,
+    GenDocumentoNominaElectronicaInformeExportarSerializer,
+    GenDocumentoNominaElectronicaInformeSerializer,
     GenDocumentoNominaInformeExportarSerializer,
     GenDocumentoNominaInformeSerializer,
 )
@@ -62,6 +64,14 @@ INFORMES = {
         'filtro': Q(documento_tipo__documento_clase_id=701),  # Nómina
         'serializer': GenDocumentoNominaInformeSerializer,
         'exportar': GenDocumentoNominaInformeExportarSerializer,
+    },
+    # Las electrónicas (empleado y mes) con el estado de su envío a la DIAN. Se
+    # generan aprobadas; el estado del envío queda como filtro.
+    'nomina_electronica': {
+        'titulo': 'Nómina electrónica',
+        'filtro': Q(documento_tipo__documento_clase_id=702),  # Nómina electrónica
+        'serializer': GenDocumentoNominaElectronicaInformeSerializer,
+        'exportar': GenDocumentoNominaElectronicaInformeExportarSerializer,
     },
 }
 

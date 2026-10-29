@@ -338,3 +338,102 @@ class GenDocumentoNominaInformeExportarSerializer(serializers.Serializer):
         if isinstance(valor, bool):
             return 'Sí' if valor else 'No'
         return valor
+
+
+class GenDocumentoNominaElectronicaInformeSerializer(serializers.ModelSerializer):
+    """
+    Columnas del informe `nomina_electronica`: un renglón por documento de nómina
+    electrónica (empleado y mes) con sus totales y el estado del envío a la DIAN.
+    La invariante (solo documentos de clase Nómina electrónica) la garantiza el ViewSet.
+    """
+
+    campos_filtrables = {
+        'id',
+        'numero',
+        'fecha',
+        'fecha_hasta',
+        'contacto_id',
+        'contacto__nombre_corto',
+        'contacto__numero_identificacion',
+        'contrato_id',
+        'estado_aprobado',
+        'estado_anulado',
+        'estado_contabilizado',
+        'estado_electronico',
+        'estado_electronico_enviado',
+        'estado_electronico_notificado',
+        'estado_electronico_descartado',
+        'estado_electronico_error',
+    }
+    select_related_lista = ('contacto',)
+    ordenamiento_default_lista = ('-fecha', '-numero')
+
+    contacto_numero_identificacion = serializers.CharField(
+        source='contacto.numero_identificacion', read_only=True, allow_null=True,
+    )
+    contacto_nombre_corto = serializers.CharField(source='contacto.nombre_corto', read_only=True, allow_null=True)
+
+    class Meta:
+        model = GenDocumento
+        fields = [
+            'id',
+            'numero',
+            'fecha',
+            'fecha_hasta',
+            'contacto_id',
+            'contacto_numero_identificacion',
+            'contacto_nombre_corto',
+            'contrato_id',
+            'devengado',
+            'deduccion',
+            'total',
+            'estado_aprobado',
+            'estado_anulado',
+            'estado_electronico_enviado',
+            'estado_electronico',
+            'estado_electronico_notificado',
+            'estado_electronico_descartado',
+            'estado_electronico_error',
+            'cue',
+        ]
+
+
+class GenDocumentoNominaElectronicaInformeExportarSerializer(serializers.Serializer):
+    """Estructura del Excel del informe `nomina_electronica` (usada por ExportarExcelMixin)."""
+
+    model = GenDocumento
+    nombre_archivo = 'nominas_electronicas'
+    hoja = 'Informe'
+
+    campos_excel = (
+        ('id', 'ID'),
+        ('numero', 'Número'),
+        ('fecha', 'Fecha'),
+        ('fecha_hasta', 'Fecha hasta'),
+        ('contacto_id', 'Contacto'),
+        ('contacto.numero_identificacion', 'Identificación'),
+        ('contacto.nombre_corto', 'Empleado'),
+        ('contrato_id', 'Contrato'),
+        ('devengado', 'Devengado'),
+        ('deduccion', 'Deducción'),
+        ('total', 'Total'),
+        ('estado_aprobado', 'Aprobado'),
+        ('estado_anulado', 'Anulado'),
+        ('estado_electronico_enviado', 'Enviado'),
+        ('estado_electronico', 'Validado'),
+        ('estado_electronico_notificado', 'Notificado'),
+        ('estado_electronico_descartado', 'Descartado'),
+        ('estado_electronico_error', 'Error'),
+        ('cue', 'CUNE'),
+    )
+
+    @staticmethod
+    def valor_excel(obj, campo):
+        valor = obj
+        for parte in campo.split('.'):
+            if valor is None:
+                return None
+            valor = getattr(valor, parte, None)
+        if isinstance(valor, bool):
+            return 'Sí' if valor else 'No'
+        return valor

@@ -40,6 +40,8 @@ from .documento_informe import (
     GenDocumentoCarteraCorteInformeSerializer,
     GenDocumentoInformeExportarSerializer,
     GenDocumentoInformeSerializer,
+    GenDocumentoNominaElectronicaInformeExportarSerializer,
+    GenDocumentoNominaElectronicaInformeSerializer,
     GenDocumentoNominaInformeExportarSerializer,
     GenDocumentoNominaInformeSerializer,
 )

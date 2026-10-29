@@ -33,7 +33,7 @@ from contabilidad.views.comprobante import ConComprobanteViewSet
 from contabilidad.views.cuenta import ConCuentaViewSet
 from contabilidad.views.inconsistencia import ConInconsistenciaViewSet
 from contabilidad.views.periodo import ConPeriodoViewSet
-from contabilidad.views.movimiento_informe import ConMovimientoInformeViewSet
+from contabilidad.views.movimiento_informe_personalizado import ConMovimientoInformePersonalizadoViewSet
 from contabilidad.views.tablero import ConTableroViewSet
 from general.models import (
     GenCiudad,
@@ -302,7 +302,7 @@ class SeleccionarComprobanteTests(TenantTestCase):
         self.assertEqual(self._seleccionar({'permite_asiento': 'true', 'search': 'VEN'}), [])
 
 
-class _MovimientoInformeViewSinPermisos(ConMovimientoInformeViewSet):
+class _MovimientoInformeViewSinPermisos(ConMovimientoInformePersonalizadoViewSet):
     """Variante de la vista sin auth/permiso/throttle para probar los actions aislados."""
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
@@ -391,7 +391,7 @@ class _InformeBase(TenantTestCase):
         payload.setdefault('fecha_desde', '2026-01-01')
         payload.setdefault('fecha_hasta', '2026-01-31')
         request = APIRequestFactory().post(
-            f'/contabilidad/movimiento-informe/{accion}/', payload, format='json',
+            f'/contabilidad/movimiento-informe-personalizado/{accion}/', payload, format='json',
         )
         return _MovimientoInformeViewSinPermisos.as_view({'post': accion})(request)
 
