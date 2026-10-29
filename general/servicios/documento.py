@@ -68,6 +68,7 @@ DOCUMENTO_CLASE_NOMINA_ELECTRONICA = 702
 # caer dentro del rango autorizado y la resolución no puede estar vencida.
 DOCUMENTO_CLASES_CON_RESOLUCION = (
     DOCUMENTO_CLASE_FACTURA_VENTA,
+    DOCUMENTO_CLASE_FACTURA_POS,
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
 )
 
@@ -217,7 +218,8 @@ def _validar_pagos(documento):
 
 def _validar_resolucion(documento, consecutivo):
     """
-    Una factura de venta o un documento soporte se numeran contra una resolución.
+    Una factura de venta, una factura POS o un documento soporte se numeran contra
+    una resolución.
 
     Se valida al aprobar y no al crear porque es acá donde el documento toma su
     consecutivo: antes no hay número que comparar contra el rango.
@@ -255,12 +257,15 @@ def _validar_numeracion(documento, consecutivo):
             f'desde {resolucion.consecutivo_desde} hasta {resolucion.consecutivo_hasta}.'
         )
 
-    # La factura de venta además tiene que estar fechada dentro de la vigencia: una
-    # factura fechada antes de que la resolución empezara a regir, o después de
-    # vencida, la rechaza la DIAN aunque el número quepa en el rango. Es la misma
-    # regla que exige `factura_electronica.emitir`, adelantada a donde todavía se
-    # puede corregir la fecha.
-    if documento.documento_tipo_id == DOCUMENTO_TIPO_FACTURA_VENTA:
+    # La factura de venta y la POS además tienen que estar fechadas dentro de la
+    # vigencia: una factura fechada antes de que la resolución empezara a regir, o
+    # después de vencida, la rechaza la DIAN aunque el número quepa en el rango. Es
+    # la misma regla que exige `factura_electronica.emitir`, adelantada a donde
+    # todavía se puede corregir la fecha.
+    if (
+        documento.documento_tipo_id == DOCUMENTO_TIPO_FACTURA_VENTA
+        or documento.documento_tipo.documento_clase_id == DOCUMENTO_CLASE_FACTURA_POS
+    ):
         if documento.fecha is None:
             raise ValidationError('La factura no tiene fecha.')
         if not (resolucion.fecha_desde <= documento.fecha <= resolucion.fecha_hasta):

@@ -160,7 +160,7 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
                     centro_costo=centro_costo,
                     documento_concepto_correccion=concepto,
                     documento_referencia=referencia,
-                    # La factura de venta y el documento soporte se numeran
+                    # La factura de venta, la POS y el documento soporte se numeran
                     # contra la resolución de su tipo, igual que al guardarlos por
                     # la API (`GenDocumentoSerializer._heredar_resolucion`). El
                     # Excel no trae resolución: los demás tipos quedan sin ella.

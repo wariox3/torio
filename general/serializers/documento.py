@@ -283,8 +283,9 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
 
     def _heredar_resolucion(self, datos):
         """
-        La factura de venta y el documento soporte toman siempre la resolución de
-        su tipo (`DOCUMENTO_CLASES_CON_RESOLUCION`).
+        La factura de venta, la factura POS y el documento soporte toman siempre la
+        resolución de su tipo (`DOCUMENTO_CLASES_CON_RESOLUCION`); si el tipo no
+        tiene, el documento queda sin resolución y se guarda igual.
 
         Es contra esa resolución que se valida el consecutivo al aprobar y la que
         viaja a rededoc al emitir: si la eligiera quien digita, el documento podría
