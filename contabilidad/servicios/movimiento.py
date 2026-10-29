@@ -1,12 +1,25 @@
 from decimal import Decimal
 
+from django.db import transaction
 from django.db.models import Sum
 
-from contabilidad.models import ConMovimiento
+from contabilidad.models import ConInconsistencia, ConInconsistenciaTipo, ConMovimiento
 from general.models import GenDocumento
 
 # Diferencia máxima permitida entre débito y crédito de un comprobante (ajuste por redondeo).
 TOLERANCIA_DESCUADRE = Decimal('1')
+
+# Id de cada tipo de inconsistencia en el catálogo `ConInconsistenciaTipo`
+# (`catalogos/08_inconsistencia_tipo.json`): tienen que coincidir.
+TIPO_DESCUADRE = 1
+TIPO_CUENTA_NO_PERMITE_MOVIMIENTO = 2
+TIPO_CENTRO_COSTO_FALTANTE = 3
+TIPO_CENTRO_COSTO_SOBRANTE = 4
+TIPO_CONTACTO_FALTANTE = 5
+TIPO_CONTACTO_SOBRANTE = 6
+TIPO_BASE_FALTANTE = 7
+TIPO_BASE_SOBRANTE = 8
+TIPO_DOCUMENTO_SIN_CONTABILIZAR = 9
 
 
 def analizar_inconsistencias(periodo=None):
@@ -17,9 +30,11 @@ def analizar_inconsistencias(periodo=None):
     tener que ir periodo por periodo.
 
     Cada inconsistencia comparte la misma forma (``comprobante_id``, ``comprobante_nombre``,
-    ``numero``, ``cuenta_id``, ``documento_id``, ``documento_tipo_id``, ``documento_tipo_nombre``,
-    ``inconsistencia``),
-    con ``None`` donde no aplique.
+    ``numero``, ``cuenta_id``, ``movimiento_id``, ``documento_id``, ``documento_tipo_id``, ``documento_tipo_nombre``,
+    ``inconsistencia_tipo_id``, ``inconsistencia_tipo_nombre``,
+    ``inconsistencia_tipo_resolver_automatico``, ``inconsistencia``),
+    con ``None`` donde no aplique. ``inconsistencia_tipo_id`` es el id en
+    ``ConInconsistenciaTipo``.
     Una lista vacía significa que lo revisado está consistente; para un periodo, que puede
     bloquearse.
     """
@@ -45,14 +60,17 @@ def analizar_inconsistencias(periodo=None):
                 'comprobante_nombre': comprobante['comprobante__nombre'],
                 'numero': comprobante['numero'],
                 'cuenta_id': None,
+                'movimiento_id': None,
                 'documento_id': None,
                 'documento_tipo_id': None,
                 'documento_tipo_nombre': None,
+                'inconsistencia_tipo_id': TIPO_DESCUADRE,
                 'inconsistencia': 'El total de débito y crédito no coinciden',
             })
 
     # 2. Reglas por movimiento según la configuración de la cuenta.
     movimientos = movimientos_periodo.values(
+        'id',
         'comprobante_id',
         'comprobante__nombre',
         'numero',
@@ -75,6 +93,7 @@ def analizar_inconsistencias(periodo=None):
             'comprobante_nombre': movimiento['comprobante__nombre'],
             'numero': movimiento['numero'],
             'cuenta_id': movimiento['cuenta_id'],
+            'movimiento_id': movimiento['id'],
             'documento_id': movimiento['documento_id'],
             'documento_tipo_id': movimiento['documento__documento_tipo_id'],
             'documento_tipo_nombre': movimiento['documento__documento_tipo__nombre'],
@@ -89,26 +108,31 @@ def analizar_inconsistencias(periodo=None):
         if not movimiento['cuenta__permite_movimiento']:
             inconsistencias.append({
                 **base,
+                'inconsistencia_tipo_id': TIPO_CUENTA_NO_PERMITE_MOVIMIENTO,
                 'inconsistencia': f'La cuenta {codigo} no permite movimientos y tiene movimientos en el periodo',
             })
         if movimiento['cuenta__exige_centro_costo'] and movimiento['centro_costo_id'] is None:
             inconsistencias.append({
                 **base,
+                'inconsistencia_tipo_id': TIPO_CENTRO_COSTO_FALTANTE,
                 'inconsistencia': f'La cuenta {codigo} exige centro de costo y no tiene centro de costo',
             })
         elif not movimiento['cuenta__exige_centro_costo'] and movimiento['centro_costo_id'] is not None:
             inconsistencias.append({
                 **base,
+                'inconsistencia_tipo_id': TIPO_CENTRO_COSTO_SOBRANTE,
                 'inconsistencia': f'La cuenta {codigo} no exige centro de costo y tiene centro de costo',
             })
         if movimiento['cuenta__exige_contacto'] and movimiento['contacto_id'] is None:
             inconsistencias.append({
                 **base,
+                'inconsistencia_tipo_id': TIPO_CONTACTO_FALTANTE,
                 'inconsistencia': f'La cuenta {codigo} exige contacto y no tiene contacto',
             })
         elif not movimiento['cuenta__exige_contacto'] and movimiento['contacto_id'] is not None:
             inconsistencias.append({
                 **base,
+                'inconsistencia_tipo_id': TIPO_CONTACTO_SOBRANTE,
                 'inconsistencia': f'La cuenta {codigo} no exige contacto y tiene contacto',
             })
         # La base es un importe, no una FK: ausente y cero son el mismo estado
@@ -116,11 +140,13 @@ def analizar_inconsistencias(periodo=None):
         if movimiento['cuenta__exige_base'] and not movimiento['base']:
             inconsistencias.append({
                 **base,
+                'inconsistencia_tipo_id': TIPO_BASE_FALTANTE,
                 'inconsistencia': f'La cuenta {codigo} exige base y no tiene base',
             })
         elif not movimiento['cuenta__exige_base'] and movimiento['base']:
             inconsistencias.append({
                 **base,
+                'inconsistencia_tipo_id': TIPO_BASE_SOBRANTE,
                 'inconsistencia': f'La cuenta {codigo} no exige base y tiene base',
             })
 
@@ -148,13 +174,53 @@ def analizar_inconsistencias(periodo=None):
             'comprobante_nombre': None,
             'numero': numero,
             'cuenta_id': None,
+            'movimiento_id': None,
             'documento_id': documento['id'],
             'documento_tipo_id': documento['documento_tipo_id'],
             'documento_tipo_nombre': documento['documento_tipo__nombre'],
+            'inconsistencia_tipo_id': TIPO_DOCUMENTO_SIN_CONTABILIZAR,
             'inconsistencia': (
                 f'El documento de tipo {documento["documento_tipo__nombre"]} '
                 f'{etiqueta} no está contabilizado'
             ),
         })
 
+    # El nombre del tipo y si se resuelve solo salen del catálogo, en una sola
+    # consulta, para que lo que se consulta en vivo diga lo mismo que lo que se guarda.
+    tipos = ConInconsistenciaTipo.objects.in_bulk()
+    for inconsistencia in inconsistencias:
+        tipo = tipos.get(inconsistencia['inconsistencia_tipo_id'])
+        inconsistencia['inconsistencia_tipo_nombre'] = tipo.nombre if tipo else None
+        inconsistencia['inconsistencia_tipo_resolver_automatico'] = (
+            tipo.resolver_automatico if tipo else False
+        )
+
+    return inconsistencias
+
+
+def guardar_inconsistencias(periodo):
+    """Analiza el periodo, reemplaza sus inconsistencias guardadas y marca su estado.
+
+    Las de ese periodo se borran y se vuelven a crear con lo que el análisis
+    encuentra ahora, y `estado_inconsistencia` queda en lo que dice ese mismo
+    análisis. Devuelve la lista del análisis, con la forma de
+    `analizar_inconsistencias`.
+    """
+    inconsistencias = analizar_inconsistencias(periodo)
+    with transaction.atomic():
+        ConInconsistencia.objects.filter(periodo=periodo).delete()
+        ConInconsistencia.objects.bulk_create([
+            ConInconsistencia(
+                numero=inconsistencia['numero'],
+                descripcion=inconsistencia['inconsistencia'],
+                inconsistencia_tipo_id=inconsistencia['inconsistencia_tipo_id'],
+                periodo=periodo,
+                comprobante_id=inconsistencia['comprobante_id'],
+                movimiento_id=inconsistencia['movimiento_id'],
+                documento_id=inconsistencia['documento_id'],
+            )
+            for inconsistencia in inconsistencias
+        ])
+        periodo.estado_inconsistencia = bool(inconsistencias)
+        periodo.save(update_fields=['estado_inconsistencia'])
     return inconsistencias

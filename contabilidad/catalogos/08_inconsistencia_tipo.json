@@ -1,0 +1,14 @@
+{
+  "model": "contabilidad.ConInconsistenciaTipo",
+  "data": [
+    {"id": 1, "nombre": "Descuadre de débito y crédito",       "resolver_automatico": false},
+    {"id": 2, "nombre": "Cuenta que no permite movimientos",   "resolver_automatico": false},
+    {"id": 3, "nombre": "Falta centro de costo",               "resolver_automatico": false},
+    {"id": 4, "nombre": "Sobra centro de costo",               "resolver_automatico": false},
+    {"id": 5, "nombre": "Falta contacto",                      "resolver_automatico": false},
+    {"id": 6, "nombre": "Sobra contacto",                      "resolver_automatico": false},
+    {"id": 7, "nombre": "Falta base",                          "resolver_automatico": false},
+    {"id": 8, "nombre": "Sobra base",                          "resolver_automatico": true},
+    {"id": 9, "nombre": "Documento sin contabilizar",          "resolver_automatico": false}
+  ]
+}

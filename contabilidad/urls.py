@@ -13,6 +13,8 @@ from contabilidad.views import (
     ConCuentaGrupoViewSet,
     ConCuentaSubcuentaViewSet,
     ConCuentaViewSet,
+    ConInconsistenciaTipoViewSet,
+    ConInconsistenciaViewSet,
     ConMetodoDepreciacionViewSet,
     ConMovimientoInformeViewSet,
     ConMovimientoViewSet,
@@ -32,6 +34,8 @@ router.register(r'cuenta-clase', ConCuentaClaseViewSet, basename='cuenta-clase')
 router.register(r'cuenta-cuenta', ConCuentaCuentaViewSet, basename='cuenta-cuenta')
 router.register(r'cuenta-grupo', ConCuentaGrupoViewSet, basename='cuenta-grupo')
 router.register(r'cuenta-subcuenta', ConCuentaSubcuentaViewSet, basename='cuenta-subcuenta')
+router.register(r'inconsistencia', ConInconsistenciaViewSet, basename='inconsistencia')
+router.register(r'inconsistencia-tipo', ConInconsistenciaTipoViewSet, basename='inconsistencia-tipo')
 router.register(r'metodo-depreciacion', ConMetodoDepreciacionViewSet, basename='metodo-depreciacion')
 router.register(r'movimiento', ConMovimientoViewSet, basename='movimiento')
 router.register(r'movimiento-informe', ConMovimientoInformeViewSet, basename='movimiento-informe')

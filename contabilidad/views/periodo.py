@@ -14,7 +14,10 @@ from contabilidad.serializers import (
     ConPeriodoSeleccionarSerializer,
     ConPeriodoSerializer,
 )
-from contabilidad.servicios.movimiento import analizar_inconsistencias
+from contabilidad.servicios.movimiento import (
+    analizar_inconsistencias,
+    guardar_inconsistencias,
+)
 from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import (
     ExportarExcelMixin,
@@ -43,9 +46,13 @@ InconsistenciasResponse = inline_serializer(
                 'comprobante_nombre': serializers.CharField(allow_null=True),
                 'numero': serializers.IntegerField(allow_null=True),
                 'cuenta_id': serializers.IntegerField(allow_null=True),
+                'movimiento_id': serializers.IntegerField(allow_null=True),
                 'documento_id': serializers.IntegerField(allow_null=True),
                 'documento_tipo_id': serializers.IntegerField(allow_null=True),
                 'documento_tipo_nombre': serializers.CharField(allow_null=True),
+                'inconsistencia_tipo_id': serializers.IntegerField(),
+                'inconsistencia_tipo_nombre': serializers.CharField(allow_null=True),
+                'inconsistencia_tipo_resolver_automatico': serializers.BooleanField(),
                 'inconsistencia': serializers.CharField(),
             },
         ),
@@ -168,10 +175,26 @@ class ConPeriodoViewSet(
         return Response({'inconsistencias': analizar_inconsistencias(periodo)})
 
     @extend_schema(
+        summary='Analizar y guardar las inconsistencias de un periodo',
+        description=(
+            'Corre el mismo análisis que `bloquear`, reemplaza las inconsistencias '
+            'guardadas del periodo (`con_inconsistencia`) y actualiza '
+            '`estado_inconsistencia`, sin bloquear. Devuelve lo encontrado.'
+        ),
+        request=None,
+        responses=InconsistenciasResponse,
+    )
+    @action(detail=True, methods=['post'])
+    def analizar(self, request, pk=None):
+        periodo = self.get_object()
+        return Response({'inconsistencias': guardar_inconsistencias(periodo)})
+
+    @extend_schema(
         summary='Bloquear un periodo',
         description=(
-            'Bloquea el periodo si no tiene inconsistencias. Si las tiene, lo marca '
-            'como inconsistente y devuelve el detalle de las inconsistencias encontradas.'
+            'Bloquea el periodo si no tiene inconsistencias. En los dos casos guarda '
+            'el análisis (`con_inconsistencia`) y actualiza `estado_inconsistencia`; '
+            'si las tiene, no bloquea y devuelve el detalle.'
         ),
         request=ConPeriodoAccionRequestSerializer,
         responses=ConPeriodoSerializer,
@@ -185,10 +208,8 @@ class ConPeriodoViewSet(
         if periodo.estado_bloqueado:
             raise ValidationError({'detail': 'El periodo ya estaba bloqueado previamente'})
 
-        inconsistencias = analizar_inconsistencias(periodo)
+        inconsistencias = guardar_inconsistencias(periodo)
         if inconsistencias:
-            periodo.estado_inconsistencia = True
-            periodo.save(update_fields=['estado_inconsistencia'])
             return Response(
                 {
                     'detail': 'No se puede bloquear el periodo porque tiene inconsistencias',
@@ -197,9 +218,8 @@ class ConPeriodoViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        periodo.estado_inconsistencia = False
         periodo.estado_bloqueado = True
-        periodo.save(update_fields=['estado_inconsistencia', 'estado_bloqueado'])
+        periodo.save(update_fields=['estado_bloqueado'])
         return Response(ConPeriodoSerializer(periodo).data)
 
     @extend_schema(

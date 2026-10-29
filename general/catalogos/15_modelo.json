@@ -51,6 +51,8 @@
     {"id": 20013, "app": "contabilidad", "clase": "ConConciliacion",           "nombre": "Conciliación",            "tabla": "con_conciliacion",            "tipo": "M"},
     {"id": 20014, "app": "contabilidad", "clase": "ConConciliacionDetalle",    "nombre": "Conciliación detalle",    "tabla": "con_conciliacion_detalle",    "tipo": "D"},
     {"id": 20015, "app": "contabilidad", "clase": "ConConciliacionSoporte",    "nombre": "Conciliación soporte",    "tabla": "con_conciliacion_soporte",    "tipo": "D"},
+    {"id": 20016, "app": "contabilidad", "clase": "ConInconsistenciaTipo",     "nombre": "Tipo de inconsistencia",  "tabla": "con_inconsistencia_tipo",     "tipo": "C"},
+    {"id": 20017, "app": "contabilidad", "clase": "ConInconsistencia",         "nombre": "Inconsistencia",          "tabla": "con_inconsistencia",          "tipo": "D"},
 
     {"id": 30001, "app": "turno",        "clase": "TurProgramador",            "nombre": "Programador",             "tabla": "tur_programador",             "tipo": "A"},
     {"id": 30002, "app": "turno",        "clase": "TurPuesto",                 "nombre": "Puesto",                  "tabla": "tur_puesto",                  "tipo": "A"},

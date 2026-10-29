@@ -2167,6 +2167,9 @@ class InconsistenciasMovimientoTests(TenantTestCase):
     def _inconsistencias(self):
         return [i['inconsistencia'] for i in self._get({'periodo': self.periodo.id})['inconsistencias']]
 
+    def _codigos(self):
+        return [i['codigo'] for i in self._get({'periodo': self.periodo.id})['inconsistencias']]
+
     def _get(self, params=None, esperado=200):
         request = APIRequestFactory().get('/contabilidad/movimiento/inconsistencias/', params or {})
         response = _MovimientoViewSinPermisos.as_view({'get': 'inconsistencias'})(request)
@@ -2185,6 +2188,7 @@ class InconsistenciasMovimientoTests(TenantTestCase):
         self.assertEqual(len(inconsistencias), 1)
         self.assertEqual(inconsistencias[0]['comprobante_id'], self.comprobante.id)
         self.assertEqual(inconsistencias[0]['comprobante_nombre'], 'Comprobante')
+        self.assertEqual(inconsistencias[0]['codigo'], 'descuadre')
         self.assertEqual(inconsistencias[0]['inconsistencia'], 'El total de débito y crédito no coinciden')
 
     def test_reporta_tambien_las_reglas_de_la_cuenta(self):
@@ -2236,6 +2240,7 @@ class InconsistenciasMovimientoTests(TenantTestCase):
             self._inconsistencias(),
             ['La cuenta 11050510 no permite movimientos y tiene movimientos en el periodo'],
         )
+        self.assertEqual(self._codigos(), ['cuenta_no_permite_movimiento'])
 
     def test_reporta_el_centro_de_costo_que_la_cuenta_no_exige(self):
         """La exigencia se revisa en los dos sentidos: lo que no se exige tampoco puede estar."""
@@ -2287,6 +2292,10 @@ class InconsistenciasMovimientoTests(TenantTestCase):
                 'La cuenta 52050505 exige base y no tiene base',
             ],
         )
+        self.assertEqual(
+            self._codigos(),
+            ['centro_costo_faltante', 'contacto_faltante', 'base_faltante'],
+        )
 
     def test_reporta_las_tres_que_sobran(self):
         self._movimiento(
@@ -2301,6 +2310,10 @@ class InconsistenciasMovimientoTests(TenantTestCase):
                 'La cuenta 11050505 no exige contacto y tiene contacto',
                 'La cuenta 11050505 no exige base y tiene base',
             ],
+        )
+        self.assertEqual(
+            self._codigos(),
+            ['centro_costo_sobrante', 'contacto_sobrante', 'base_sobrante'],
         )
 
     def _documento(self, numero=1, fecha=None, contabilizado=False, contabilidad=True):
@@ -2334,6 +2347,10 @@ class InconsistenciasMovimientoTests(TenantTestCase):
         self.assertEqual(
             inconsistencias[0]['inconsistencia'],
             'El documento de tipo FACTURA número 1 no está contabilizado',
+        )
+        self.assertEqual(
+            [i['codigo'] for i in inconsistencias],
+            ['documento_sin_contabilizar', 'documento_sin_contabilizar'],
         )
 
     def test_el_comprobante_del_movimiento_va_con_su_nombre(self):
@@ -2394,13 +2411,13 @@ class InconsistenciasMovimientoTests(TenantTestCase):
             filas[0],
             [
                 'Comprobante', 'Nombre comprobante', 'Numero', 'Cuenta', 'Documento',
-                'Tipo de documento', 'Inconsistencia',
+                'Tipo de documento', 'Codigo', 'Inconsistencia',
             ],
         )
         self.assertEqual(
             filas[1],
             [
-                self.comprobante.id, 'Comprobante', 1, None, None, None,
+                self.comprobante.id, 'Comprobante', 1, None, None, None, 'descuadre',
                 'El total de débito y crédito no coinciden',
             ],
         )

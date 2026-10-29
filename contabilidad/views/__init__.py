@@ -10,6 +10,8 @@ from .cuenta_clase import ConCuentaClaseViewSet
 from .cuenta_cuenta import ConCuentaCuentaViewSet
 from .cuenta_grupo import ConCuentaGrupoViewSet
 from .cuenta_subcuenta import ConCuentaSubcuentaViewSet
+from .inconsistencia import ConInconsistenciaViewSet
+from .inconsistencia_tipo import ConInconsistenciaTipoViewSet
 from .metodo_depreciacion import ConMetodoDepreciacionViewSet
 from .movimiento import ConMovimientoViewSet
 from .movimiento_informe import ConMovimientoInformeViewSet

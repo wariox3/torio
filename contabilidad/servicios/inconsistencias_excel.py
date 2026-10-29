@@ -22,8 +22,11 @@ COLUMNAS = (
     ('comprobante_nombre', 'Nombre comprobante'),
     ('numero', 'Numero'),
     ('cuenta_id', 'Cuenta'),
+    ('movimiento_id', 'Movimiento'),
     ('documento_id', 'Documento'),
     ('documento_tipo_nombre', 'Tipo de documento'),
+    ('inconsistencia_tipo_nombre', 'Tipo de inconsistencia'),
+    ('inconsistencia_tipo_resolver_automatico', 'Resolver automatico'),
     ('inconsistencia', 'Inconsistencia'),
 )
 
