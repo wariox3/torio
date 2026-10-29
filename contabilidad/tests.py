@@ -19,6 +19,7 @@ from contabilidad.models import (
     ConCuentaClase,
     ConCuentaCuenta,
     ConCuentaGrupo,
+    ConInconsistenciaTipo,
     ConMetodoDepreciacion,
     ConMovimiento,
     ConPeriodo,
@@ -30,7 +31,8 @@ from contabilidad.servicios import movimiento as movimiento_servicio
 from contabilidad.servicios.movimiento import analizar_inconsistencias
 from contabilidad.views.comprobante import ConComprobanteViewSet
 from contabilidad.views.cuenta import ConCuentaViewSet
-from contabilidad.views.movimiento import ConMovimientoViewSet
+from contabilidad.views.inconsistencia import ConInconsistenciaViewSet
+from contabilidad.views.periodo import ConPeriodoViewSet
 from contabilidad.views.movimiento_informe import ConMovimientoInformeViewSet
 from contabilidad.views.tablero import ConTableroViewSet
 from general.models import (
@@ -2242,7 +2244,14 @@ class DescontabilizarTests(_ContabilizarBase):
             self.assertTrue(movimiento.cierre)
 
 
-class _MovimientoViewSinPermisos(ConMovimientoViewSet):
+class _PeriodoViewSinPermisos(ConPeriodoViewSet):
+    """Variante de la vista sin auth/permiso/throttle para probar el action aislado."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class _InconsistenciaViewSinPermisos(ConInconsistenciaViewSet):
     """Variante de la vista sin auth/permiso/throttle para probar el action aislado."""
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
@@ -2251,10 +2260,10 @@ class _MovimientoViewSinPermisos(ConMovimientoViewSet):
 
 class InconsistenciasMovimientoTests(TenantTestCase):
     """
-    Es el mismo análisis que corre `periodo/bloquear`, servido desde movimientos:
-    el front lo consulta mientras corrige los asientos, así que tiene que devolver
-    el detalle completo sin tocar el estado del periodo —si lo marcara como
-    inconsistente, consultar sería un efecto secundario.
+    El análisis de inconsistencias, consultado en vivo por `periodo/<id>/inconsistencias`:
+    es el mismo que corre `periodo/bloquear`, y el front lo consulta mientras corrige
+    los asientos, así que tiene que devolver el detalle completo sin tocar el estado
+    del periodo —si lo marcara como inconsistente, consultar sería un efecto secundario.
     """
 
     @classmethod
@@ -2325,11 +2334,16 @@ class InconsistenciasMovimientoTests(TenantTestCase):
             for i in self._get({'periodo': self.periodo.id})['inconsistencias']
         ]
 
-    def _get(self, params=None, esperado=200):
-        request = APIRequestFactory().get('/contabilidad/movimiento/inconsistencias/', params or {})
-        response = _MovimientoViewSinPermisos.as_view({'get': 'inconsistencias'})(request)
+    def _get(self, params, esperado=200):
+        periodo = params['periodo']
+        request = APIRequestFactory().get(f'/contabilidad/periodo/{periodo}/inconsistencias/')
+        response = _PeriodoViewSinPermisos.as_view({'get': 'inconsistencias'})(request, pk=periodo)
         self.assertEqual(response.status_code, esperado)
         return response.data
+
+    def _todo(self):
+        """Sin periodo el servicio revisa la contabilidad entera; ningún endpoint lo expone."""
+        return analizar_inconsistencias()
 
     def test_periodo_cuadrado_no_reporta_nada(self):
         self._movimiento(debito=1000)
@@ -2369,23 +2383,19 @@ class InconsistenciasMovimientoTests(TenantTestCase):
         self.assertFalse(self.periodo.estado_inconsistencia)
 
     def test_sin_periodo_revisa_toda_la_contabilidad(self):
-        """El parámetro acota; omitirlo no es un error, revisa todos los periodos."""
+        """El periodo acota; sin él el servicio revisa todos los periodos."""
         self._movimiento(periodo=self.otro, debito=1000, numero=7)
-        inconsistencias = self._get()['inconsistencias']
-        self.assertEqual([i['numero'] for i in inconsistencias], [7])
+        self.assertEqual([i['numero'] for i in self._todo()], [7])
 
     def test_sin_periodo_no_reporta_lo_que_cuadra(self):
         self._movimiento(debito=1000)
         self._movimiento(credito=1000)
         self._movimiento(periodo=self.otro, debito=500, numero=7)
         self._movimiento(periodo=self.otro, credito=500, numero=7)
-        self.assertEqual(self._get(), {'inconsistencias': []})
+        self.assertEqual(self._todo(), [])
 
-    def test_periodo_que_no_existe_es_400(self):
-        self.assertIn('periodo', self._get({'periodo': self.periodo.id + 50}, esperado=400))
-
-    def test_periodo_que_no_es_numero_es_400(self):
-        self.assertIn('periodo', self._get({'periodo': 'enero'}, esperado=400))
+    def test_periodo_que_no_existe_es_404(self):
+        self._get({'periodo': self.periodo.id + 50}, esperado=404)
 
     def test_reporta_la_cuenta_que_no_permite_movimiento(self):
         cuenta = self._cuenta('11050510', permite_movimiento=False)
@@ -2550,64 +2560,36 @@ class InconsistenciasMovimientoTests(TenantTestCase):
     def test_el_periodo_acota_los_documentos(self):
         self._documento(fecha=date(2026, 2, 15))
         self.assertEqual(self._get({'periodo': self.periodo.id}), {'inconsistencias': []})
-        self.assertEqual(len(self._get()['inconsistencias']), 1)
+        self.assertEqual(len(self._todo()), 1)
 
-    def _excel(self, params=None):
-        request = APIRequestFactory().get(
-            '/contabilidad/movimiento/inconsistencias/', {**(params or {}), 'excel': 'true'},
+    def _excel(self, filtros=None):
+        request = APIRequestFactory().post(
+            '/contabilidad/inconsistencia/excel/', {'filtros': filtros or []}, format='json',
         )
-        response = _MovimientoViewSinPermisos.as_view({'get': 'inconsistencias'})(request)
+        response = _InconsistenciaViewSinPermisos.as_view({'post': 'excel'})(request)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response['Content-Type'],
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        )
-        self.assertEqual(response['Content-Disposition'], 'attachment; filename="inconsistencias.xlsx"')
         hoja = load_workbook(BytesIO(response.content)).active
         return [[celda.value for celda in fila] for fila in hoja.rows]
 
-    def test_excel_lleva_encabezados_y_una_fila_por_inconsistencia(self):
+    def test_excel_de_lo_guardado_respeta_los_filtros(self):
+        """El Excel estándar sale de `con_inconsistencia`, con los filtros de la lista."""
+        ConInconsistenciaTipo.objects.create(id=movimiento_servicio.TIPO_DESCUADRE, nombre='Descuadre')
         self._movimiento(debito=1000)
         self._movimiento(credito=900)
-        filas = self._excel({'periodo': self.periodo.id})
-        self.assertEqual(
-            filas[0],
-            [
-                'Comprobante', 'Nombre comprobante', 'Numero', 'Cuenta', 'Movimiento', 'Documento',
-                'Tipo de documento', 'Tipo de inconsistencia', 'Resolver automatico',
-                'Inconsistencia',
-            ],
-        )
-        self.assertEqual(
-            filas[1],
-            [
-                self.comprobante.id, 'Comprobante', 1, None, None, None, None,
-                # El tenant de pruebas no carga el catálogo de tipos: sin nombre.
-                None, False,
-                'El total de débito y crédito no coinciden',
-            ],
-        )
+        self._movimiento(periodo=self.otro, debito=500, numero=7)
+        movimiento_servicio.guardar_inconsistencias(self.periodo)
+        movimiento_servicio.guardar_inconsistencias(self.otro)
+
+        filas = self._excel([{'propiedad': 'periodo_id', 'operador': '=', 'valor': self.periodo.id}])
+
+        encabezados = filas[0]
+        self.assertEqual(encabezados[:4], ['ID', 'Periodo', 'Tipo de inconsistencia', 'Resolver automático'])
         self.assertEqual(len(filas), 2)
-
-    def test_excel_sin_inconsistencias_solo_lleva_encabezados(self):
-        self._movimiento(debito=1000)
-        self._movimiento(credito=1000)
-        self.assertEqual(len(self._excel({'periodo': self.periodo.id})), 1)
-
-    def test_excel_revisa_lo_mismo_que_el_json(self):
-        """El parámetro cambia el formato, no lo que se revisa."""
-        self._movimiento(cuenta=self.gasto, debito=1000)
-        self._movimiento(credito=1000)
-        json = self._get({'periodo': self.periodo.id})['inconsistencias']
-        filas = self._excel({'periodo': self.periodo.id})[1:]
-        self.assertEqual([f[-1] for f in filas], [i['inconsistencia'] for i in json])
-
-    def test_sin_el_parametro_sigue_devolviendo_json(self):
-        self._movimiento(debito=1000)
-        request = APIRequestFactory().get('/contabilidad/movimiento/inconsistencias/')
-        response = _MovimientoViewSinPermisos.as_view({'get': 'inconsistencias'})(request)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('inconsistencias', response.data)
+        fila = dict(zip(encabezados, filas[1]))
+        self.assertEqual(fila['Periodo'], self.periodo.id)
+        self.assertEqual(fila['Tipo de inconsistencia'], 'Descuadre')
+        self.assertEqual(fila['Resolver automático'], 'No')
+        self.assertEqual(fila['Descripción'], 'El total de débito y crédito no coinciden')
 
 
 class CertificadoRetencionPdfTests(_InformeBase):

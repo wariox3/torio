@@ -6,9 +6,9 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from contabilidad.models import ConInconsistencia
-from contabilidad.serializers import ConInconsistenciaSerializer
+from contabilidad.serializers import ConInconsistenciaExportarSerializer, ConInconsistenciaSerializer
 from contabilidad.servicios.movimiento import TIPO_BASE_SOBRANTE
-from utilidades.mixins import FiltrosDinamicosMixin
+from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin
 
 
 class ConInconsistenciaResolverRequestSerializer(serializers.Serializer):
@@ -18,6 +18,7 @@ class ConInconsistenciaResolverRequestSerializer(serializers.Serializer):
 @extend_schema(tags=['Inconsistencia'])
 class ConInconsistenciaViewSet(
     FiltrosDinamicosMixin,
+    ExportarExcelMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
@@ -25,6 +26,7 @@ class ConInconsistenciaViewSet(
     """Las filas las escriben `periodo/analizar` y `periodo/bloquear`; acá solo se leen y se resuelven."""
 
     serializer_class = ConInconsistenciaSerializer
+    serializer_class_exportar = ConInconsistenciaExportarSerializer
 
     def get_queryset(self):
         return ConInconsistencia.objects.select_related(

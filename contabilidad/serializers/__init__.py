@@ -25,6 +25,7 @@ from .cuenta_importar import ConCuentaImportarSerializer
 from .cuenta_seleccionar import ConCuentaSeleccionarSerializer
 from .cuenta_subcuenta import ConCuentaSubcuentaSeleccionarSerializer
 from .inconsistencia import ConInconsistenciaSerializer
+from .inconsistencia_exportar import ConInconsistenciaExportarSerializer
 from .inconsistencia_tipo import ConInconsistenciaTipoSeleccionarSerializer
 from .metodo_depreciacion import ConMetodoDepreciacionSeleccionarSerializer
 from .movimiento import ConMovimientoSerializer
