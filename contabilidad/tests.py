@@ -1603,6 +1603,69 @@ class TableroEstadoResultadosTests(_InformeBase):
         self.assertIn('detail', datos)
 
 
+class TableroPendienteContabilizarTests(TenantTestCase):
+    """Cuántos documentos del periodo faltan por contabilizar, por `fecha_contable`."""
+
+    def setUp(self):
+        super().setUp()
+        self.tipo = GenDocumentoTipo.objects.create(pk=911, nombre='FACTURA', contabilidad=True)
+        self.tipo_sin_contabilidad = GenDocumentoTipo.objects.create(pk=912, nombre='PEDIDO')
+
+    def _documento(self, documento_tipo=None, **extra):
+        datos = {
+            'documento_tipo': documento_tipo or self.tipo,
+            'fecha': date(2026, 10, 5),
+            'fecha_contable': date(2026, 10, 5),
+            'estado_aprobado': True,
+        }
+        datos.update(extra)
+        return GenDocumento.objects.create(**datos)
+
+    def _get(self, params=None, esperado=200):
+        request = APIRequestFactory().get('/contabilidad/tablero/pendiente-contabilizar/', params or {})
+        response = _TableroViewSinPermisos.as_view({'get': 'pendiente_contabilizar'})(request)
+        self.assertEqual(response.status_code, esperado)
+        return response.data
+
+    def test_cuenta_solo_los_pendientes_del_periodo(self):
+        self._documento()
+        self._documento()
+        self._documento(estado_aprobado=False)
+        self._documento(estado_anulado=True)
+        self._documento(estado_contabilizado=True)
+        self._documento(documento_tipo=self.tipo_sin_contabilidad)
+        self._documento(fecha_contable=date(2026, 11, 1))
+        self._documento(fecha_contable=date(2026, 9, 30))
+        self._documento(fecha_contable=None)
+
+        self.assertEqual(self._get({'periodo_id': 202610}), {'periodo_id': 202610, 'cantidad': 2})
+
+    def test_el_periodo_sale_de_fecha_contable_y_no_de_fecha(self):
+        self._documento(fecha=date(2026, 9, 30), fecha_contable=date(2026, 10, 1))
+
+        self.assertEqual(self._get({'periodo_id': 202610})['cantidad'], 1)
+        self.assertEqual(self._get({'periodo_id': 202609})['cantidad'], 0)
+
+    def test_diciembre_no_incluye_enero(self):
+        self._documento(fecha_contable=date(2026, 12, 31))
+        self._documento(fecha_contable=date(2027, 1, 1))
+
+        self.assertEqual(self._get({'periodo_id': 202612})['cantidad'], 1)
+
+    def test_sin_periodo_usa_el_mes_de_hoy(self):
+        self._documento(fecha_contable=date(2026, 10, 5))
+
+        datos = tablero_servicio.pendiente_contabilizar(hoy=date(2026, 10, 29))
+
+        self.assertEqual(datos, {'periodo_id': 202610, 'cantidad': 1})
+
+    def test_periodo_invalido_responde_400(self):
+        for periodo_id in ('202613', '202600', '12', 'abc'):
+            with self.subTest(periodo_id=periodo_id):
+                datos = self._get({'periodo_id': periodo_id}, esperado=400)
+                self.assertIn('detail', datos)
+
+
 class _ContabilizarBase(TenantTestCase):
     """Montaje común de las pruebas de contabilización: plan de cuentas y tipos."""
 

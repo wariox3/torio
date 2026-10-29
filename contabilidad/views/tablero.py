@@ -71,6 +71,15 @@ class EstadoResultadosRequestSerializer(serializers.Serializer):
     fecha_hasta = serializers.DateField(required=False)
 
 
+class PendienteContabilizarRespuestaSerializer(serializers.Serializer):
+    periodo_id = serializers.IntegerField(help_text='Periodo consultado, `AAAAMM`.')
+    cantidad = serializers.IntegerField(help_text='Documentos pendientes por contabilizar.')
+
+
+class PendienteContabilizarRequestSerializer(serializers.Serializer):
+    periodo_id = serializers.IntegerField(required=False)
+
+
 RESPUESTA_400 = OpenApiResponse(
     TableroErrorRespuestaSerializer, description='Fecha inválida o rango invertido',
 )
@@ -107,4 +116,35 @@ class ConTableroViewSet(viewsets.ViewSet):
             raise ValidationError({'detail': 'La fecha desde no puede ser posterior a la fecha hasta.'})
         return Response(
             tablero_servicio.estado_resultados(fecha_desde, fecha_hasta), status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(
+        summary='Documentos pendientes por contabilizar del periodo',
+        description=(
+            'Cuenta los documentos cuyo tipo lleva contabilidad, aprobados, no anulados '
+            'y sin contabilizar, con `fecha_contable` dentro del periodo. Sin '
+            '`periodo_id`, el periodo del mes en curso.'
+        ),
+        parameters=[
+            OpenApiParameter(
+                'periodo_id', OpenApiTypes.INT,
+                description='`AAAAMM` con mes de 01 a 12 (202610). Por defecto, el mes en curso.',
+            ),
+        ],
+        responses={
+            200: PendienteContabilizarRespuestaSerializer,
+            400: OpenApiResponse(TableroErrorRespuestaSerializer, description='Periodo inválido'),
+        },
+    )
+    @action(detail=False, methods=['get'], url_path='pendiente-contabilizar')
+    def pendiente_contabilizar(self, request):
+        serializer = PendienteContabilizarRequestSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        periodo_id = serializer.validated_data.get('periodo_id')
+        if periodo_id is not None:
+            anio, mes = divmod(periodo_id, 100)
+            if not 1 <= anio <= 9999 or not 1 <= mes <= 12:
+                raise ValidationError({'detail': 'El periodo debe tener la forma AAAAMM con mes de 01 a 12.'})
+        return Response(
+            tablero_servicio.pendiente_contabilizar(periodo_id), status=status.HTTP_200_OK,
         )

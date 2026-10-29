@@ -11,6 +11,10 @@ cuenta. Esos FK los llena el importador derivándolos del código, pero el CRUD
 de cuentas no: una cuenta creada a mano puede tenerlos en NULL. Para que esa
 cuenta no se pierda del tablero, cuando el FK falta se usa el prefijo numérico
 del código, que es justo lo que el catálogo usa como id.
+
+`pendiente_contabilizar`: cuántos documentos del periodo faltan por contabilizar,
+con el mismo criterio que `contabilizar`: tipo con contabilidad, aprobado, no
+anulado y el periodo sacado de `fecha_contable`.
 """
 from datetime import date
 from decimal import Decimal
@@ -21,7 +25,8 @@ from django.db.models import (
 from django.db.models.functions import Cast, Coalesce, Substr
 from django.utils import timezone
 
-from contabilidad.models import ConMovimiento
+from contabilidad.models import ConMovimiento, ConPeriodo
+from general.models import GenDocumento
 
 _CERO = Decimal('0')
 _MONTO = DecimalField(max_digits=20, decimal_places=6)
@@ -68,6 +73,31 @@ def rango(fecha_desde=None, fecha_hasta=None, hoy=None):
     """Completa el rango: del 1 de enero del año de `hoy` hasta `hoy`."""
     hoy = hoy or timezone.localdate()
     return fecha_desde or date(hoy.year, 1, 1), fecha_hasta or hoy
+
+
+def pendiente_contabilizar(periodo_id=None, hoy=None):
+    """
+    Cantidad de documentos pendientes por contabilizar del periodo.
+
+    Sin periodo, el del mes de `hoy`. El periodo es `anio*100+mes` con mes de 1 a
+    12: el 13 (ajustes y cierre) no corresponde a ninguna fecha.
+    """
+    if periodo_id is None:
+        hoy = hoy or timezone.localdate()
+        periodo_id = ConPeriodo.calcular_id(hoy.year, hoy.month)
+    anio, mes = divmod(periodo_id, 100)
+    desde = date(anio, mes, 1)
+    hasta = date(anio + 1, 1, 1) if mes == 12 else date(anio, mes + 1, 1)
+
+    cantidad = GenDocumento.objects.filter(
+        documento_tipo__contabilidad=True,
+        estado_aprobado=True,
+        estado_anulado=False,
+        estado_contabilizado=False,
+        fecha_contable__gte=desde,
+        fecha_contable__lt=hasta,
+    ).count()
+    return {'periodo_id': periodo_id, 'cantidad': cantidad}
 
 
 def _cifras(fecha_desde, fecha_hasta):
