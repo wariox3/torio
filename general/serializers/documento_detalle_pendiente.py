@@ -69,6 +69,7 @@ class GenDocumentoDetallePendienteSerializer(serializers.ModelSerializer):
             'item_nombre',
             'cantidad',
             'precio',
+            'porcentaje_descuento',
             'descuento',
             'total',
             'afectado',
