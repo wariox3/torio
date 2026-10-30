@@ -332,6 +332,11 @@ REDEDOC_AMBIENTE = 2
 REDEDOC_WEBHOOK_SECRETO = config('REDEDOC_WEBHOOK_SECRETO', default='')
 REDEDOC_WEBHOOK_SECRETO_ANTERIOR = config('REDEDOC_WEBHOOK_SECRETO_ANTERIOR', default='')
 
+# Mesa de ayuda carbono. CARBONO_KEY es el token de api que se crea en carbono
+# (`app:api-token`); sin él no se llama a carbono.
+CARBONO_URL = config('CARBONO_URL', default='https://mesa.semanticaerp.com')
+CARBONO_KEY = config('CARBONO_KEY', default='')
+
 # Celery, con RabbitMQ de broker (ver torioapp/celery.py). En los dos ambientes es
 # CloudAMQP, así que la URL es `amqps://`: el broker está en internet.
 CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='amqp://guest:guest@localhost:5672//')
