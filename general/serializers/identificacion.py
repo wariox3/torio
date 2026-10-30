@@ -6,4 +6,4 @@ from general.models import GenIdentificacion
 class GenIdentificacionSeleccionarSerializer(serializers.ModelSerializer):
     class Meta:
         model = GenIdentificacion
-        fields = ['id', 'nombre', 'tipo_persona']
+        fields = ['id', 'nombre', 'codigo', 'tipo_persona']

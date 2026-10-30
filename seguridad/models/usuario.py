@@ -20,7 +20,7 @@ class SegUsuario(UserProfile):
     # separado permitía que quedaran desincronizadas entre sí. Null = sin foto,
     # y el front decide qué mostrar en su lugar.
     imagen_uuid = models.UUIDField(null=True)
-    saldo_pendiente = models.DecimalField(max_digits=14, decimal_places=2, default=0, db_default=0)
+    fecha_nacimiento = models.DateField(null=True)
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
     tenants = models.ManyToManyField(
         settings.TENANT_MODEL,

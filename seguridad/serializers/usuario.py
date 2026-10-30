@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.db import connection
 from django_tenants.utils import get_public_schema_name
 from rest_framework import serializers
@@ -35,7 +37,16 @@ class SegUsuarioActualizarSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SegUsuario
-        fields = ['nombre_corto', 'numero_identificacion', 'celular', 'idioma']
+        fields = ['nombre_corto', 'numero_identificacion', 'celular', 'idioma', 'fecha_nacimiento']
+
+    def validate_fecha_nacimiento(self, valor):
+        if valor is None:
+            return valor
+        if valor > date.today():
+            raise serializers.ValidationError('La fecha de nacimiento no puede ser futura.')
+        if valor.year < 1900:
+            raise serializers.ValidationError('La fecha de nacimiento no es válida.')
+        return valor
 
 
 class SegUsuarioSeleccionarSerializer(serializers.ModelSerializer):
@@ -55,8 +66,8 @@ class SegUsuarioMeSerializer(serializers.ModelSerializer):
         model = SegUsuario
         fields = [
             'id', 'email', 'nombre_corto', 'numero_identificacion',
-            'celular', 'idioma', 'imagen', 'imagen_thumbnail',
-            'saldo_pendiente', 'is_verified', 'mfa_activo', 'mfa_metodo',
+            'celular', 'idioma', 'fecha_nacimiento', 'imagen', 'imagen_thumbnail',
+            'is_verified', 'mfa_activo', 'mfa_metodo',
             'is_staff', 'fecha_creacion',
         ]
         read_only_fields = fields
