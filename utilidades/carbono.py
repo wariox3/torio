@@ -24,14 +24,18 @@ class Carbono:
         contacto: str,
         correo: str,
         telefono: str,
-        cliente: str,
-        modulo: str,
         descripcion: str,
+        cliente: str | None = None,
+        modulo: str | None = None,
         archivos: list | None = None,
     ):
         """
         Crea un caso. `POST /api/soporte/caso/nuevo`, en multipart para poder
         adjuntar archivos.
+
+        Carbono exige `cliente` (texto libre) y `modulo` (un id de
+        `GET /api/soporte/modulo/lista`, p. ej. `GEN`). Son opcionales acá solo por
+        si carbono deja de exigirlos: si faltan, responde 400.
 
         `archivos` es una lista de tuplas `(nombre, contenido, mime)`; carbono
         admite máximo 5 de 10 MB cada uno. Si sale bien, `datos` trae `id` (el
@@ -43,10 +47,12 @@ class Carbono:
             'contacto': contacto,
             'correo': correo,
             'telefono': telefono,
-            'cliente': cliente,
-            'modulo': modulo,
             'descripcion': descripcion,
         }
+        if cliente:
+            datos['cliente'] = cliente
+        if modulo:
+            datos['modulo'] = modulo
         adjuntos = [('files[]', archivo) for archivo in archivos or []]
         respuesta = self._post('/api/soporte/caso/nuevo', datos, adjuntos)
         return {'error': respuesta['status'] != 200, **respuesta}

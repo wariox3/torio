@@ -9,6 +9,7 @@ from contenedor.views import (
     CtnEventoPagoViewSet,
     CtnIdentificacionViewSet,
     CtnInvitacionViewSet,
+    CtnMesaAyudaViewSet,
     CtnMovimientoViewSet,
     CtnPaisViewSet,
     CtnRededocViewSet,
@@ -25,6 +26,7 @@ router.register(r'contacto', CtnContactoViewSet, basename='contacto')
 router.register(r'estado', CtnEstadoViewSet, basename='estado')
 router.register(r'evento-pago', CtnEventoPagoViewSet, basename='evento-pago')
 router.register(r'identificacion', CtnIdentificacionViewSet, basename='identificacion')
+router.register(r'mesa-ayuda', CtnMesaAyudaViewSet, basename='mesa-ayuda')
 router.register(r'movimiento', CtnMovimientoViewSet, basename='movimiento')
 router.register(r'pais', CtnPaisViewSet, basename='pais')
 router.register(r'rededoc', CtnRededocViewSet, basename='rededoc')

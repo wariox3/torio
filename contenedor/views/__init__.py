@@ -6,6 +6,7 @@ from .estado import CtnEstadoViewSet
 from .evento_pago import CtnEventoPagoViewSet
 from .identificacion import CtnIdentificacionViewSet
 from .invitacion import CtnInvitacionViewSet
+from .mesa_ayuda import CtnMesaAyudaViewSet
 from .movimiento import CtnMovimientoViewSet
 from .pais import CtnPaisViewSet
 from .rededoc import CtnRededocViewSet

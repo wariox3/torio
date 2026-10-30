@@ -205,6 +205,8 @@ REST_FRAMEWORK = {
         # cree en serie; el tope real —uno en creación por usuario— lo pone la vista
         # en la base, porque si Redis se cae este límite deja pasar todo.
         'crear_contenedor': '10/hour',
+        # Cada caso se crea en carbono con nuestra key: sin tope, cualquiera llena la mesa.
+        'mesa_ayuda_caso': '10/hour',
     },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
