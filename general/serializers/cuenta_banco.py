@@ -37,6 +37,10 @@ class GenCuentaBancoSerializer(serializers.ModelSerializer):
 
 
 class GenCuentaBancoSeleccionarSerializer(serializers.ModelSerializer):
+    cuenta_banco_tipo_nombre = serializers.CharField(
+        source='cuenta_banco_tipo.nombre', read_only=True, allow_null=True,
+    )
+
     class Meta:
         model = GenCuentaBanco
-        fields = ['id', 'nombre']
+        fields = ['id', 'nombre', 'numero_cuenta', 'cuenta_banco_tipo', 'cuenta_banco_tipo_nombre']

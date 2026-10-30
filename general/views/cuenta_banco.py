@@ -59,7 +59,7 @@ class GenCuentaBancoViewSet(
     @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=GenCuentaBancoSeleccionarSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)
     def seleccionar(self, request):
-        qs = GenCuentaBanco.objects.order_by('nombre')
+        qs = GenCuentaBanco.objects.select_related('cuenta_banco_tipo').order_by('nombre')
         search = request.query_params.get('search', '').strip()
         if search:
             qs = qs.filter(nombre__icontains=search) | qs.filter(numero_cuenta__icontains=search)
