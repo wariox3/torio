@@ -20,5 +20,5 @@ from .mfa_usuario import (
 )
 from .rol import SegRol
 from .usuario import SegUsuario
-from .usuario_aplicacion import SegUsuarioAplicacion
 from .usuario_cliente import SegUsuarioCliente
+from .usuario_cliente_aplicacion import SegUsuarioClienteAplicacion

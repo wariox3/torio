@@ -13,7 +13,6 @@ from seguridad.views import (
     SegMfaViewSet,
     SegPermisoViewSet,
     SegRolViewSet,
-    SegUsuarioAplicacionView,
     SegUsuarioClienteViewSet,
     SegUsuarioViewSet,
 )
@@ -34,6 +33,5 @@ urlpatterns = [
     path('refresh/', RefreshView.as_view()),
     path('logout/', LogoutView.as_view()),
     path('me/', MeView.as_view()),
-    path('usuario-aplicacion/', SegUsuarioAplicacionView.as_view()),
     *router.urls,
 ]

@@ -82,7 +82,7 @@ class CtnCliente(TenantBase):
     @schema_required
     @transaction.atomic
     def add_user(
-        self, user_obj, *, grupos=None, propietario=False, soporte=False,
+        self, user_obj, *, grupos=None, aplicaciones=None, propietario=False, soporte=False,
         is_superuser=False, is_staff=False,
     ):
         """
@@ -104,6 +104,10 @@ class CtnCliente(TenantBase):
         `is_superuser`. Un usuario sin grupos entra al contenedor pero no pasa
         `TienePermisoModelo` en ningún recurso protegido.
 
+        `aplicaciones` son los ids de `CtnAplicacion` que el usuario verá en el menú
+        de este contenedor (`SegUsuarioClienteAplicacion`). Omitirlo lo deja sin
+        ninguna: ser miembro no concede acceso a ningún módulo por sí solo.
+
         `@schema_required` conmuta al schema del tenant: `UserTenantPermissions`
         y sus grupos caen ahí, y `seg_usuario_cliente` y `auth_group` se
         resuelven a `public` por el search_path.
@@ -114,7 +118,7 @@ class CtnCliente(TenantBase):
         crea sus permisos al terminar las migraciones. Entre una cosa y la otra
         el contenedor está en `creando`, y el middleware no deja entrar a nadie.
         """
-        from seguridad.models import SegUsuarioCliente
+        from seguridad.models import SegUsuarioCliente, SegUsuarioClienteAplicacion
 
         if SegUsuarioCliente.objects.filter(usuario=user_obj, cliente=self).exists():
             raise ExistsError(f'El usuario ya es miembro de {self.nombre}.')
@@ -133,6 +137,10 @@ class CtnCliente(TenantBase):
             propietario=propietario,
             soporte=soporte,
         )
+        SegUsuarioClienteAplicacion.objects.bulk_create([
+            SegUsuarioClienteAplicacion(usuario_cliente=membresia, aplicacion_id=aplicacion_id)
+            for aplicacion_id in set(aplicaciones or [])
+        ])
 
         tenant_user_added.send(sender=self.__class__, user=user_obj, tenant=self)
         return membresia
@@ -152,7 +160,7 @@ class CtnCliente(TenantBase):
         es OneToOne, así que una fila huérfana impide volver a invitar al mismo
         usuario a este contenedor.
         """
-        from seguridad.models import SegUsuarioCliente
+        from seguridad.models import SegUsuarioCliente, SegUsuarioClienteAplicacion
 
         if user_obj.pk == self.owner_id:
             raise DeleteError(f'No se puede desvincular al owner de {self.nombre}.')
@@ -180,7 +188,7 @@ class CtnCliente(TenantBase):
             return False
         # El staff en soporte tiene `is_superuser` para trabajar dentro del
         # contenedor, pero modificarlo o eliminarlo es cosa del cliente.
-        from seguridad.models import SegUsuarioCliente
+        from seguridad.models import SegUsuarioCliente, SegUsuarioClienteAplicacion
         if SegUsuarioCliente.objects.filter(usuario=usuario, cliente=self, soporte=True).exists():
             return False
         return UserTenantPermissions.objects.filter(

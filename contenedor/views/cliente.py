@@ -18,7 +18,9 @@ from rest_framework.throttling import ScopedRateThrottle
 from tenant_users.tenants.models import ExistsError
 
 from contenedor import imagen as imagen_servicio
-from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion, CtnSuscripcionTipo
+from contenedor.models import (
+    CtnAplicacion, CtnCliente, CtnDominio, CtnSuscripcion, CtnSuscripcionTipo,
+)
 from contenedor.serializers import CtnClienteSerializer
 from contenedor.serializers.cliente import (
     CtnClienteActualizarSerializer,
@@ -26,7 +28,7 @@ from contenedor.serializers.cliente import (
     CtnClienteListaUsuarioSerializer,
 )
 from contenedor.tasks import clave_paso, programar_creacion
-from seguridad.models import SegUsuario, SegUsuarioCliente
+from seguridad.models import SegUsuario, SegUsuarioCliente, SegUsuarioClienteAplicacion
 from seguridad.permissions import EsStaff
 
 # Todo contenedor nuevo arranca en el mismo plan de prueba —'Prueba ERP', categoría
@@ -187,13 +189,18 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         # La membresía sí va acá, aunque sus permisos (`UserTenantPermissions`)
         # los crea la tarea: estos viven en el schema del tenant, que todavía no
         # tiene tablas. Así el contenedor aparece en `lista-usuario` desde ya.
-        # El owner no necesita grupos: la tarea le da is_superuser, que se salta
-        # TienePermisoModelo.
-        SegUsuarioCliente.objects.create(
+        # El owner no necesita grupos —la tarea le da is_superuser, que se salta
+        # TienePermisoModelo—, pero sí aplicaciones: sin ellas se quedaría sin
+        # ningún módulo en el menú de su propio contenedor.
+        membresia = SegUsuarioCliente.objects.create(
             usuario=request.user,
             cliente=cliente,
             propietario=True,
         )
+        SegUsuarioClienteAplicacion.objects.bulk_create([
+            SegUsuarioClienteAplicacion(usuario_cliente=membresia, aplicacion_id=aplicacion_id)
+            for aplicacion_id in CtnAplicacion.objects.values_list('id', flat=True)
+        ])
 
         fecha_inicio = date.today()
         suscripcion = CtnSuscripcion.objects.create(
@@ -495,7 +502,8 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 'cliente__domains',
                 queryset=CtnDominio.objects.filter(is_primary=True),
                 to_attr='_dominio_primario',
-            )
+            ),
+            'aplicaciones',
         ).order_by('cliente__nombre')
 
         nombre = request.query_params.get('nombre')
@@ -582,7 +590,7 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         summary='Abrir soporte en un contenedor',
         description=(
             'Solo staff con MFA activo. Hace al staff miembro del contenedor marcado como '
-            '`soporte` y con `is_superuser`: desde ahí entra con '
+            '`soporte`, con `is_superuser` y todas las aplicaciones: desde ahí entra con '
             '`X-Tenant` como cualquier miembro, aunque la suscripción esté vencida. No '
             'puede modificar ni eliminar el contenedor. No vence: se cierra con '
             '`DELETE /seguridad/usuario-cliente/<id>/`, que puede hacer él o el owner. '
@@ -625,6 +633,7 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         try:
             membresia = cliente.add_user(
                 request.user,
+                aplicaciones=CtnAplicacion.objects.values_list('id', flat=True),
                 soporte=True,
                 is_superuser=True,
             )

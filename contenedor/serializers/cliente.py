@@ -41,6 +41,10 @@ class CtnClienteActualizarSerializer(serializers.ModelSerializer):
 
 
 class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
+    # Ids de `CtnAplicacion` que esta membresía ve en el menú.
+    aplicaciones = serializers.SlugRelatedField(
+        slug_field='aplicacion_id', many=True, read_only=True,
+    )
     cliente_id = serializers.IntegerField(source='cliente.id', read_only=True)
     schema_name = serializers.CharField(source='cliente.schema_name', read_only=True)
     cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True)
@@ -71,7 +75,7 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
             'cliente_fecha_ultima_conexion', 'cliente_imagen', 'cliente_imagen_thumbnail',
             'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
             'suscripcion_suscripcion_tipo_nombre',
-            'propietario', 'soporte',
+            'propietario', 'soporte', 'aplicaciones',
         ]
 
     def get_cliente_imagen(self, obj) -> str | None:
