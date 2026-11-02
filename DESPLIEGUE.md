@@ -809,7 +809,9 @@ Notas:
   Nginx corta con 413 antes de que Django pueda responder con su propio mensaje. Hoy
   son: adjuntos 20 MB (`TAMANO_MAXIMO_ARCHIVO` en `general/servicios/archivo.py`),
   importación de Excel 5 MB (`ImportarExcelMixin.MAX_TAMANO_ARCHIVO_BYTES`) e
-  imágenes/logotipo 5 MB (`utilidades/imagenes.py`). 21 MB deja margen para la
+  imágenes/logotipo 5 MB (`utilidades/imagenes.py`) y adjuntos de la mesa de ayuda
+  20 MB por caso (`TAMANO_MAXIMO_ADJUNTOS` en `contenedor/views/mesa_ayuda.py`;
+  carbono admitiría 50). 21 MB deja margen para la
   envoltura multipart. Si sube alguno de esos límites, sube también este.
 - **`X-Forwarded-For` se sobrescribe con `$remote_addr`, no se concatena.** Con
   `CONFIAR_EN_PROXY=True` (§5), `ip_del_request()` (`seguridad/acceso.py`) toma el
