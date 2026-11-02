@@ -1,3 +1,4 @@
+from .aplicacion import CtnAplicacion
 from .archivo import CtnArchivo
 from .archivo_tipo import CtnArchivoTipo
 from .ciudad import CtnCiudad
@@ -11,6 +12,8 @@ from .invitacion import CtnInvitacion, CtnInvitacionGrupo
 from .modelo import CtnModelo
 from .movimiento import CtnMovimiento
 from .pais import CtnPais
+from .pendiente import CtnPendiente
+from .pendiente_tipo import CtnPendienteTipo
 from .solicitud import CtnSolicitud
 from .solicitud_tipo import CtnSolicitudTipo
 from .suscripcion import CtnSuscripcion

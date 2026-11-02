@@ -1,0 +1,6 @@
+{
+  "model": "contenedor.CtnPendienteTipo",
+  "data": [
+    { "id": 1, "nombre": "Periodo anterior abierto", "aplicacion_id": 5 }
+  ]
+}
