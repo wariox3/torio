@@ -1,22 +1,5 @@
 from django.db import models
 
-# Aplicaciones que el front muestra en el menú del contenedor. Es el orden en el
-# que se declaran los flags `acceso_*` acá y en `CtnInvitacion`, y lo que
-# recorren los serializers e `CtnCliente.add_user` para copiarlos.
-#
-# No autoriza nada: quien autoriza es el grupo (ver `seguridad.grupos`). Estos
-# flags solo dicen qué módulos ve el usuario dentro del contenedor.
-CAMPOS_ACCESO = (
-    'acceso_venta',
-    'acceso_compra',
-    'acceso_tesoreria',
-    'acceso_cartera',
-    'acceso_inventario',
-    'acceso_humano',
-    'acceso_contabilidad',
-    'acceso_turno',
-)
-
 
 class SegUsuarioCliente(models.Model):
     usuario = models.ForeignKey(
@@ -37,20 +20,9 @@ class SegUsuarioCliente(models.Model):
     propietario = models.BooleanField(default=False, db_default=False)
     # Staff de la plataforma que entró a dar soporte (`POST /contenedor/cliente/<id>/soporte/`).
     # Es una membresía con `is_superuser` en el tenant, pero no es un usuario del
-    # cliente: no puede modificar ni eliminar el contenedor (`es_superusuario`) y el
-    # owner no le edita accesos. Dura hasta que se cierra —él se sale o el owner lo
+    # cliente: no puede modificar ni eliminar el contenedor (`es_superusuario`). Dura hasta que se cierra —él se sale o el owner lo
     # saca, con el mismo `DELETE` de cualquier membresía— y al cerrarse no queda rastro.
     soporte = models.BooleanField(default=False, db_default=False)
-    # Arrancan en False: el acceso a cada módulo se concede explícitamente al
-    # invitar, no se hereda por ser miembro del contenedor.
-    acceso_venta = models.BooleanField(default=False, db_default=False)
-    acceso_compra = models.BooleanField(default=False, db_default=False)
-    acceso_tesoreria = models.BooleanField(default=False, db_default=False)
-    acceso_cartera = models.BooleanField(default=False, db_default=False)
-    acceso_inventario = models.BooleanField(default=False, db_default=False)
-    acceso_humano = models.BooleanField(default=False, db_default=False)
-    acceso_contabilidad = models.BooleanField(default=False, db_default=False)
-    acceso_turno = models.BooleanField(default=False, db_default=False)
 
     class Meta:
         db_table = 'seg_usuario_cliente'

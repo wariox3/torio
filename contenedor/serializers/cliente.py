@@ -72,9 +72,6 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
             'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
             'suscripcion_suscripcion_tipo_nombre',
             'propietario', 'soporte',
-            'acceso_venta', 'acceso_compra', 'acceso_tesoreria', 'acceso_cartera',
-            'acceso_inventario', 'acceso_humano', 'acceso_contabilidad',
-            'acceso_turno',
         ]
 
     def get_cliente_imagen(self, obj) -> str | None:

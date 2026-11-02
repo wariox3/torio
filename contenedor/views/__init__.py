@@ -9,6 +9,7 @@ from .invitacion import CtnInvitacionViewSet
 from .mesa_ayuda import CtnMesaAyudaViewSet
 from .movimiento import CtnMovimientoViewSet
 from .pais import CtnPaisViewSet
+from .pendiente import CtnPendienteViewSet
 from .rededoc import CtnRededocViewSet
 from .solicitud import CtnSolicitudViewSet
 from .suscripcion import CtnSuscripcionViewSet

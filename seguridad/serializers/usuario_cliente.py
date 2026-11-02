@@ -17,13 +17,5 @@ class SegUsuarioClienteSerializer(serializers.ModelSerializer):
             'cliente_id',
             'propietario',
             'soporte',
-            'acceso_venta',
-            'acceso_compra',
-            'acceso_tesoreria',
-            'acceso_cartera',
-            'acceso_inventario',
-            'acceso_humano',
-            'acceso_contabilidad',
-            'acceso_turno',
         ]
         read_only_fields = ['id', 'soporte']

@@ -82,15 +82,15 @@ class CtnCliente(TenantBase):
     @schema_required
     @transaction.atomic
     def add_user(
-        self, user_obj, *, grupos=None, accesos=None, propietario=False, soporte=False,
+        self, user_obj, *, grupos=None, propietario=False, soporte=False,
         is_superuser=False, is_staff=False,
     ):
         """
         Vincula un usuario al contenedor.
 
         Sobreescribe el `add_user` de `TenantBase` porque la membresía de este
-        proyecto lleva datos que la librería no conoce (`propietario` y los flags
-        `acceso_*` de `SegUsuarioCliente`). Hace lo mismo que el original y en el
+        proyecto lleva datos que la librería no conoce (`propietario` y `soporte`
+        de `SegUsuarioCliente`). Hace lo mismo que el original y en el
         mismo orden: la fila de permisos en el schema del tenant y la de
         membresía en el público, ambas dentro de la misma transacción.
 
@@ -104,10 +104,6 @@ class CtnCliente(TenantBase):
         `is_superuser`. Un usuario sin grupos entra al contenedor pero no pasa
         `TienePermisoModelo` en ningún recurso protegido.
 
-        `accesos` es un dict {campo de `CAMPOS_ACCESO`: bool} con los módulos que
-        el usuario verá en el menú. Omitirlo deja todos en False (el default del
-        modelo): ser miembro no concede acceso a ningún módulo por sí solo.
-
         `@schema_required` conmuta al schema del tenant: `UserTenantPermissions`
         y sus grupos caen ahí, y `seg_usuario_cliente` y `auth_group` se
         resuelven a `public` por el search_path.
@@ -118,7 +114,7 @@ class CtnCliente(TenantBase):
         crea sus permisos al terminar las migraciones. Entre una cosa y la otra
         el contenedor está en `creando`, y el middleware no deja entrar a nadie.
         """
-        from seguridad.models import CAMPOS_ACCESO, SegUsuarioCliente
+        from seguridad.models import SegUsuarioCliente
 
         if SegUsuarioCliente.objects.filter(usuario=user_obj, cliente=self).exists():
             raise ExistsError(f'El usuario ya es miembro de {self.nombre}.')
@@ -136,7 +132,6 @@ class CtnCliente(TenantBase):
             cliente=self,
             propietario=propietario,
             soporte=soporte,
-            **{campo: bool((accesos or {}).get(campo, False)) for campo in CAMPOS_ACCESO},
         )
 
         tenant_user_added.send(sender=self.__class__, user=user_obj, tenant=self)

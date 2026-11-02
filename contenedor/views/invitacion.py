@@ -20,7 +20,7 @@ from contenedor.serializers import (
     CtnInvitacionCrearSerializer,
     CtnInvitacionSerializer,
 )
-from seguridad.models import CAMPOS_ACCESO, SegUsuario, SegUsuarioCliente
+from seguridad.models import SegUsuario, SegUsuarioCliente
 from utilidades.zinc import Zinc
 
 logger = logging.getLogger(__name__)
@@ -57,10 +57,6 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         cliente = serializador.validated_data['cliente']
         usuario_id = serializador.validated_data['usuario_id']
         grupos = serializador.validated_data.get('grupos') or []
-        accesos = {
-            campo: serializador.validated_data.get(campo, False)
-            for campo in CAMPOS_ACCESO
-        }
 
         if cliente.owner_id != request.user.id:
             return Response(
@@ -106,13 +102,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
                 )
             invitacion_existente.estado = CtnInvitacion.ESTADO_PENDIENTE
             invitacion_existente.usuario = request.user
-            # Los accesos se reemplazan igual que los grupos: la reinvitación
-            # manda, no se acumula sobre lo que decía la invitación anterior.
-            for campo, valor in accesos.items():
-                setattr(invitacion_existente, campo, valor)
-            invitacion_existente.save(
-                update_fields=['estado', 'usuario', *accesos],
-            )
+            invitacion_existente.save(update_fields=['estado', 'usuario'])
             invitacion = invitacion_existente
         else:
             invitacion = CtnInvitacion.objects.create(
@@ -120,7 +110,6 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
                 usuario_invitado=usuario,
                 usuario=request.user,
                 estado=CtnInvitacion.ESTADO_PENDIENTE,
-                **accesos,
             )
 
         # Los grupos se fijan en los dos caminos: al reinvitar hay que reemplazar
@@ -211,7 +200,6 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
             invitacion.cliente.add_user(
                 request.user,
                 grupos=list(invitacion.grupos.all()),
-                accesos={campo: getattr(invitacion, campo) for campo in CAMPOS_ACCESO},
             )
         except ExistsError:
             return Response({'detail': 'Ya eres miembro de este contenedor.'}, status=status.HTTP_409_CONFLICT)

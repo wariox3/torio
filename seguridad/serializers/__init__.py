@@ -19,6 +19,10 @@ from .usuario import (
     SegUsuarioSeleccionarSerializer,
     SegUsuarioSerializer,
 )
+from .usuario_aplicacion import (
+    SegUsuarioAplicacionActualizarSerializer,
+    SegUsuarioAplicacionSerializer,
+)
 from .usuario_cliente import SegUsuarioClienteSerializer
 from .usuario_cliente_permiso import (
     SegGrupoUsuarioSerializer,

@@ -26,7 +26,7 @@ from contenedor.serializers.cliente import (
     CtnClienteListaUsuarioSerializer,
 )
 from contenedor.tasks import clave_paso, programar_creacion
-from seguridad.models import CAMPOS_ACCESO, SegUsuario, SegUsuarioCliente
+from seguridad.models import SegUsuario, SegUsuarioCliente
 from seguridad.permissions import EsStaff
 
 # Todo contenedor nuevo arranca en el mismo plan de prueba —'Prueba ERP', categoría
@@ -187,14 +187,12 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         # La membresía sí va acá, aunque sus permisos (`UserTenantPermissions`)
         # los crea la tarea: estos viven en el schema del tenant, que todavía no
         # tiene tablas. Así el contenedor aparece en `lista-usuario` desde ya.
-        # El owner no necesita grupos —la tarea le da is_superuser, que se salta
-        # TienePermisoModelo—, pero sí los accesos: por defecto son todos False y
-        # se quedaría sin ningún módulo en el menú de su propio contenedor.
+        # El owner no necesita grupos: la tarea le da is_superuser, que se salta
+        # TienePermisoModelo.
         SegUsuarioCliente.objects.create(
             usuario=request.user,
             cliente=cliente,
             propietario=True,
-            **dict.fromkeys(CAMPOS_ACCESO, True),
         )
 
         fecha_inicio = date.today()
@@ -584,7 +582,7 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         summary='Abrir soporte en un contenedor',
         description=(
             'Solo staff con MFA activo. Hace al staff miembro del contenedor marcado como '
-            '`soporte`, con `is_superuser` y todos los accesos: desde ahí entra con '
+            '`soporte` y con `is_superuser`: desde ahí entra con '
             '`X-Tenant` como cualquier miembro, aunque la suscripción esté vencida. No '
             'puede modificar ni eliminar el contenedor. No vence: se cierra con '
             '`DELETE /seguridad/usuario-cliente/<id>/`, que puede hacer él o el owner. '
@@ -627,7 +625,6 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         try:
             membresia = cliente.add_user(
                 request.user,
-                accesos=dict.fromkeys(CAMPOS_ACCESO, True),
                 soporte=True,
                 is_superuser=True,
             )

@@ -50,13 +50,20 @@ Tenant isolation is covered by `contenedor/tests_aislamiento.py` (`python manage
 **Staff support access.** Platform staff (`is_staff` in the *public* schema, `EsStaff`) see every
 container at `GET /contenedor/cliente/administrar/` and enter one with
 `POST /contenedor/cliente/<id>/soporte/` (MFA required): that creates a normal membership with
-`SegUsuarioCliente.soporte = True`, `is_superuser` and every `acceso_*`, so all tenant permission
+`SegUsuarioCliente.soporte = True` and `is_superuser`, so all tenant permission
 checks work unchanged. It never expires — it is closed with the regular
 `DELETE /seguridad/usuario-cliente/<id>/` (the staff member or the owner) and leaves no history.
 A support membership is **not** a user of the client: `es_superusuario` returns `False` for it
-(it can't modify or delete the container), the owner can't edit its accesses, it skips
+(it can't modify or delete the container), it skips
 `SuscripcionVigente`, and the panel's `usuarios` count excludes it. Any new code that reads
 `SegUsuarioCliente` as "the client's users" must decide what to do with `soporte`.
+
+**Applications (menu) are per account, not per container.** `SegUsuarioAplicacion` (public)
+links a user to `CtnAplicacion` (catalog: venta, compra, cartera, tesorería, contabilidad,
+inventario, humano, turno). A new user starts with all of them (`seguridad/signals.py`), and
+only the user edits them, at `GET`/`PUT /seguridad/usuario-aplicacion/`. They authorize
+nothing — groups do — they only build the menu and filter `GET /contenedor/pendiente/`.
+They replaced the per-membership `acceso_*` flags (and the ones on `CtnInvitacion`).
 
 `SHARED_APPS` run in the public schema. `TENANT_APPS` run in each tenant's isolated schema.
 
