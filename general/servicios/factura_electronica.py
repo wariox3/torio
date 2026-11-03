@@ -13,7 +13,6 @@ no habilita la emisión: hasta que se termine el asistente
 (`gen_asistente_electronico_venta`) no se emite.
 """
 
-import calendar
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
@@ -1725,22 +1724,19 @@ RECEPCION_ADJUNTO_ROLES = ('xml', 'xml_documento', 'pdf', 'otro')
 RECEPCION_ADJUNTO_PAGINA = 10  # fijo en rededoc: no acepta page_size
 
 
-def _consulta_recepcion(filtros: dict, hoy) -> tuple:
+def _consulta_recepcion(filtros: dict) -> tuple:
     """
     Lo que comparten las bandejas de recepción: devuelve los filtros completos y
     los parámetros para rededoc.
 
     El `emisor` lo pone el back y nunca el front: la llave de torio alcanza a
     todos los emisores, y sin `emisor` rededoc responde los de todas las empresas.
-    Sin `desde` ni `hasta` se consulta el mes de `hoy`, para no traer todo el
-    histórico; con uno solo, el rango queda abierto del otro lado.
+    Sin `desde` ni `hasta` no se filtra por fecha: un documento emitido hace meses
+    y recibido hoy tiene que verse igual. Con uno solo, el rango queda abierto del
+    otro lado. rededoc pagina, así que traer todo el histórico no pesa.
     """
     emisor_id = _emisor_id()
-    hoy = hoy or timezone.localdate()
     filtros = dict(filtros)
-    if not filtros.get('desde') and not filtros.get('hasta'):
-        filtros['desde'] = hoy.replace(day=1)
-        filtros['hasta'] = hoy.replace(day=calendar.monthrange(hoy.year, hoy.month)[1])
     filtros.setdefault('page', 1)
     filtros.setdefault('page_size', RECEPCION_PAGINA)
 
@@ -1768,12 +1764,12 @@ def _bandeja(filtros: dict, datos: dict, resultados: list) -> dict:
     }
 
 
-def recepcion_documento(filtros: dict, hoy=None, cliente: Rededoc = None) -> dict:
+def recepcion_documento(filtros: dict, cliente: Rededoc = None) -> dict:
     """
     La bandeja de documentos recibidos de proveedores del emisor de
     `gen_rededoc_emisor`. El rango va sobre la fecha de emisión.
     """
-    filtros, parametros = _consulta_recepcion(filtros, hoy)
+    filtros, parametros = _consulta_recepcion(filtros)
     cliente = cliente or Rededoc()
     respuesta = cliente.consultar_documentos_recibidos(parametros)
     if respuesta['error']:
@@ -1782,7 +1778,7 @@ def recepcion_documento(filtros: dict, hoy=None, cliente: Rededoc = None) -> dic
     return _bandeja(filtros, datos, datos.get('results', []))
 
 
-def recepcion_correo(filtros: dict, hoy=None, cliente: Rededoc = None) -> dict:
+def recepcion_correo(filtros: dict, cliente: Rededoc = None) -> dict:
     """
     Los correos (y cargas manuales) que llegaron a la recepción del emisor de
     `gen_rededoc_emisor`. El rango va sobre la fecha en que se recibieron.
@@ -1791,7 +1787,7 @@ def recepcion_correo(filtros: dict, hoy=None, cliente: Rededoc = None) -> dict:
     los que alcanza la llave, que en torio son los de todas las empresas: acá se
     quedan solo los del emisor del tenant.
     """
-    filtros, parametros = _consulta_recepcion(filtros, hoy)
+    filtros, parametros = _consulta_recepcion(filtros)
     emisor_id = parametros['emisor']
     cliente = cliente or Rededoc()
     respuesta = cliente.consultar_correos_recibidos(parametros)

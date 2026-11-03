@@ -146,8 +146,8 @@ class GenElectronicoRecepcionViewSet(viewsets.GenericViewSet):
         summary='Documentos recibidos de proveedores',
         description=(
             'La bandeja de recepción del emisor de la empresa en rededoc. El emisor no se '
-            'manda: sale de `gen_rededoc_emisor`. Sin `desde` ni `hasta` consulta el mes en '
-            'curso. Responde `count`, `page`, `page_size`, el rango aplicado (`desde`, '
+            'manda: sale de `gen_rededoc_emisor`. Sin `desde` ni `hasta` no filtra por '
+            'fecha. Responde `count`, `page`, `page_size`, el rango aplicado (`desde`, '
             '`hasta`) y `results`; se pagina con `page`.'
         ),
         parameters=[RecepcionDocumentoQuerySerializer],
@@ -169,7 +169,7 @@ class GenElectronicoRecepcionViewSet(viewsets.GenericViewSet):
         description=(
             'Los correos y cargas manuales que llegaron a la recepción del emisor de la '
             'empresa en rededoc. El emisor no se manda: sale de `gen_rededoc_emisor`. Sin '
-            '`desde` ni `hasta` consulta el mes en curso, sobre la fecha de recepción. '
+            '`desde` ni `hasta` no filtra por fecha; el rango va sobre la fecha de recepción. '
             'Responde `count`, `page`, `page_size`, el rango aplicado y `results`; en cada '
             'correo, `documentos` trae solo los del emisor de la empresa.'
         ),
