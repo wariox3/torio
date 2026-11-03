@@ -96,3 +96,50 @@ class SegUsuarioClienteViewSet(
         qs = self.get_queryset().filter(cliente_id=cliente_id)
         pagina = self.paginate_queryset(qs)
         return self.get_paginated_response(SegUsuarioClienteSerializer(pagina, many=True).data)
+
+    @extend_schema(
+        summary='Membresía del usuario autenticado en un contenedor',
+        description=(
+            'Devuelve la membresía de quien consulta en el contenedor `schema_name`, '
+            'para que el front revalide sus datos (`is_superuser`, `grupos`, '
+            '`propietario`, `soporte`). El usuario sale de la sesión, nunca de un '
+            'parámetro. Sin `X-Tenant`.'
+        ),
+        parameters=[
+            OpenApiParameter('schema_name', str, required=True, description='Schema del contenedor'),
+        ],
+        responses={
+            200: SegUsuarioClienteSerializer,
+            400: OpenApiResponse(
+                inline_serializer('UsuarioClienteUsuarioError', {'detail': serializers.CharField()}),
+                description='schema_name faltante o inválido',
+            ),
+            404: OpenApiResponse(
+                inline_serializer('UsuarioClienteUsuarioNotFound', {'detail': serializers.CharField()}),
+                description='No existe el contenedor o no es miembro',
+            ),
+        },
+    )
+    @action(detail=False, methods=['get'], url_path='usuario')
+    def usuario(self, request):
+        # Importado acá para no acoplar seguridad a contenedor al cargar el módulo.
+        from contenedor.models import CtnCliente
+
+        schema_name = request.query_params.get('schema_name', '')
+        if not CtnCliente.SCHEMA_NAME_VALIDO.match(schema_name):
+            return Response(
+                {'detail': 'schema_name es requerido y debe ser válido.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Contenedor inexistente y no ser miembro responden igual: un 403
+        # confirmaría que ese schema existe.
+        membresia = self.get_queryset().filter(
+            usuario=request.user, cliente__schema_name=schema_name,
+        ).first()
+        if membresia is None:
+            return Response(
+                {'detail': 'No se encontró el acceso de usuario a cliente.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(SegUsuarioClienteSerializer(membresia).data)

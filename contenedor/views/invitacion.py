@@ -146,20 +146,30 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
 
     @extend_schema(
         summary='Invitaciones pendientes de un cliente',
-        description='Retorna las invitaciones pendientes enviadas desde un cliente.',
+        description=(
+            'Retorna las invitaciones pendientes enviadas desde un cliente. Solo el '
+            'owner del contenedor.'
+        ),
         parameters=[
             OpenApiParameter('cliente_id', int, required=True, description='ID del cliente'),
         ],
         responses={
-            200: CtnInvitacionSerializer(many=True),
+            200: CtnInvitacionClienteSerializer(many=True),
             400: OpenApiResponse(_RespuestaDetalle, description='cliente_id requerido'),
+            404: OpenApiResponse(_RespuestaDetalle, description='Cliente no encontrado o no es el owner'),
         },
     )
     @action(detail=False, methods=['get'], url_path='pendiente-cliente')
     def pendiente_cliente(self, request):
         cliente_id = request.query_params.get('cliente_id')
-        if not cliente_id:
+        if not cliente_id or not cliente_id.isdigit():
             return Response({'detail': 'cliente_id es requerido.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Las invitaciones traen nombre y correo de los invitados: solo las ve el
+        # owner. A cualquier otro se le responde como si el cliente no existiera,
+        # para no confirmar qué ids son contenedores.
+        if not CtnCliente.objects.filter(id=cliente_id, owner=request.user).exists():
+            return Response({'detail': 'Cliente no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
 
         qs = CtnInvitacion.objects.filter(
             cliente_id=cliente_id,
