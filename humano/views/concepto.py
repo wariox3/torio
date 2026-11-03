@@ -21,16 +21,10 @@ class HumConceptoViewSet(FiltrosDinamicosMixin, viewsets.GenericViewSet):
     """Catálogo de conceptos: `seleccionar`, `lista` y `configuracion`, de solo lectura."""
 
     serializer_class = HumConceptoSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         return HumConcepto.objects.order_by('orden', 'id')
-
-    def get_permissions(self):
-        # `seleccionar` sigue con los permisos por defecto, como antes; `lista` y
-        # `configuracion` exigen el permiso sobre el modelo, como cualquier administrador.
-        if self.action == 'seleccionar':
-            return super().get_permissions()
-        return [TienePermisoModelo()]
 
     @extend_schema(responses=HumConceptoSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=None)

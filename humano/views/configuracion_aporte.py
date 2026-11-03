@@ -28,16 +28,10 @@ class HumConfiguracionAporteViewSet(
     """
 
     serializer_class = HumConfiguracionAporteSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         return HumConfiguracionAporte.objects.order_by('orden', 'id')
-
-    def get_permissions(self):
-        # `seleccionar` sigue con los permisos por defecto, como antes; lo demás
-        # exige el permiso sobre el modelo (ver o editar).
-        if self.action == 'seleccionar':
-            return super().get_permissions()
-        return [TienePermisoModelo()]
 
     @extend_schema(responses=HumConfiguracionAporteSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=None)

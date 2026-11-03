@@ -27,16 +27,10 @@ class HumConceptoNominaViewSet(
     """
 
     serializer_class = HumConceptoNominaSerializer
+    permission_classes = [TienePermisoModelo]
 
     def get_queryset(self):
         return HumConceptoNomina.objects.select_related('concepto').order_by('id')
-
-    def get_permissions(self):
-        # `seleccionar` sigue con los permisos por defecto, como antes; lo demás
-        # exige el permiso sobre el modelo, como cualquier administrador.
-        if self.action == 'seleccionar':
-            return super().get_permissions()
-        return [TienePermisoModelo()]
 
     @extend_schema(responses=HumConceptoNominaSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=None)

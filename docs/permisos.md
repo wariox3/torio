@@ -113,6 +113,10 @@ Excepción: las acciones de `ACCIONES_LECTURA` (`lista` de `FiltrosDinamicosMixi
 de `ExportarExcelMixin`) van por `POST` porque el cuerpo lleva los filtros, pero exigen
 `view_<modelo>`.
 
+Las acciones de `ACCIONES_SIN_PERMISO_MODELO` (`seleccionar`) no exigen ningún permiso
+sobre el modelo, solo membresía y suscripción vigente: llenan los selectores de otros
+formularios, y quien no administra el modelo igual necesita elegir un registro.
+
 Las vistas que se quedan con los permisos por defecto (`EsMiembroDelTenant` +
 `SuscripcionVigente`) **no miran permisos**: cualquier miembro del contenedor las usa. Ver
 la sección 8.

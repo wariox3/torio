@@ -116,6 +116,11 @@ class SuscripcionVigente(permissions.BasePermission):
 # exigirían `add_<modelo>`; se evalúan como un GET, con `view_<modelo>`.
 ACCIONES_LECTURA = frozenset({'lista', 'excel'})
 
+# Acciones que no exigen permiso sobre el modelo, solo membresía y suscripción:
+# `seleccionar` llena los selectores de otros formularios (un contacto en una
+# factura), y quien no puede administrar el modelo igual necesita elegirlo.
+ACCIONES_SIN_PERMISO_MODELO = frozenset({'seleccionar'})
+
 
 class _DjangoModelPermissionsConVer(DjangoModelPermissions):
     """
@@ -160,6 +165,9 @@ class TienePermisoModelo(EsMiembroDelTenant):
             return False
 
         if request.user.is_superuser:
+            return True
+
+        if getattr(view, 'action', None) in ACCIONES_SIN_PERMISO_MODELO:
             return True
 
         return _DjangoModelPermissionsConVer().has_permission(request, view)
