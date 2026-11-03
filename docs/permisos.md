@@ -127,37 +127,42 @@ es lo que usa el front para mostrar u ocultar botones.
 | Crear contenedor (`POST /contenedor/cliente/`) | El dueño: `propietario` e `is_superuser` |
 | Soporte (`POST /contenedor/cliente/<id>/soporte/`) | `soporte` e `is_superuser` |
 | Aceptar invitación | Los `grupo_ids` de la invitación (opcional), con `heredar_permisos = true` |
-| `PUT /seguridad/usuario-cliente/<id>/grupo/` | Reemplaza los grupos y su `heredar_permisos` |
-| `PUT /seguridad/usuario-cliente/<id>/permiso/` | Reemplaza los permisos personalizados |
+| `POST`/`DELETE /seguridad/usuario-cliente-grupo/` | Agrega o quita un grupo, con su `heredar_permisos` |
+| `POST`/`DELETE /seguridad/usuario-cliente-permiso/` | Agrega o quita un permiso personalizado |
 | Salir del contenedor (`DELETE /seguridad/usuario-cliente/<id>/`) | Se borra la membresía con sus grupos y permisos (CASCADE) |
 
-Los dos `PUT` solo los hace el **dueño** del contenedor (`owner_id`); otro miembro recibe
-403. A una membresía de soporte no se le editan (400). El `GET` de los dos lo puede hacer
-cualquier miembro del contenedor.
+El `POST` y el `DELETE` de grupos y de permisos solo los hace el **dueño** del contenedor (`owner_id`);
+otro miembro recibe 403. A una membresía de soporte no se le editan (400). El `GET` lo
+puede hacer cualquier miembro del contenedor.
 
-### `GET`/`PUT /seguridad/usuario-cliente/<id>/grupo/`
+### `/seguridad/usuario-cliente-grupo/` y `/seguridad/usuario-cliente-permiso/`
 
-```json
-PUT { "grupos": [7, { "grupo": 1, "heredar_permisos": false }] }
-```
+Los grupos y los permisos personalizados de un miembro, gestionados de a uno. Los
+catálogos para los selectores son `GET /seguridad/grupo/` y `GET /seguridad/permiso/`.
 
-Un id suelto equivale a `heredar_permisos: true`. Responde, como el `GET`, todos los grupos:
-
-```json
-[
-  { "grupo_id": 1, "grupo_name": "Venta", "activo": true, "heredar_permisos": false },
-  { "grupo_id": 2, "grupo_name": "Compra", "activo": false, "heredar_permisos": null }
-]
-```
-
-### `GET`/`PUT /seguridad/usuario-cliente/<id>/permiso/`
+| Método | Ruta | Qué hace |
+|---|---|---|
+| `GET` | `?usuario_cliente_id=<id>` (opcional, también `grupo_id` / `permiso_id`) | Lista paginada |
+| `POST` | `/lista/` | Filtros dinámicos sobre `id`, `usuario_cliente_id` y `grupo_id` (+ `heredar_permisos`) o `permiso_id` |
+| `POST` | `/` | Agrega uno (201) |
+| `DELETE` | `/<id>/` | Quita uno (204) |
 
 ```json
-PUT { "permisos": [101, 102, 103] }
+POST /seguridad/usuario-cliente-grupo/   { "usuario_cliente": 5, "grupo": 7, "heredar_permisos": false }
+POST /seguridad/usuario-cliente-permiso/ { "usuario_cliente": 5, "permiso": 101 }
 ```
 
-Responde los permisos personalizados que tiene el miembro, con `permiso_id`, `codename`,
-`name`, `app_label` y `modelo`. El catálogo para el selector es `GET /seguridad/permiso/`.
+`heredar_permisos` es opcional (`true` por defecto). Cada fila de grupo trae `id`,
+`usuario_cliente`, `grupo`, `grupo_name` y `heredar_permisos`; cada fila de permiso, `id`,
+`usuario_cliente`, `permiso`, `permiso_codename`, `permiso_name`,
+`permiso_content_type_app_label` y `permiso_content_type_model`.
+
+No hay `PUT`: para cambiar `heredar_permisos` se quita el grupo y se vuelve a agregar. Las
+validaciones están en el serializer y responden 400 con `detail`: membresía inexistente o
+de un contenedor al que no se pertenece, membresía de soporte, grupo o permiso
+inexistente, permiso de una app no asignable y repetido. Que solo el owner modifique se
+revisa en la vista (403). Las filas de un contenedor al que no se pertenece no se listan
+y su `DELETE` da 404.
 
 ## 7. Menú y pendientes
 

@@ -38,8 +38,8 @@ class SegPermisoViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     `auth_permission` vive solo en el schema público y es la misma para todos los
     contenedores, así que esta ruta va en el urlconf público, junto al catálogo
     de grupos. A quién se le asigna es por membresía: grupos
-    (`usuario-cliente/<id>/grupo/`) y permisos personalizados
-    (`usuario-cliente/<id>/permiso/`), los dos en el público.
+    (`usuario-cliente-grupo/`) y permisos personalizados
+    (`usuario-cliente-permiso/`), los dos en el público.
 
     Solo lectura: los permisos los crea Django en cada `migrate`, a partir de los
     modelos.

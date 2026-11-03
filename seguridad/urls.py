@@ -13,6 +13,8 @@ from seguridad.views import (
     SegMfaViewSet,
     SegPermisoViewSet,
     SegRolViewSet,
+    SegUsuarioClienteGrupoViewSet,
+    SegUsuarioClientePermisoViewSet,
     SegUsuarioClienteViewSet,
     SegUsuarioViewSet,
 )
@@ -20,6 +22,12 @@ from seguridad.views import (
 router = DefaultRouter()
 router.register(r'usuario', SegUsuarioViewSet)
 router.register(r'usuario-cliente', SegUsuarioClienteViewSet, basename='usuario-cliente')
+router.register(
+    r'usuario-cliente-grupo', SegUsuarioClienteGrupoViewSet, basename='usuario-cliente-grupo',
+)
+router.register(
+    r'usuario-cliente-permiso', SegUsuarioClientePermisoViewSet, basename='usuario-cliente-permiso',
+)
 router.register(r'rol', SegRolViewSet)
 router.register(r'grupo', SegGrupoViewSet)
 router.register(r'permiso', SegPermisoViewSet, basename='permiso')

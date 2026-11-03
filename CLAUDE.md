@@ -71,9 +71,10 @@ or it is one of the member's personalized permissions (any permission, in a grou
 not). A group with `heredar_permisos = false` grants nothing — it only puts the module in the
 member's menu and pending items. Superuser → everything.
 The owner of a new container and a support membership get `is_superuser`; an invitation
-carries optional `grupo_ids` (inheriting); afterwards only the owner edits a member's groups
-(and `heredar_permisos`) at `GET`/`PUT /seguridad/usuario-cliente/<id>/grupo/` and personalized
-permissions at `GET`/`PUT /seguridad/usuario-cliente/<id>/permiso/` (never a support membership). The menu and
+carries optional `grupo_ids` (inheriting); afterwards only the owner adds or removes, one at
+a time, a member's groups (with `heredar_permisos`) at `/seguridad/usuario-cliente-grupo/`
+and personalized permissions at `/seguridad/usuario-cliente-permiso/` (never a support
+membership). The menu and
 pending-item visibility come from the groups (`CtnPendienteTipo.grupo`).
 
 Full design and rationale: **`docs/permisos.md`**.

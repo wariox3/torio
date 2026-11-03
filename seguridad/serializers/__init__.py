@@ -20,3 +20,5 @@ from .usuario import (
     SegUsuarioSerializer,
 )
 from .usuario_cliente import SegUsuarioClienteSerializer
+from .usuario_cliente_grupo import SegUsuarioClienteGrupoSerializer
+from .usuario_cliente_permiso import SegUsuarioClientePermisoSerializer

@@ -406,6 +406,108 @@ class EditarPermisosTests(PermisosBase):
                 self.assertIsInstance(respuesta.json()['detail'], str)
 
 
+# --------------------------------------------------------------------------- #
+# /seguridad/usuario-cliente-permiso/
+# --------------------------------------------------------------------------- #
+
+RUTA_USUARIO_CLIENTE_PERMISO = '/seguridad/usuario-cliente-permiso/'
+
+
+class UsuarioClientePermisoTests(PermisosBase):
+
+    def _crear(self, fila, codename, usuario):
+        return self._post(RUTA_USUARIO_CLIENTE_PERMISO, {
+            'usuario_cliente_id': fila.id, 'permiso_id': _permiso(codename).id,
+        }, usuario, tenant=None)
+
+    def _borrar(self, fila_permiso_id, usuario):
+        return self.client.delete(
+            f'{RUTA_USUARIO_CLIENTE_PERMISO}{fila_permiso_id}/', **self._headers(usuario),
+        )
+
+    def test_el_owner_agrega_uno_y_vale_en_la_peticion_siguiente(self):
+        usuario, fila = self._miembro()
+        self.assertEqual(self._get(RUTA_ITEM, usuario).status_code, 403)
+
+        respuesta = self._crear(fila, 'view_genitem', Escenario.owner)
+
+        self.assertEqual(respuesta.status_code, 201, respuesta.content)
+        datos = respuesta.json()
+        self.assertEqual(
+            (datos['usuario_cliente_id'], datos['permiso_codename'],
+             datos['permiso_content_type_app_label'], datos['permiso_content_type_model']),
+            (fila.id, 'view_genitem', 'general', 'genitem'),
+        )
+        self.assertEqual(self._get(RUTA_ITEM, usuario).status_code, 200)
+
+    def test_lista_los_del_miembro_y_exige_usuario_cliente_id(self):
+        usuario, fila = self._miembro(permisos=['view_genitem', 'view_gencontacto'])
+
+        respuesta = self._get(
+            RUTA_USUARIO_CLIENTE_PERMISO, usuario, tenant=None, data={'usuario_cliente_id': fila.id},
+        )
+        sin_id = self._get(RUTA_USUARIO_CLIENTE_PERMISO, usuario, tenant=None)
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.content)
+        self.assertEqual(
+            sorted(p['permiso_codename'] for p in respuesta.json()['results']),
+            ['view_gencontacto', 'view_genitem'],
+        )
+        self.assertEqual(sin_id.status_code, 400)
+        self.assertIsInstance(sin_id.json()['detail'], str)
+
+    def test_el_owner_quita_uno(self):
+        usuario, fila = self._miembro(permisos=['view_genitem'])
+        fila_permiso = fila.permisos.get()
+
+        self.assertEqual(self._borrar(fila_permiso.id, Escenario.owner).status_code, 204)
+
+        self.assertFalse(fila.permisos.exists())
+        self.assertEqual(self._get(RUTA_ITEM, usuario).status_code, 403)
+
+    def test_otro_miembro_no_agrega_ni_quita(self):
+        usuario, fila = self._miembro(permisos=['view_genitem'])
+
+        self.assertEqual(self._crear(fila, 'view_gencontacto', usuario).status_code, 403)
+        self.assertEqual(self._borrar(fila.permisos.get().id, usuario).status_code, 403)
+        self.assertEqual(fila.permisos.count(), 1)
+
+    def test_a_soporte_no_se_le_tocan(self):
+        _, fila = self._miembro(soporte=True, is_superuser=True)
+        SegUsuarioClientePermiso.objects.create(usuario_cliente=fila, permiso=_permiso('view_genitem'))
+
+        self.assertEqual(self._crear(fila, 'view_gencontacto', Escenario.owner).status_code, 400)
+        self.assertEqual(self._borrar(fila.permisos.get().id, Escenario.owner).status_code, 400)
+
+    def test_un_contenedor_ajeno_no_se_encuentra(self):
+        _, fila = self._miembro(permisos=['view_genitem'])
+        ajeno = _usuario('ajeno.ucpermiso@ejemplo.com')
+
+        listado = self._get(
+            RUTA_USUARIO_CLIENTE_PERMISO, ajeno, tenant=None, data={'usuario_cliente_id': fila.id},
+        )
+        self.assertEqual(listado.json()['results'], [])
+        self.assertEqual(self._crear(fila, 'view_gencontacto', ajeno).status_code, 404)
+        self.assertEqual(self._borrar(fila.permisos.get().id, ajeno).status_code, 404)
+
+    def test_datos_invalidos_400_con_detail(self):
+        _, fila = self._miembro(permisos=['view_genitem'])
+        de_seguridad = Permission.objects.filter(content_type__app_label='seguridad').first()
+        casos = {
+            'falta permiso': {'usuario_cliente_id': fila.id},
+            'bool': {'usuario_cliente_id': fila.id, 'permiso_id': True},
+            'inexistente': {'usuario_cliente_id': fila.id, 'permiso_id': 999999},
+            'no asignable': {'usuario_cliente_id': fila.id, 'permiso_id': de_seguridad.id},
+            'repetido': {'usuario_cliente_id': fila.id, 'permiso_id': _permiso('view_genitem').id},
+        }
+        for caso, datos in casos.items():
+            with self.subTest(caso):
+                respuesta = self._post(RUTA_USUARIO_CLIENTE_PERMISO, datos, Escenario.owner, tenant=None)
+                self.assertEqual(respuesta.status_code, 400, respuesta.content)
+                self.assertIsInstance(respuesta.json()['detail'], str)
+        self.assertEqual(fila.permisos.count(), 1)
+
+
 class MembresiaTests(PermisosBase):
 
     def test_salir_del_contenedor_borra_sus_grupos_y_permisos(self):
