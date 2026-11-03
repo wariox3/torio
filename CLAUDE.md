@@ -69,7 +69,9 @@ the product's fixed ones (`seguridad/grupos.py`). Permissions **add up**, never 
 permission is granted if any of the member's groups with `heredar_permisos = true` contains it
 or it is one of the member's personalized permissions (any permission, in a group of theirs or
 not). A group with `heredar_permisos = false` grants nothing — it only puts the module in the
-member's menu and pending items. Superuser → everything.
+member's menu and pending items. Superuser → everything, and so does being the
+container's owner (`SegUsuarioCliente.propietario`): every reader treats it as
+`is_superuser OR propietario`, and the API returns that effective value.
 The owner of a new container and a support membership get `is_superuser`; an invitation
 carries optional `grupo_ids` (inheriting); afterwards only the owner adds or removes, one at
 a time, a member's groups (with `heredar_permisos`) at `/seguridad/usuario-cliente-grupo/`

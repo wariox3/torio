@@ -162,9 +162,9 @@ class CtnCliente(TenantBase):
         """
         ¿El usuario tiene `is_superuser` DENTRO de este contenedor?
 
-        La fuente de verdad es su membresía (`SegUsuarioCliente.is_superuser`) —la
-        misma que consulta `has_perm()`— y no `owner_id`, que es un dato
-        informativo y nulable. La creación del contenedor marca al owner.
+        La fuente de verdad es su membresía —la misma que consulta `has_perm()`—:
+        `is_superuser` o `propietario`, porque ser propietario basta. No
+        `owner_id`, que es un dato informativo y nulable.
         """
         if usuario is None or not usuario.is_authenticated:
             return False
@@ -172,5 +172,6 @@ class CtnCliente(TenantBase):
         # contenedor, pero modificarlo o eliminarlo es cosa del cliente.
         from seguridad.models import SegUsuarioCliente
         return SegUsuarioCliente.objects.filter(
-            usuario=usuario, cliente=self, is_superuser=True, soporte=False,
+            models.Q(is_superuser=True) | models.Q(propietario=True),
+            usuario=usuario, cliente=self, soporte=False,
         ).exists()

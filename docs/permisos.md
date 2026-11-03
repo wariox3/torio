@@ -24,7 +24,7 @@ público y ya representa «este usuario en este contenedor».
 
 ```
 public.seg_usuario_cliente                (usuario + contenedor)
- ├─ is_superuser                          → todos los permisos en ese contenedor
+ ├─ is_superuser o propietario           → todos los permisos en ese contenedor
  ├─ seg_usuario_cliente_grupo             → auth_group (+ heredar_permisos)
  │                                          └─ auth_group_permissions → auth_permission
  └─ seg_usuario_cliente_permiso           → auth_permission (permisos personalizados)
@@ -35,6 +35,7 @@ public.seg_usuario_cliente                (usuario + contenedor)
 | `auth_permission` | Catálogo de Django: un permiso por modelo y acción (`view_`, `add_`, `change_`, `delete_`). Lo llena `migrate`. |
 | `auth_group` / `auth_group_permissions` | Los 8 grupos del producto con ids fijos (`seguridad/grupos.py`). Sus permisos los aplica `sincronizar_grupos`, que corre `cargar_geodata`. |
 | `seg_usuario_cliente.is_superuser` | Superusuario **en ese contenedor**. Lo tienen el dueño (al crear el contenedor) y el soporte. |
+| `seg_usuario_cliente.propietario` | El dueño. **Basta para tener todo**, aunque su fila no tenga `is_superuser`: `has_perm`, `es_superusuario`, pendientes y el `is_superuser` que devuelve la API lo leen como `is_superuser OR propietario`. |
 | `seg_usuario_cliente_grupo` | Grupos del miembro. `heredar_permisos` (por defecto `true`) decide si el grupo da sus permisos. |
 | `seg_usuario_cliente_permiso` | Permisos sueltos del miembro: **cualquier** permiso, esté o no en sus grupos. |
 
@@ -78,8 +79,8 @@ de un contenedor: los usa `EsStaff` (panel de administración y soporte) y los c
 schema:
 
 1. Una consulta a `seg_usuario_cliente` por `(usuario_id, cliente_id)` para obtener la
-   membresía y su `is_superuser`.
-2. Si no es superusuario, una consulta con `UNION`: los permisos de sus grupos con
+   membresía, su `is_superuser` y su `propietario`.
+2. Si no es superusuario ni propietario, una consulta con `UNION`: los permisos de sus grupos con
    `heredar_permisos` y sus permisos personalizados.
 
 Todo va por índice (`(usuario_id, cliente_id)`, `(usuario_cliente_id, grupo_id)`,
@@ -170,11 +171,11 @@ y su `DELETE` da 404.
 
 ## 7. Menú y pendientes
 
-- `lista-usuario` y `usuario-cliente` devuelven, por membresía, `is_superuser` y `grupos`
-  (ids). El front muestra el módulo de cada grupo del producto, y todos si es
+- `lista-usuario` y `usuario-cliente` devuelven, por membresía, `is_superuser` (el efectivo:
+  `true` también para el propietario) y `grupos` (ids). El front muestra el módulo de cada grupo del producto, y todos si es
   superusuario.
 - `CtnPendienteTipo.grupo` dice de qué módulo es cada pendiente. Un pendiente se ve si la
-  membresía es superusuario o tiene ese grupo, herede o no (`docs/pendientes.md`).
+  membresía es superusuario o propietaria, o tiene ese grupo, herede o no (`docs/pendientes.md`).
 
 ## 8. Límites conocidos
 
@@ -190,8 +191,9 @@ y su `DELETE` da 404.
 
 ## 9. Despliegue de este cambio
 
-Las migraciones 0032/0033 solo crean estructura. Después de `migrate` hay que marcar los
-superusuarios a mano, o todos los miembros reciben 403 dentro de su contenedor:
+Las migraciones 0032/0033 solo crean estructura. El propietario ya tiene todo por serlo
+(2026-11-03); el `UPDATE` sigue haciendo falta para las membresías de **soporte**, y no
+estorba para los propietarios:
 
 ```sql
 UPDATE seg_usuario_cliente SET is_superuser = TRUE WHERE propietario OR soporte;

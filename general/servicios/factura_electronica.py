@@ -1027,14 +1027,25 @@ def _armar_documento_soporte(documento, parametro):
     Se numera contra su propia resolución, igual que la factura, y es el único
     que lleva las retenciones: rededoc las reconoce por el tributo y las deja
     fuera del total a pagar.
+
+    Lleva `fecha_compra` (ver `_armar_con_resolucion`): la compra puede ser de
+    días pasados y se emite hoy.
     """
-    return _armar_con_resolucion(documento, parametro, contacto='proveedor', con_retenciones=True)
+    return _armar_con_resolucion(
+        documento, parametro, contacto='proveedor', con_retenciones=True, con_fecha_compra=True,
+    )
 
 
-def _armar_con_resolucion(documento, parametro, contacto, con_retenciones):
+def _armar_con_resolucion(documento, parametro, contacto, con_retenciones, con_fecha_compra=False):
     """
     El payload de un documento que se numera contra una resolución. `contacto` es
     cómo se le dice al tercero en los mensajes de error.
+
+    Con `con_fecha_compra` (documento soporte), `documento.fecha` es la fecha de
+    la compra y viaja como `fecha_compra`, que puede ser pasada pero no futura;
+    la de emisión es siempre hoy, la única que acepta la DIAN (regla FAD09,
+    Decreto 442 de 2023). La vigencia de la resolución y el vencimiento se miden
+    contra esa emisión. Sin él, la fecha del documento es la de emisión.
 
     Revisa todo antes de fallar: quien corrige el documento tiene que ver de una
     vez lo que le falta, no un error distinto en cada intento.
@@ -1050,6 +1061,14 @@ def _armar_con_resolucion(documento, parametro, contacto, con_retenciones):
     if documento.fecha is None:
         errores.append(f'El documento {documento.id} no tiene fecha.')
 
+    hoy = timezone.localdate()
+    fecha_emision = hoy if con_fecha_compra else documento.fecha
+    if con_fecha_compra and documento.fecha is not None and documento.fecha > hoy:
+        errores.append(
+            f'La fecha de compra {documento.fecha} del documento {documento.id} no puede ser '
+            'posterior a hoy.'
+        )
+
     resolucion = documento.resolucion
     if resolucion is None:
         errores.append(f'El documento {documento.id} no tiene resolución.')
@@ -1062,11 +1081,11 @@ def _armar_con_resolucion(documento, parametro, contacto, con_retenciones):
                 f'de la resolución, que va desde {resolucion.consecutivo_desde} hasta '
                 f'{resolucion.consecutivo_hasta}.'
             )
-        if documento.fecha is not None and not (
-            resolucion.fecha_desde <= documento.fecha <= resolucion.fecha_hasta
+        if fecha_emision is not None and not (
+            resolucion.fecha_desde <= fecha_emision <= resolucion.fecha_hasta
         ):
             errores.append(
-                f'La fecha {documento.fecha} del documento {documento.id} está fuera de la vigencia '
+                f'La fecha {fecha_emision} del documento {documento.id} está fuera de la vigencia '
                 f'de la resolución, que va desde {resolucion.fecha_desde} hasta {resolucion.fecha_hasta}.'
             )
 
@@ -1075,13 +1094,19 @@ def _armar_con_resolucion(documento, parametro, contacto, con_retenciones):
         errores.append(
             f'El documento {documento.id} es a crédito y no tiene fecha de vencimiento.'
         )
+    elif con_fecha_compra and credito and documento.fecha_vence < hoy:
+        # Rededoc no acepta un vencimiento anterior a la emisión, que es hoy.
+        errores.append(
+            f'La fecha de vencimiento {documento.fecha_vence} del documento {documento.id} es '
+            'anterior a hoy, la fecha de emisión.'
+        )
 
     adquiriente = _o_error(errores, _adquiriente, documento, contacto)
     detalles = _o_error(errores, _detalles, documento, con_retenciones)
     if errores:
         raise _ErroresDocumento(errores)
 
-    return {
+    payload = {
         'emisor': parametro.gen_rededoc_emisor,
         'ambiente': settings.REDEDOC_AMBIENTE,
         # El id del documento en torio, para ubicarlo en rededoc sin su UUID.
@@ -1090,7 +1115,7 @@ def _armar_con_resolucion(documento, parametro, contacto, con_retenciones):
         'prefijo': resolucion.prefijo or '',
         'numero_resolucion': resolucion.numero,
         'consecutivo': documento.numero,
-        'fecha_emision': documento.fecha.isoformat(),
+        'fecha_emision': fecha_emision.isoformat(),
         'fecha_vencimiento': documento.fecha_vence.isoformat() if credito else None,
         'forma_pago': FORMA_PAGO_CREDITO if credito else FORMA_PAGO_CONTADO,
         'medio_pago': getattr(documento.metodo_pago, 'codigo', None) or MEDIO_PAGO_NO_DEFINIDO,
@@ -1098,6 +1123,9 @@ def _armar_con_resolucion(documento, parametro, contacto, con_retenciones):
         'adquiriente': adquiriente,
         'detalles': detalles,
     }
+    if con_fecha_compra:
+        payload['fecha_compra'] = documento.fecha.isoformat()
+    return payload
 
 
 def _armar_nota(documento, parametro):
@@ -1189,6 +1217,9 @@ def _armar_nota_ajuste(documento, parametro):
 
     Como las notas de venta, no se numera contra una resolución —va con su
     prefijo de `PREFIJOS_NOTA`— ni lleva vencimiento.
+
+    Como el documento soporte, `documento.fecha` viaja como `fecha_compra`
+    (pasada sí, futura no) y la emisión es siempre hoy (regla FAD09).
     """
     errores = []
     if documento.documento_tipo.codigo is None:
@@ -1200,6 +1231,13 @@ def _armar_nota_ajuste(documento, parametro):
         errores.append(f'El documento {documento.id} no tiene número.')
     if documento.fecha is None:
         errores.append(f'El documento {documento.id} no tiene fecha.')
+
+    hoy = timezone.localdate()
+    if documento.fecha is not None and documento.fecha > hoy:
+        errores.append(
+            f'La fecha de compra {documento.fecha} del documento {documento.id} no puede ser '
+            'posterior a hoy.'
+        )
 
     concepto = documento.documento_concepto_correccion
     if concepto is None:
@@ -1241,7 +1279,8 @@ def _armar_nota_ajuste(documento, parametro):
         'prefijo': PREFIJOS_NOTA[DOCUMENTO_CLASE_NOTA_AJUSTE],
         'numero_resolucion': '',
         'consecutivo': documento.numero,
-        'fecha_emision': documento.fecha.isoformat(),
+        'fecha_emision': hoy.isoformat(),
+        'fecha_compra': documento.fecha.isoformat(),
         'fecha_vencimiento': None,
         'forma_pago': FORMA_PAGO_CREDITO if credito else FORMA_PAGO_CONTADO,
         'medio_pago': getattr(documento.metodo_pago, 'codigo', None) or MEDIO_PAGO_NO_DEFINIDO,

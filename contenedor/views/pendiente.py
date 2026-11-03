@@ -36,10 +36,11 @@ class CtnPendienteViewSet(viewsets.GenericViewSet):
             raise ValidationError({'detail': 'El parámetro cliente debe ser un número.'})
 
         # La membresía del usuario en el contenedor del pendiente es superusuario
-        # o tiene el grupo del tipo. Sin membresía no hay fila, así que esto
-        # también limita a sus contenedores.
+        # o propietario, o tiene el grupo del tipo. Sin membresía no hay fila, así
+        # que esto también limita a sus contenedores.
         es_superusuario = SegUsuarioCliente.objects.filter(
-            usuario=request.user, cliente_id=OuterRef('cliente_id'), is_superuser=True,
+            Q(is_superuser=True) | Q(propietario=True),
+            usuario=request.user, cliente_id=OuterRef('cliente_id'),
         )
         con_grupo = SegUsuarioClienteGrupo.objects.filter(
             usuario_cliente__usuario=request.user,
