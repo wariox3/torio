@@ -22,6 +22,7 @@ from contenedor.models import (
     CtnSuscripcionTipo,
 )
 from contenedor.serializers import CtnSuscripcionSerializer
+from seguridad.permissions import EsStaff
 
 _LIST_PARAMS = [
     OpenApiParameter('cliente_id', int, description='Filtrar por cliente'),
@@ -56,11 +57,28 @@ class _ActualizarRequestSerializer(serializers.Serializer):
 
 @extend_schema(tags=['Suscripcion'])
 class CtnSuscripcionViewSet(viewsets.ModelViewSet):
+    """
+    El CRUD de suscripciones. Ver: las de los contenedores de los que el usuario es
+    miembro (el staff, todas). Crear, editar y borrar: solo el staff. Sin ese corte
+    cualquier sesión listaba todas y podía alargar su `fecha_fin` o cambiarse de
+    plan con un PATCH. El cliente cambia de plan por `actualizar` (Wompi).
+    """
+
     serializer_class = CtnSuscripcionSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_permissions(self):
+        if self.action in ('create', 'update', 'partial_update', 'destroy'):
+            return [EsStaff()]
+        return super().get_permissions()
+
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return CtnSuscripcion.objects.none()
         qs = CtnSuscripcion.objects.select_related('cliente', 'usuario', 'suscripcion_tipo').order_by('-fecha_inicio')
+        if not self.request.user.is_staff:
+            # Una ajena responde 404, no 403, para no confirmar que el id existe.
+            qs = qs.filter(cliente__segusuariocliente__usuario=self.request.user).distinct()
         cliente_id = self.request.query_params.get('cliente_id')
         usuario_id = self.request.query_params.get('usuario_id')
         suscripcion_tipo_id = self.request.query_params.get('suscripcion_tipo_id')

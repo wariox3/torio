@@ -76,6 +76,14 @@ carries optional `grupo_ids` (inheriting); afterwards only the owner edits a mem
 permissions at `GET`/`PUT /seguridad/usuario-cliente/<id>/permiso/` (never a support membership). The menu and
 pending-item visibility come from the groups (`CtnPendienteTipo.grupo`).
 
+Full design and rationale: **`docs/permisos.md`**.
+
+**Pending items per module.** `analizar_pendientes` (run daily) enters every `listo`
+container with a current subscription, runs the detectors (`DETECTORES` in the command;
+functions in `<app>/servicios/pendiente.py`) and replaces that container's `CtnPendiente`
+rows (public) in one transaction; a failing detector keeps the previous rows.
+`GET /contenedor/pendiente/` reads them without `X-Tenant`. Full design: **`docs/pendientes.md`**.
+
 `SHARED_APPS` run in the public schema. `TENANT_APPS` run in each tenant's isolated schema.
 
 ### Catalog system

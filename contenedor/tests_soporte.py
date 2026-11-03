@@ -1,8 +1,8 @@
 """
 Soporte del staff: `POST /contenedor/cliente/<id>/soporte/`.
 
-Abrir soporte escribe `UserTenantPermissions` dentro del schema del contenedor y
-después se entra con `X-Tenant`, así que hace falta un contenedor real, con su
+Abrir soporte escribe la membresía (con `is_superuser`) y un `UserTenantPermissions`
+vacío dentro del schema del contenedor, y después se entra con `X-Tenant`, así que hace falta un contenedor real, con su
 schema migrado. Se crea una sola vez para el módulo (`setUpModule`), igual que en
 `tests_aislamiento.py`: cada `TestCase` revierte lo suyo y el escenario se comparte.
 
@@ -20,7 +20,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from tenant_users.permissions.models import UserTenantPermissions
 
 from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion, CtnSuscripcionTipo
-from seguridad.models import CAMPOS_ACCESO, SegMfaUsuario, SegUsuario, SegUsuarioCliente
+from seguridad.models import SegMfaUsuario, SegUsuario, SegUsuarioCliente, SegUsuarioClienteGrupo
 
 ESQUEMA = 'soporte_staff'
 RUTA_ITEM = '/general/item/'
@@ -77,10 +77,7 @@ def setUpModule():
         )
         CtnCliente.objects.filter(pk=cliente.pk).update(suscripcion=suscripcion)
         cliente.refresh_from_db()
-        cliente.add_user(
-            Escenario.owner, propietario=True, is_superuser=True,
-            accesos=dict.fromkeys(CAMPOS_ACCESO, True),
-        )
+        cliente.add_user(Escenario.owner, propietario=True, is_superuser=True)
         Escenario.cliente = cliente
 
 
@@ -168,14 +165,15 @@ class SoporteTests(TestCase):
         self.assertIs(datos['soporte'], True)
         self.assertIs(datos['propietario'], False)
         self.assertEqual(datos['cliente_id'], self.cliente.id)
-        for campo in CAMPOS_ACCESO:
-            self.assertIs(datos[campo], True, campo)
+        self.assertIs(datos['is_superuser'], True)
         membresia = self._membresia()
         self.assertEqual(datos['id'], membresia.id)
         self.assertTrue(membresia.soporte)
+        self.assertTrue(membresia.is_superuser)
+        # El de la librería se crea, pero vacío: no autoriza nada.
         with schema_context(ESQUEMA):
             permisos = UserTenantPermissions.objects.get(profile=Escenario.staff)
-            self.assertTrue(permisos.is_superuser)
+            self.assertFalse(permisos.is_superuser)
 
     def test_ya_miembro_409(self):
         self._abrir()
@@ -219,16 +217,21 @@ class SoporteTests(TestCase):
         self.assertEqual((editar.status_code, eliminar.status_code), (403, 403))
         self.assertTrue(CtnCliente.objects.filter(pk=self.cliente.pk, nombre='Contenedor soporte').exists())
 
-    def test_el_owner_no_le_edita_los_accesos(self):
+    def test_el_owner_no_le_edita_los_grupos_ni_los_permisos(self):
         membresia_id = self._abrir().json()['id']
 
-        respuesta = self.client.patch(
-            f'/seguridad/usuario-cliente/{membresia_id}/', {'acceso_venta': False},
+        grupos = self.client.put(
+            f'/seguridad/usuario-cliente/{membresia_id}/grupo/', {'grupos': []},
+            content_type='application/json', **self._headers(Escenario.owner),
+        )
+        permisos = self.client.put(
+            f'/seguridad/usuario-cliente/{membresia_id}/permiso/', {'permisos': []},
             content_type='application/json', **self._headers(Escenario.owner),
         )
 
-        self.assertEqual(respuesta.status_code, 400)
-        self.assertTrue(self._membresia().acceso_venta)
+        self.assertEqual((grupos.status_code, permisos.status_code), (400, 400))
+        self.assertTrue(self._membresia().is_superuser)
+        self.assertFalse(SegUsuarioClienteGrupo.objects.filter(usuario_cliente_id=membresia_id).exists())
 
     # ---- cerrarlo ----
 

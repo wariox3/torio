@@ -11,9 +11,10 @@ porque cada una falla distinto:
    header se opera en el público, y las rutas de tenant ni siquiera existen ahí.
 3. **La membresía** — `EsMiembroDelTenant` exige una fila en `SegUsuarioCliente`.
    Es lo único que impide que un usuario legítimo de A mande `X-Tenant: b`.
-4. **Los permisos** — `UserTenantPermissions` vive *dentro* de cada schema, así
-   que los grupos que autorizan en A no autorizan en B, ni siquiera al mismo
-   usuario.
+4. **Los permisos** — viven en la membresía (`SegUsuarioCliente.is_superuser`,
+   `SegUsuarioClienteGrupo`, `SegUsuarioClientePermiso`), en el público, y
+   `SegUsuario.has_perm()` solo lee la del contenedor del header: los grupos que
+   autorizan en A no autorizan en B, ni siquiera al mismo usuario.
 
 Se montan dos contenedores reales (`aislamiento_a` y `aislamiento_b`), con schemas
 y migraciones de verdad. Eso cuesta unos 25 s, y por eso se crean una sola vez para
@@ -43,7 +44,6 @@ from django.utils import timezone
 from django_tenants.utils import get_public_schema_name, schema_context
 from rest_framework import mixins
 from rest_framework_simplejwt.tokens import RefreshToken
-from tenant_users.permissions.models import UserTenantPermissions
 
 from contenedor.models import CtnCliente, CtnDominio, CtnSuscripcion, CtnSuscripcionTipo
 from general.models import GenArchivo, GenArchivoTipo, GenItem, GenModelo
@@ -157,13 +157,14 @@ class Escenario:
     `ambos` es el caso interesante para las fugas: como es miembro legítimo de los dos,
     cualquier mezcla se le manifiesta sin necesidad de forjar nada.
 
-    `fantasma` es el que hace medible el barrido de endpoints. Tiene fila de
-    `UserTenantPermissions` en B con todos los permisos de modelo, pero **no** tiene
-    `SegUsuarioCliente`: es el estado que quedaría si una baja de membresía fallara a
-    medias. Sin él, un 403 en los 94 endpoints no probaría nada, porque los que exigen
+    `fantasma` es el que hace medible el barrido de endpoints: no es miembro de B, y el
+    barrido le da **todos** los permisos de modelo (parchea `has_perm` para que diga que
+    sí). Sin eso, un 403 en los endpoints no probaría nada, porque los que exigen
     permiso de modelo rechazarían igual a cualquier extraño y el barrido pasaría aunque
     la membresía estuviera desactivada — el mismo falso positivo que ya nos mordió en
     `MembresiaTests`. Con él, el único motivo posible de 403 es `EsMiembroDelTenant`.
+    (Con los permisos en la membresía ya no se pueden tener permisos sin ella, así que
+    el estado se simula en vez de construirse.)
 
     `pleno` es el que usa la cobertura de contenido: miembro de los dos y con todos los
     permisos en los dos, para que un rechazo nunca venga de la autorización y lo único
@@ -274,13 +275,8 @@ def setUpModule():
         Escenario.cliente_a.add_user(Escenario.ambos, grupos=[grupo_a])
         Escenario.cliente_b.add_user(Escenario.ambos)
 
-        # `fantasma`: permisos de modelo en B sin membresía en B. No se usa `add_user`
-        # justamente porque ese método escribe las dos filas; acá hace falta solo una.
         grupo_todo = Group.objects.create(name='todos_los_permisos')
         grupo_todo.permissions.set(Permission.objects.all())
-        with schema_context(ESQUEMA_B):
-            permisos = UserTenantPermissions.objects.create(profile=Escenario.fantasma)
-            permisos.groups.set([grupo_todo])
 
         Escenario.cliente_a.add_user(Escenario.pleno, grupos=[grupo_todo])
         Escenario.cliente_b.add_user(Escenario.pleno, grupos=[grupo_todo])
@@ -618,8 +614,8 @@ class MembresiaTests(AislamientoBase):
 
 class PermisosPorContenedorTests(AislamientoBase):
     """
-    `UserTenantPermissions` es una tabla *de tenant*: el mismo usuario tiene una fila
-    distinta por contenedor. Los grupos que lo autorizan en uno no existen en el otro.
+    Los permisos cuelgan de la membresía, y el mismo usuario tiene una membresía
+    distinta por contenedor. Los grupos que lo autorizan en uno no cuentan en el otro.
     """
 
     def test_los_grupos_de_un_contenedor_no_autorizan_en_el_otro(self):
@@ -635,8 +631,9 @@ class PermisosPorContenedorTests(AislamientoBase):
         self.assertEqual(creado_en_b.status_code, 403, creado_en_b.content)
 
     def test_ser_superusuario_en_un_contenedor_no_lo_es_en_el_otro(self):
-        with schema_context(ESQUEMA_A):
-            UserTenantPermissions.objects.filter(profile=Escenario.ambos).update(is_superuser=True)
+        SegUsuarioCliente.objects.filter(
+            usuario=Escenario.ambos, cliente=Escenario.cliente_a,
+        ).update(is_superuser=True)
 
         self.assertTrue(Escenario.cliente_a.es_superusuario(Escenario.ambos))
         self.assertFalse(Escenario.cliente_b.es_superusuario(Escenario.ambos))
@@ -815,14 +812,16 @@ class BarridoDeEndpointsTests(AislamientoBase):
 
     def test_ningun_endpoint_le_responde_a_un_no_miembro(self):
         """
-        `fantasma` tiene todos los permisos de modelo en B pero no es miembro de B, así
-        que un 403 acá solo lo puede producir `EsMiembroDelTenant`. Si en vez de 403
-        aparece cualquier otra cosa —200, 404, 405, 500—, la petición pasó la puerta.
+        `fantasma` no es miembro de B, y acá se le dan todos los permisos de modelo, así
+        que un 403 solo lo puede producir `EsMiembroDelTenant`. Si en vez de 403 aparece
+        cualquier otra cosa —200, 404, 405, 500—, la petición pasó la puerta.
         """
-        for etiqueta, url in rutas_de_tenant():
-            with self.subTest(endpoint=etiqueta):
-                respuesta = self._get(url, usuario=Escenario.fantasma, tenant=ESQUEMA_B)
-                self.assertEqual(respuesta.status_code, 403, f'{url} -> {respuesta.content[:200]}')
+        todos = property(lambda usuario: (True, frozenset()))
+        with mock.patch.object(SegUsuario, '_permisos_contenedor', todos):
+            for etiqueta, url in rutas_de_tenant():
+                with self.subTest(endpoint=etiqueta):
+                    respuesta = self._get(url, usuario=Escenario.fantasma, tenant=ESQUEMA_B)
+                    self.assertEqual(respuesta.status_code, 403, f'{url} -> {respuesta.content[:200]}')
 
     def test_ningun_endpoint_le_responde_a_un_anonimo(self):
         for etiqueta, url in rutas_de_tenant():
@@ -1084,13 +1083,8 @@ class ContenidoPorEndpointTests(AislamientoBase):
     datos = {}
     fallos = {}
 
-    # Endpoints cuya lista exige parámetros. `usuario-cliente-permiso` filtra por usuario
-    # y sin `usuario_id` responde 400.
-    PARAMS = {
-        'seguridad/usuario-cliente-permiso': lambda datos, schema, etiqueta: {
-            'usuario_id': datos[schema][etiqueta].usuario_id,
-        },
-    }
+    # Endpoints cuya lista exige parámetros, como {etiqueta: lambda datos, schema, etiqueta: {...}}.
+    PARAMS = {}
 
     @classmethod
     def setUpTestData(cls):
@@ -1226,25 +1220,6 @@ class ContenidoPorEndpointTests(AislamientoBase):
             ):
                 return campo.name, MARCADOR[ESQUEMA_A]
         return None, None
-
-    def test_los_permisos_de_un_usuario_de_otro_contenedor_no_se_ven(self):
-        """
-        `seguridad/usuario-cliente-permiso` merece su propia prueba: `SegUsuarioCliente`
-        vive en el schema **público**, así que las filas de los dos contenedores están en
-        la misma tabla. Acá el aislamiento no lo da PostgreSQL, lo da el filtro del
-        queryset — que es exactamente el tipo de defensa que se rompe en un refactor.
-        """
-        etiqueta = 'seguridad/usuario-cliente-permiso'
-        ajeno = self.datos[ESQUEMA_A][etiqueta]
-
-        respuesta = self._get(
-            f'/{etiqueta}/', usuario=Escenario.pleno, tenant=ESQUEMA_B,
-            data={'usuario_id': ajeno.usuario_id},
-        )
-
-        self.assertEqual(respuesta.status_code, 200, respuesta.content[:200])
-        self.assertEqual(self._filas(respuesta), [],
-                         'se vieron los permisos de un usuario que no es miembro de B')
 
 
 # --------------------------------------------------------------------------- #

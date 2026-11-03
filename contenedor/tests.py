@@ -24,7 +24,7 @@ from contenedor.views.cliente import (
     CtnClienteViewSet,
 )
 from contenedor.views.invitacion import CtnInvitacionViewSet
-from seguridad.models import CAMPOS_ACCESO, SegUsuario, SegUsuarioCliente
+from seguridad.models import SegUsuario, SegUsuarioCliente, SegUsuarioClienteGrupo
 
 
 class _ClienteViewSinPermisos(CtnClienteViewSet):
@@ -49,7 +49,7 @@ class PropietarioTests(TenantTestCase):
     """
     `TenantTestCase` crea un schema de tenant real, que es lo que necesita
     `CtnCliente.add_user`: está decorado con `@schema_required` y escribe el
-    `UserTenantPermissions` dentro del schema del contenedor.
+    `UserTenantPermissions` (vacío) dentro del schema del contenedor.
     """
 
     @classmethod
@@ -96,7 +96,7 @@ class PropietarioTests(TenantTestCase):
     # ── Crear contenedor ────────────────────────────────────────────────────
 
     def test_crear_contenedor_marca_propietario(self):
-        """Quien crea el contenedor queda con propietario=True y todos los accesos."""
+        """Quien crea el contenedor queda con propietario=True e is_superuser."""
         peticion = self.factory.post('/contenedor/cliente/', {
             'schema_name': 'nuevo',
             'nombre': 'Contenedor nuevo',
@@ -116,10 +116,10 @@ class PropietarioTests(TenantTestCase):
         membresia = SegUsuarioCliente.objects.get(usuario=self.duenio, cliente=cliente)
 
         self.assertTrue(membresia.propietario)
-        # El dueño ve todos los módulos: si los accesos quedaran en su default
-        # (False) entraría a su propio contenedor con el menú vacío.
-        for campo in CAMPOS_ACCESO:
-            self.assertTrue(getattr(membresia, campo), campo)
+        # El dueño no necesita grupos: `is_superuser` de su membresía le da todo.
+        # Si quedara en su default (False) entraría a su contenedor sin permisos.
+        self.assertTrue(membresia.is_superuser)
+        self.assertFalse(SegUsuarioClienteGrupo.objects.filter(usuario_cliente=membresia).exists())
 
     def test_el_contenedor_nuevo_arranca_en_la_suscripcion_de_prueba(self):
         """
@@ -153,15 +153,13 @@ class PropietarioTests(TenantTestCase):
     # ── Aceptar invitación ──────────────────────────────────────────────────
 
     def test_aceptar_invitacion_no_marca_propietario(self):
-        """El invitado nunca es dueño, y sus accesos son los de la invitación."""
+        """El invitado nunca es dueño, y sus grupos son los de la invitación."""
         grupo = Group.objects.create(name='Grupo de prueba')
         invitacion = CtnInvitacion.objects.create(
             cliente=self.tenant,
             usuario=self.duenio,
             usuario_invitado=self.invitado,
             estado=CtnInvitacion.ESTADO_PENDIENTE,
-            acceso_venta=True,
-            acceso_inventario=True,
         )
         invitacion.grupos.set([grupo])
 
@@ -176,15 +174,14 @@ class PropietarioTests(TenantTestCase):
         membresia = SegUsuarioCliente.objects.get(usuario=self.invitado, cliente=self.tenant)
 
         self.assertFalse(membresia.propietario)
-        # Los accesos se copian tal cual: los dos concedidos y el resto en False.
-        self.assertTrue(membresia.acceso_venta)
-        self.assertTrue(membresia.acceso_inventario)
-        for campo in CAMPOS_ACCESO:
-            if campo not in ('acceso_venta', 'acceso_inventario'):
-                self.assertFalse(getattr(membresia, campo), campo)
+        self.assertFalse(membresia.is_superuser)
+        # Los grupos se copian a la membresía, heredando sus permisos.
+        filas = list(SegUsuarioClienteGrupo.objects.filter(usuario_cliente=membresia))
+        self.assertEqual([f.grupo_id for f in filas], [grupo.id])
+        self.assertTrue(filas[0].heredar_permisos)
 
-    def test_aceptar_invitacion_sin_accesos_deja_todo_en_false(self):
-        """Invitar sin pasar accesos deja la membresía sin ningún módulo visible."""
+    def test_aceptar_invitacion_sin_grupos_entra_sin_permisos(self):
+        """Invitar sin grupos deja la membresía sin grupos ni superusuario."""
         invitacion = CtnInvitacion.objects.create(
             cliente=self.tenant,
             usuario=self.duenio,
@@ -203,5 +200,5 @@ class PropietarioTests(TenantTestCase):
         membresia = SegUsuarioCliente.objects.get(usuario=self.invitado, cliente=self.tenant)
 
         self.assertFalse(membresia.propietario)
-        for campo in CAMPOS_ACCESO:
-            self.assertFalse(getattr(membresia, campo), campo)
+        self.assertFalse(membresia.is_superuser)
+        self.assertFalse(SegUsuarioClienteGrupo.objects.filter(usuario_cliente=membresia).exists())

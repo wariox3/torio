@@ -53,6 +53,15 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             return SegUsuarioActualizarSerializer
         return SegUsuarioSerializer
 
+    def get_queryset(self):
+        # El CRUD es solo de la propia cuenta: sin este corte, cualquier sesión
+        # listaba a todos los usuarios (correo, celular, identificación) y podía
+        # editar o borrar cuentas ajenas. Una ajena responde 404, no 403, para no
+        # confirmar que el id existe. Buscar a quién invitar es `seleccionar`.
+        if self.action in ('list', 'retrieve', 'update', 'partial_update', 'destroy'):
+            return SegUsuario.objects.filter(pk=self.request.user.pk).order_by('id')
+        return super().get_queryset()
+
     def get_permissions(self):
         if self.action == 'create':
             return [AllowAny()]

@@ -37,7 +37,7 @@ from contenedor.views.cliente import SUSCRIPCION_TIPO_PRUEBA_ID, CtnClienteViewS
 from contenedor.views.invitacion import CtnInvitacionViewSet
 from general.management.commands.cargar_datos_tenant import Command as CargarDatosTenant
 from general.models import GenCiudad, GenContacto
-from seguridad.models import CAMPOS_ACCESO, SegUsuario, SegUsuarioCliente
+from seguridad.models import SegUsuario, SegUsuarioCliente
 
 
 class _ClienteView(CtnClienteViewSet):
@@ -144,8 +144,9 @@ class CrearTests(CreacionBase):
             usuario=self.duenio, cliente__schema_name='nuevo',
         )
         self.assertTrue(membresia.propietario)
-        for campo in CAMPOS_ACCESO:
-            self.assertTrue(getattr(membresia, campo), campo)
+        # Los permisos del owner van en la membresía, así que ya los tiene aunque
+        # el schema todavía no tenga tablas.
+        self.assertTrue(membresia.is_superuser)
 
     def test_la_tarea_se_encola_al_commit(self):
         """Antes del COMMIT el worker no vería ni el contenedor ni su schema."""
@@ -515,8 +516,10 @@ class TareaCompletaTests(CreacionBase):
         cliente.refresh_from_db()
         self.assertEqual(cliente.estado, CtnCliente.ESTADO_LISTO)
         with schema_context('completo'):
+            # Se crea por compatibilidad con la librería, pero vacío: los permisos
+            # del owner están en su membresía.
             permisos = UserTenantPermissions.objects.get(profile=self.duenio)
-            self.assertTrue(permisos.is_superuser)
+            self.assertFalse(permisos.is_superuser)
             self.assertTrue(GenCiudad.objects.exists())
             # La semilla depende por FK de los catálogos: si el orden se rompiera,
             # esta fila no existiría.
