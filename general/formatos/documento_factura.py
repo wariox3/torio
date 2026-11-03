@@ -64,12 +64,14 @@ _ANCHO_PARTES = anchos(0.56, 0.02, 0.42)
 _ANCHO_ETIQUETA_PARTE = 3.2 * cm
 
 # Código, descripción, cantidad, precio, descuento, impuesto y total. La
-# descripción se lleva lo que sobra: es lo que se parte en renglones.
-_ANCHO_DETALLES = anchos(0.11, 0.35, 0.08, 0.12, 0.10, 0.11, 0.13)
+# descripción se lleva lo que sobra: es lo que se parte en renglones (el nombre
+# del ítem y, debajo, el detalle de la línea).
+_ANCHO_DETALLES = anchos(0.09, 0.40, 0.07, 0.11, 0.10, 0.11, 0.12)
 
-# El resumen: letras, comentarios y pago a la izquierda; totales a la derecha,
-# bajo las tres últimas columnas de la tabla de detalles.
-_ANCHO_TOTALES = sum(_ANCHO_DETALLES[-3:])
+# El resumen: letras, comentarios y pago a la izquierda; totales a la derecha.
+# Va con ancho propio y no el de las últimas columnas de detalles: esas se
+# angostaron para la descripción y «TOTAL A PAGAR» se partía en dos renglones.
+_ANCHO_TOTALES = ANCHO_CONTENIDO * 0.34
 _ANCHO_RESUMEN = [ANCHO_CONTENIDO - _ANCHO_TOTALES, _ANCHO_TOTALES]
 
 LADO_QR = 3.2 * cm
@@ -156,6 +158,7 @@ class FormatoDocumentoFactura(FormatoBase):
                 'columna', fontName='Helvetica-Bold', fontSize=7, leading=9, alignment=TA_CENTER,
             ),
             'celda': estilo('celda', fontSize=7.5, leading=9.5),
+            'descripcion': estilo('descripcion', fontSize=7, leading=8.5),
             'cifra': estilo('cifra', fontSize=7.5, leading=9.5, alignment=TA_RIGHT),
             'conteo': estilo('conteo', fontSize=7, leading=9, textColor=_GRIS_TEXTO),
             'total_etiqueta': estilo('total_etiqueta', fontSize=8, leading=11),
@@ -201,7 +204,11 @@ class FormatoDocumentoFactura(FormatoBase):
 
     @staticmethod
     def _cantidad(valor):
-        return f'{valor or CERO:,.2f}'
+        """Sin decimales si es entera (3, no 3.00); si no, solo los que tiene (2.5)."""
+        valor = valor or CERO
+        if valor == valor.to_integral_value():
+            return f'{valor:,.0f}'
+        return f'{valor.normalize():,f}'
 
     @staticmethod
     def _numero(documento):
@@ -433,9 +440,17 @@ class FormatoDocumentoFactura(FormatoBase):
             if detalle.item_id
         ]
         for detalle in lineas:
+            # Siempre el nombre del ítem; el detalle de la línea lo complementa
+            # debajo, en gris y más pequeño para que no se confunda con el nombre.
+            descripcion = self._texto(detalle.item.nombre)
+            if detalle.detalle:
+                descripcion += (
+                    f'<br/><font size="6" color="{_GRIS_TEXTO.hexval()}">'
+                    f'{self._texto(detalle.detalle)}</font>'
+                )
             filas.append([
                 Paragraph(self._texto(detalle.item.codigo), estilos['celda']),
-                Paragraph(self._texto(detalle.detalle or detalle.item.nombre), estilos['celda']),
+                Paragraph(descripcion, estilos['descripcion']),
                 Paragraph(self._cantidad(detalle.cantidad), estilos['cifra']),
                 Paragraph(self._moneda(detalle.precio), estilos['cifra']),
                 Paragraph(self._moneda(detalle.descuento), estilos['cifra']),

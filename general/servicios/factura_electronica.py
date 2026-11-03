@@ -1350,7 +1350,8 @@ def _detalles(documento, con_retenciones=False):
         detalles.append({
             'codigo_producto': linea.item.codigo or str(linea.item.id),
             'numero_linea': numero_linea,
-            'descripcion': linea.detalle or linea.item.nombre,
+            # Siempre el nombre del ítem; el detalle de la línea lo complementa.
+            'descripcion': ' - '.join(filter(None, [linea.item.nombre, linea.detalle])),
             'unidad_medida': UNIDAD_MEDIDA,
             'cantidad': _decimal(linea.cantidad),
             'descuento': _decimal(linea.descuento),
