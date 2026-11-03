@@ -1,3 +1,4 @@
+from django.contrib.auth.models import Group
 from django.db import transaction
 from django.http import Http404
 from drf_spectacular.utils import (
@@ -13,8 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tenant_users.tenants.models import DeleteError
 
-from contenedor.models import CtnAplicacion
-from seguridad.models import SegUsuarioCliente, SegUsuarioClienteAplicacion
+from seguridad.models import SegUsuarioCliente, SegUsuarioClienteGrupo
 from seguridad.serializers import SegUsuarioClienteSerializer
 from utilidades.mixins import FiltrosDinamicosMixin
 
@@ -41,7 +41,7 @@ class SegUsuarioClienteViewSet(
         propios = SegUsuarioCliente.objects.filter(usuario=self.request.user).values('cliente_id')
         return SegUsuarioCliente.objects.filter(cliente_id__in=propios).select_related(
             'usuario', 'cliente',
-        ).prefetch_related('aplicaciones').order_by('usuario__nombre_corto')
+        ).prefetch_related('grupos').order_by('usuario__nombre_corto')
 
     @extend_schema(
         summary='Listar usuarios de un cliente',
@@ -100,24 +100,25 @@ class SegUsuarioClienteViewSet(
         return self.get_paginated_response(SegUsuarioClienteSerializer(pagina, many=True).data)
 
     @extend_schema(
-        summary='Aplicaciones de un miembro',
+        summary='Grupos de un miembro',
         description=(
-            'GET: todas las aplicaciones del catálogo, con `activa` según lo que ve este '
-            'miembro en el contenedor. PUT `{"aplicaciones": [ids]}`: las reemplaza '
-            '(una lista vacía las quita todas) y responde como el GET. Solo el owner '
-            'del contenedor las edita, y no a una membresía de soporte.'
+            'Los permisos de un miembro en el contenedor. GET: todos los grupos, con '
+            '`activo` según los que tiene esta membresía. PUT `{"grupos": [ids]}`: los '
+            'reemplaza (una lista vacía los quita todos) y responde como el GET. Solo '
+            'el owner del contenedor los edita, y no a una membresía de soporte. Sin '
+            '`X-Tenant`: viven en el público (`SegUsuarioClienteGrupo`).'
         ),
-        request=inline_serializer('SegUsuarioClienteAplicacionActualizar', {
-            'aplicaciones': serializers.ListField(child=serializers.IntegerField()),
+        request=inline_serializer('SegUsuarioClienteGrupoActualizar', {
+            'grupos': serializers.ListField(child=serializers.IntegerField()),
         }),
-        responses=inline_serializer('SegUsuarioClienteAplicacion', {
-            'aplicacion_id': serializers.IntegerField(),
-            'aplicacion_nombre': serializers.CharField(),
-            'activa': serializers.BooleanField(),
+        responses=inline_serializer('SegUsuarioClienteGrupo', {
+            'grupo_id': serializers.IntegerField(),
+            'grupo_name': serializers.CharField(),
+            'activo': serializers.BooleanField(),
         }, many=True),
     )
-    @action(detail=True, methods=['get', 'put'], url_path='aplicacion')
-    def aplicacion(self, request, pk=None):
+    @action(detail=True, methods=['get', 'put'], url_path='grupo')
+    def grupo(self, request, pk=None):
         try:
             membresia = self.get_object()
         except (Http404, PermissionDenied):
@@ -130,48 +131,46 @@ class SegUsuarioClienteViewSet(
             # Es 403 y no 404: quien llega acá ya es miembro y puede ver la fila.
             if membresia.cliente.owner_id != request.user.id:
                 return Response(
-                    {'detail': 'Solo el owner del contenedor puede modificar las aplicaciones.'},
+                    {'detail': 'Solo el owner del contenedor puede modificar los grupos.'},
                     status=status.HTTP_403_FORBIDDEN,
                 )
-            # El soporte entra con todas; el owner puede sacarlo, no recortarlo.
+            # El soporte entra como superusuario; el owner puede sacarlo, no recortarlo.
             if membresia.soporte:
                 return Response(
-                    {'detail': 'Las aplicaciones de un usuario de soporte no se modifican.'},
+                    {'detail': 'Los grupos de un usuario de soporte no se modifican.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            aplicaciones = request.data.get('aplicaciones') if isinstance(request.data, dict) else None
-            if not isinstance(aplicaciones, list) or not all(
-                isinstance(a, int) and not isinstance(a, bool) for a in aplicaciones
+            grupos = request.data.get('grupos') if isinstance(request.data, dict) else None
+            if not isinstance(grupos, list) or not all(
+                isinstance(g, int) and not isinstance(g, bool) for g in grupos
             ):
                 return Response(
-                    {'detail': 'aplicaciones debe ser una lista de ids.'},
+                    {'detail': 'grupos debe ser una lista de ids.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            ids = set(aplicaciones)
-            inexistentes = ids - set(
-                CtnAplicacion.objects.filter(id__in=ids).values_list('id', flat=True)
-            )
+            ids = set(grupos)
+            inexistentes = ids - set(Group.objects.filter(id__in=ids).values_list('id', flat=True))
             if inexistentes:
                 return Response(
-                    {'detail': 'Aplicaciones inexistentes: '
+                    {'detail': 'Grupos inexistentes: '
                      + ', '.join(map(str, sorted(inexistentes))) + '.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             with transaction.atomic():
-                SegUsuarioClienteAplicacion.objects.filter(
+                SegUsuarioClienteGrupo.objects.filter(
                     usuario_cliente=membresia,
-                ).exclude(aplicacion_id__in=ids).delete()
-                SegUsuarioClienteAplicacion.objects.bulk_create(
-                    [SegUsuarioClienteAplicacion(usuario_cliente=membresia, aplicacion_id=i) for i in ids],
+                ).exclude(grupo_id__in=ids).delete()
+                SegUsuarioClienteGrupo.objects.bulk_create(
+                    [SegUsuarioClienteGrupo(usuario_cliente=membresia, grupo_id=i) for i in ids],
                     ignore_conflicts=True,
                 )
 
-        activas = set(
-            SegUsuarioClienteAplicacion.objects.filter(
+        activos = set(
+            SegUsuarioClienteGrupo.objects.filter(
                 usuario_cliente=membresia,
-            ).values_list('aplicacion_id', flat=True)
+            ).values_list('grupo_id', flat=True)
         )
         return Response([
-            {'aplicacion_id': a.id, 'aplicacion_nombre': a.nombre, 'activa': a.id in activas}
-            for a in CtnAplicacion.objects.order_by('id')
+            {'grupo_id': g.id, 'grupo_name': g.name, 'activo': g.id in activos}
+            for g in Group.objects.order_by('id')
         ])

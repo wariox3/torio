@@ -8,11 +8,11 @@ class CtnPendienteSerializer(serializers.ModelSerializer):
     cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True)
     pendiente_tipo_id = serializers.IntegerField(read_only=True)
     pendiente_tipo_nombre = serializers.CharField(source='pendiente_tipo.nombre', read_only=True)
-    pendiente_tipo_aplicacion_id = serializers.IntegerField(
-        source='pendiente_tipo.aplicacion_id', read_only=True,
+    pendiente_tipo_grupo_id = serializers.IntegerField(
+        source='pendiente_tipo.grupo_id', read_only=True,
     )
-    pendiente_tipo_aplicacion_nombre = serializers.CharField(
-        source='pendiente_tipo.aplicacion.nombre', read_only=True,
+    pendiente_tipo_grupo_name = serializers.CharField(
+        source='pendiente_tipo.grupo.name', read_only=True,
     )
 
     class Meta:
@@ -21,6 +21,6 @@ class CtnPendienteSerializer(serializers.ModelSerializer):
             'id', 'fecha', 'mensaje', 'cantidad',
             'cliente_id', 'cliente_nombre',
             'pendiente_tipo_id', 'pendiente_tipo_nombre',
-            'pendiente_tipo_aplicacion_id', 'pendiente_tipo_aplicacion_nombre',
+            'pendiente_tipo_grupo_id', 'pendiente_tipo_grupo_name',
         ]
         read_only_fields = fields

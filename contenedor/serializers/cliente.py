@@ -41,9 +41,10 @@ class CtnClienteActualizarSerializer(serializers.ModelSerializer):
 
 
 class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
-    # Ids de `CtnAplicacion` que esta membresía ve en el menú.
-    aplicaciones = serializers.SlugRelatedField(
-        slug_field='aplicacion_id', many=True, read_only=True,
+    # Ids de los grupos (`auth.Group`) de esta membresía: sus permisos en el
+    # contenedor, y con ellos el menú. Con `is_superuser` tiene todos.
+    grupos = serializers.SlugRelatedField(
+        slug_field='grupo_id', many=True, read_only=True,
     )
     cliente_id = serializers.IntegerField(source='cliente.id', read_only=True)
     schema_name = serializers.CharField(source='cliente.schema_name', read_only=True)
@@ -75,7 +76,7 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
             'cliente_fecha_ultima_conexion', 'cliente_imagen', 'cliente_imagen_thumbnail',
             'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
             'suscripcion_suscripcion_tipo_nombre',
-            'propietario', 'soporte', 'aplicaciones',
+            'propietario', 'soporte', 'is_superuser', 'grupos',
         ]
 
     def get_cliente_imagen(self, obj) -> str | None:

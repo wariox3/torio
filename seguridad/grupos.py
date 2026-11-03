@@ -1,9 +1,10 @@
 """
 Definición de los grupos de permisos del producto.
 
-Un `Group` de Django es la unidad de autorización: es lo que se asigna al
-`UserTenantPermissions` de un usuario dentro de un contenedor y lo único que
-`has_perm()` consulta. `SegRol` NO interviene: quedó como etiqueta de
+Un `Group` de Django es la unidad de autorización: es lo que se asigna a la
+membresía de un usuario en un contenedor (`SegUsuarioClienteGrupo`, en el
+público) y, junto con `SegUsuarioCliente.is_superuser`, lo único que
+`SegUsuario.has_perm()` consulta. `SegRol` NO interviene: quedó como etiqueta de
 presentación.
 
 Los grupos viven en el schema público y se comparten entre todos los

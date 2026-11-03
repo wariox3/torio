@@ -15,6 +15,10 @@ class Command(BaseCommand):
     help = 'Carga datos del schema público desde los catalogos/ de contenedor y seguridad (idempotente)'
 
     def handle(self, *_args, **_options):
+        # Los grupos primero: hay catálogos que apuntan a ellos por FK
+        # (`CtnPendienteTipo.grupo`), y el cargador guarda fila por fila.
+        self._cargar_grupos()
+
         archivos = sorted(
             archivo for d in CATALOGOS_DIRS for archivo in d.glob('*.json')
         )
@@ -22,8 +26,6 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING('No se encontraron archivos JSON en catalogos/'))
         for archivo in archivos:
             self._cargar(archivo)
-
-        self._cargar_grupos()
 
     def _cargar_grupos(self):
         """

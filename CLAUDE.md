@@ -50,23 +50,26 @@ Tenant isolation is covered by `contenedor/tests_aislamiento.py` (`python manage
 **Staff support access.** Platform staff (`is_staff` in the *public* schema, `EsStaff`) see every
 container at `GET /contenedor/cliente/administrar/` and enter one with
 `POST /contenedor/cliente/<id>/soporte/` (MFA required): that creates a normal membership with
-`SegUsuarioCliente.soporte = True`, `is_superuser` and every application, so all tenant permission
+`SegUsuarioCliente.soporte = True` and `is_superuser`, so all tenant permission
 checks work unchanged. It never expires — it is closed with the regular
 `DELETE /seguridad/usuario-cliente/<id>/` (the staff member or the owner) and leaves no history.
 A support membership is **not** a user of the client: `es_superusuario` returns `False` for it
-(it can't modify or delete the container), the owner can't edit its applications, it skips
+(it can't modify or delete the container), the owner can't edit its groups, it skips
 `SuscripcionVigente`, and the panel's `usuarios` count excludes it. Any new code that reads
 `SegUsuarioCliente` as "the client's users" must decide what to do with `soporte`.
 
-**Applications (menu) are per membership.** `SegUsuarioClienteAplicacion` (public) links a
-`SegUsuarioCliente` to `CtnAplicacion` (catalog: venta, compra, cartera, tesorería,
-contabilidad, inventario, humano, turno), so a user sees different modules in each container
-and loses them with the membership (CASCADE). `add_user(aplicaciones=[...])` writes them with
-the membership; the owner of a new container and a support membership get all of them; an
-invitation must name at least one (`CtnInvitacion.aplicaciones`) and accepting copies them.
-Only the container owner edits them afterwards, at
-`GET`/`PUT /seguridad/usuario-cliente/<id>/aplicacion/` (never a support membership). They
-authorize nothing — groups do — they only build the menu and filter `GET /contenedor/pendiente/`.
+**Tenant authorization lives in the public schema, on the membership.** Inside a container,
+`SegUsuario.has_perm()` / `is_superuser` (overridden in `seguridad/models/usuario.py`) read
+`SegUsuarioCliente.is_superuser` and `SegUsuarioClienteGrupo` (membership ↔ `auth.Group`) for
+`connection.tenant` — **not** django-tenant-users' `UserTenantPermissions`, which is still
+created (empty) only for library compatibility. That makes a member's permissions readable
+without entering the container's schema (`lista-usuario`, `GET /contenedor/pendiente/`). In the
+public schema the library behaviour is untouched (`EsStaff`, `createsuperuser`). Groups are
+the product's fixed ones (`seguridad/grupos.py`); there are no per-user loose permissions.
+The owner of a new container and a support membership get `is_superuser`; an invitation
+carries optional `grupo_ids`; afterwards only the owner edits a member's groups at
+`GET`/`PUT /seguridad/usuario-cliente/<id>/grupo/` (never a support membership). The menu and
+pending-item visibility come from the groups (`CtnPendienteTipo.grupo`).
 
 `SHARED_APPS` run in the public schema. `TENANT_APPS` run in each tenant's isolated schema.
 
@@ -187,7 +190,7 @@ sits in RabbitMQ with no consumer.
 transaction it saves `CtnCliente` with `estado='creando'`, an **empty** schema, the
 domain, the owner's `SegUsuarioCliente` and the trial subscription, and answers **202**.
 `contenedor.tasks.crear_contenedor` (queue `crear_contenedor`, consumed by the same
-`torio-celery` worker as the notifications) then migrates, creates the owner's `UserTenantPermissions`, loads
+`torio-celery` worker as the notifications) then migrates, creates the owner's (empty) `UserTenantPermissions`, loads
 catalogs with `--inicial` and sets `listo`. The front polls
 `GET /contenedor/cliente/<id>/estado/`; `POST .../reintentar/` re-enqueues one in `error`.
 

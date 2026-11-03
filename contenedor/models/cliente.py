@@ -82,64 +82,51 @@ class CtnCliente(TenantBase):
     @schema_required
     @transaction.atomic
     def add_user(
-        self, user_obj, *, grupos=None, aplicaciones=None, propietario=False, soporte=False,
+        self, user_obj, *, grupos=None, propietario=False, soporte=False,
         is_superuser=False, is_staff=False,
     ):
         """
         Vincula un usuario al contenedor.
 
-        Sobreescribe el `add_user` de `TenantBase` porque la membresía de este
-        proyecto lleva datos que la librería no conoce (`propietario` y `soporte`
-        de `SegUsuarioCliente`). Hace lo mismo que el original y en el
-        mismo orden: la fila de permisos en el schema del tenant y la de
-        membresía en el público, ambas dentro de la misma transacción.
+        Sobreescribe el `add_user` de `TenantBase` porque en este proyecto la
+        autorización vive en la membresía (público), no en `UserTenantPermissions`:
+        `SegUsuarioCliente` lleva `propietario`, `soporte` e `is_superuser`, y
+        `SegUsuarioClienteGrupo` sus grupos. Es lo que lee `SegUsuario.has_perm()`
+        dentro del contenedor, sin entrar a su schema.
 
-        Las dos escrituras van juntas a propósito. `SegUsuarioCliente` dice de
-        qué contenedores es miembro el usuario; `UserTenantPermissions` es lo
-        único que `has_perm()` lee dentro de un tenant. Si falta la segunda, el
-        usuario entra al contenedor sin ningún permiso.
+        `UserTenantPermissions` se sigue creando, vacío (sin grupos ni
+        superusuario), solo por compatibilidad con django-tenant-users: no decide
+        nada. `@schema_required` conmuta al schema del tenant para escribirlo.
 
         `propietario` marca al dueño del contenedor, pero no autoriza nada: quien
         autoriza es `grupos`, y el salto de `TienePermisoModelo` lo da
         `is_superuser`. Un usuario sin grupos entra al contenedor pero no pasa
         `TienePermisoModelo` en ningún recurso protegido.
 
-        `aplicaciones` son los ids de `CtnAplicacion` que el usuario verá en el menú
-        de este contenedor (`SegUsuarioClienteAplicacion`). Omitirlo lo deja sin
-        ninguna: ser miembro no concede acceso a ningún módulo por sí solo.
-
-        `@schema_required` conmuta al schema del tenant: `UserTenantPermissions`
-        y sus grupos caen ahí, y `seg_usuario_cliente` y `auth_group` se
-        resuelven a `public` por el search_path.
-
-        Hay una única excepción a escribir las dos filas juntas: el owner de un
-        contenedor nuevo. `CtnClienteViewSet.create` crea su membresía en el
-        request, cuando el schema todavía no tiene tablas, y `crear_contenedor`
-        crea sus permisos al terminar las migraciones. Entre una cosa y la otra
-        el contenedor está en `creando`, y el middleware no deja entrar a nadie.
+        Hay una única excepción a escribir todo junto: el owner de un contenedor
+        nuevo. `CtnClienteViewSet.create` crea su membresía (con `is_superuser`)
+        en el request, cuando el schema todavía no tiene tablas, y
+        `crear_contenedor` crea su `UserTenantPermissions` al terminar las
+        migraciones. Entre una cosa y la otra el contenedor está en `creando`, y
+        el middleware no deja entrar a nadie.
         """
-        from seguridad.models import SegUsuarioCliente, SegUsuarioClienteAplicacion
+        from seguridad.models import SegUsuarioCliente, SegUsuarioClienteGrupo
 
         if SegUsuarioCliente.objects.filter(usuario=user_obj, cliente=self).exists():
             raise ExistsError(f'El usuario ya es miembro de {self.nombre}.')
 
-        permisos = UserTenantPermissions.objects.create(
-            profile=user_obj,
-            is_staff=is_staff,
-            is_superuser=is_superuser,
-        )
-        if grupos:
-            permisos.groups.set(grupos)
+        UserTenantPermissions.objects.create(profile=user_obj, is_staff=is_staff)
 
         membresia = SegUsuarioCliente.objects.create(
             usuario=user_obj,
             cliente=self,
             propietario=propietario,
             soporte=soporte,
+            is_superuser=is_superuser,
         )
-        SegUsuarioClienteAplicacion.objects.bulk_create([
-            SegUsuarioClienteAplicacion(usuario_cliente=membresia, aplicacion_id=aplicacion_id)
-            for aplicacion_id in set(aplicaciones or [])
+        SegUsuarioClienteGrupo.objects.bulk_create([
+            SegUsuarioClienteGrupo(usuario_cliente=membresia, grupo=grupo)
+            for grupo in set(grupos or [])
         ])
 
         tenant_user_added.send(sender=self.__class__, user=user_obj, tenant=self)
@@ -150,7 +137,8 @@ class CtnCliente(TenantBase):
     def remove_user(self, user_obj):
         """
         Desvincula un usuario del contenedor: borra su `UserTenantPermissions`
-        del schema del tenant y su fila de `SegUsuarioCliente`.
+        del schema del tenant y su fila de `SegUsuarioCliente` (con sus grupos,
+        por CASCADE).
 
         Sobreescribe el de `TenantBase` por la misma razón que `add_user`, y
         porque el original prohíbe sacar al owner apoyándose en `self.owner.pk`,
@@ -160,7 +148,7 @@ class CtnCliente(TenantBase):
         es OneToOne, así que una fila huérfana impide volver a invitar al mismo
         usuario a este contenedor.
         """
-        from seguridad.models import SegUsuarioCliente, SegUsuarioClienteAplicacion
+        from seguridad.models import SegUsuarioCliente
 
         if user_obj.pk == self.owner_id:
             raise DeleteError(f'No se puede desvincular al owner de {self.nombre}.')
@@ -170,28 +158,19 @@ class CtnCliente(TenantBase):
 
         tenant_user_removed.send(sender=self.__class__, user=user_obj, tenant=self)
 
-    @schema_required
     def es_superusuario(self, usuario):
         """
         ¿El usuario tiene `is_superuser` DENTRO de este contenedor?
 
-        La fuente de verdad es `permissions_usertenantpermissions` del schema del
-        tenant — la misma que consulta `has_perm()` — y no `owner_id`, que es un
-        dato informativo y nulable. `add_user` marca `is_superuser=True` al owner
-        cuando se crea el contenedor.
-
-        Nota: el contenedor del schema público queda protegido por construcción,
-        porque su tabla de permisos solo tiene filas si se crea un superusuario
-        de plataforma con `createsuperuser`.
+        La fuente de verdad es su membresía (`SegUsuarioCliente.is_superuser`) —la
+        misma que consulta `has_perm()`— y no `owner_id`, que es un dato
+        informativo y nulable. La creación del contenedor marca al owner.
         """
         if usuario is None or not usuario.is_authenticated:
             return False
         # El staff en soporte tiene `is_superuser` para trabajar dentro del
         # contenedor, pero modificarlo o eliminarlo es cosa del cliente.
-        from seguridad.models import SegUsuarioCliente, SegUsuarioClienteAplicacion
-        if SegUsuarioCliente.objects.filter(usuario=usuario, cliente=self, soporte=True).exists():
-            return False
-        return UserTenantPermissions.objects.filter(
-            profile_id=usuario.pk,
-            is_superuser=True,
+        from seguridad.models import SegUsuarioCliente
+        return SegUsuarioCliente.objects.filter(
+            usuario=usuario, cliente=self, is_superuser=True, soporte=False,
         ).exists()

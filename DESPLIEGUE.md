@@ -1206,7 +1206,7 @@ en dos tiempos (diseño completo en `docs/creacion_contenedor.md`):
 **En el worker** `torio-celery` (§8.1, unos 20 s), la tarea:
 
 6. corre las migraciones del tenant, **una transacción por migración**;
-7. crea los permisos del owner en el schema (`UserTenantPermissions`, `is_superuser`);
+7. crea el `UserTenantPermissions` del owner en el schema, vacío (sus permisos —`is_superuser`— ya están en su membresía, en el público);
 8. siembra catálogos **y datos iniciales** (`cargar_datos_tenant --inicial`);
 9. marca el contenedor `listo`.
 

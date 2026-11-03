@@ -1,7 +1,7 @@
 from django.contrib.auth.models import Group
 from rest_framework import serializers
 
-from contenedor.models import CtnAplicacion, CtnCliente, CtnInvitacion
+from contenedor.models import CtnCliente, CtnInvitacion
 
 
 class CtnInvitacionSerializer(serializers.ModelSerializer):
@@ -11,9 +11,6 @@ class CtnInvitacionSerializer(serializers.ModelSerializer):
     grupos_nombres = serializers.SlugRelatedField(
         source='grupos', slug_field='name', many=True, read_only=True,
     )
-    aplicaciones_nombres = serializers.SlugRelatedField(
-        source='aplicaciones', slug_field='nombre', many=True, read_only=True,
-    )
 
     class Meta:
         model = CtnInvitacion
@@ -21,10 +18,9 @@ class CtnInvitacionSerializer(serializers.ModelSerializer):
             'id', 'cliente', 'cliente_nombre',
             'usuario', 'usuario_nombre_corto', 'usuario_email',
             'usuario_invitado',
-            'grupos', 'grupos_nombres', 'aplicaciones', 'aplicaciones_nombres',
-            'estado', 'fecha',
+            'grupos', 'grupos_nombres', 'estado', 'fecha',
         ]
-        read_only_fields = ['id', 'cliente', 'cliente_nombre', 'usuario', 'usuario_nombre_corto', 'usuario_email', 'usuario_invitado', 'grupos', 'aplicaciones', 'estado', 'fecha']
+        read_only_fields = ['id', 'cliente', 'cliente_nombre', 'usuario', 'usuario_nombre_corto', 'usuario_email', 'usuario_invitado', 'grupos', 'estado', 'fecha']
 
 
 class CtnInvitacionClienteSerializer(serializers.ModelSerializer):
@@ -33,17 +29,13 @@ class CtnInvitacionClienteSerializer(serializers.ModelSerializer):
     grupos_nombres = serializers.SlugRelatedField(
         source='grupos', slug_field='name', many=True, read_only=True,
     )
-    aplicaciones_nombres = serializers.SlugRelatedField(
-        source='aplicaciones', slug_field='nombre', many=True, read_only=True,
-    )
 
     class Meta:
         model = CtnInvitacion
         fields = [
             'id', 'usuario_invitado', 'usuario_invitado_nombre_corto',
             'usuario_invitado_correo',
-            'grupos', 'grupos_nombres', 'aplicaciones', 'aplicaciones_nombres',
-            'estado', 'fecha',
+            'grupos', 'grupos_nombres', 'estado', 'fecha',
         ]
         read_only_fields = fields
 
@@ -63,15 +55,3 @@ class CtnInvitacionCrearSerializer(serializers.Serializer):
         required=False,
         default=list,
     )
-    # Las aplicaciones que verá en el menú del contenedor. Obligatorio: sin al
-    # menos una el invitado entraría sin ningún módulo visible.
-    aplicacion_ids = serializers.PrimaryKeyRelatedField(
-        queryset=CtnAplicacion.objects.all(),
-        source='aplicaciones',
-        many=True,
-    )
-
-    def validate_aplicacion_ids(self, valor):
-        if not valor:
-            raise serializers.ValidationError('Debe indicar al menos una aplicación.')
-        return valor

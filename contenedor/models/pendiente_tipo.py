@@ -6,7 +6,9 @@ class CtnPendienteTipo(models.Model):
 
     id = models.BigIntegerField(primary_key=True)
     nombre = models.CharField(max_length=200)
-    aplicacion = models.ForeignKey('contenedor.CtnAplicacion', on_delete=models.PROTECT)
+    # Quién ve el pendiente: los miembros con este grupo en el contenedor (o
+    # superusuarios). Los ids de los grupos los fija `seguridad/grupos.py`.
+    grupo = models.ForeignKey('auth.Group', on_delete=models.PROTECT)
 
     class Meta:
         db_table = 'ctn_pendiente_tipo'

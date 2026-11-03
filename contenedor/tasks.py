@@ -94,8 +94,9 @@ def crear_contenedor(self, cliente_id):
        `UPDATE` sobre `seg_usuario` —ni siquiera el `last_login` del login—; así
        son milisegundos por migración. Las ya aplicadas quedan en
        `django_migrations` del schema y no se repiten.
-    3. `UserTenantPermissions` del owner, con `get_or_create`. Su membresía
-       (`SegUsuarioCliente`) ya la creó la vista.
+    3. `UserTenantPermissions` del owner, con `get_or_create`, vacío: solo por
+       compatibilidad con django-tenant-users. Sus permisos (`is_superuser`)
+       están en su membresía (`SegUsuarioCliente`), que ya creó la vista.
     4. Catálogos y semillas: `cargar_datos_tenant --inicial`, que ya es
        idempotente.
     5. `estado = listo`, recién acá: hasta este punto el middleware no deja entrar,
@@ -203,7 +204,7 @@ def _construir(cliente):
     with schema_context(schema_name):
         UserTenantPermissions.objects.get_or_create(
             profile_id=cliente.owner_id,
-            defaults={'is_superuser': True, 'is_staff': False},
+            defaults={'is_superuser': False, 'is_staff': False},
         )
 
     _anotar_paso(cliente.pk, PASO_CATALOGOS)

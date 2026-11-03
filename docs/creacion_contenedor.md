@@ -82,10 +82,12 @@ Front                     API (gunicorn)                   Worker torio-celery (
   deploy recorre todos los `CtnCliente` y se cae con uno que no tenga schema, como uno
   que quedó en `error` porque RabbitMQ no respondió. `CREATE SCHEMA` no toca ninguna
   tabla, así que no bloquea nada.
-- **Crea la membresía del owner**, pero no sus permisos. `UserTenantPermissions` vive en
-  el schema del tenant, que todavía no tiene tablas; lo crea la tarea. Esta es la única
-  excepción a la regla de `add_user` de escribir las dos filas juntas, y es segura porque
-  hasta `listo` el middleware no deja entrar a nadie. A cambio, el contenedor aparece en
+- **Crea la membresía del owner, con `is_superuser`**: los permisos dentro del contenedor
+  viven en la membresía, en el público. `UserTenantPermissions` (vacío, solo por
+  compatibilidad con django-tenant-users) vive en el schema del tenant, que todavía no
+  tiene tablas; lo crea la tarea. Es la única excepción a la regla de `add_user` de
+  escribir todo junto, y es segura porque hasta `listo` el middleware no deja entrar a
+  nadie. A cambio, el contenedor aparece en
   `lista-usuario` desde el primer segundo, con su `estado`.
 - **Encola con `on_commit`.** Antes del COMMIT, el worker no vería el contenedor. Si
   RabbitMQ no responde, lo pasa a `error` (y no lo deja en `creando`, de donde solo se

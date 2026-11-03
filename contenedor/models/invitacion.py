@@ -26,8 +26,8 @@ class CtnInvitacion(models.Model):
         on_delete=models.CASCADE,
         related_name='invitaciones_recibidas',
     )
-    # Grupos de permisos que se le otorgarán al usuario al aceptar. Es lo que se
-    # copia a su UserTenantPermissions dentro del schema del contenedor.
+    # Grupos de permisos que se le otorgarán al usuario al aceptar. Se copian a
+    # su membresía (`SegUsuarioClienteGrupo`).
     # El `through` explícito es solo para nombrar las columnas de la tabla
     # intermedia: la automática las llamaría `ctninvitacion_id` y `group_id`.
     grupos = models.ManyToManyField(
@@ -35,14 +35,6 @@ class CtnInvitacion(models.Model):
         blank=True,
         related_name='invitaciones',
         through='contenedor.CtnInvitacionGrupo',
-    )
-    # Aplicaciones que verá el invitado en este contenedor. Se eligen al invitar y
-    # al aceptar se copian a su membresía (`SegUsuarioClienteAplicacion`).
-    aplicaciones = models.ManyToManyField(
-        'contenedor.CtnAplicacion',
-        blank=True,
-        related_name='invitaciones',
-        through='contenedor.CtnInvitacionAplicacion',
     )
     estado = models.CharField(max_length=1, choices=ESTADO_CHOICES, default=ESTADO_PENDIENTE, db_default=ESTADO_PENDIENTE)
     fecha = models.DateTimeField(auto_now_add=True)
@@ -76,17 +68,3 @@ class CtnInvitacionGrupo(models.Model):
         db_table = 'ctn_invitacion_grupo'
         unique_together = [['invitacion', 'grupo']]
 
-
-class CtnInvitacionAplicacion(models.Model):
-    """Tabla intermedia de `CtnInvitacion.aplicaciones`."""
-
-    invitacion = models.ForeignKey('contenedor.CtnInvitacion', on_delete=models.CASCADE)
-    aplicacion = models.ForeignKey('contenedor.CtnAplicacion', on_delete=models.PROTECT)
-
-    class Meta:
-        db_table = 'ctn_invitacion_aplicacion'
-        constraints = [
-            models.UniqueConstraint(
-                fields=['invitacion', 'aplicacion'], name='ctn_invitacion_aplicacion_unico',
-            ),
-        ]

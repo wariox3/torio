@@ -2,8 +2,9 @@
 Aplicación de la declaración de grupos de `seguridad.grupos` sobre la base.
 
 Los `Group` y sus permisos viven en el schema público. Qué grupos tiene un
-usuario dentro de un contenedor concreto se guarda en su `UserTenantPermissions`,
-en el schema de ese tenant, y lo escribe `CtnCliente.add_user`.
+usuario dentro de un contenedor concreto se guarda en su membresía
+(`SegUsuarioClienteGrupo`, también en el público); lo escriben
+`CtnCliente.add_user` y `PUT /seguridad/usuario-cliente/<id>/grupo/`.
 """
 
 from django.contrib.auth.models import Group, Permission

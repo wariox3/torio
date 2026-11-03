@@ -57,7 +57,6 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         cliente = serializador.validated_data['cliente']
         usuario_id = serializador.validated_data['usuario_id']
         grupos = serializador.validated_data.get('grupos') or []
-        aplicaciones = serializador.validated_data['aplicaciones']
 
         if cliente.owner_id != request.user.id:
             return Response(
@@ -113,10 +112,9 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
                 estado=CtnInvitacion.ESTADO_PENDIENTE,
             )
 
-        # Grupos y aplicaciones se fijan en los dos caminos: al reinvitar hay que
-        # reemplazar los de la invitación anterior, no acumularlos.
+        # Los grupos se fijan en los dos caminos: al reinvitar hay que reemplazar
+        # los de la invitación anterior, no acumularlos.
         invitacion.grupos.set(grupos)
-        invitacion.aplicaciones.set(aplicaciones)
 
         link = f'{settings.FRONTEND_CUENTA_URL}/invitaciones'
         html = (
@@ -142,7 +140,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
     def pendiente_usuario(self, request):
         qs = self.get_queryset().filter(
             estado=CtnInvitacion.ESTADO_PENDIENTE
-        ).select_related('cliente', 'usuario').prefetch_related('grupos', 'aplicaciones')
+        ).select_related('cliente', 'usuario').prefetch_related('grupos')
         pagina = self.paginate_queryset(qs)
         return self.get_paginated_response(CtnInvitacionSerializer(pagina, many=True).data)
 
@@ -166,7 +164,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         qs = CtnInvitacion.objects.filter(
             cliente_id=cliente_id,
             estado=CtnInvitacion.ESTADO_PENDIENTE,
-        ).select_related('usuario_invitado').prefetch_related('grupos', 'aplicaciones')
+        ).select_related('usuario_invitado').prefetch_related('grupos')
         pagina = self.paginate_queryset(qs)
         return self.get_paginated_response(CtnInvitacionClienteSerializer(pagina, many=True).data)
 
@@ -202,9 +200,6 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
             invitacion.cliente.add_user(
                 request.user,
                 grupos=list(invitacion.grupos.all()),
-                # Una invitación anterior a las aplicaciones no tiene ninguna: el
-                # invitado entra sin módulos y el owner se los asigna después.
-                aplicaciones=invitacion.aplicaciones.values_list('id', flat=True),
             )
         except ExistsError:
             return Response({'detail': 'Ya eres miembro de este contenedor.'}, status=status.HTTP_409_CONFLICT)

@@ -1,4 +1,3 @@
-from .aplicacion import CtnAplicacion
 from .archivo import CtnArchivo
 from .archivo_tipo import CtnArchivoTipo
 from .ciudad import CtnCiudad
@@ -8,7 +7,7 @@ from .dominio import CtnDominio
 from .estado import CtnEstado
 from .evento_pago import CtnEventoPago
 from .identificacion import CtnIdentificacion
-from .invitacion import CtnInvitacion, CtnInvitacionAplicacion, CtnInvitacionGrupo
+from .invitacion import CtnInvitacion, CtnInvitacionGrupo
 from .modelo import CtnModelo
 from .movimiento import CtnMovimiento
 from .pais import CtnPais

@@ -20,8 +20,3 @@ from .usuario import (
     SegUsuarioSerializer,
 )
 from .usuario_cliente import SegUsuarioClienteSerializer
-from .usuario_cliente_permiso import (
-    SegGrupoUsuarioSerializer,
-    SegPermisoUsuarioSerializer,
-    SegUsuarioClientePermisoSerializer,
-)

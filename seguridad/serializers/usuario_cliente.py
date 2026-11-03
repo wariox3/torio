@@ -6,9 +6,10 @@ from seguridad.models import SegUsuarioCliente
 class SegUsuarioClienteSerializer(serializers.ModelSerializer):
     usuario_nombre_corto = serializers.CharField(source='usuario.nombre_corto', read_only=True)
     usuario_email = serializers.CharField(source='usuario.email', read_only=True)
-    # Ids de `CtnAplicacion` que esta membresía ve en el menú.
-    aplicaciones = serializers.SlugRelatedField(
-        slug_field='aplicacion_id', many=True, read_only=True,
+    # Ids de los grupos (`auth.Group`) de esta membresía: sus permisos en el
+    # contenedor, y con ellos el menú. Con `is_superuser` tiene todos.
+    grupos = serializers.SlugRelatedField(
+        slug_field='grupo_id', many=True, read_only=True,
     )
 
     class Meta:
@@ -21,6 +22,7 @@ class SegUsuarioClienteSerializer(serializers.ModelSerializer):
             'cliente_id',
             'propietario',
             'soporte',
-            'aplicaciones',
+            'is_superuser',
+            'grupos',
         ]
-        read_only_fields = ['id', 'soporte']
+        read_only_fields = ['id', 'soporte', 'is_superuser']
