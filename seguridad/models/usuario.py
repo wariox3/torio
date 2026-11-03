@@ -51,7 +51,8 @@ class SegUsuario(UserProfile):
     # --- Autorización -------------------------------------------------------
     #
     # Dentro de un contenedor, los permisos salen de la membresía en el público
-    # (`SegUsuarioCliente.is_superuser` + `SegUsuarioClienteGrupo`), no de
+    # (`SegUsuarioCliente.is_superuser`, `SegUsuarioClienteGrupo` y
+    # `SegUsuarioClientePermiso`), no de
     # `UserTenantPermissions` como hace django-tenant-users: así se pueden leer
     # sin entrar al schema del contenedor. En el público se deja la librería tal
     # cual, porque ahí `is_staff`/`is_superuser` son los de la plataforma
@@ -73,9 +74,17 @@ class SegUsuario(UserProfile):
         membresia_id, es_superusuario = membresia
         if es_superusuario:
             return True, frozenset()
-        permisos = Permission.objects.filter(
+        # Se suman: los de sus grupos con `heredar_permisos` y sus permisos
+        # personalizados. Un grupo sin `heredar_permisos` no aporta nada acá.
+        campos = ('content_type__app_label', 'codename')
+        de_grupos = Permission.objects.filter(
             group__segusuarioclientegrupo__usuario_cliente_id=membresia_id,
-        ).values_list('content_type__app_label', 'codename').order_by().distinct()
+            group__segusuarioclientegrupo__heredar_permisos=True,
+        ).values_list(*campos).order_by()
+        personalizados = Permission.objects.filter(
+            segusuarioclientepermiso__usuario_cliente_id=membresia_id,
+        ).values_list(*campos).order_by()
+        permisos = de_grupos.union(personalizados)
         return False, frozenset(f'{app_label}.{codename}' for app_label, codename in permisos)
 
     def _permisos_en_contenedor(self):

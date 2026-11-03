@@ -22,3 +22,4 @@ from .rol import SegRol
 from .usuario import SegUsuario
 from .usuario_cliente import SegUsuarioCliente
 from .usuario_cliente_grupo import SegUsuarioClienteGrupo
+from .usuario_cliente_permiso import SegUsuarioClientePermiso

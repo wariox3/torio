@@ -111,20 +111,41 @@ class SuscripcionVigente(permissions.BasePermission):
         return fecha_fin >= timezone.localdate()
 
 
+# Acciones de solo lectura que van por POST (el cuerpo lleva filtros): `lista`
+# de `FiltrosDinamicosMixin` y `excel` de `ExportarExcelMixin`. Por método
+# exigirían `add_<modelo>`; se evalúan como un GET, con `view_<modelo>`.
+ACCIONES_LECTURA = frozenset({'lista', 'excel'})
+
+
 class _DjangoModelPermissionsConVer(DjangoModelPermissions):
-    """DjangoModelPermissions no exige nada en GET por defecto; acá sí exige `view_<modelo>`."""
+    """
+    DjangoModelPermissions no exige nada en GET por defecto; acá sí exige
+    `view_<modelo>`, también para las `ACCIONES_LECTURA` aunque vayan por POST.
+    """
 
     perms_map = {
         **DjangoModelPermissions.perms_map,
         'GET': ['%(app_label)s.view_%(model_name)s'],
     }
 
+    def has_permission(self, request, view):
+        if not request.user or (
+            not request.user.is_authenticated and self.authenticated_users_only
+        ):
+            return False
+        if getattr(view, '_ignore_model_permissions', False):
+            return True
+
+        metodo = 'GET' if getattr(view, 'action', None) in ACCIONES_LECTURA else request.method
+        modelo = self._queryset(view).model
+        return request.user.has_perms(self.get_required_permissions(metodo, modelo))
+
 
 class TienePermisoModelo(EsMiembroDelTenant):
     """
     Membresía en el tenant + suscripción vigente + permiso Django (ver/crear/editar/eliminar)
-    sobre el modelo del ViewSet, resuelto vía los grupos/permisos del usuario en este tenant
-    (UserTenantPermissions, django-tenant-users).
+    sobre el modelo del ViewSet, resuelto con los grupos y permisos personalizados de su
+    membresía en este contenedor (`SegUsuario.has_perm`).
     """
 
     message = 'No tienes permiso para realizar esta acción sobre este recurso.'

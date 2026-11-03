@@ -60,15 +60,20 @@ A support membership is **not** a user of the client: `es_superusuario` returns 
 
 **Tenant authorization lives in the public schema, on the membership.** Inside a container,
 `SegUsuario.has_perm()` / `is_superuser` (overridden in `seguridad/models/usuario.py`) read
-`SegUsuarioCliente.is_superuser` and `SegUsuarioClienteGrupo` (membership ↔ `auth.Group`) for
-`connection.tenant` — **not** django-tenant-users' `UserTenantPermissions`, which is still
+`SegUsuarioCliente.is_superuser`, `SegUsuarioClienteGrupo` (membership ↔ `auth.Group`) and
+`SegUsuarioClientePermiso` (membership ↔ `auth.Permission`) for `connection.tenant` — **not** django-tenant-users' `UserTenantPermissions`, which is still
 created (empty) only for library compatibility. That makes a member's permissions readable
 without entering the container's schema (`lista-usuario`, `GET /contenedor/pendiente/`). In the
 public schema the library behaviour is untouched (`EsStaff`, `createsuperuser`). Groups are
-the product's fixed ones (`seguridad/grupos.py`); there are no per-user loose permissions.
+the product's fixed ones (`seguridad/grupos.py`). Permissions **add up**, never subtract: a
+permission is granted if any of the member's groups with `heredar_permisos = true` contains it
+or it is one of the member's personalized permissions (any permission, in a group of theirs or
+not). A group with `heredar_permisos = false` grants nothing — it only puts the module in the
+member's menu and pending items. Superuser → everything.
 The owner of a new container and a support membership get `is_superuser`; an invitation
-carries optional `grupo_ids`; afterwards only the owner edits a member's groups at
-`GET`/`PUT /seguridad/usuario-cliente/<id>/grupo/` (never a support membership). The menu and
+carries optional `grupo_ids` (inheriting); afterwards only the owner edits a member's groups
+(and `heredar_permisos`) at `GET`/`PUT /seguridad/usuario-cliente/<id>/grupo/` and personalized
+permissions at `GET`/`PUT /seguridad/usuario-cliente/<id>/permiso/` (never a support membership). The menu and
 pending-item visibility come from the groups (`CtnPendienteTipo.grupo`).
 
 `SHARED_APPS` run in the public schema. `TENANT_APPS` run in each tenant's isolated schema.
