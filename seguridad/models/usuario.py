@@ -65,18 +65,18 @@ class SegUsuario(UserProfile):
     def _permisos_contenedor(self):
         """(is_superuser, {'app_label.codename'}) en el contenedor activo.
 
-        El propietario del contenedor tiene todo, aunque su membresía no tenga
+        El propietario y el soporte tienen todo, aunque su membresía no tenga
         `is_superuser`: serlo basta.
         """
         from seguridad.models import SegUsuarioCliente
 
         membresia = SegUsuarioCliente.objects.filter(
             usuario_id=self.pk, cliente_id=connection.tenant.pk,
-        ).values_list('id', 'is_superuser', 'propietario').first()
+        ).values_list('id', 'is_superuser', 'propietario', 'soporte').first()
         if membresia is None:
             return False, frozenset()
-        membresia_id, es_superusuario, propietario = membresia
-        if es_superusuario or propietario:
+        membresia_id, es_superusuario, propietario, soporte = membresia
+        if es_superusuario or propietario or soporte:
             return True, frozenset()
         # Se suman: los de sus grupos con `heredar_permisos` y sus permisos
         # personalizados. Un grupo sin `heredar_permisos` no aporta nada acá.
