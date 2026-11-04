@@ -6,7 +6,7 @@ from django.db.models import CharField, Sum
 from django.db.models.functions import Cast, TruncMonth
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
@@ -24,6 +24,7 @@ from general.serializers import (
     GenDocumentoReferenciaSeleccionarSerializer,
     GenDocumentoSerializer,
 )
+from general.serializers.documento_exportar import EXPORTAR_POR_CLASE
 from general.servicios import cartera as cartera_servicio
 from general.servicios import contabilizar as contabilizar_servicio
 from general.servicios import documento as documento_servicio
@@ -37,7 +38,7 @@ from utilidades.mixins import (
     FiltrosDinamicosMixin,
     ImportarExcelMixin,
 )
-from utilidades.mixins.filtros import BusquedaRequest
+from utilidades.mixins.filtros import BusquedaRequest, _FiltroItemSerializer
 from utilidades.paginacion import SeleccionarPaginacion
 
 
@@ -104,7 +105,24 @@ _PERIODO_TIPO = inline_serializer('DocumentoGenerarPeriodo', {
 })
 
 
+_EXCEL_REQUEST = inline_serializer('DocumentoExcelRequest', {
+    'filtros': _FiltroItemSerializer(many=True, required=False),
+    'ordenamientos': serializers.ListField(
+        child=serializers.CharField(), required=False,
+        help_text='Lista de campos. Prefijo "-" para descendente.',
+    ),
+    'formato_excel': serializers.IntegerField(
+        required=False,
+        help_text=(
+            'Id de la clase de documento cuyas columnas usar (100 venta, 300 compra, '
+            '601 contable…). Sin él, o con una clase sin formato propio, sale el estándar.'
+        ),
+    ),
+})
+
+
 @extend_schema(tags=['Documento'])
+@extend_schema_view(excel=extend_schema(request=_EXCEL_REQUEST))
 class GenDocumentoViewSet(
     FiltrosDinamicosMixin,
     ExportarExcelMixin,
@@ -129,6 +147,28 @@ class GenDocumentoViewSet(
     def get_queryset(self):
         select = GenDocumentoSerializer.select_related_lista
         return GenDocumento.objects.select_related(*select)
+
+    def get_serializer_exportar(self):
+        """
+        `formato_excel` (opcional, en el body) es el id de una clase de documento
+        y elige las columnas del Excel. Sin él, o con una clase sin perfil en
+        `EXPORTAR_POR_CLASE`, sale el estándar. Solo cambia las columnas: las
+        filas las deciden los `filtros`.
+        """
+        formato = self.request.data.get('formato_excel')
+        if formato is None:
+            return GenDocumentoExportarSerializer()
+        if isinstance(formato, bool):
+            raise ValidationError({'detail': '`formato_excel` debe ser un entero.'})
+        try:
+            formato = int(formato)
+        except (TypeError, ValueError):
+            raise ValidationError({'detail': '`formato_excel` debe ser un entero.'})
+        return EXPORTAR_POR_CLASE.get(formato, GenDocumentoExportarSerializer)()
+
+    def get_queryset_excel(self):
+        serializer = self.get_serializer_exportar()
+        return self.get_queryset().select_related(*serializer.select_related_excel)
 
     def update(self, request, *args, **kwargs):
         instancia = self.get_object()

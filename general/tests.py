@@ -6919,6 +6919,86 @@ class DocumentoListaTests(TenantTestCase):
         self.assertEqual(ids, sorted([factura.id, otra.id]))
 
 
+class DocumentoExcelFormatoTests(TenantTestCase):
+    """
+    `POST /general/documento/excel/` con `formato_excel`: sin él sale el Excel
+    estándar; con una clase que tiene perfil, sus columnas; con una sin perfil,
+    el estándar; con algo que no es entero, 400.
+    """
+
+    @classmethod
+    def setup_tenant(cls, tenant):
+        tenant.nombre = 'Test excel documento'
+        tenant.celular = '+573000000000'
+        tenant.correo = 'excel@test.com'
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.tipo = GenDocumentoTipo.objects.create(
+            id=1, nombre='FACTURA VENTA',
+            documento_clase=GenDocumentoClase.objects.create(id=100, nombre='Factura venta'),
+        )
+        GenDocumento.objects.create(documento_tipo=self.tipo, fecha=date(2026, 10, 1), numero=7)
+
+    def _excel(self, body):
+        vista = _DocumentoViewSinPermisos.as_view({'post': 'excel'})
+        peticion = self.factory.post('/general/documento/excel/', body, format='json')
+        force_authenticate(peticion, user=SegUsuario(id=1))
+        return vista(peticion)
+
+    def _encabezados(self, body):
+        from openpyxl import load_workbook
+
+        respuesta = self._excel(body)
+        self.assertEqual(respuesta.status_code, 200)
+        ws = load_workbook(io.BytesIO(respuesta.content)).active
+        return [c.value for c in next(ws.iter_rows())], respuesta
+
+    def test_sin_formato_sale_el_estandar(self):
+        from general.serializers.documento_exportar import GenDocumentoExportarSerializer
+
+        encabezados, respuesta = self._encabezados({})
+
+        self.assertEqual(encabezados, [e for _, e in GenDocumentoExportarSerializer.campos_excel])
+        self.assertIn('documentos.xlsx', respuesta['Content-Disposition'])
+
+    def test_con_formato_sale_el_perfil_de_la_clase(self):
+        from general.serializers.documento_exportar import GenDocumentoVentaExportarSerializer
+
+        encabezados, respuesta = self._encabezados({'formato_excel': 100})
+
+        self.assertEqual(encabezados, [e for _, e in GenDocumentoVentaExportarSerializer.campos_excel])
+        self.assertIn('documentos_venta.xlsx', respuesta['Content-Disposition'])
+
+    def test_formato_como_texto_numerico_tambien_sirve(self):
+        encabezados, _ = self._encabezados({'formato_excel': '601'})
+
+        self.assertIn('Débito', encabezados)
+
+    def test_clase_sin_perfil_sale_el_estandar(self):
+        from general.serializers.documento_exportar import GenDocumentoExportarSerializer
+
+        encabezados, _ = self._encabezados({'formato_excel': 703})
+
+        self.assertEqual(encabezados, [e for _, e in GenDocumentoExportarSerializer.campos_excel])
+
+    def test_formato_invalido_da_400(self):
+        for valor in ('venta', True, [100]):
+            with self.subTest(valor=valor):
+                respuesta = self._excel({'formato_excel': valor})
+                self.assertEqual(respuesta.status_code, 400)
+                self.assertIn('detail', respuesta.data)
+
+    def test_todos_los_perfiles_se_pueden_exportar(self):
+        """Cada ruta de `campos_excel` y cada `select_related_excel` existen en el modelo."""
+        from general.serializers.documento_exportar import EXPORTAR_POR_CLASE
+
+        for clase in sorted(EXPORTAR_POR_CLASE):
+            with self.subTest(clase=clase):
+                encabezados, _ = self._encabezados({'formato_excel': clase})
+                self.assertTrue(encabezados)
+
+
 class SeleccionarReferenciaTests(TenantTestCase):
     """
     `seleccionar-referencia`: las facturas que puede referenciar una nota. Solo
