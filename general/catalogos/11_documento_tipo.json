@@ -55,7 +55,7 @@
       "comprobante_id": 7,
       "compra": true,
       "pagar": true,
-      "electronico": true,
+      "electronico": false,
       "operacion": 1,
       "inventario": true,
       "operacion_inventario": 1,

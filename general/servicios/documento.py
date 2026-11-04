@@ -617,9 +617,8 @@ def _emitir_automaticamente(documento):
 
     Entran los tipos electrónicos cuya clase se emite con `emitir` (los de
     `factura_electronica.ARMADORES`: factura de venta, notas, POS, documento
-    soporte y nota de ajuste). Quedan fuera la compra, que es electrónica pero se
-    recibe, no se emite, y la nómina electrónica, que se aprueba en lote al
-    generarla y tiene su propia emisión.
+    soporte y nota de ajuste). Queda fuera la nómina electrónica, que se aprueba en
+    lote al generarla y tiene su propia emisión.
 
     Corre con la aprobación ya confirmada, así que nada de lo que pase acá la
     deshace: si la emisión falla el documento queda aprobado y se emite después a
