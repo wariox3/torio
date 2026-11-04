@@ -1,0 +1,1 @@
+from .caja import VenCajaViewSet

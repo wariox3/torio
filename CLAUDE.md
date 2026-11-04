@@ -39,7 +39,7 @@ This is a **Django 5.2.13** multi-tenant SaaS project using **PostgreSQL schema-
 Each `CtnCliente` owns a separate PostgreSQL schema. `seguridad.middleware.TenantHeaderMiddleware` resolves the tenant from the **`X-Tenant` request header** (the schema name) — not from the `Host`, and not via `CtnDominio`.
 
 - **No `X-Tenant` header** (or the public schema name) → public schema → `torioapp/urls_public.py` → `contenedor/`, `seguridad/`
-- **`X-Tenant: <schema>`** → that tenant's schema → `torioapp/urls_tenant.py` → `general/`, `contabilidad/`, `turno/`, `humano/`, `inventario/`
+- **`X-Tenant: <schema>`** → that tenant's schema → `torioapp/urls_tenant.py` → `general/`, `contabilidad/`, `turno/`, `humano/`, `inventario/`, `venta/`
 - An unknown schema name gets a 404 from the middleware.
 - A container whose `CtnCliente.estado` is not `listo` (still being created, or creation failed) gets a 409 — see *Container creation* below.
 

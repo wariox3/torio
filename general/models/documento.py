@@ -189,6 +189,13 @@ class GenDocumento(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_sede_rel',
     )
+    # La caja del punto de venta donde se hizo la venta (factura POS).
+    caja = models.ForeignKey(
+        'venta.VenCaja',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_caja_rel',
+    )
     contrato = models.ForeignKey(
         'humano.HumContrato',
         null=True,
