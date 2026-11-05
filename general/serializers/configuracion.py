@@ -67,6 +67,8 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
         # y esta configuración la leen pantallas que solo quieren el UVT o el salario
         # mínimo. Se lee por `GET logotipo/` y se escribe por `cargar-logotipo/`.
         read_only_fields = ['id']
+        # Vacío es «sin copia»: el front lo borra mandando ''.
+        extra_kwargs = {'gen_empresa_correo_copia': {'allow_blank': True}}
 
     def validate_gen_empresa_correo_copia(self, valor):
         """Cada correo separado por `;` tiene que ser válido; se guarda sin espacios ni vacíos."""
