@@ -120,6 +120,8 @@ def _datos_actualizables(configuracion: GenConfiguracion) -> dict:
         'departamento': estado.id,
         'municipio': ciudad.id,
         'correo': configuracion.gen_empresa_correo,
+        # Vacío le dice a rededoc que no mande copia.
+        'correo_copia': configuracion.gen_empresa_correo_copia,
     }
 
 

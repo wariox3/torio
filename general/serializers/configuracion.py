@@ -1,3 +1,5 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from rest_framework import serializers
 
 from general.models import GenConfiguracion
@@ -39,6 +41,7 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
             'gen_empresa_direccion',
             'gen_empresa_telefono',
             'gen_empresa_correo',
+            'gen_empresa_correo_copia',
             'gen_empresa_imagen',
             'gen_empresa_identificacion',
             'gen_empresa_ciudad',
@@ -64,6 +67,19 @@ class GenConfiguracionSerializer(serializers.ModelSerializer):
         # y esta configuración la leen pantallas que solo quieren el UVT o el salario
         # mínimo. Se lee por `GET logotipo/` y se escribe por `cargar-logotipo/`.
         read_only_fields = ['id']
+
+    def validate_gen_empresa_correo_copia(self, valor):
+        """Cada correo separado por `;` tiene que ser válido; se guarda sin espacios ni vacíos."""
+        correos = [c.strip() for c in (valor or '').split(';') if c.strip()]
+        for correo in correos:
+            try:
+                validate_email(correo)
+            except DjangoValidationError:
+                raise serializers.ValidationError(f'{correo} no es un correo válido.')
+        resultado = ';'.join(correos)
+        if len(resultado) > 255:
+            raise serializers.ValidationError('Los correos en copia no caben en 255 caracteres.')
+        return resultado
 
     def validate_com_recepcion_recibe(self, valor):
         """JSON en el modelo, pero con la forma de la persona que recibe; nulo la quita."""

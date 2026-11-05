@@ -1802,6 +1802,33 @@ class GenConfiguracionViewTests(TenantTestCase):
 
         self.assertFalse(hasattr(_ConfiguracionViewSinPermisos, 'obtener'))
 
+    def test_correo_copia_se_guarda_limpio(self):
+        from general.serializers.configuracion import GenConfiguracionSerializer
+
+        serializer = GenConfiguracionSerializer(
+            data={'gen_empresa_correo_copia': ' cartera@ejemplo.com ; ;gerencia@ejemplo.com; '}, partial=True,
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(
+            serializer.validated_data['gen_empresa_correo_copia'], 'cartera@ejemplo.com;gerencia@ejemplo.com',
+        )
+
+    def test_correo_copia_vacio_es_sin_copia(self):
+        from general.serializers.configuracion import GenConfiguracionSerializer
+
+        serializer = GenConfiguracionSerializer(data={'gen_empresa_correo_copia': ''}, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data['gen_empresa_correo_copia'], '')
+
+    def test_correo_copia_rechaza_un_correo_invalido(self):
+        from general.serializers.configuracion import GenConfiguracionSerializer
+
+        serializer = GenConfiguracionSerializer(
+            data={'gen_empresa_correo_copia': 'cartera@ejemplo.com;no-es-correo'}, partial=True,
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('no-es-correo', str(serializer.errors['gen_empresa_correo_copia'][0]))
+
     def _campos(self, campos):
         vista = _ConfiguracionViewSinPermisos.as_view({'get': 'campos'})
         peticion = self.factory.get('/general/configuracion/campos/', {'campos': campos})
@@ -2111,7 +2138,26 @@ class FacturaElectronicaEmisorConsultarActualizarTests(TenantTestCase):
             'departamento': 1,
             'municipio': 1,
             'correo': 'contacto@ejemplo.com',
+            'correo_copia': '',
         })
+
+    def test_actualizar_manda_el_correo_en_copia(self):
+        configuracion = GenConfiguracion.objects.get_or_create(id=1)[0]
+        pais = GenPais.objects.create(id=46, nombre='Colombia', codigo='CO')
+        estado = GenEstado.objects.create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        configuracion.gen_empresa_ciudad = GenCiudad.objects.create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        configuracion.gen_empresa_tipo_persona = GenTipoPersona.objects.create(id=1, nombre='Jurídica')
+        configuracion.gen_empresa_razon_social = 'Semantica Digital S.A.S'
+        configuracion.gen_empresa_direccion = 'Calle 10 # 20-30'
+        configuracion.gen_empresa_correo = 'contacto@ejemplo.com'
+        configuracion.gen_empresa_correo_copia = 'cartera@ejemplo.com;gerencia@ejemplo.com'
+        configuracion.save()
+        self.cliente.actualizar_emisor.return_value = {'error': False, 'status': 200, 'datos': {'id': 77}}
+
+        factura_electronica.emisor_actualizar(cliente=self.cliente)
+
+        payload = self.cliente.actualizar_emisor.call_args.args[1]
+        self.assertEqual(payload['correo_copia'], 'cartera@ejemplo.com;gerencia@ejemplo.com')
 
     def test_actualizar_si_falta_un_dato_no_llama_a_rededoc(self):
         GenConfiguracion.objects.get_or_create(id=1)

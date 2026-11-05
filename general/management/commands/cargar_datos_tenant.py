@@ -27,6 +27,7 @@ DATOS_INICIAL_DIRS = [
     BASE_DIR / 'general' / 'datos_inicial',
     BASE_DIR / 'humano' / 'datos_inicial',
     BASE_DIR / 'turno' / 'datos_inicial',
+    BASE_DIR / 'venta' / 'datos_inicial',
 ]
 
 

@@ -1,0 +1,13 @@
+{
+  "model": "venta.VenCaja",
+  "data": [
+    {
+      "id": 1,
+      "nombre": "Principal",
+      "placa": "CAJA-001",
+      "ubicacion": "Sede principal",
+      "tipo": "Caja registradora",
+      "sede_id": 1
+    }
+  ]
+}

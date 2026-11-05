@@ -29,6 +29,9 @@ class GenConfiguracion(models.Model):
     gen_empresa_direccion = models.CharField(max_length=50, null=True)
     gen_empresa_telefono = models.CharField(max_length=50, null=True)
     gen_empresa_correo = models.EmailField(max_length=255, default='', db_default='')
+    # Copia de las notificaciones al cliente: rededoc la manda en cada documento
+    # que notifica. Varios correos separados por punto y coma; vacío, sin copia.
+    gen_empresa_correo_copia = models.CharField(max_length=255, default='', db_default='')
     gen_empresa_imagen = models.TextField(null=True)
     # El logotipo va en la fila y no en B2 a propósito: es un singleton por
     # tenant, de decenas de KB, que se escribe casi nunca y se lee en cada
