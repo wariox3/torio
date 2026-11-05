@@ -27,6 +27,8 @@ _LIST_PARAMS = [
 
 _SELECCIONAR_PARAMS = [
     OpenApiParameter('search', str, description='Buscar por empleado'),
+    OpenApiParameter('contrato_id', int, description='Solo las novedades de este contrato'),
+    OpenApiParameter('novedad_tipo_id', int, description='Solo las novedades de este tipo'),
 ]
 
 
@@ -104,6 +106,12 @@ class HumNovedadViewSet(
         search = request.query_params.get('search', '').strip()
         if search:
             qs = qs.filter(contrato__contacto__nombre_corto__icontains=search)
+        for campo in ('contrato_id', 'novedad_tipo_id'):
+            valor = request.query_params.get(campo, '').strip()
+            if valor:
+                if not valor.isdigit():
+                    raise ValidationError({'detail': f'{campo} debe ser un número.'})
+                qs = qs.filter(**{campo: int(valor)})
         pagina = self.paginate_queryset(qs)
         serializer = HumNovedadSeleccionarSerializer(pagina, many=True)
         return self.get_paginated_response(serializer.data)
