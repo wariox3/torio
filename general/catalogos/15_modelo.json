@@ -101,6 +101,8 @@
 
     {"id": 50001, "app": "inventario",   "clase": "InvAlmacen",                "nombre": "Almacén",                 "tabla": "inv_almacen",                 "tipo": "A"},
 
-    {"id": 60001, "app": "venta",        "clase": "VenCaja",                   "nombre": "Caja",                    "tabla": "ven_caja",                    "tipo": "A"}
+    {"id": 60001, "app": "venta",        "clase": "VenCaja",                   "nombre": "Caja",                    "tabla": "ven_caja",                    "tipo": "A"},
+    {"id": 60002, "app": "venta",        "clase": "VenTurno",                  "nombre": "Turno",                   "tabla": "ven_turno",                   "tipo": "M"},
+    {"id": 60003, "app": "venta",        "clase": "VenTurnoDetalle",           "nombre": "Turno detalle",           "tabla": "ven_turno_detalle",           "tipo": "D"}
   ]
 }

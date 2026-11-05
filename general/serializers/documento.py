@@ -13,9 +13,11 @@ from general.servicios import crear_detalle
 from general.servicios.documento import (
     CONCEPTO_CORRECCION_OBLIGATORIO,
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
+    DOCUMENTO_CLASE_FACTURA_POS,
     DOCUMENTO_CLASE_NOTA_AJUSTE,
     DOCUMENTO_CLASES_CON_RESOLUCION,
 )
+from venta.models import VenTurno
 
 
 class GenDocumentoSerializer(serializers.ModelSerializer):
@@ -37,13 +39,14 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         'documento_tipo__contabilidad', 'documento_tipo__electronico',
         'documento_tipo__documento_clase_id',
         'documento_tipo__documento_clase__grupo',
+        'caja_id', 'turno_id',
         # Nóminas generadas por una programación: el renglón del empleado o la
         # programación completa.
         'programacion_detalle_id', 'programacion_detalle__programacion_id',
     }
     select_related_lista = ('documento_tipo', 'documento_tipo__cuenta_cobrar', 'documento_tipo__cuenta_pagar', 'contacto', 'contacto__precio', 'sector', 'sede', 'centro_costo', 'plazo_pago', 'metodo_pago', 'forma_pago', 'comprobante', 'cuenta_banco',
                              'almacen', 'asesor', 'resolucion', 'documento_concepto_correccion',
-                             'documento_referencia')
+                             'documento_referencia', 'caja')
     ordenamiento_default_lista = ('-fecha', '-numero')
 
     documento_tipo_nombre = serializers.CharField(source='documento_tipo.nombre', read_only=True)
@@ -76,6 +79,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
     )
     almacen_nombre = serializers.CharField(source='almacen.nombre', read_only=True, allow_null=True)
     sede_nombre = serializers.CharField(source='sede.nombre', read_only=True, allow_null=True)
+    caja_nombre = serializers.CharField(source='caja.nombre', read_only=True, allow_null=True)
     centro_costo_nombre = serializers.CharField(source='centro_costo.nombre', read_only=True, allow_null=True)
     centro_costo_codigo = serializers.CharField(source='centro_costo.codigo', read_only=True, allow_null=True)
     comprobante_nombre = serializers.CharField(source='comprobante.nombre', read_only=True, allow_null=True)
@@ -135,6 +139,9 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
             'sector_nombre',
             'sede',
             'sede_nombre',
+            'caja',
+            'caja_nombre',
+            'turno',
             'almacen',
             'almacen_nombre',
             'estrato',
@@ -181,6 +188,8 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id',
+            # La pone el turno: es la caja del turno de la factura POS.
+            'caja',
             'subtotal',
             'descuento',
             'total_bruto',
@@ -223,7 +232,38 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         self._heredar_resolucion(datos)
         self._validar_concepto_correccion(datos)
         self._validar_referencia_nota_ajuste(datos)
+        self._validar_turno(datos)
         return self._seguir_fecha(datos)
+
+    def _validar_turno(self, datos):
+        """
+        La factura POS va siempre en un turno abierto, del cajero que la hace, y
+        toma de él la caja. Ningún otro documento lleva turno.
+
+        El turno se fija al crear la factura y no se cambia: mientras ella siga
+        modificable su turno está abierto, porque no se cierra con facturas sin
+        aprobar. Que el turno siga abierto al guardar lo vuelve a revisar `create`,
+        con el turno bloqueado (ver `venta/servicios/turno.py`).
+        """
+        tipo = datos.get('documento_tipo') or getattr(self.instance, 'documento_tipo', None)
+        anterior = getattr(self.instance, 'turno', None)
+        turno = datos['turno'] if 'turno' in datos else anterior
+        if tipo is None or tipo.documento_clase_id != DOCUMENTO_CLASE_FACTURA_POS:
+            if turno is not None:
+                raise serializers.ValidationError({'turno': 'Solo la factura POS lleva turno.'})
+            return
+        if turno is None:
+            raise serializers.ValidationError({'turno': 'La factura POS necesita un turno abierto.'})
+        if anterior is not None:
+            if turno.pk != anterior.pk:
+                raise serializers.ValidationError({'turno': 'El turno de una factura no se cambia.'})
+            return
+        if turno.estado_cerrado:
+            raise serializers.ValidationError({'turno': 'El turno está cerrado.'})
+        request = self.context.get('request')
+        if request is None or turno.usuario_id != request.user.pk:
+            raise serializers.ValidationError({'turno': 'El turno es de otro cajero.'})
+        datos['caja'] = turno.caja
 
     def _validar_concepto_correccion(self, datos):
         """
@@ -338,6 +378,11 @@ class GenDocumentoCrearSerializer(GenDocumentoSerializer):
     @transaction.atomic
     def create(self, validated_data):
         detalles_data = validated_data.pop('documentos_detalles_documento_rel', [])
+        if validated_data.get('turno') is not None:
+            # Bloqueado, para que el turno no se cierre mientras entra la factura.
+            turno = VenTurno.objects.select_for_update().get(pk=validated_data['turno'].pk)
+            if turno.estado_cerrado:
+                raise serializers.ValidationError({'turno': 'El turno está cerrado.'})
         documento = GenDocumento.objects.create(**validated_data)
         for detalle_data in detalles_data:
             crear_detalle(documento, detalle_data)

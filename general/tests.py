@@ -9020,20 +9020,22 @@ class EmitirTests(TenantTestCase):
 
     # ---- documento equivalente P.O.S. ----
 
-    def _documento_pos(self, sede=True, **overrides):
+    def _documento_pos(self, caja=True, **overrides):
         """Factura POS electrónica (tipo 24, clase 105) con su caja."""
+        from venta.models import VenCaja
+
         tipo = GenDocumentoTipo.objects.create(
             id=24, nombre='FACTURA POS ELECTRONICO', venta=True, electronico=True, pos=True,
             codigo=7, documento_clase=GenDocumentoClase.objects.create(id=105, nombre='Factura POS'),
         )
-        # `sede` es True (una con la caja completa), False (sin sede) o la sede.
-        if sede is True:
-            sede = GenSede.objects.create(
-                nombre='Principal', caja_placa='CAJA-01', caja_ubicacion='Piso 1',
-                caja_tipo='Caja principal',
+        # `caja` es True (una completa), False (sin caja) o la caja.
+        if caja is True:
+            caja = VenCaja.objects.create(
+                nombre='Principal', placa='CAJA-01', ubicacion='Piso 1', tipo='Caja principal',
+                sede=GenSede.objects.create(nombre='Principal'),
             )
-        if sede:
-            overrides['sede'] = sede
+        if caja:
+            overrides['caja'] = caja
         return self._documento(documento_tipo=tipo, **overrides)
 
     def test_payload_del_documento_pos(self):
@@ -9070,24 +9072,28 @@ class EmitirTests(TenantTestCase):
 
         self.assertNotIn('pos', cliente.crear_documento.call_args.args[0])
 
-    def test_un_pos_sin_sede_no_se_emite(self):
-        self._con_error(self._documento_pos(sede=False), 'sede, de la que sale la caja')
+    def test_un_pos_sin_caja_no_se_emite(self):
+        self._con_error(self._documento_pos(caja=False), 'no tiene caja.')
 
     def test_un_pos_con_la_caja_incompleta_dice_que_le_falta(self):
-        sede = GenSede.objects.create(nombre='Norte', caja_placa='CAJA-02')
+        from venta.models import VenCaja
+
+        caja = VenCaja.objects.create(
+            nombre='Norte', placa='CAJA-02', sede=GenSede.objects.create(nombre='Norte'),
+        )
 
         self._con_error(
-            self._documento_pos(sede=sede),
-            'ubicación de la caja en la sede Norte, tipo de la caja en la sede Norte',
+            self._documento_pos(caja=caja),
+            'ubicación en la caja Norte, tipo en la caja Norte',
         )
 
     def test_los_errores_del_pos_salen_junto_a_los_de_la_factura(self):
         """Quien corrige tiene que ver de una vez todo lo que le falta."""
-        documento = self._documento_pos(sede=False, resolucion=None)
+        documento = self._documento_pos(caja=False, resolucion=None)
 
         self._con_error(documento, 'no tiene resolución')
         mensajes = [mensaje for _, mensaje in self._errores(documento)]
-        self.assertTrue(any('de la que sale la caja' in m for m in mensajes), mensajes)
+        self.assertTrue(any('no tiene caja' in m for m in mensajes), mensajes)
 
     def test_sin_numero_no_se_emite(self):
         self._con_error(self._documento(numero=None), 'no tiene número')

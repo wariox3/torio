@@ -41,6 +41,7 @@ GRUPOS = {
         'general.gensede': TODAS,
         'inventario.invalmacen': TODAS,
         'venta.vencaja': TODAS,
+        'venta.venturno': TODAS,
     }),
     2: ('Compra', {
         'general.gendocumento': TODAS,

@@ -799,6 +799,9 @@ def desaprobar(documento_id):
         if (documento.documento_tipo.documento_clase_id
                 not in DOCUMENTO_CLASES_QUE_PERMITEN_DESAPROBAR):
             raise ValidationError('El documento no permite desaprobación.')
+        # El cierre del turno ya contó esta factura y su pago en el arqueo.
+        if documento.turno_id is not None and documento.turno.estado_cerrado:
+            raise ValidationError('La factura es de un turno cerrado.')
         # Una nómina ya reportada en una nómina electrónica: desaprobarla dejaría
         # la electrónica con un pago que ya no existe. Hay que desgenerarla antes.
         if (documento.documento_tipo.documento_clase_id == DOCUMENTO_CLASE_NOMINA

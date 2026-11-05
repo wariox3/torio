@@ -196,6 +196,13 @@ class GenDocumento(models.Model):
         on_delete=models.PROTECT,
         related_name='documentos_caja_rel',
     )
+    # El turno de la caja en que se hizo la factura POS. Solo la POS lo lleva.
+    turno = models.ForeignKey(
+        'venta.VenTurno',
+        null=True,
+        on_delete=models.PROTECT,
+        related_name='documentos_turno_rel',
+    )
     contrato = models.ForeignKey(
         'humano.HumContrato',
         null=True,

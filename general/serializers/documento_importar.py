@@ -14,6 +14,7 @@ from general.models import (
 from general.servicios.documento import (
     CONCEPTO_CORRECCION_OBLIGATORIO,
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
+    DOCUMENTO_CLASE_FACTURA_POS,
     DOCUMENTO_CLASE_NOTA_AJUSTE,
     DOCUMENTO_CLASES_CON_RESOLUCION,
 )
@@ -128,6 +129,10 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
                     datos.get('documento_referencia.id'), mapa_referencia, 'Documento referencia')
 
                 clase_id = documento_tipo.documento_clase_id
+                # La factura POS va siempre en un turno abierto de su cajero, que
+                # el Excel no trae: se hace desde el punto de venta.
+                if clase_id == DOCUMENTO_CLASE_FACTURA_POS:
+                    raise ValueError('La factura POS no se importa: se hace desde un turno de caja.')
                 if concepto is None and clase_id in CONCEPTO_CORRECCION_OBLIGATORIO:
                     raise ValueError(CONCEPTO_CORRECCION_OBLIGATORIO[clase_id])
                 if concepto is not None and concepto.documento_clase_id != clase_id:

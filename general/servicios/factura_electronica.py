@@ -690,7 +690,7 @@ def emitir(documento_ids, cliente: Rededoc = None) -> dict:
         'documento_tipo', 'resolucion', 'plazo_pago', 'metodo_pago',
         'contacto__identificacion', 'contacto__ciudad__estado__pais',
         'documento_referencia', 'documento_concepto_correccion',
-        'sede',
+        'caja', 'turno__usuario',
     ).in_bulk(documento_ids)
     # El asistente se revisa antes que los ids. Un lote solo de nóminas exige el
     # de nómina, no el de facturación.
@@ -978,12 +978,21 @@ def _armar_documento_pos(documento, parametro):
 CAJERO_POS = 'Cajero general'
 
 
+def _cajero_pos(documento):
+    turno = documento.turno
+    if turno is None:
+        return CAJERO_POS
+    usuario = turno.usuario
+    return (usuario.nombre_corto or '').strip() or usuario.email
+
+
 def _bloque_pos(documento):
     """
     La caja, el cajero y el código de la venta.
 
-    - La caja sale de la sede del documento: es la que estaba en esa venta.
-    - El cajero es fijo (`CAJERO_POS`): torio no lleva quién atendió cada caja.
+    - La caja es la de la factura, que la toma de su turno.
+    - El cajero es quien abrió el turno de la factura. Una factura sin turno
+      (anterior a los turnos) manda el fijo `CAJERO_POS`.
     - El código de la venta es el número del tiquete, con su prefijo (`POS1024`).
 
     El comprador y el subtotal no se mandan: rededoc los toma del adquiriente y
@@ -992,15 +1001,13 @@ def _bloque_pos(documento):
     fidelización, y el par es obligatorio.
     """
     faltantes = []
-    sede = documento.sede
-    if sede is None:
-        faltantes.append('sede, de la que sale la caja')
+    caja = documento.caja
+    if caja is None:
+        faltantes.append('caja')
     else:
-        for campo, nombre in (
-            ('caja_placa', 'placa'), ('caja_ubicacion', 'ubicación'), ('caja_tipo', 'tipo'),
-        ):
-            if not (getattr(sede, campo) or '').strip():
-                faltantes.append(f'{nombre} de la caja en la sede {sede.nombre}')
+        for campo, nombre in (('placa', 'placa'), ('ubicacion', 'ubicación'), ('tipo', 'tipo')):
+            if not (getattr(caja, campo) or '').strip():
+                faltantes.append(f'{nombre} en la caja {caja.nombre}')
     if faltantes:
         raise ErrorFacturaElectronica(
             f'El documento {documento.id} no tiene ' + ', '.join(faltantes) + '.'
@@ -1008,10 +1015,10 @@ def _bloque_pos(documento):
 
     prefijo = getattr(documento.resolucion, 'prefijo', None) or ''
     return {
-        'caja_placa': sede.caja_placa.strip(),
-        'caja_ubicacion': sede.caja_ubicacion.strip(),
-        'caja_tipo': sede.caja_tipo.strip(),
-        'cajero': CAJERO_POS,
+        'caja_placa': caja.placa.strip(),
+        'caja_ubicacion': caja.ubicacion.strip(),
+        'caja_tipo': caja.tipo.strip(),
+        'cajero': _cajero_pos(documento),
         'codigo_venta': f'{prefijo}{documento.numero or ""}',
         'comprador_puntos': 0,
     }
