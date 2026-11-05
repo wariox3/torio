@@ -11410,6 +11410,143 @@ class ActualizarContabilidadTests(_CorregirAprobadoBase):
     def test_un_documento_que_no_existe_es_404(self):
         self._rechaza({'id': 999999, 'sede': None}, 'Documento no encontrado', status=404)
 
+    # --- Contacto y base de las líneas de cuenta ---
+
+    def _contacto(self, numero_identificacion):
+        pais, _ = GenPais.objects.get_or_create(id=250, nombre='Colombia', codigo='CO')
+        estado, _ = GenEstado.objects.get_or_create(id=1, nombre='Antioquia', codigo='05', pais=pais)
+        ciudad, _ = GenCiudad.objects.get_or_create(id=1, nombre='Medellín', codigo='05001', estado=estado)
+        identificacion, _ = GenIdentificacion.objects.get_or_create(
+            id=6, nombre='Número de identificación tributaria', codigo='31',
+        )
+        tipo_persona, _ = GenTipoPersona.objects.get_or_create(id=1, nombre='Jurídica')
+        return GenContacto.objects.create(
+            numero_identificacion=numero_identificacion, nombre_corto='Contacto',
+            ciudad=ciudad, identificacion=identificacion, tipo_persona=tipo_persona,
+            direccion='calle 1', telefono='1', correo='t@t.com',
+        )
+
+    def _lineas_de_cuenta(self):
+        """Una línea con cuenta que exige contacto y base, y otra con una que no exige nada."""
+        self.contacto = self._contacto('111')
+        self.otro_contacto = self._contacto('222')
+        exige = ConCuenta.objects.create(
+            codigo='236540', nombre='Retención', exige_contacto=True, exige_base=True,
+        )
+        simple = ConCuenta.objects.create(codigo='110505', nombre='Caja')
+        documento = self._documento(sede=self.sede)
+        con_exigencias = GenDocumentoDetalle.objects.create(
+            documento=documento, tipo_registro='C', cuenta=exige,
+            contacto=self.contacto, base=Decimal('1000'),
+        )
+        sin_exigencias = GenDocumentoDetalle.objects.create(
+            documento=documento, tipo_registro='C', cuenta=simple,
+        )
+        return documento, con_exigencias, sin_exigencias
+
+    def test_cambia_el_contacto_y_la_base_de_una_linea_que_los_exige(self):
+        documento, linea, _ = self._lineas_de_cuenta()
+
+        respuesta = self._llamar({
+            'id': documento.id,
+            'detalles': [{'id': linea.id, 'contacto': self.otro_contacto.id, 'base': '2500.50'}],
+        })
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        linea.refresh_from_db()
+        self.assertEqual(linea.contacto_id, self.otro_contacto.id)
+        self.assertEqual(linea.base, Decimal('2500.50'))
+
+    def test_solo_cambia_lo_que_viene_en_el_detalle(self):
+        documento, linea, _ = self._lineas_de_cuenta()
+        linea.centro_costo = self.centro
+        linea.save()
+
+        respuesta = self._llamar({
+            'id': documento.id, 'detalles': [{'id': linea.id, 'base': '3000'}],
+        })
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        linea.refresh_from_db()
+        self.assertEqual(linea.base, Decimal('3000'))
+        self.assertEqual(linea.contacto_id, self.contacto.id)
+        self.assertEqual(linea.centro_costo_id, self.centro.id)
+
+    def test_lo_que_la_cuenta_exige_no_puede_quedar_vacio(self):
+        documento, linea, _ = self._lineas_de_cuenta()
+
+        respuesta = self._llamar({
+            'id': documento.id, 'detalles': [{'id': linea.id, 'contacto': None, 'base': '0'}],
+        })
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data, {
+            'detail': 'Hay detalles que no se pueden corregir.',
+            'errores': [
+                {'indice': 0, 'id': linea.id, 'mensaje': 'La cuenta 236540 exige contacto.'},
+                {'indice': 0, 'id': linea.id, 'mensaje': 'La cuenta 236540 exige base.'},
+            ],
+        })
+        linea.refresh_from_db()
+        self.assertEqual(linea.contacto_id, self.contacto.id)
+        self.assertEqual(linea.base, Decimal('1000'))
+
+    def test_lo_que_la_cuenta_no_exige_no_se_acepta(self):
+        documento, linea, simple = self._lineas_de_cuenta()
+
+        respuesta = self._llamar({
+            'id': documento.id, 'sede': self.otra_sede.id,
+            'detalles': [
+                {'id': linea.id, 'base': '5000'},
+                {'id': simple.id, 'contacto': self.contacto.id, 'base': '100'},
+            ],
+        })
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data['errores'], [
+            {'indice': 1, 'id': simple.id, 'mensaje': 'La cuenta 110505 no exige contacto.'},
+            {'indice': 1, 'id': simple.id, 'mensaje': 'La cuenta 110505 no exige base.'},
+        ])
+        # Corta todo: ni la sede ni la línea válida cambian.
+        documento.refresh_from_db()
+        linea.refresh_from_db()
+        self.assertEqual(documento.sede_id, self.sede.id)
+        self.assertEqual(linea.base, Decimal('1000'))
+
+    def test_quitar_lo_que_la_cuenta_no_exige_si_se_puede(self):
+        documento, _, simple = self._lineas_de_cuenta()
+
+        respuesta = self._llamar({
+            'id': documento.id, 'detalles': [{'id': simple.id, 'contacto': None, 'base': '0'}],
+        })
+
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+
+    def test_contacto_y_base_solo_en_una_linea_de_cuenta(self):
+        documento, (item, _) = self._con_detalles()
+        item.tipo_registro = 'I'
+        item.save()
+
+        respuesta = self._llamar({
+            'id': documento.id, 'detalles': [{'id': item.id, 'base': '100'}],
+        })
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data['errores'], [
+            {'indice': 0, 'id': item.id,
+             'mensaje': 'El contacto y la base solo se corrigen en una línea de cuenta.'},
+        ])
+
+    def test_un_detalle_sin_nada_que_corregir_es_400(self):
+        documento, (uno, _) = self._con_detalles()
+
+        respuesta = self._llamar({'id': documento.id, 'detalles': [{'id': uno.id}]})
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data['errores'], [
+            {'indice': 0, 'id': uno.id, 'mensaje': 'El detalle no trae nada que corregir.'},
+        ])
+
 
 class ElectronicoXmlTests(TenantTestCase):
     """

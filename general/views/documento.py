@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from contabilidad.models import ConCentroCosto
 from contabilidad.servicios import depreciacion as depreciacion_servicio
-from general.models import GenDocumento, GenDocumentoConceptoCorreccion, GenResolucion, GenSede
+from general.models import GenContacto, GenDocumento, GenDocumentoConceptoCorreccion, GenResolucion, GenSede
 from general.serializers import (
     GenDocumentoConImpuestosSerializer,
     GenDocumentoCrearSerializer,
@@ -71,9 +71,18 @@ class DocumentoActualizarElectronicoRequestSerializer(serializers.Serializer):
 
 
 class DocumentoActualizarContabilidadDetalleSerializer(serializers.Serializer):
+    # Solo se cambia lo que venga; cada detalle tiene que traer al menos uno.
     id = serializers.IntegerField(min_value=1, help_text='Id del detalle.')
     centro_costo = serializers.PrimaryKeyRelatedField(
-        queryset=ConCentroCosto.objects.all(), allow_null=True,
+        queryset=ConCentroCosto.objects.all(), required=False, allow_null=True,
+    )
+    contacto = serializers.PrimaryKeyRelatedField(
+        queryset=GenContacto.objects.all(), required=False, allow_null=True,
+        help_text='Solo en una línea de cuenta, y si su cuenta exige contacto.',
+    )
+    base = serializers.DecimalField(
+        max_digits=20, decimal_places=6, min_value=0, required=False,
+        help_text='Solo en una línea de cuenta, y si su cuenta exige base.',
     )
 
 
@@ -513,15 +522,20 @@ class GenDocumentoViewSet(
     @extend_schema(
         summary='Corregir los datos contables de un documento',
         description=(
-            'Cambia la `sede` del documento y el `centro_costo` de los detalles que '
-            'se envíen en `detalles`, aunque el documento esté aprobado o ya enviado '
-            'electrónicamente. Hay que enviar `sede`, `detalles` o los dos; ambos '
-            'aceptan `null` para quitar el valor.\n\n'
+            'Cambia la `sede` del documento y, de los detalles que se envíen en '
+            '`detalles`, el `centro_costo`, el `contacto` y la `base`, aunque el '
+            'documento esté aprobado o ya enviado electrónicamente. Hay que enviar '
+            '`sede`, `detalles` o los dos; `sede`, `centro_costo` y `contacto` '
+            'aceptan `null` para quitar el valor. Solo se cambia lo que venga en '
+            'cada detalle.\n\n'
+            '`contacto` y `base` solo se corrigen en una línea de cuenta '
+            '(`tipo_registro` C), y siguiendo a su cuenta: si la cuenta los exige no '
+            'pueden quedar vacíos, y si no los exige no se aceptan.\n\n'
             'No se corrige un documento anulado ni contabilizado: hay que '
             'descontabilizarlo primero.\n\n'
             'Responde el documento actualizado. Si algún detalle no pertenece al '
-            'documento no se cambia nada y responde 400 con `detail` y, en '
-            '`errores`, la posición y el id de cada uno.'
+            'documento o no se puede corregir, no se cambia nada y responde 400 con '
+            '`detail` y, en `errores`, la posición, el id y el motivo de cada uno.'
         ),
         request=DocumentoActualizarContabilidadRequestSerializer,
         responses=GenDocumentoSerializer,
@@ -539,7 +553,7 @@ class GenDocumentoViewSet(
             )
         try:
             documento = documento_servicio.actualizar_contabilidad(documento_id, datos)
-        except documento_servicio.DetallesAjenos as e:
+        except documento_servicio.DetallesInvalidos as e:
             return Response(
                 {'detail': str(e), 'errores': e.errores},
                 status=status.HTTP_400_BAD_REQUEST,

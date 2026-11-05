@@ -1489,17 +1489,17 @@ def actualizar_electronico(documento_id, datos):
         return documento
 
 
-class DetallesAjenos(Exception):
+class DetallesInvalidos(Exception):
     """
-    Detalles pedidos que no son del documento. Lleva `errores`, uno por detalle,
-    con su posición en la petición.
+    Detalles pedidos que no se pueden corregir. Lleva `errores`, uno por problema,
+    con la posición del detalle en la petición.
 
     No es un `ValidationError` porque DRF convierte todo su contenido a texto, y
     el `indice` y el `id` tienen que salir como números.
     """
 
-    def __init__(self, errores):
-        super().__init__('Hay detalles que no pertenecen al documento.')
+    def __init__(self, mensaje, errores):
+        super().__init__(mensaje)
         self.errores = errores
 
 
@@ -1511,9 +1511,15 @@ def actualizar_contabilidad(documento_id, datos):
     DIAN: se pueden corregir aprobado y enviado, pero no contabilizado, porque el
     documento quedaría distinto de su contabilidad.
 
-    `datos` trae `sede` y `detalles` (`[{'id', 'centro_costo'}]`), los dos
-    opcionales. Un detalle que no es del documento corta todo sin cambiar nada,
-    con `DetallesAjenos`.
+    `datos` trae `sede` y `detalles` (`[{'id', 'centro_costo', 'contacto', 'base'}]`),
+    todo opcional salvo el `id` de cada detalle. Un detalle que no es del documento
+    o que no se puede corregir corta todo sin cambiar nada, con `DetallesInvalidos`.
+
+    `contacto` y `base` siguen a la cuenta del detalle, como al contabilizar: lo
+    que la cuenta exige no puede quedar vacío, y lo que no exige no se acepta
+    —`contabilizar` lo descartaría y el usuario creería haberlo corregido—. Por
+    eso solo van en una línea de cuenta (`C`): en las demás la cuenta no está en
+    el detalle, y en un recibo o un egreso el contacto es el de la cartera.
     """
     with transaction.atomic():
         try:
@@ -1528,7 +1534,7 @@ def actualizar_contabilidad(documento_id, datos):
         pedidos = datos.get('detalles', [])
         detalles = {
             detalle.pk: detalle
-            for detalle in GenDocumentoDetalle.objects.select_for_update().filter(
+            for detalle in GenDocumentoDetalle.objects.select_for_update().select_related('cuenta').filter(
                 documento_id=documento.pk, pk__in=[pedido['id'] for pedido in pedidos],
             )
         }
@@ -1539,13 +1545,43 @@ def actualizar_contabilidad(documento_id, datos):
             if pedido['id'] not in detalles
         ]
         if errores:
-            raise DetallesAjenos(errores)
+            raise DetallesInvalidos('Hay detalles que no pertenecen al documento.', errores)
+
+        for indice, pedido in enumerate(pedidos):
+            detalle = detalles[pedido['id']]
+
+            def error(mensaje):
+                errores.append({'indice': indice, 'id': detalle.pk, 'mensaje': mensaje})
+
+            if not {'centro_costo', 'contacto', 'base'} & pedido.keys():
+                error('El detalle no trae nada que corregir.')
+                continue
+            if 'contacto' not in pedido and 'base' not in pedido:
+                continue
+            cuenta = detalle.cuenta
+            if detalle.tipo_registro != 'C' or cuenta is None:
+                error('El contacto y la base solo se corrigen en una línea de cuenta.')
+                continue
+            if 'contacto' in pedido:
+                if cuenta.exige_contacto and pedido['contacto'] is None:
+                    error(f'La cuenta {cuenta.codigo} exige contacto.')
+                elif not cuenta.exige_contacto and pedido['contacto'] is not None:
+                    error(f'La cuenta {cuenta.codigo} no exige contacto.')
+            if 'base' in pedido:
+                if cuenta.exige_base and not pedido['base']:
+                    error(f'La cuenta {cuenta.codigo} exige base.')
+                elif not cuenta.exige_base and pedido['base']:
+                    error(f'La cuenta {cuenta.codigo} no exige base.')
+        if errores:
+            raise DetallesInvalidos('Hay detalles que no se pueden corregir.', errores)
 
         if 'sede' in datos:
             documento.sede = datos['sede']
             documento.save(update_fields=['sede'])
         for pedido in pedidos:
             detalle = detalles[pedido['id']]
-            detalle.centro_costo = pedido['centro_costo']
-        GenDocumentoDetalle.objects.bulk_update(detalles.values(), ['centro_costo'])
+            for campo in ('centro_costo', 'contacto', 'base'):
+                if campo in pedido:
+                    setattr(detalle, campo, pedido[campo])
+        GenDocumentoDetalle.objects.bulk_update(detalles.values(), ['centro_costo', 'contacto', 'base'])
         return documento
