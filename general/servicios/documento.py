@@ -1534,7 +1534,7 @@ def actualizar_contabilidad(documento_id, datos):
         pedidos = datos.get('detalles', [])
         detalles = {
             detalle.pk: detalle
-            for detalle in GenDocumentoDetalle.objects.select_for_update().select_related('cuenta').filter(
+            for detalle in GenDocumentoDetalle.objects.select_for_update(of=('self',)).select_related('cuenta').filter(
                 documento_id=documento.pk, pk__in=[pedido['id'] for pedido in pedidos],
             )
         }
