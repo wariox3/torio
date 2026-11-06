@@ -356,12 +356,18 @@ def armar(documento, parametro):
 
 
 def _empleado(contacto, contrato, errores):
-    tipo_cotizante = getattr(contrato.tipo_cotizante, 'codigo', None)
-    tipo_trabajador = TIPO_TRABAJADOR.get(tipo_cotizante)
-    if tipo_trabajador is None:
+    tipo = contrato.tipo_cotizante
+    tipo_trabajador = TIPO_TRABAJADOR.get(getattr(tipo, 'codigo', None))
+    if tipo is None:
         errores.append(
-            f'El tipo de cotizante {tipo_cotizante or "(vacío)"} del contrato {contrato.id} '
-            'no se reporta en nómina electrónica.'
+            f'El contrato {contrato.id} no tiene tipo de cotizante; '
+            'asígnalo para poder emitir la nómina electrónica.'
+        )
+    elif tipo_trabajador is None:
+        errores.append(
+            f'El contrato {contrato.id} tiene tipo de cotizante {tipo.codigo} ({tipo.nombre}), '
+            'que la DIAN no recibe en nómina electrónica porque solo aplica a trabajadores '
+            'dependientes. Si el empleado es dependiente, corrige el tipo de cotizante del contrato.'
         )
     subtipo = getattr(contrato.subtipo_cotizante, 'codigo', None)
     tipo_contrato = TIPO_CONTRATO.get(contrato.contrato_tipo_id)

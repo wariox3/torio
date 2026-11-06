@@ -26,7 +26,8 @@ from general.models import (
     GenTipoPersona,
 )
 from humano.formatos import FormatoProgramacion
-from humano.models import HumContrato, HumCredito, HumGrupo, HumProgramacion
+from humano.models import HumContrato, HumCredito, HumGrupo, HumNovedad, HumProgramacion
+from humano.servicios import novedad as servicio_novedad
 from humano.servicios import (
     ProgramacionError,
     aprobar_programacion,
@@ -35,7 +36,7 @@ from humano.servicios import (
     desgenerar_programacion,
     generar_programacion,
 )
-from humano.servicios.nomina import porcentaje_fondo_solidaridad
+from humano.servicios.nomina import NOVEDAD_TIPO_VACACION, porcentaje_fondo_solidaridad
 from humano.views.programacion import HumProgramacionViewSet
 
 SALARIO_MINIMO = Decimal('1423500')
@@ -140,6 +141,92 @@ class GenerarProgramacionTests(TenantTestCase):
         programacion = generar_programacion(self._programacion())
 
         self.assertEqual(programacion.deduccion, Decimal('180000'))
+
+    # ---- vacaciones ----
+
+    def _vacaciones(self, contrato, **overrides):
+        novedad = HumNovedad.objects.create(**{
+            'contrato': contrato, 'novedad_tipo_id': NOVEDAD_TIPO_VACACION,
+            'fecha_desde': date(2026, 3, 10), 'fecha_hasta': date(2026, 3, 14),
+            'dias_disfrutados': 5, 'dias_disfrutados_reales': 5, **overrides,
+        })
+        return servicio_novedad.liquidar(novedad)
+
+    def _lineas_vacaciones(self, programacion):
+        """`{concepto_id: (pago, cantidad)}` de las líneas de vacaciones (29 disfrute, 30 dinero)."""
+        return {
+            concepto_id: (pago, cantidad)
+            for concepto_id, pago, cantidad in GenDocumentoDetalle.objects.filter(
+                documento__programacion_detalle__programacion=programacion, concepto_id__in=(29, 30),
+            ).values_list('concepto_id', 'pago', 'cantidad')
+        }
+
+    def test_vacaciones_sin_dinero_no_crean_linea_en_cero(self):
+        contrato = self._contrato(salario=Decimal('3000000'))
+        self._vacaciones(contrato)
+        programacion = generar_programacion(self._programacion())
+
+        # 5 días a 100.000; la cantidad va en horas (5 × 8) y no hay línea de dinero.
+        self.assertEqual(self._lineas_vacaciones(programacion), {29: (Decimal('500000'), Decimal('40'))})
+
+    def test_vacaciones_con_dinero(self):
+        contrato = self._contrato(salario=Decimal('3000000'))
+        # 2 días en dinero (200.000) repartidos en los 5 disfrutados: 40.000 por día.
+        self._vacaciones(contrato, dias_dinero=2)
+        programacion = generar_programacion(self._programacion())
+
+        self.assertEqual(self._lineas_vacaciones(programacion), {
+            29: (Decimal('500000'), Decimal('40')),
+            30: (Decimal('200000'), Decimal('40')),
+        })
+
+    # ---- novedad dentro del contrato ----
+
+    def _validar_novedad(self, contrato, desde, hasta):
+        from humano.serializers import HumNovedadSerializer
+
+        serializador = HumNovedadSerializer(data={
+            'contrato': contrato.id, 'novedad_tipo': 6,
+            'fecha_desde': desde.isoformat(), 'fecha_hasta': hasta.isoformat(),
+        })
+        return serializador.is_valid(), serializador.errors
+
+    def _importar_novedad(self, contrato, desde, hasta):
+        from humano.serializers import HumNovedadImportarSerializer
+
+        return HumNovedadImportarSerializer().procesar_lote([(2, {
+            'contrato.id': contrato.id, 'novedad_tipo.id': 6, 'fecha_desde': desde, 'fecha_hasta': hasta,
+        })])
+
+    def test_novedad_no_empieza_antes_del_contrato(self):
+        contrato = self._contrato(fecha_desde=date(2026, 3, 1))
+
+        valido, errores = self._validar_novedad(contrato, date(2026, 2, 25), date(2026, 3, 5))
+        self.assertFalse(valido)
+        self.assertIn('antes del inicio del contrato', str(errores))
+
+        creados, errores = self._importar_novedad(contrato, date(2026, 2, 25), date(2026, 3, 5))
+        self.assertEqual(creados, 0)
+        self.assertIn('antes del inicio del contrato', errores[0]['mensaje'])
+
+    def test_novedad_no_termina_despues_del_contrato_terminado(self):
+        contrato = self._contrato(fecha_hasta=date(2026, 3, 10), estado_terminado=True)
+
+        valido, errores = self._validar_novedad(contrato, date(2026, 3, 5), date(2026, 3, 15))
+        self.assertFalse(valido)
+        self.assertIn('después de la terminación del contrato', str(errores))
+
+        creados, errores = self._importar_novedad(contrato, date(2026, 3, 5), date(2026, 3, 15))
+        self.assertEqual(creados, 0)
+        self.assertIn('después de la terminación del contrato', errores[0]['mensaje'])
+
+    def test_novedad_de_contrato_sin_terminar_ignora_fecha_hasta(self):
+        # Indefinido activo: `fecha_hasta` no es el fin del contrato.
+        contrato = self._contrato()
+
+        valido, errores = self._validar_novedad(contrato, date(2026, 3, 5), date(2026, 3, 15))
+        self.assertTrue(valido, errores)
+        self.assertEqual(self._importar_novedad(contrato, date(2026, 3, 5), date(2026, 3, 15)), (1, []))
 
     def _crear_credito(self, contrato, **datos):
         from humano.serializers import HumCreditoSerializer

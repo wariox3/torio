@@ -81,6 +81,15 @@ def redondear_cien(valor):
     return Decimal(math.ceil(Decimal(valor) / 100) * 100)
 
 
+def _piso(mensual, dias):
+    """
+    Lo mínimo que puede cotizar una línea: el valor mensual por sus días, al peso
+    superior. Se multiplica antes de dividir para que el `ceil` no suba por los
+    decimales de `mensual / 30`.
+    """
+    return Decimal(math.ceil(Decimal(mensual) * dias / 30))
+
+
 def _bloquear(aporte):
     return HumAporte.objects.select_for_update().get(pk=aporte.pk)
 
@@ -353,6 +362,10 @@ def _liquidar_contrato(aporte, aporte_contrato, filas, configuracion):
                 base = Decimal(math.ceil(salario_minimo_dia * dias))
             if tipo == NOVEDAD_LICENCIA_NO_REMUNERADA and base / dias < salario_dia:
                 base = Decimal(math.ceil(salario_dia * dias))
+            # Se pagan sobre el salario: el operador exige al menos el salario de
+            # los días al peso superior, aunque la nómina lo haya redondeado abajo.
+            if tipo == NOVEDAD_VACACIONES or tipo in NOVEDADES_LICENCIA_REMUNERADA:
+                base = max(base, _piso(aporte_contrato.salario, dias))
 
         if tipo == NOVEDAD_INCAPACIDAD_GENERAL:
             tarifas.update(riesgos=0, caja=0)
@@ -397,7 +410,13 @@ def _liquidar_contrato(aporte, aporte_contrato, filas, configuracion):
     # Los días que no fueron novedad.
     dias = aporte_contrato.dias - dias_novedad_contrato
     if dias > 0:
-        base = max(base_sin_novedad, configuracion.hum_salario_minimo / 30 * dias)
+        # El operador valida cada línea contra el salario (y el mínimo) de sus
+        # días al peso superior: lo pagado en nómina puede venir redondeado abajo.
+        base = max(
+            base_sin_novedad,
+            _piso(aporte_contrato.salario, dias),
+            _piso(configuracion.hum_salario_minimo, dias),
+        )
         base_pension = base_caja = base
         tarifas = {'pension': TARIFA_PENSION, 'salud': TARIFA_SALUD, 'riesgos': tarifa_riesgos, 'caja': TARIFA_CAJA}
         tipo_cotizante = aporte_contrato.contrato.tipo_cotizante
@@ -415,7 +434,7 @@ def _liquidar_contrato(aporte, aporte_contrato, filas, configuracion):
         lineas.append(HumAporteDetalle(
             **comunes,
             # El IBC supera el salario de los días por pagos variables (extras, recargos, comisiones).
-            variacion_transitoria_salario=base > math.ceil(salario_dia * dias),
+            variacion_transitoria_salario=base > _piso(aporte_contrato.salario, dias),
             fecha_ingreso=aporte_contrato.contrato.fecha_desde if aporte_contrato.ingreso else None,
             fecha_retiro=aporte_contrato.contrato.fecha_hasta if aporte_contrato.retiro else None,
             horas=dias * HORAS_DIA,

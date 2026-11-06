@@ -263,6 +263,33 @@ class AporteTests(TenantTestCase):
             'RIESGO': Decimal('10500'), 'SENA': Decimal('0'), 'ICBF': Decimal('0'),
         })
 
+    def test_ibc_de_cada_linea_no_baja_del_salario_al_peso_superior(self):
+        from humano.models import HumNovedad
+        from humano.servicios import novedad as servicio_novedad
+
+        HumContrato.objects.filter(pk=self.contrato.pk).update(salario=Decimal('3502000'), auxilio_transporte=False)
+        self.contrato.refresh_from_db()
+        servicio_novedad.liquidar(HumNovedad.objects.create(
+            contrato=self.contrato, novedad_tipo_id=7, fecha_desde=date(2026, 3, 1), fecha_hasta=date(2026, 3, 5),
+            dias_disfrutados=5, dias_disfrutados_reales=5,
+        ))
+        self._nomina_de_marzo()
+        aporte = self._aporte()
+        cargar_contratos_aporte(aporte)
+
+        aporte = generar_aporte(aporte)
+
+        # La nómina pagó 2.918.333 (25 días) y 583.667 (5 de vacaciones): los
+        # decimales se compensan entre líneas, pero el operador valida cada una
+        # contra salario / 30 × días al peso superior (2.918.333,33 → 2.918.334).
+        bases = dict(
+            HumAporteDetalle.objects.filter(aporte_contrato__aporte=aporte)
+            .values_list('vacaciones', 'base_cotizacion_pension')
+        )
+        self.assertEqual(bases, {True: Decimal('583667'), False: Decimal('2918334')})
+        # El total del aporte sigue siendo lo pagado en nómina.
+        self.assertEqual(aporte.base_cotizacion, Decimal('3502000'))
+
     def test_sin_contratos_no_genera(self):
         with self.assertRaises(AporteError):
             generar_aporte(self._aporte())

@@ -99,6 +99,18 @@ class HumNovedadSerializer(serializers.ModelSerializer):
         if novedad_tipo is None:
             raise serializers.ValidationError('El tipo de novedad es requerido.')
 
+        # La novedad tiene que caer dentro del contrato. El fin solo se exige si el
+        # contrato está terminado: si no, `fecha_hasta` no es definitiva (en el
+        # indefinido ni se usa).
+        if fecha_desde < contrato.fecha_desde:
+            raise serializers.ValidationError(
+                f'La novedad no puede empezar antes del inicio del contrato ({contrato.fecha_desde}).'
+            )
+        if contrato.estado_terminado and fecha_hasta > contrato.fecha_hasta:
+            raise serializers.ValidationError(
+                f'La novedad no puede terminar después de la terminación del contrato ({contrato.fecha_hasta}).'
+            )
+
         if novedad_tipo.id == NOVEDAD_TIPO_VACACION and (valor('dias_disfrutados_reales') or 0) <= 0:
             raise serializers.ValidationError('Las vacaciones necesitan días disfrutados reales mayores que cero.')
 

@@ -377,14 +377,19 @@ def _novedades(contexto, detalle, valor_hora, linea):
                 and novedad.fecha_hasta >= programacion.fecha_hasta_periodo
             )
             dias_pago = dias_novedad + dia31
+            # Se pagan por día, pero la cantidad va en horas como el resto de la nómina.
+            horas = dias_pago * factor
             linea(
                 novedad.novedad_tipo.concepto, redondear(dias_pago * novedad.pago_dia_disfrute),
-                dias=dias_novedad, **datos_novedad,
+                dias=dias_novedad, cantidad=horas, **datos_novedad,
             )
-            linea(
-                novedad.novedad_tipo.concepto2, redondear(dias_pago * novedad.pago_dia_dinero),
-                dias=dias_novedad, **datos_novedad,
-            )
+            # Sin días en dinero no hay línea: saldría en cero.
+            pago_dinero = redondear(dias_pago * novedad.pago_dia_dinero)
+            if pago_dinero > 0:
+                linea(
+                    novedad.novedad_tipo.concepto2, pago_dinero,
+                    dias=dias_novedad, cantidad=horas, **datos_novedad,
+                )
 
 
 def _auxilio_transporte(contexto, detalle, linea):

@@ -7,7 +7,7 @@ class HumContratoTipo(models.Model):
 
     class Meta:
         db_table = 'hum_contrato_tipo'
-        ordering = ['nombre']
+        ordering = ['id']
         verbose_name = 'Contrato tipo'
         verbose_name_plural = 'Contratos tipos'
 

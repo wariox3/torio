@@ -94,6 +94,14 @@ class HumNovedadImportarSerializer(serializers.Serializer):
                 )
                 if novedad.fecha_desde > novedad.fecha_hasta:
                     raise ValueError('La fecha desde no puede ser mayor que la fecha hasta')
+                if novedad.fecha_desde < contrato.fecha_desde:
+                    raise ValueError(
+                        f'La novedad no puede empezar antes del inicio del contrato ({contrato.fecha_desde})'
+                    )
+                if contrato.estado_terminado and novedad.fecha_hasta > contrato.fecha_hasta:
+                    raise ValueError(
+                        f'La novedad no puede terminar después de la terminación del contrato ({contrato.fecha_hasta})'
+                    )
                 if novedad_tipo.id == NOVEDAD_TIPO_VACACION and novedad.dias_disfrutados_reales <= 0:
                     raise ValueError('Las vacaciones necesitan días disfrutados reales mayores que cero')
                 for desde, hasta, fila in ocupados.get(contrato.contacto_id, ()):
