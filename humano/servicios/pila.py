@@ -9,6 +9,7 @@ Windows-1252, que es lo que leen los operadores.
 """
 from decimal import ROUND_HALF_UP, Decimal
 
+from django.db.models import Sum
 from django.utils import timezone
 
 from general.models import GenConfiguracion
@@ -63,6 +64,13 @@ def generar_plano(aporte):
         raise PilaError('El aporte no tiene administradora de riesgos laborales.')
 
     por_sucursal = aporte.presentacion == 'S' and aporte.sucursal is not None
+    # El operador lo valida contra la suma del IBC de parafiscales (caja) de los
+    # registros tipo 2, no contra lo pagado en nómina: cada línea tiene piso al
+    # peso superior y la suma puede quedar unos pesos por encima.
+    total_nomina = (
+        HumAporteDetalle.objects.filter(aporte_contrato__aporte=aporte)
+        .aggregate(total=Sum('base_cotizacion_caja'))['total']
+    )
     lineas = [''.join([
         '01',                                                    # 1 Tipo de registro
         '1',                                                     # 2 Modalidad de la planilla
@@ -83,7 +91,7 @@ def generar_plano(aporte):
         _texto('', 10),                                          # 17 Número de radicación
         _texto('', 10),                                          # 18 Fecha de pago
         _numero(aporte.empleados, 5),                            # 19 Número total de empleados
-        _numero(aporte.base_cotizacion, 12),                     # 20 Valor total de la nómina
+        _numero(total_nomina, 12),                               # 20 Valor total de la nómina
         TIPO_APORTANTE,                                          # 21 Tipo de aportante
         CODIGO_OPERADOR,                                         # 22 Código del operador
     ])]

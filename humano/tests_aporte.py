@@ -289,6 +289,12 @@ class AporteTests(TenantTestCase):
         self.assertEqual(bases, {True: Decimal('583667'), False: Decimal('2918334')})
         # El total del aporte sigue siendo lo pagado en nómina.
         self.assertEqual(aporte.base_cotizacion, Decimal('3502000'))
+        # Pero el plano reporta como total de nómina la suma del IBC de caja de
+        # las líneas, que es contra lo que valida el operador (error 183).
+        contenido, _ = generar_plano(aporte)
+        encabezado = contenido.decode('cp1252').splitlines()[0]
+        self.assertIn('000003502001', encabezado)
+        self.assertNotIn('000003502000', encabezado)
 
     def test_sin_contratos_no_genera(self):
         with self.assertRaises(AporteError):
