@@ -50,7 +50,7 @@ def estado_resultados(fecha_desde=None, fecha_hasta=None, hoy=None):
     """
     fecha_desde, fecha_hasta = rango(fecha_desde, fecha_hasta, hoy)
     actual = _cifras(fecha_desde, fecha_hasta)
-    desde_anterior, hasta_anterior = _anio_anterior(fecha_desde), _anio_anterior(fecha_hasta)
+    desde_anterior, hasta_anterior = anio_anterior(fecha_desde), anio_anterior(fecha_hasta)
     anterior = _cifras(desde_anterior, hasta_anterior)
 
     return {
@@ -188,7 +188,7 @@ def _fila(clave, etiqueta, valor, tipo):
     return {'clave': clave, 'etiqueta': etiqueta, 'valor': valor, 'tipo': tipo}
 
 
-def _anio_anterior(fecha):
+def anio_anterior(fecha):
     """La misma fecha un año antes; el 29 de febrero cae en el 28."""
     try:
         return fecha.replace(year=fecha.year - 1)

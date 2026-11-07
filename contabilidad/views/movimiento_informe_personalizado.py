@@ -22,7 +22,8 @@ from contabilidad.serializers import (
     ConMovimientoInformePersonalizadoEstadoSerializer,
     ConMovimientoInformePersonalizadoEstadoTotalesSerializer,
 )
-from contabilidad.servicios import balance, balance_excel
+from contabilidad.servicios import balance, balance_excel, estado_resultados
+from contabilidad.servicios.tablero import anio_anterior
 from general.models import GenConfiguracion
 from utilidades.filtros import aplicar_filtros
 from utilidades.mixins import FiltrosDinamicosMixin
@@ -119,6 +120,19 @@ INFORMES = {
         'totales': ConMovimientoInformePersonalizadoEstadoTotalesSerializer,
         'excel': balance_excel.ESTADO_RESULTADOS,
     },
+    # Solo Excel: no son filas para paginar sino el estado presentado, con
+    # secciones, utilidades y el comparativo del año anterior. `lista/` y
+    # `totales/` lo rechazan; el `serializer` está por la whitelist de filtros.
+    'estado_resultados_formal': {
+        'agrupar': estado_resultados.agrupar,
+        'movimiento': None,
+        'detalle': None,
+        'filas': None,
+        'serializer': ConMovimientoInformePersonalizadoEstadoSerializer,
+        'totales': None,
+        'excel': None,
+        'formal': True,
+    },
     'estado_situacion_financiera': {
         'agrupar': balance.estado_situacion_financiera,
         'movimiento': None,
@@ -176,6 +190,10 @@ class ConMovimientoInformePersonalizadoViewSet(FiltrosDinamicosMixin, viewsets.G
         certificado_retencion     lo retenido a cada tercero, por cuenta
         estado_resultados         las cuentas de resultado que movieron
         estado_situacion_financiera  lo mismo sin acotar la clase
+
+    Y uno es solo Excel: `estado_resultados_formal`, el estado presentado con
+    secciones, subtotales, utilidades y el mismo rango del año anterior
+    (`servicios.estado_resultados`). `lista/` y `totales/` lo rechazan.
 
     El informe se elige con el parámetro `informe` (body o query string) y el
     corte con `fecha_desde` / `fecha_hasta`, ambos obligatorios.
@@ -288,6 +306,8 @@ class ConMovimientoInformePersonalizadoViewSet(FiltrosDinamicosMixin, viewsets.G
         """
         self._rechazar_ordenamientos(request)
         informe = self._informe()
+        if informe.get('formal'):
+            raise ValidationError({'informe': 'Este informe solo tiene salida en Excel.'})
         filtros = request.data.get('filtros') or []
         campos_filtrables = self._config_lista('campos_filtrables', set())
 
@@ -325,6 +345,29 @@ class ConMovimientoInformePersonalizadoViewSet(FiltrosDinamicosMixin, viewsets.G
     )
     @action(detail=False, methods=['post'])
     def excel(self, request):
+        informe = self._informe()
+        if informe.get('formal'):
+            # Dos cortes con los mismos filtros: el periodo y el mismo rango un
+            # año antes, que es contra lo que se compara.
+            self._rechazar_ordenamientos(request)
+            filtros = request.data.get('filtros') or []
+            campos_filtrables = self._config_lista('campos_filtrables', set())
+            desde, hasta = self._rango()
+            desde_anterior, hasta_anterior = anio_anterior(desde), anio_anterior(hasta)
+            filas = estado_resultados.filas(
+                aplicar_filtros(self.get_queryset_lista(), filtros, campos_filtrables),
+                aplicar_filtros(informe['agrupar'](desde_anterior, hasta_anterior), filtros, campos_filtrables),
+            )
+            contenido, nombre = balance_excel.excel_estado_resultados(
+                filas, self._empresa(), desde, hasta, desde_anterior, hasta_anterior,
+            )
+            response = HttpResponse(
+                contenido,
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            )
+            response['Content-Disposition'] = f'attachment; filename="{nombre}"'
+            return response
+
         filas = self._filas(request)
         desde, hasta = self._rango()
         contenido, nombre = balance_excel.excel(

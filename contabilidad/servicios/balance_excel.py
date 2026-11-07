@@ -10,8 +10,10 @@ from io import BytesIO
 
 from django.utils import timezone
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+
+from contabilidad.servicios import estado_resultados as er
 
 _FUENTE = 'Arial'
 _FONDO = PatternFill('solid', fgColor='9CDFEB')
@@ -151,6 +153,70 @@ def excel(formato, filas, empresa, fecha_desde, fecha_hasta):
     buf = BytesIO()
     wb.save(buf)
     return buf.getvalue(), f"{formato.get('archivo') or formato['hoja']}.xlsx"
+
+
+PORCENTAJE = '0.00%'
+_BORDE_TOTAL = Border(top=Side(style='thin'))
+_FONDO_UTILIDAD = PatternFill('solid', fgColor='E6F6F9')
+
+
+def excel_estado_resultados(filas, empresa, fecha_desde, fecha_hasta, desde_anterior, hasta_anterior):
+    """
+    El estado de resultados formal (`servicios.estado_resultados.filas`): el
+    mismo bloque de título que los demás informes y, debajo, las secciones con
+    el periodo, el mismo rango un año antes y la variación.
+    """
+    columnas = (
+        ('codigo', 'Código', TEXTO),
+        ('nombre', 'Concepto', TEXTO),
+        ('actual', f'{fecha_desde} a {fecha_hasta} ($)', IMPORTE),
+        ('anterior', f'{desde_anterior} a {hasta_anterior} ($)', IMPORTE),
+        ('variacion', 'Variación ($)', IMPORTE),
+        ('porcentaje', 'Variación (%)', PORCENTAJE),
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'estado_resultados'
+
+    anchos = [0] * len(columnas)
+    _bloque_titulo(ws, 'Estado de resultados', empresa, fecha_desde, fecha_hasta, anchos)
+    _encabezados(ws, columnas, anchos)
+
+    numero = _FILA_ENCABEZADOS
+    for fila in filas:
+        tipo = fila['tipo']
+        # Una fila en blanco antes de cada sección y de cada utilidad, para que
+        # el estado se lea por bloques.
+        if tipo in (er.SECCION, er.UTILIDAD):
+            numero += 1
+        numero += 1
+        for indice, (campo, _, formato_numero) in enumerate(columnas):
+            valor = fila[campo]
+            if campo == 'nombre' and tipo == er.CUENTA:
+                valor = f'    {valor}'
+            if campo == 'nombre' and tipo in (er.SECCION, er.UTILIDAD):
+                valor = valor.upper()
+            celda = ws.cell(row=numero, column=indice + 1, value=valor)
+            celda.font = Font(name=_FUENTE, size=10, bold=tipo != er.CUENTA)
+            celda.number_format = formato_numero
+            if tipo == er.TOTAL and indice >= 2:
+                celda.border = _BORDE_TOTAL
+            if tipo == er.UTILIDAD:
+                celda.fill = _FONDO_UTILIDAD
+            anchos[indice] = max(anchos[indice], _largo(valor) if formato_numero != IMPORTE else _largo_importe(valor))
+
+    for indice, ancho in enumerate(anchos):
+        ws.column_dimensions[get_column_letter(indice + 1)].width = ancho + 1
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue(), 'estado_resultados_formal.xlsx'
+
+
+def _largo_importe(valor):
+    """Ancho de un importe como lo muestra el formato, con separador de miles."""
+    return 0 if valor is None else len(f'{valor:,.2f}')
 
 
 def _bloque_titulo(ws, titulo, empresa, fecha_desde, fecha_hasta, anchos):

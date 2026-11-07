@@ -1464,6 +1464,126 @@ class EstadoSituacionFinancieraTests(_InformePlanoMixin, _InformeBase):
 
 
 
+class EstadoResultadosFormalTests(_InformeBase):
+    """
+    El estado de resultados formal es solo Excel: secciones con sus cuentas de 4
+    dígitos y su total, las utilidades entre secciones y el mismo rango un año
+    antes. Sus rubros son los del tablero, así que la utilidad neta coincide.
+    """
+
+    informe = 'estado_resultados_formal'
+
+    def setUp(self):
+        super().setUp()
+        clases = {i: ConCuentaClase.objects.create(id=i, nombre=f'Clase {i}') for i in (4, 5)}
+        grupos = {i: ConCuentaGrupo.objects.create(id=i, nombre=f'Grupo {i}') for i in (41, 42, 51, 52, 53)}
+        nombres = {4135: 'Comercio', 4210: 'Financieros', 5105: 'Gastos de personal',
+                   5205: 'Gastos de personal ventas', 5305: 'Financieros gasto'}
+        for codigo, nombre in nombres.items():
+            ConCuentaCuenta.objects.create(id=codigo, nombre=nombre)
+
+        def cuenta(codigo):
+            return self._cuenta(
+                codigo, ConCuentaCuenta.objects.get(id=int(codigo[:4])),
+                cuenta_clase=clases[int(codigo[0])], cuenta_grupo=grupos[int(codigo[:2])],
+            )
+
+        self.venta = cuenta('41350505')
+        self.interes = cuenta('42100505')
+        self.sueldo_admin = cuenta('51050605')
+        self.sueldo_ventas = cuenta('52050605')
+        self.gasto_bancario = cuenta('53050505')
+
+    def _poblar(self):
+        # Enero de 2026: ventas 1.000 con una devolución de 100.
+        self._movimiento(self.venta, date(2026, 1, 5), credito=1000)
+        self._movimiento(self.venta, date(2026, 1, 6), debito=100)
+        self._movimiento(self.sueldo_admin, date(2026, 1, 10), debito=300)
+        self._movimiento(self.sueldo_ventas, date(2026, 1, 10), debito=200)
+        self._movimiento(self.interes, date(2026, 1, 15), credito=50)
+        self._movimiento(self.gasto_bancario, date(2026, 1, 15), debito=30)
+        # Enero de 2025, el comparativo: solo ventas.
+        self._movimiento(self.venta, date(2025, 1, 5), credito=500)
+
+    def _estado(self, **payload):
+        """`{concepto: (actual, anterior, variación, %)}` de la hoja, y la hoja."""
+        response = self._post('excel', **payload)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('estado_resultados_formal.xlsx', response['Content-Disposition'])
+        hoja = load_workbook(BytesIO(response.content)).active
+        filas = {
+            fila[1].strip(): tuple(fila[2:6])
+            for fila in hoja.iter_rows(min_row=8, values_only=True) if fila[1]
+        }
+        return filas, hoja
+
+    def test_secciones_utilidades_y_comparativo(self):
+        self._poblar()
+
+        filas, hoja = self._estado()
+
+        self.assertEqual(hoja['A1'].value, 'Estado de resultados')
+        self.assertEqual(
+            [celda.value for celda in hoja[7]],
+            ['Código', 'Concepto', '2026-01-01 a 2026-01-31 ($)', '2025-01-01 a 2025-01-31 ($)',
+             'Variación ($)', 'Variación (%)'],
+        )
+        # La devolución resta dentro de los ingresos; el detalle va a 4 dígitos.
+        self.assertEqual(filas['Comercio'][:3], (900, 500, 400))
+        self.assertEqual(filas['Comercio'][3], 0.8)
+        self.assertEqual(filas['UTILIDAD BRUTA'][:2], (900, 500))
+        # 900 − 300 de administración − 200 de ventas.
+        self.assertEqual(filas['UTILIDAD OPERACIONAL'][:2], (400, 500))
+        # + 50 de intereses − 30 de gastos bancarios.
+        self.assertEqual(filas['UTILIDAD ANTES DE IMPUESTOS'][:2], (420, 500))
+        self.assertEqual(filas['UTILIDAD NETA DEL PERIODO'][:3], (420, 500, -80))
+        # Las secciones sin movimiento salen con su total en cero.
+        self.assertEqual(filas['Total costo de ventas'][:2], (0, 0))
+        # Sin año anterior no hay porcentaje.
+        self.assertIsNone(filas['Gastos de personal'][3])
+
+    def test_la_utilidad_neta_coincide_con_el_tablero(self):
+        self._poblar()
+
+        filas, _ = self._estado()
+        tablero = tablero_servicio.estado_resultados(date(2026, 1, 1), date(2026, 1, 31))
+
+        self.assertEqual(filas['UTILIDAD NETA DEL PERIODO'][0], tablero['tarjetas']['nos_quedo'])
+        self.assertEqual(filas['UTILIDAD NETA DEL PERIODO'][1], tablero['comparativo']['nos_quedo'])
+
+    def test_los_filtros_acotan_los_dos_periodos(self):
+        self._movimiento(self.venta, date(2026, 1, 5), credito=1000, centro_costo=self.centro)
+        self._movimiento(self.venta, date(2026, 1, 5), credito=7)
+        self._movimiento(self.venta, date(2025, 1, 5), credito=500, centro_costo=self.centro)
+        self._movimiento(self.venta, date(2025, 1, 5), credito=9)
+
+        filas, _ = self._estado(filtros=[
+            {'propiedad': 'centro_costo_id', 'operador': '=', 'valor': self.centro.id},
+        ])
+
+        self.assertEqual(filas['Comercio'][:2], (1000, 500))
+
+    def test_sin_cierre_y_con_cuentas_sin_clase(self):
+        """
+        El cierre cancela el resultado contra el ejercicio y no entra. Una cuenta
+        creada a mano sin clase ni grupo se ubica por su código, como en el tablero.
+        """
+        self._movimiento(self.venta, date(2026, 1, 5), credito=1000)
+        self._movimiento(self.venta, date(2026, 1, 31), debito=1000, cierre=True)
+        sin_clase = ConCuenta.objects.create(
+            codigo='41350510', nombre='Sin clase', permite_movimiento=True,
+        )
+        self._movimiento(sin_clase, date(2026, 1, 5), credito=5)
+
+        filas, _ = self._estado()
+
+        self.assertEqual(filas['Comercio'][0], 1005)
+
+    def test_lista_y_totales_lo_rechazan(self):
+        self.assertEqual(self._post('lista').status_code, 400)
+        self.assertEqual(self._post('totales').status_code, 400)
+
+
 class _TableroViewSinPermisos(ConTableroViewSet):
     """Variante de la vista sin auth/permiso/throttle para probar el action aislado."""
     authentication_classes = []
