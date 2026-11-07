@@ -386,6 +386,21 @@ class AporteTests(TenantTestCase):
         self.assertEqual(cotizante[201:210], '002000000')  # IBC pensión
         self.assertEqual(cotizante[237:244], '0.16000')    # Tarifa pensión
         self.assertEqual(cotizante[244:253], '000320000')  # Cotización pensión
+        # Campo 12 (posiciones 249-258): alfanumérico, a la izquierda.
+        self.assertEqual(encabezado[247:258], 'S01        ')
+
+    def test_plano_por_sucursal_exige_codigo(self):
+        from humano.servicios import PilaError
+
+        self._nomina_de_marzo()
+        aporte = self._aporte()
+        cargar_contratos_aporte(aporte)
+        aporte = generar_aporte(aporte)
+        HumSucursal.objects.filter(pk=self.sucursal.pk).update(codigo='  ')
+        aporte.sucursal.refresh_from_db()
+
+        with self.assertRaisesMessage(PilaError, 'La sucursal Principal no tiene código PILA'):
+            generar_plano(aporte)
 
     def test_plano_sin_generar(self):
         from humano.servicios import PilaError

@@ -64,6 +64,10 @@ def generar_plano(aporte):
         raise PilaError('El aporte no tiene administradora de riesgos laborales.')
 
     por_sucursal = aporte.presentacion == 'S' and aporte.sucursal is not None
+    # Sin código, el campo 12 sale en blanco y el operador lo rechaza (error 128).
+    if aporte.presentacion == 'S' and not (aporte.sucursal and (aporte.sucursal.codigo or '').strip()):
+        nombre = f'La sucursal {aporte.sucursal.nombre}' if aporte.sucursal else 'El aporte'
+        raise PilaError(f'{nombre} no tiene código PILA; es obligatorio en la presentación por sucursal.')
     # El operador lo valida contra la suma del IBC de parafiscales (caja) de los
     # registros tipo 2, no contra lo pagado en nómina: cada línea tiene piso al
     # peso superior y la suma puede quedar unos pesos por encima.
@@ -83,7 +87,8 @@ def generar_plano(aporte):
         _texto('', 10),                                          # 9 Planilla asociada
         _texto('', 10),                                          # 10 Fecha de pago planilla asociada
         _texto(aporte.presentacion, 1),                          # 11 Forma de presentación
-        _texto(aporte.sucursal.codigo if por_sucursal else '', 10, izquierda=True),  # 12 Código sucursal
+        # Alfanumérico: a la izquierda y relleno a la derecha, o el operador lo lee vacío.
+        _texto(aporte.sucursal.codigo.strip() if por_sucursal else '', 10),  # 12 Código sucursal
         _texto(aporte.sucursal.nombre if por_sucursal else '', 40),                  # 13 Nombre sucursal
         _texto(aporte.entidad_riesgo.codigo, 6),                 # 14 Código de la ARL
         f'{aporte.anio}-{aporte.mes:02d}',                       # 15 Periodo de pago (no salud)
