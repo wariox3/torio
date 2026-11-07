@@ -275,18 +275,18 @@ def generar_aporte(aporte):
         for fila in filas:
             nomina[fila['documento__contrato_id']].append(fila)
 
-        base_total = Decimal('0')
         detalles = []
         for aporte_contrato in aporte_contratos:
-            lineas_contrato, base_contrato = _liquidar_contrato(
+            detalles.extend(_liquidar_contrato(
                 aporte, aporte_contrato, nomina.get(aporte_contrato.contrato_id, ()), configuracion,
-            )
-            detalles.extend(lineas_contrato)
-            base_total += base_contrato
+            ))
         HumAporteDetalle.objects.bulk_create(detalles)
 
         _totalizar(aporte, aporte_contratos, detalles)
-        aporte.base_cotizacion = base_total
+        # La base del aporte es la de sus líneas, ya con los pisos (salario y mínimo
+        # al peso superior), no lo pagado en nómina. Salud porque todas la cotizan:
+        # aprendices y estudiantes van sin pensión ni caja.
+        aporte.base_cotizacion = sum((d.base_cotizacion_salud for d in detalles), Decimal('0'))
         aporte.lineas = len(detalles)
         aporte.contratos = len(aporte_contratos)
         aporte.empleados = len({ac.contrato.contacto_id for ac in aporte_contratos})
@@ -326,7 +326,7 @@ def _cotizaciones(base_pension, base_salud, base_riesgos, base_caja, tarifas, so
 
 
 def _liquidar_contrato(aporte, aporte_contrato, filas, configuracion):
-    """Las líneas de un contrato y la base de cotización que salió de su nómina."""
+    """Las líneas (`HumAporteDetalle`, sin guardar) de un contrato."""
     salario_minimo_dia = configuracion.hum_salario_minimo / 30
     salario_dia = aporte_contrato.salario / 30
     tarifa_riesgos = aporte_contrato.riesgo.porcentaje if aporte_contrato.riesgo else Decimal('0')
@@ -337,13 +337,11 @@ def _liquidar_contrato(aporte, aporte_contrato, filas, configuracion):
         'salario_integral': aporte_contrato.contrato.salario_integral,
     }
     lineas = []
-    base_nomina = Decimal('0')
     base_sin_novedad = Decimal('0')
     dias_novedad_contrato = 0
 
     for fila in filas:
         base = fila['base_cotizacion'] or Decimal('0')
-        base_nomina += base
         if not fila['novedad_id']:
             base_sin_novedad += base
             continue
@@ -445,7 +443,7 @@ def _liquidar_contrato(aporte, aporte_contrato, filas, configuracion):
             tarifa_riesgos=tarifas['riesgos'], tarifa_caja=tarifas['caja'],
             **_cotizaciones(base_pension, base, base, base_caja, tarifas, solidaridad, subsistencia),
         ))
-    return lineas, base_nomina
+    return lineas
 
 
 def _totalizar(aporte, aporte_contratos, detalles):
