@@ -24,6 +24,10 @@ from .cuenta_grupo import ConCuentaGrupoSeleccionarSerializer
 from .cuenta_importar import ConCuentaImportarSerializer
 from .cuenta_seleccionar import ConCuentaSeleccionarSerializer
 from .cuenta_subcuenta import ConCuentaSubcuentaSeleccionarSerializer
+from .exogena import ConExogenaSerializer
+from .exogena_concepto import ConExogenaConceptoSeleccionarSerializer
+from .exogena_detalle import ConExogenaDetalleSerializer
+from .exogena_formato import ConExogenaFormatoSeleccionarSerializer
 from .inconsistencia import ConInconsistenciaSerializer
 from .inconsistencia_exportar import ConInconsistenciaExportarSerializer
 from .inconsistencia_tipo import ConInconsistenciaTipoSeleccionarSerializer

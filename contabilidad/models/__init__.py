@@ -10,6 +10,10 @@ from .cuenta_clase import ConCuentaClase
 from .cuenta_cuenta import ConCuentaCuenta
 from .cuenta_grupo import ConCuentaGrupo
 from .cuenta_subcuenta import ConCuentaSubcuenta
+from .exogena import ConExogena
+from .exogena_concepto import ConExogenaConcepto
+from .exogena_detalle import ConExogenaDetalle
+from .exogena_formato import ConExogenaFormato
 from .inconsistencia import ConInconsistencia
 from .inconsistencia_tipo import ConInconsistenciaTipo
 from .metodo_depreciacion import ConMetodoDepreciacion

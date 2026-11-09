@@ -1,0 +1,18 @@
+{
+  "model": "contabilidad.ConExogenaFormato",
+  "data": [
+    {"id": 1001, "nombre": "Pagos o abonos en cuenta y retenciones practicadas", "cuantia_menor": 0},
+    {"id": 1003, "nombre": "Retenciones en la fuente que le practicaron", "cuantia_menor": 0},
+    {"id": 1004, "nombre": "Descuentos tributarios solicitados", "cuantia_menor": 0},
+    {"id": 1005, "nombre": "Impuesto sobre las ventas descontable", "cuantia_menor": 0},
+    {"id": 1006, "nombre": "Impuesto sobre las ventas generado", "cuantia_menor": 0},
+    {"id": 1007, "nombre": "Ingresos recibidos", "cuantia_menor": 0},
+    {"id": 1008, "nombre": "Saldo de cuentas por cobrar al 31 de diciembre", "cuantia_menor": 0},
+    {"id": 1009, "nombre": "Saldo de cuentas por pagar al 31 de diciembre", "cuantia_menor": 0},
+    {"id": 1010, "nombre": "Información de socios, accionistas, comuneros y/o cooperados", "cuantia_menor": 0},
+    {"id": 1011, "nombre": "Información de las declaraciones tributarias", "cuantia_menor": 0},
+    {"id": 1012, "nombre": "Información de declaraciones tributarias, acciones, inversiones en bonos, títulos valores y cuentas de ahorro y corrientes", "cuantia_menor": 0},
+    {"id": 1647, "nombre": "Ingresos recibidos para terceros", "cuantia_menor": 0},
+    {"id": 2276, "nombre": "Información de rentas de trabajo y de pensiones", "cuantia_menor": 0}
+  ]
+}
