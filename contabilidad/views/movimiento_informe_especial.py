@@ -9,18 +9,18 @@ from rest_framework.response import Response
 from contabilidad.formatos import FormatoCertificadoRetencion
 from contabilidad.models import ConMovimiento
 from contabilidad.serializers import (
-    ConMovimientoInformePersonalizadoAuxiliarContactoSerializer,
-    ConMovimientoInformePersonalizadoAuxiliarCuentaSerializer,
-    ConMovimientoInformePersonalizadoAuxiliarGeneralSerializer,
-    ConMovimientoInformePersonalizadoBalanceContactoSerializer,
-    ConMovimientoInformePersonalizadoBalanceSerializer,
-    ConMovimientoInformePersonalizadoBalanceTotalesSerializer,
-    ConMovimientoInformePersonalizadoBasesSerializer,
-    ConMovimientoInformePersonalizadoBasesTotalesSerializer,
-    ConMovimientoInformePersonalizadoCertificadoSerializer,
-    ConMovimientoInformePersonalizadoCertificadoTotalesSerializer,
-    ConMovimientoInformePersonalizadoEstadoSerializer,
-    ConMovimientoInformePersonalizadoEstadoTotalesSerializer,
+    ConMovimientoInformeEspecialAuxiliarContactoSerializer,
+    ConMovimientoInformeEspecialAuxiliarCuentaSerializer,
+    ConMovimientoInformeEspecialAuxiliarGeneralSerializer,
+    ConMovimientoInformeEspecialBalanceContactoSerializer,
+    ConMovimientoInformeEspecialBalanceSerializer,
+    ConMovimientoInformeEspecialBalanceTotalesSerializer,
+    ConMovimientoInformeEspecialBasesSerializer,
+    ConMovimientoInformeEspecialBasesTotalesSerializer,
+    ConMovimientoInformeEspecialCertificadoSerializer,
+    ConMovimientoInformeEspecialCertificadoTotalesSerializer,
+    ConMovimientoInformeEspecialEstadoSerializer,
+    ConMovimientoInformeEspecialEstadoTotalesSerializer,
 )
 from contabilidad.servicios import balance, balance_excel, estado_resultados
 from contabilidad.servicios.tablero import anio_anterior
@@ -49,8 +49,8 @@ INFORMES = {
         'movimiento': None,
         'detalle': balance.SIN_DETALLE,
         'filas': None,
-        'serializer': ConMovimientoInformePersonalizadoBalanceSerializer,
-        'totales': ConMovimientoInformePersonalizadoBalanceTotalesSerializer,
+        'serializer': ConMovimientoInformeEspecialBalanceSerializer,
+        'totales': ConMovimientoInformeEspecialBalanceTotalesSerializer,
         'excel': balance_excel.BALANCE,
     },
     'balance_prueba_contacto': {
@@ -58,8 +58,8 @@ INFORMES = {
         'movimiento': None,
         'detalle': balance.POR_TERCERO,
         'filas': None,
-        'serializer': ConMovimientoInformePersonalizadoBalanceContactoSerializer,
-        'totales': ConMovimientoInformePersonalizadoBalanceTotalesSerializer,
+        'serializer': ConMovimientoInformeEspecialBalanceContactoSerializer,
+        'totales': ConMovimientoInformeEspecialBalanceTotalesSerializer,
         'excel': balance_excel.BALANCE_CONTACTO,
     },
     'auxiliar_cuenta': {
@@ -67,8 +67,8 @@ INFORMES = {
         'movimiento': balance.movimientos,
         'detalle': balance.POR_MOVIMIENTO,
         'filas': None,
-        'serializer': ConMovimientoInformePersonalizadoAuxiliarCuentaSerializer,
-        'totales': ConMovimientoInformePersonalizadoBalanceTotalesSerializer,
+        'serializer': ConMovimientoInformeEspecialAuxiliarCuentaSerializer,
+        'totales': ConMovimientoInformeEspecialBalanceTotalesSerializer,
         'excel': balance_excel.AUXILIAR_CUENTA,
     },
     'auxiliar_contacto': {
@@ -76,8 +76,8 @@ INFORMES = {
         'movimiento': balance.movimientos,
         'detalle': balance.POR_TERCERO_ANIDADO,
         'filas': None,
-        'serializer': ConMovimientoInformePersonalizadoAuxiliarContactoSerializer,
-        'totales': ConMovimientoInformePersonalizadoBalanceTotalesSerializer,
+        'serializer': ConMovimientoInformeEspecialAuxiliarContactoSerializer,
+        'totales': ConMovimientoInformeEspecialBalanceTotalesSerializer,
         'excel': balance_excel.AUXILIAR_CONTACTO,
     },
     'auxiliar_general': {
@@ -85,8 +85,8 @@ INFORMES = {
         'movimiento': balance.movimientos,
         'detalle': balance.POR_TERCERO_Y_MOVIMIENTO,
         'filas': None,
-        'serializer': ConMovimientoInformePersonalizadoAuxiliarGeneralSerializer,
-        'totales': ConMovimientoInformePersonalizadoBalanceTotalesSerializer,
+        'serializer': ConMovimientoInformeEspecialAuxiliarGeneralSerializer,
+        'totales': ConMovimientoInformeEspecialBalanceTotalesSerializer,
         'excel': balance_excel.AUXILIAR_GENERAL,
     },
     'bases': {
@@ -94,8 +94,8 @@ INFORMES = {
         'movimiento': None,
         'detalle': None,
         'filas': balance.filas_movimiento,
-        'serializer': ConMovimientoInformePersonalizadoBasesSerializer,
-        'totales': ConMovimientoInformePersonalizadoBasesTotalesSerializer,
+        'serializer': ConMovimientoInformeEspecialBasesSerializer,
+        'totales': ConMovimientoInformeEspecialBasesTotalesSerializer,
         'excel': balance_excel.BASES,
     },
     'certificado_retencion': {
@@ -103,8 +103,8 @@ INFORMES = {
         'movimiento': None,
         'detalle': None,
         'filas': balance.filas_certificado,
-        'serializer': ConMovimientoInformePersonalizadoCertificadoSerializer,
-        'totales': ConMovimientoInformePersonalizadoCertificadoTotalesSerializer,
+        'serializer': ConMovimientoInformeEspecialCertificadoSerializer,
+        'totales': ConMovimientoInformeEspecialCertificadoTotalesSerializer,
         'excel': balance_excel.CERTIFICADO_RETENCION,
         # Único informe con salida en PDF: el certificado es un documento que se
         # entrega al tercero, no una tabla que se consulta. Los demás informes no
@@ -116,8 +116,8 @@ INFORMES = {
         'movimiento': None,
         'detalle': None,
         'filas': balance.filas_estado,
-        'serializer': ConMovimientoInformePersonalizadoEstadoSerializer,
-        'totales': ConMovimientoInformePersonalizadoEstadoTotalesSerializer,
+        'serializer': ConMovimientoInformeEspecialEstadoSerializer,
+        'totales': ConMovimientoInformeEspecialEstadoTotalesSerializer,
         'excel': balance_excel.ESTADO_RESULTADOS,
     },
     # Solo Excel: no son filas para paginar sino el estado presentado, con
@@ -128,7 +128,7 @@ INFORMES = {
         'movimiento': None,
         'detalle': None,
         'filas': None,
-        'serializer': ConMovimientoInformePersonalizadoEstadoSerializer,
+        'serializer': ConMovimientoInformeEspecialEstadoSerializer,
         'totales': None,
         'excel': None,
         'formal': True,
@@ -138,8 +138,8 @@ INFORMES = {
         'movimiento': None,
         'detalle': None,
         'filas': balance.filas_estado,
-        'serializer': ConMovimientoInformePersonalizadoEstadoSerializer,
-        'totales': ConMovimientoInformePersonalizadoEstadoTotalesSerializer,
+        'serializer': ConMovimientoInformeEspecialEstadoSerializer,
+        'totales': ConMovimientoInformeEspecialEstadoTotalesSerializer,
         'excel': balance_excel.ESTADO_SITUACION_FINANCIERA,
     },
 }
@@ -169,7 +169,7 @@ _InformeRequest = inline_serializer(
 
 
 @extend_schema(tags=['Informe: Contabilidad'])
-class ConMovimientoInformePersonalizadoViewSet(FiltrosDinamicosMixin, viewsets.GenericViewSet):
+class ConMovimientoInformeEspecialViewSet(FiltrosDinamicosMixin, viewsets.GenericViewSet):
     """
     Punto único de informes agregados sobre ConMovimiento.
 
@@ -412,7 +412,7 @@ class ConMovimientoInformePersonalizadoViewSet(FiltrosDinamicosMixin, viewsets.G
             'iguala al de créditos y los dos saldos dan cero.'
         ),
         request=_InformeRequest,
-        responses=ConMovimientoInformePersonalizadoBalanceTotalesSerializer,
+        responses=ConMovimientoInformeEspecialBalanceTotalesSerializer,
     )
     @action(detail=False, methods=['post'])
     def totales(self, request):
