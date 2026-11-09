@@ -17,7 +17,8 @@ from utilidades.mixins import ExportarExcelMixin, FiltrosDinamicosMixin
 # tabla en el Excel (`ExportarExcelMixin`).
 #
 # Los informes agregados de contabilidad (balances, auxiliares, estados) siguen en
-# `ConMovimientoInformeEspecialViewSet`: tienen jerarquía y su propio Excel.
+# `ConMovimientoInformeBaseViewSet`: tienen jerarquía y su propio Excel. Los
+# presentados (estado de resultados formal) en `ConMovimientoInformeEspecialViewSet`.
 INFORMES = {
     # Todos los movimientos; el rango y lo demás van como filtros dinámicos.
     'movimiento': {

@@ -16,6 +16,7 @@ from contabilidad.views import (
     ConInconsistenciaTipoViewSet,
     ConInconsistenciaViewSet,
     ConMetodoDepreciacionViewSet,
+    ConMovimientoInformeBaseViewSet,
     ConMovimientoInformeEspecialViewSet,
     ConMovimientoInformeViewSet,
     ConMovimientoViewSet,
@@ -41,6 +42,9 @@ router.register(r'inconsistencia-tipo', ConInconsistenciaTipoViewSet, basename='
 router.register(r'metodo-depreciacion', ConMetodoDepreciacionViewSet, basename='metodo-depreciacion')
 router.register(r'movimiento', ConMovimientoViewSet, basename='movimiento')
 router.register(r'movimiento-informe', ConMovimientoInformeViewSet, basename='movimiento-informe')
+router.register(
+    r'movimiento-informe-base', ConMovimientoInformeBaseViewSet, basename='movimiento-informe-base',
+)
 router.register(
     r'movimiento-informe-especial', ConMovimientoInformeEspecialViewSet, basename='movimiento-informe-especial',
 )

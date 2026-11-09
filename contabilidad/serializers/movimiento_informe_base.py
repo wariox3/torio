@@ -4,7 +4,7 @@ from contabilidad.servicios import balance
 from contabilidad.servicios.balance import CAMPOS_FILTRABLES
 
 
-class ConMovimientoInformeEspecialBalanceSerializer(serializers.Serializer):
+class ConMovimientoInformeBaseBalanceSerializer(serializers.Serializer):
     """
     Columnas del balance de prueba (solo lectura).
 
@@ -34,7 +34,7 @@ class ConMovimientoInformeEspecialBalanceSerializer(serializers.Serializer):
     saldo_final = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
 
 
-class ConMovimientoInformeEspecialBalanceTotalesSerializer(serializers.Serializer):
+class ConMovimientoInformeBaseBalanceTotalesSerializer(serializers.Serializer):
     """
     Totales del balance, servidos por la acción `totales/`.
 
@@ -53,7 +53,7 @@ class ConMovimientoInformeEspecialBalanceTotalesSerializer(serializers.Serialize
     saldo_final = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
 
 
-class ConMovimientoInformeEspecialBalanceContactoSerializer(ConMovimientoInformeEspecialBalanceSerializer):
+class ConMovimientoInformeBaseBalanceContactoSerializer(ConMovimientoInformeBaseBalanceSerializer):
     """
     Balance de prueba abierto por tercero.
 
@@ -67,7 +67,7 @@ class ConMovimientoInformeEspecialBalanceContactoSerializer(ConMovimientoInforme
     contacto = serializers.CharField(read_only=True, allow_null=True)
 
 
-class ConMovimientoInformeEspecialAuxiliarCuentaSerializer(ConMovimientoInformeEspecialBalanceSerializer):
+class ConMovimientoInformeBaseAuxiliarCuentaSerializer(ConMovimientoInformeBaseBalanceSerializer):
     """
     Auxiliar por cuenta: el balance con los movimientos del rango bajo cada
     auxiliar. `movimiento_id` no tiene columna en el Excel — está para que el
@@ -77,13 +77,13 @@ class ConMovimientoInformeEspecialAuxiliarCuentaSerializer(ConMovimientoInformeE
     movimiento_id = serializers.IntegerField(read_only=True, allow_null=True)
 
 
-class ConMovimientoInformeEspecialAuxiliarContactoSerializer(ConMovimientoInformeEspecialBalanceContactoSerializer):
+class ConMovimientoInformeBaseAuxiliarContactoSerializer(ConMovimientoInformeBaseBalanceContactoSerializer):
     """Auxiliar por contacto: cada tercero seguido de sus movimientos del rango."""
 
     movimiento_id = serializers.IntegerField(read_only=True, allow_null=True)
 
 
-class ConMovimientoInformeEspecialAuxiliarGeneralSerializer(ConMovimientoInformeEspecialAuxiliarContactoSerializer):
+class ConMovimientoInformeBaseAuxiliarGeneralSerializer(ConMovimientoInformeBaseAuxiliarContactoSerializer):
     """
     Auxiliar general: los terceros de la cuenta y después todos sus movimientos.
 
@@ -96,7 +96,7 @@ class ConMovimientoInformeEspecialAuxiliarGeneralSerializer(ConMovimientoInforme
     fecha = serializers.DateField(read_only=True, allow_null=True)
 
 
-class ConMovimientoInformeEspecialBasesSerializer(serializers.Serializer):
+class ConMovimientoInformeBaseBasesSerializer(serializers.Serializer):
     """
     Informe de bases: un movimiento por fila, sin jerarquía.
 
@@ -124,7 +124,7 @@ class ConMovimientoInformeEspecialBasesSerializer(serializers.Serializer):
     base = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
 
 
-class ConMovimientoInformeEspecialBasesTotalesSerializer(serializers.Serializer):
+class ConMovimientoInformeBaseBasesTotalesSerializer(serializers.Serializer):
     """Totales del informe de bases: todas sus filas están al mismo nivel."""
 
     tipo_fila = None
@@ -135,7 +135,7 @@ class ConMovimientoInformeEspecialBasesTotalesSerializer(serializers.Serializer)
     base = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
 
 
-class ConMovimientoInformeEspecialCertificadoSerializer(serializers.Serializer):
+class ConMovimientoInformeBaseCertificadoSerializer(serializers.Serializer):
     """
     Certificado de retención: lo retenido a cada tercero en cada cuenta.
 
@@ -158,7 +158,7 @@ class ConMovimientoInformeEspecialCertificadoSerializer(serializers.Serializer):
     retenido = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
 
 
-class ConMovimientoInformeEspecialCertificadoTotalesSerializer(serializers.Serializer):
+class ConMovimientoInformeBaseCertificadoTotalesSerializer(serializers.Serializer):
     """Totales del certificado: base sujeta a retención y retenido."""
 
     tipo_fila = None
@@ -168,7 +168,7 @@ class ConMovimientoInformeEspecialCertificadoTotalesSerializer(serializers.Seria
     retenido = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
 
 
-class ConMovimientoInformeEspecialEstadoSerializer(serializers.Serializer):
+class ConMovimientoInformeBaseEstadoSerializer(serializers.Serializer):
     """
     Estado de resultados y estado de situación financiera: una fila por cuenta.
 
@@ -188,7 +188,7 @@ class ConMovimientoInformeEspecialEstadoSerializer(serializers.Serializer):
     saldo = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
 
 
-class ConMovimientoInformeEspecialEstadoTotalesSerializer(serializers.Serializer):
+class ConMovimientoInformeBaseEstadoTotalesSerializer(serializers.Serializer):
     """Total de los estados: la suma de los saldos del periodo."""
 
     tipo_fila = None

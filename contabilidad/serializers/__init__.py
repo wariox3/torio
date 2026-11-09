@@ -35,19 +35,19 @@ from .movimiento_informe import (
     ConMovimientoInformeExportarSerializer,
     ConMovimientoInformeSerializer,
 )
-from .movimiento_informe_especial import (
-    ConMovimientoInformeEspecialAuxiliarContactoSerializer,
-    ConMovimientoInformeEspecialAuxiliarCuentaSerializer,
-    ConMovimientoInformeEspecialAuxiliarGeneralSerializer,
-    ConMovimientoInformeEspecialBalanceContactoSerializer,
-    ConMovimientoInformeEspecialBalanceSerializer,
-    ConMovimientoInformeEspecialBalanceTotalesSerializer,
-    ConMovimientoInformeEspecialBasesSerializer,
-    ConMovimientoInformeEspecialBasesTotalesSerializer,
-    ConMovimientoInformeEspecialCertificadoSerializer,
-    ConMovimientoInformeEspecialCertificadoTotalesSerializer,
-    ConMovimientoInformeEspecialEstadoSerializer,
-    ConMovimientoInformeEspecialEstadoTotalesSerializer,
+from .movimiento_informe_base import (
+    ConMovimientoInformeBaseAuxiliarContactoSerializer,
+    ConMovimientoInformeBaseAuxiliarCuentaSerializer,
+    ConMovimientoInformeBaseAuxiliarGeneralSerializer,
+    ConMovimientoInformeBaseBalanceContactoSerializer,
+    ConMovimientoInformeBaseBalanceSerializer,
+    ConMovimientoInformeBaseBalanceTotalesSerializer,
+    ConMovimientoInformeBaseBasesSerializer,
+    ConMovimientoInformeBaseBasesTotalesSerializer,
+    ConMovimientoInformeBaseCertificadoSerializer,
+    ConMovimientoInformeBaseCertificadoTotalesSerializer,
+    ConMovimientoInformeBaseEstadoSerializer,
+    ConMovimientoInformeBaseEstadoTotalesSerializer,
 )
 from .movimiento_seleccionar import ConMovimientoSeleccionarSerializer
 from .periodo import ConPeriodoSerializer

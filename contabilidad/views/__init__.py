@@ -15,6 +15,7 @@ from .inconsistencia_tipo import ConInconsistenciaTipoViewSet
 from .metodo_depreciacion import ConMetodoDepreciacionViewSet
 from .movimiento import ConMovimientoViewSet
 from .movimiento_informe import ConMovimientoInformeViewSet
+from .movimiento_informe_base import ConMovimientoInformeBaseViewSet
 from .movimiento_informe_especial import ConMovimientoInformeEspecialViewSet
 from .periodo import ConPeriodoViewSet
 from .tablero import ConTableroViewSet

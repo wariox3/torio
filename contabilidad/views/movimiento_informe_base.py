@@ -9,21 +9,20 @@ from rest_framework.response import Response
 from contabilidad.formatos import FormatoCertificadoRetencion
 from contabilidad.models import ConMovimiento
 from contabilidad.serializers import (
-    ConMovimientoInformeEspecialAuxiliarContactoSerializer,
-    ConMovimientoInformeEspecialAuxiliarCuentaSerializer,
-    ConMovimientoInformeEspecialAuxiliarGeneralSerializer,
-    ConMovimientoInformeEspecialBalanceContactoSerializer,
-    ConMovimientoInformeEspecialBalanceSerializer,
-    ConMovimientoInformeEspecialBalanceTotalesSerializer,
-    ConMovimientoInformeEspecialBasesSerializer,
-    ConMovimientoInformeEspecialBasesTotalesSerializer,
-    ConMovimientoInformeEspecialCertificadoSerializer,
-    ConMovimientoInformeEspecialCertificadoTotalesSerializer,
-    ConMovimientoInformeEspecialEstadoSerializer,
-    ConMovimientoInformeEspecialEstadoTotalesSerializer,
+    ConMovimientoInformeBaseAuxiliarContactoSerializer,
+    ConMovimientoInformeBaseAuxiliarCuentaSerializer,
+    ConMovimientoInformeBaseAuxiliarGeneralSerializer,
+    ConMovimientoInformeBaseBalanceContactoSerializer,
+    ConMovimientoInformeBaseBalanceSerializer,
+    ConMovimientoInformeBaseBalanceTotalesSerializer,
+    ConMovimientoInformeBaseBasesSerializer,
+    ConMovimientoInformeBaseBasesTotalesSerializer,
+    ConMovimientoInformeBaseCertificadoSerializer,
+    ConMovimientoInformeBaseCertificadoTotalesSerializer,
+    ConMovimientoInformeBaseEstadoSerializer,
+    ConMovimientoInformeBaseEstadoTotalesSerializer,
 )
-from contabilidad.servicios import balance, balance_excel, estado_resultados
-from contabilidad.servicios.tablero import anio_anterior
+from contabilidad.servicios import balance, balance_excel
 from general.models import GenConfiguracion
 from utilidades.filtros import aplicar_filtros
 from utilidades.mixins import FiltrosDinamicosMixin
@@ -49,8 +48,8 @@ INFORMES = {
         'movimiento': None,
         'detalle': balance.SIN_DETALLE,
         'filas': None,
-        'serializer': ConMovimientoInformeEspecialBalanceSerializer,
-        'totales': ConMovimientoInformeEspecialBalanceTotalesSerializer,
+        'serializer': ConMovimientoInformeBaseBalanceSerializer,
+        'totales': ConMovimientoInformeBaseBalanceTotalesSerializer,
         'excel': balance_excel.BALANCE,
     },
     'balance_prueba_contacto': {
@@ -58,8 +57,8 @@ INFORMES = {
         'movimiento': None,
         'detalle': balance.POR_TERCERO,
         'filas': None,
-        'serializer': ConMovimientoInformeEspecialBalanceContactoSerializer,
-        'totales': ConMovimientoInformeEspecialBalanceTotalesSerializer,
+        'serializer': ConMovimientoInformeBaseBalanceContactoSerializer,
+        'totales': ConMovimientoInformeBaseBalanceTotalesSerializer,
         'excel': balance_excel.BALANCE_CONTACTO,
     },
     'auxiliar_cuenta': {
@@ -67,8 +66,8 @@ INFORMES = {
         'movimiento': balance.movimientos,
         'detalle': balance.POR_MOVIMIENTO,
         'filas': None,
-        'serializer': ConMovimientoInformeEspecialAuxiliarCuentaSerializer,
-        'totales': ConMovimientoInformeEspecialBalanceTotalesSerializer,
+        'serializer': ConMovimientoInformeBaseAuxiliarCuentaSerializer,
+        'totales': ConMovimientoInformeBaseBalanceTotalesSerializer,
         'excel': balance_excel.AUXILIAR_CUENTA,
     },
     'auxiliar_contacto': {
@@ -76,8 +75,8 @@ INFORMES = {
         'movimiento': balance.movimientos,
         'detalle': balance.POR_TERCERO_ANIDADO,
         'filas': None,
-        'serializer': ConMovimientoInformeEspecialAuxiliarContactoSerializer,
-        'totales': ConMovimientoInformeEspecialBalanceTotalesSerializer,
+        'serializer': ConMovimientoInformeBaseAuxiliarContactoSerializer,
+        'totales': ConMovimientoInformeBaseBalanceTotalesSerializer,
         'excel': balance_excel.AUXILIAR_CONTACTO,
     },
     'auxiliar_general': {
@@ -85,8 +84,8 @@ INFORMES = {
         'movimiento': balance.movimientos,
         'detalle': balance.POR_TERCERO_Y_MOVIMIENTO,
         'filas': None,
-        'serializer': ConMovimientoInformeEspecialAuxiliarGeneralSerializer,
-        'totales': ConMovimientoInformeEspecialBalanceTotalesSerializer,
+        'serializer': ConMovimientoInformeBaseAuxiliarGeneralSerializer,
+        'totales': ConMovimientoInformeBaseBalanceTotalesSerializer,
         'excel': balance_excel.AUXILIAR_GENERAL,
     },
     'bases': {
@@ -94,8 +93,8 @@ INFORMES = {
         'movimiento': None,
         'detalle': None,
         'filas': balance.filas_movimiento,
-        'serializer': ConMovimientoInformeEspecialBasesSerializer,
-        'totales': ConMovimientoInformeEspecialBasesTotalesSerializer,
+        'serializer': ConMovimientoInformeBaseBasesSerializer,
+        'totales': ConMovimientoInformeBaseBasesTotalesSerializer,
         'excel': balance_excel.BASES,
     },
     'certificado_retencion': {
@@ -103,8 +102,8 @@ INFORMES = {
         'movimiento': None,
         'detalle': None,
         'filas': balance.filas_certificado,
-        'serializer': ConMovimientoInformeEspecialCertificadoSerializer,
-        'totales': ConMovimientoInformeEspecialCertificadoTotalesSerializer,
+        'serializer': ConMovimientoInformeBaseCertificadoSerializer,
+        'totales': ConMovimientoInformeBaseCertificadoTotalesSerializer,
         'excel': balance_excel.CERTIFICADO_RETENCION,
         # Único informe con salida en PDF: el certificado es un documento que se
         # entrega al tercero, no una tabla que se consulta. Los demás informes no
@@ -116,30 +115,17 @@ INFORMES = {
         'movimiento': None,
         'detalle': None,
         'filas': balance.filas_estado,
-        'serializer': ConMovimientoInformeEspecialEstadoSerializer,
-        'totales': ConMovimientoInformeEspecialEstadoTotalesSerializer,
+        'serializer': ConMovimientoInformeBaseEstadoSerializer,
+        'totales': ConMovimientoInformeBaseEstadoTotalesSerializer,
         'excel': balance_excel.ESTADO_RESULTADOS,
-    },
-    # Solo Excel: no son filas para paginar sino el estado presentado, con
-    # secciones, utilidades y el comparativo del año anterior. `lista/` y
-    # `totales/` lo rechazan; el `serializer` está por la whitelist de filtros.
-    'estado_resultados_formal': {
-        'agrupar': estado_resultados.agrupar,
-        'movimiento': None,
-        'detalle': None,
-        'filas': None,
-        'serializer': ConMovimientoInformeEspecialEstadoSerializer,
-        'totales': None,
-        'excel': None,
-        'formal': True,
     },
     'estado_situacion_financiera': {
         'agrupar': balance.estado_situacion_financiera,
         'movimiento': None,
         'detalle': None,
         'filas': balance.filas_estado,
-        'serializer': ConMovimientoInformeEspecialEstadoSerializer,
-        'totales': ConMovimientoInformeEspecialEstadoTotalesSerializer,
+        'serializer': ConMovimientoInformeBaseEstadoSerializer,
+        'totales': ConMovimientoInformeBaseEstadoTotalesSerializer,
         'excel': balance_excel.ESTADO_SITUACION_FINANCIERA,
     },
 }
@@ -168,8 +154,67 @@ _InformeRequest = inline_serializer(
 )
 
 
+class InformeParametrosMixin:
+    """
+    Lectura de los parámetros que comparten los informes de contabilidad
+    (`movimiento-informe-base` y `movimiento-informe-especial`): cada valor se
+    busca en el body y, si no está, en el query string; el rango es obligatorio
+    y los informes salen por código de cuenta, sin `ordenamientos`.
+    """
+
+    def _parametro(self, clave):
+        request = getattr(self, 'request', None)
+        if request is None:
+            return None
+        try:
+            valor = request.data.get(clave)
+        except (ParseError, UnsupportedMediaType, AttributeError):  # body mal formado o que no es un objeto
+            valor = None
+        # Comparar contra None y no por verdad: `solo_con_saldo: false` en el body
+        # es un valor, no una ausencia, y con `or` se perdería.
+        if valor is None:
+            valor = request.query_params.get(clave)
+        return valor
+
+    def _fecha(self, clave):
+        valor = self._parametro(clave)
+        if not valor:
+            raise ValidationError({clave: 'Este campo es requerido.'})
+        try:
+            return serializers.DateField().to_internal_value(valor)
+        except ValidationError as error:
+            raise ValidationError({clave: error.detail})
+
+    def _rango(self):
+        if getattr(self, 'swagger_fake_view', False):
+            hoy = timezone.localdate()
+            return hoy, hoy
+
+        desde = self._fecha('fecha_desde')
+        hasta = self._fecha('fecha_hasta')
+        if desde > hasta:
+            raise ValidationError({'fecha_desde': 'No puede ser posterior a `fecha_hasta`.'})
+        return desde, hasta
+
+    def _rechazar_ordenamientos(self, request):
+        try:
+            ordenamientos = request.data.get('ordenamientos')
+        except (ParseError, UnsupportedMediaType, AttributeError):  # body mal formado o que no es un objeto
+            ordenamientos = None
+        if ordenamientos:
+            raise ValidationError({
+                'ordenamientos': 'Este informe no acepta ordenamientos; sale por código de cuenta.',
+            })
+
+    @staticmethod
+    def _empresa():
+        """Razón social para el encabezado del Excel; vacía si el tenant no la configuró."""
+        configuracion = GenConfiguracion.objects.first()
+        return configuracion.gen_empresa_razon_social if configuracion else ''
+
+
 @extend_schema(tags=['Informe: Contabilidad'])
-class ConMovimientoInformeEspecialViewSet(FiltrosDinamicosMixin, viewsets.GenericViewSet):
+class ConMovimientoInformeBaseViewSet(InformeParametrosMixin, FiltrosDinamicosMixin, viewsets.GenericViewSet):
     """
     Punto único de informes agregados sobre ConMovimiento.
 
@@ -191,9 +236,8 @@ class ConMovimientoInformeEspecialViewSet(FiltrosDinamicosMixin, viewsets.Generi
         estado_resultados         las cuentas de resultado que movieron
         estado_situacion_financiera  lo mismo sin acotar la clase
 
-    Y uno es solo Excel: `estado_resultados_formal`, el estado presentado con
-    secciones, subtotales, utilidades y el mismo rango del año anterior
-    (`servicios.estado_resultados`). `lista/` y `totales/` lo rechazan.
+    Los informes presentados (el estado de resultados formal y los que vengan)
+    están en `ConMovimientoInformeEspecialViewSet`.
 
     El informe se elige con el parámetro `informe` (body o query string) y el
     corte con `fecha_desde` / `fecha_hasta`, ambos obligatorios.
@@ -238,40 +282,6 @@ class ConMovimientoInformeEspecialViewSet(FiltrosDinamicosMixin, viewsets.Generi
             )
         return INFORMES[clave]
 
-    def _parametro(self, clave):
-        request = getattr(self, 'request', None)
-        if request is None:
-            return None
-        try:
-            valor = request.data.get(clave)
-        except (ParseError, UnsupportedMediaType, AttributeError):  # body mal formado o que no es un objeto
-            valor = None
-        # Comparar contra None y no por verdad: `solo_con_saldo: false` en el body
-        # es un valor, no una ausencia, y con `or` se perdería.
-        if valor is None:
-            valor = request.query_params.get(clave)
-        return valor
-
-    def _fecha(self, clave):
-        valor = self._parametro(clave)
-        if not valor:
-            raise ValidationError({clave: 'Este campo es requerido.'})
-        try:
-            return serializers.DateField().to_internal_value(valor)
-        except ValidationError as error:
-            raise ValidationError({clave: error.detail})
-
-    def _rango(self):
-        if getattr(self, 'swagger_fake_view', False):
-            hoy = timezone.localdate()
-            return hoy, hoy
-
-        desde = self._fecha('fecha_desde')
-        hasta = self._fecha('fecha_hasta')
-        if desde > hasta:
-            raise ValidationError({'fecha_desde': 'No puede ser posterior a `fecha_hasta`.'})
-        return desde, hasta
-
     def _solo_con_saldo(self):
         valor = self._parametro('solo_con_saldo')
         if valor is None or valor == '':
@@ -280,16 +290,6 @@ class ConMovimientoInformeEspecialViewSet(FiltrosDinamicosMixin, viewsets.Generi
             return serializers.BooleanField().to_internal_value(valor)
         except ValidationError as error:
             raise ValidationError({'solo_con_saldo': error.detail})
-
-    def _rechazar_ordenamientos(self, request):
-        try:
-            ordenamientos = request.data.get('ordenamientos')
-        except (ParseError, UnsupportedMediaType, AttributeError):  # body mal formado o que no es un objeto
-            ordenamientos = None
-        if ordenamientos:
-            raise ValidationError({
-                'ordenamientos': 'Este informe no acepta ordenamientos; sale por código de cuenta.',
-            })
 
     def get_serializer_class(self):
         return self._informe()['serializer']
@@ -306,8 +306,6 @@ class ConMovimientoInformeEspecialViewSet(FiltrosDinamicosMixin, viewsets.Generi
         """
         self._rechazar_ordenamientos(request)
         informe = self._informe()
-        if informe.get('formal'):
-            raise ValidationError({'informe': 'Este informe solo tiene salida en Excel.'})
         filtros = request.data.get('filtros') or []
         campos_filtrables = self._config_lista('campos_filtrables', set())
 
@@ -345,29 +343,6 @@ class ConMovimientoInformeEspecialViewSet(FiltrosDinamicosMixin, viewsets.Generi
     )
     @action(detail=False, methods=['post'])
     def excel(self, request):
-        informe = self._informe()
-        if informe.get('formal'):
-            # Dos cortes con los mismos filtros: el periodo y el mismo rango un
-            # año antes, que es contra lo que se compara.
-            self._rechazar_ordenamientos(request)
-            filtros = request.data.get('filtros') or []
-            campos_filtrables = self._config_lista('campos_filtrables', set())
-            desde, hasta = self._rango()
-            desde_anterior, hasta_anterior = anio_anterior(desde), anio_anterior(hasta)
-            filas = estado_resultados.filas(
-                aplicar_filtros(self.get_queryset_lista(), filtros, campos_filtrables),
-                aplicar_filtros(informe['agrupar'](desde_anterior, hasta_anterior), filtros, campos_filtrables),
-            )
-            contenido, nombre = balance_excel.excel_estado_resultados(
-                filas, self._empresa(), desde, hasta, desde_anterior, hasta_anterior,
-            )
-            response = HttpResponse(
-                contenido,
-                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            )
-            response['Content-Disposition'] = f'attachment; filename="{nombre}"'
-            return response
-
         filas = self._filas(request)
         desde, hasta = self._rango()
         contenido, nombre = balance_excel.excel(
@@ -412,7 +387,7 @@ class ConMovimientoInformeEspecialViewSet(FiltrosDinamicosMixin, viewsets.Generi
             'iguala al de créditos y los dos saldos dan cero.'
         ),
         request=_InformeRequest,
-        responses=ConMovimientoInformeEspecialBalanceTotalesSerializer,
+        responses=ConMovimientoInformeBaseBalanceTotalesSerializer,
     )
     @action(detail=False, methods=['post'])
     def totales(self, request):
@@ -430,9 +405,3 @@ class ConMovimientoInformeEspecialViewSet(FiltrosDinamicosMixin, viewsets.Generi
             .select_related('gen_empresa_ciudad__estado')
             .first()
         )
-
-    @staticmethod
-    def _empresa():
-        """Razón social para el encabezado del Excel; vacía si el tenant no la configuró."""
-        configuracion = GenConfiguracion.objects.first()
-        return configuracion.gen_empresa_razon_social if configuracion else ''
