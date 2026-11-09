@@ -110,15 +110,6 @@ INFORMES = {
         # declaran `pdf` y la acción los rechaza.
         'pdf': FormatoCertificadoRetencion,
     },
-    'estado_resultados': {
-        'agrupar': balance.estado_resultados,
-        'movimiento': None,
-        'detalle': None,
-        'filas': balance.filas_estado,
-        'serializer': ConMovimientoInformeBaseEstadoSerializer,
-        'totales': ConMovimientoInformeBaseEstadoTotalesSerializer,
-        'excel': balance_excel.ESTADO_RESULTADOS,
-    },
     'estado_situacion_financiera': {
         'agrupar': balance.estado_situacion_financiera,
         'movimiento': None,
@@ -157,7 +148,7 @@ _InformeRequest = inline_serializer(
 class InformeParametrosMixin:
     """
     Lectura de los parámetros que comparten los informes de contabilidad
-    (`movimiento-informe-base` y `movimiento-informe-especial`): cada valor se
+    (`movimiento-informe-base` y `movimiento-informe-resultado`): cada valor se
     busca en el body y, si no está, en el query string; el rango es obligatorio
     y los informes salen por código de cuenta, sin `ordenamientos`.
     """
@@ -228,16 +219,15 @@ class ConMovimientoInformeBaseViewSet(InformeParametrosMixin, FiltrosDinamicosMi
         auxiliar_general          los TERCERO y después todos los MOVIMIENTO,
                                   con comprobante, número y fecha
 
-    Los otros cuatro son planos: no recorren el plan de cuentas sino lo que pasó
+    Los otros tres son planos: no recorren el plan de cuentas sino lo que pasó
     en el rango, así que no tienen jerarquía, subtotales ni `solo_con_saldo`.
 
         bases                     los asientos sobre cuentas que exigen base
         certificado_retencion     lo retenido a cada tercero, por cuenta
-        estado_resultados         las cuentas de resultado que movieron
-        estado_situacion_financiera  lo mismo sin acotar la clase
+        estado_situacion_financiera  las cuentas que movieron, sin acotar la clase
 
-    Los informes presentados (el estado de resultados formal y los que vengan)
-    están en `ConMovimientoInformeEspecialViewSet`.
+    El estado de resultados, plano y formal, está en
+    `ConMovimientoInformeResultadoViewSet`.
 
     El informe se elige con el parámetro `informe` (body o query string) y el
     corte con `fecha_desde` / `fecha_hasta`, ambos obligatorios.
@@ -257,7 +247,7 @@ class ConMovimientoInformeBaseViewSet(InformeParametrosMixin, FiltrosDinamicosMi
     Los asientos de cierre entran al saldo anterior pero no a las columnas del
     rango ni al detalle: cancelan las cuentas de resultado contra el ejercicio, y
     contarlos como movimiento del periodo duplicaría el resultado del año en la
-    columna de diciembre. Los cuatro informes planos sí los traen.
+    columna de diciembre. Los tres informes planos sí los traen.
 
     `solo_con_saldo` (por defecto `false`) omite las cuentas que quedan en ceros,
     con su detalle. En los informes planos no aplica y se ignora.

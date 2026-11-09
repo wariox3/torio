@@ -16,6 +16,6 @@ from .metodo_depreciacion import ConMetodoDepreciacionViewSet
 from .movimiento import ConMovimientoViewSet
 from .movimiento_informe import ConMovimientoInformeViewSet
 from .movimiento_informe_base import ConMovimientoInformeBaseViewSet
-from .movimiento_informe_especial import ConMovimientoInformeEspecialViewSet
+from .movimiento_informe_resultado import ConMovimientoInformeResultadoViewSet
 from .periodo import ConPeriodoViewSet
 from .tablero import ConTableroViewSet
