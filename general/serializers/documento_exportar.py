@@ -12,12 +12,18 @@ class GenDocumentoExportarSerializer(serializers.Serializer):
     cuando el front no manda `documento_clase_id` o la clase no tiene perfil
     propio en `EXPORTAR_POR_CLASE`.
 
+    `titulo` pone encima de la tabla el bloque de `ExportarExcelMixin`
+    (título, empresa y fecha de generación); cada perfil trae el suyo. Este Excel
+    no es plantilla del importar, que tiene sus propias columnas, así que la
+    tabla puede arrancar debajo del bloque.
+
     `select_related_excel` son los FK que recorre `campos_excel`; el ViewSet los
     agrega al queryset para no hacer una consulta por fila.
     """
 
     model = GenDocumento
     nombre_archivo = 'documentos'
+    titulo = 'Documentos'
     hoja = 'Datos'
 
     select_related_excel = ('documento_tipo', 'contacto', 'centro_costo', 'forma_pago')
@@ -74,18 +80,19 @@ _ENCABEZADO = (
 
 class GenDocumentoVentaExportarSerializer(GenDocumentoExportarSerializer):
     nombre_archivo = 'documentos_venta'
-    select_related_excel = ('documento_tipo', 'contacto', 'plazo_pago', 'asesor', 'sede')
+    titulo = 'Documentos de venta'
+    select_related_excel = ('documento_tipo', 'contacto', 'plazo_pago', 'metodo_pago', 'asesor', 'sede')
 
     campos_excel = _ENCABEZADO + (
         ('fecha_vence', 'Fecha vence'),
         ('contacto.numero_identificacion', 'Identificación'),
         ('contacto.nombre_corto', 'Contacto'),
         ('plazo_pago.nombre', 'Plazo pago'),
+        ('metodo_pago.nombre', 'Método pago'),
         ('asesor.nombre_corto', 'Asesor'),
         ('sede.nombre', 'Sede'),
         ('orden_compra', 'Orden compra'),
         ('remision', 'Remisión'),
-        ('comentario', 'Comentario'),
         ('subtotal', 'Subtotal'),
         ('descuento', 'Descuento'),
         ('total_bruto', 'Total bruto'),
@@ -103,6 +110,7 @@ class GenDocumentoVentaExportarSerializer(GenDocumentoExportarSerializer):
 
 class GenDocumentoCompraExportarSerializer(GenDocumentoExportarSerializer):
     nombre_archivo = 'documentos_compra'
+    titulo = 'Documentos de compra'
     select_related_excel = ('documento_tipo', 'contacto', 'plazo_pago', 'forma_pago', 'sede')
 
     campos_excel = _ENCABEZADO + (
@@ -135,6 +143,7 @@ class GenDocumentoPagoExportarSerializer(GenDocumentoExportarSerializer):
     """Pago (200) y egreso (400)."""
 
     nombre_archivo = 'documentos_pago'
+    titulo = 'Pagos y egresos'
     select_related_excel = ('documento_tipo', 'contacto', 'cuenta_banco')
 
     campos_excel = _ENCABEZADO + (
@@ -153,6 +162,7 @@ class GenDocumentoSaldoInicialExportarSerializer(GenDocumentoExportarSerializer)
     """Saldo inicial CXC (201) y CXP (401)."""
 
     nombre_archivo = 'documentos_saldo_inicial'
+    titulo = 'Saldos iniciales'
     select_related_excel = ('documento_tipo', 'contacto')
 
     campos_excel = _ENCABEZADO + (
@@ -170,6 +180,7 @@ class GenDocumentoInventarioExportarSerializer(GenDocumentoExportarSerializer):
     """Entrada (500), salida (501) y traslado (502)."""
 
     nombre_archivo = 'documentos_inventario'
+    titulo = 'Documentos de inventario'
     select_related_excel = ('documento_tipo', 'contacto', 'almacen')
 
     campos_excel = _ENCABEZADO + (
@@ -188,6 +199,7 @@ class GenDocumentoContableExportarSerializer(GenDocumentoExportarSerializer):
     """Asiento (601), depreciación (602) y cierre (603)."""
 
     nombre_archivo = 'documentos_contables'
+    titulo = 'Documentos contables'
     select_related_excel = ('documento_tipo', 'comprobante', 'contacto', 'centro_costo')
 
     campos_excel = _ENCABEZADO + (
@@ -208,6 +220,7 @@ class GenDocumentoNominaExportarSerializer(GenDocumentoExportarSerializer):
     """Nómina (701)."""
 
     nombre_archivo = 'documentos_nomina'
+    titulo = 'Nóminas'
     select_related_excel = ('documento_tipo', 'contacto')
 
     campos_excel = _ENCABEZADO + (
@@ -232,6 +245,7 @@ class GenDocumentoNominaElectronicaExportarSerializer(GenDocumentoExportarSerial
     """Nómina electrónica (702)."""
 
     nombre_archivo = 'documentos_nomina_electronica'
+    titulo = 'Nóminas electrónicas'
     select_related_excel = ('documento_tipo', 'contacto')
 
     campos_excel = _ENCABEZADO + (
