@@ -23,6 +23,9 @@ class GenDocumentoDetalleInformeSerializer(serializers.ModelSerializer):
         'documento__fecha',
         'documento__documento_tipo_id',
         'documento__contacto_id',
+        'documento__contacto__numero_identificacion',
+        'documento__contacto__nombre_corto',
+        'documento__fecha_desde',
     }
     select_related_lista = (
         'documento',
@@ -133,6 +136,10 @@ class GenDocumentoDetalleNominaInformeSerializer(serializers.ModelSerializer):
         'documento__fecha',
         'documento__fecha_hasta',
         'documento__contacto_id',
+        'documento__contacto__numero_identificacion',
+        'documento__contacto__nombre_corto',
+        'documento__numero',
+        'documento__fecha_desde',
         'documento__contrato_id',
         'documento__estado_aprobado',
         'documento__programacion_detalle__programacion_id',
