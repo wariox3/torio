@@ -29,6 +29,7 @@ class ConMovimientoExportarSerializer(serializers.Serializer):
         ('detalle', 'Detalle'),
         ('centro_costo.nombre', 'Centro de costo'),
         ('contacto.nombre_corto', 'Tercero'),
+        ('saldo_inicial', 'Saldo inicial'),
     )
 
     @staticmethod
