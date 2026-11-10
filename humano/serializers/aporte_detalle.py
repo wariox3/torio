@@ -5,7 +5,11 @@ from humano.models import HumAporteDetalle
 
 class HumAporteDetalleSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'aporte_contrato_id', 'aporte_contrato__aporte_id'}
+    campos_filtrables = {
+        'id', 'aporte_contrato_id', 'aporte_contrato__aporte_id',
+        'aporte_contrato__contrato__contacto__numero_identificacion',
+        'aporte_contrato__contrato__contacto__nombre_corto',
+    }
     select_related_lista = ('aporte_contrato', 'aporte_contrato__contrato__contacto')
     ordenamiento_default_lista = ('-id',)
 

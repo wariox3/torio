@@ -171,6 +171,8 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'hora',
             # Porcentaje del concepto (recargo, aporte); no es `porcentaje_descuento`.
             'porcentaje',
+            # Cómo opera el concepto: 1 suma, -1 resta (lo copia la liquidación).
+            'operacion',
             'devengado',
             'deduccion',
             'base_cotizacion',
@@ -214,6 +216,7 @@ class GenDocumentoDetalleSerializer(serializers.ModelSerializer):
             'credito_id',
             'hora',
             'porcentaje',
+            'operacion',
             'devengado',
             'deduccion',
             'base_cotizacion',
