@@ -21,6 +21,7 @@ from humano.servicios import (
     cargar_contratos_aporte,
     desaprobar_aporte,
     desgenerar_aporte,
+    eliminar_aporte,
     generar_aporte,
     generar_plano,
     recalcular_entidades,
@@ -77,6 +78,15 @@ class HumAporteViewSet(
     @extend_schema(parameters=_LIST_PARAMS)
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        # Los contratos cargados protegen al aporte (`on_delete=PROTECT`): el
+        # servicio los borra antes, o dice por qué no se puede.
+        try:
+            eliminar_aporte(self.get_object())
+        except AporteError as e:
+            return Response({'detail': e.detail}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(parameters=_SELECCIONAR_PARAMS, responses=HumAporteSeleccionarSerializer(many=True))
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)

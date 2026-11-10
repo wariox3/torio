@@ -226,6 +226,23 @@ def eliminar_contrato_aporte(aporte_contrato):
         _contar_contratos(aporte)
 
 
+def eliminar_aporte(aporte):
+    """
+    Elimina el aporte con los contratos que tenga cargados. Solo si no está
+    generado ni aprobado: generado tiene detalles y entidades, y aprobado tiene
+    los documentos de seguridad social, que se deshacen con desgenerar y
+    desaprobar.
+    """
+    with transaction.atomic():
+        aporte = _bloquear(aporte)
+        if aporte.estado_aprobado:
+            raise AporteError('El aporte está aprobado: desapruébelo antes de eliminarlo.')
+        if aporte.estado_generado:
+            raise AporteError('El aporte está generado: desgenérelo antes de eliminarlo.')
+        HumAporteContrato.objects.filter(aporte=aporte).delete()
+        aporte.delete()
+
+
 def _contar_contratos(aporte):
     cargados = HumAporteContrato.objects.filter(aporte=aporte)
     aporte.contratos = cargados.count()
