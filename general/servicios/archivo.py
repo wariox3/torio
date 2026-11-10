@@ -71,6 +71,19 @@ def validar_archivo(archivo) -> str:
     return declarado
 
 
+def contenido_archivo(archivo, tipo: str) -> bytes:
+    """
+    Los bytes que se guardan en B2. Un PDF va sin lo que traiga antes de
+    `%PDF-` (`validar_archivo` lo acepta en el primer KB): así lo guardado lo
+    reconoce cualquier herramienta, no solo los visores tolerantes.
+    """
+    archivo.seek(0)
+    contenido = archivo.read()
+    if tipo == mime.PDF:
+        contenido = mime.recortar_pdf(contenido)
+    return contenido
+
+
 def validar_objeto(modelo, objeto_id: str) -> None:
     """
     Lanza ValueError si `objeto_id` no existe en la tabla que describe `modelo`.
@@ -110,6 +123,7 @@ def subir_archivo(archivo, modelo, objeto_id: str, archivo_tipo_id: int = 1):
 
     tipo = validar_archivo(archivo)
     validar_objeto(modelo, objeto_id)
+    contenido = contenido_archivo(archivo, tipo)
 
     cliente_pk = connection.tenant.pk
     nuevo_uuid = uuid_lib.uuid4()
@@ -121,7 +135,7 @@ def subir_archivo(archivo, modelo, objeto_id: str, archivo_tipo_id: int = 1):
     backblaze.subir(
         bucket=settings.B2_BUCKET_PRIVADO,
         key=key,
-        body=archivo.read(),
+        body=contenido,
         content_type=tipo,
     )
 
@@ -134,7 +148,7 @@ def subir_archivo(archivo, modelo, objeto_id: str, archivo_tipo_id: int = 1):
             objeto_id=str(objeto_id),
             nombre=archivo.name,
             tipo=tipo,
-            tamano=archivo.size,
+            tamano=len(contenido),
             almacenamiento_id=key,
             uuid=nuevo_uuid,
             url=url,

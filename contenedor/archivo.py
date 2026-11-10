@@ -18,7 +18,7 @@ from django.apps import apps
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 
-from general.servicios.archivo import _extension, validar_archivo
+from general.servicios.archivo import _extension, contenido_archivo, validar_archivo
 from utilidades import backblaze
 
 logger = logging.getLogger(__name__)
@@ -58,17 +58,17 @@ def subir(archivo, modelo, objeto, archivo_tipo):
     from contenedor.models import CtnArchivo
 
     tipo = validar_archivo(archivo)
+    contenido = contenido_archivo(archivo, tipo)
 
     nuevo_uuid = uuid_lib.uuid4()
     extension = _extension(archivo.name)
     nombre_archivo = f'{nuevo_uuid}.{extension}' if extension else str(nuevo_uuid)
     key = f'{objeto.cliente_id}/master/{modelo.pk}/{nombre_archivo}'
 
-    archivo.seek(0)
     backblaze.subir(
         bucket=settings.B2_BUCKET_PRIVADO,
         key=key,
-        body=archivo.read(),
+        body=contenido,
         content_type=tipo,
     )
 
@@ -80,7 +80,7 @@ def subir(archivo, modelo, objeto, archivo_tipo):
             archivo_tipo=archivo_tipo,
             nombre=archivo.name,
             tipo=tipo,
-            tamano=archivo.size,
+            tamano=len(contenido),
             almacenamiento_id=key,
             uuid=nuevo_uuid,
         )

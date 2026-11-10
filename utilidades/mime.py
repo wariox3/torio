@@ -32,13 +32,19 @@ TXT = 'text/plain'
 CSV = 'text/csv'
 
 _FIRMAS = (
-    (b'%PDF-', PDF),
     (b'\xff\xd8\xff', JPEG),
     (b'\x89PNG\r\n\x1a\n', PNG),
 )
 
 _ZIP = b'PK\x03\x04'
 _OLE2 = b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'
+
+# La cabecera del PDF no tiene que ir en el byte cero: la especificación (ISO
+# 32000, notas de implementación de Acrobat) la acepta en el primer KB, y hay
+# escáneres y sistemas que dejan basura antes. Acrobat y los navegadores los
+# abren, así que acá también.
+_PDF = b'%PDF-'
+_ALCANCE_PDF = 1024
 
 
 def _es_webp(contenido: bytes) -> bool:
@@ -69,6 +75,16 @@ def _es_texto(contenido: bytes) -> bool:
     return True
 
 
+def recortar_pdf(contenido: bytes) -> bytes:
+    """
+    El PDF sin lo que traiga antes de su cabecera (p. ej. las cabeceras HTTP que
+    deja una descarga mal guardada). Si la cabecera no está en el primer KB, lo
+    devuelve igual.
+    """
+    inicio = contenido.find(_PDF, 0, _ALCANCE_PDF)
+    return contenido[inicio:] if inicio > 0 else contenido
+
+
 def tipos_posibles(contenido: bytes) -> frozenset[str]:
     """
     Tipos compatibles con el contenido. Vacío si no es ninguno conocido.
@@ -79,6 +95,8 @@ def tipos_posibles(contenido: bytes) -> frozenset[str]:
     for firma, tipo in _FIRMAS:
         if contenido.startswith(firma):
             return frozenset({tipo})
+    if _PDF in contenido[:_ALCANCE_PDF]:
+        return frozenset({PDF})
     if _es_webp(contenido):
         return frozenset({WEBP})
     if contenido.startswith(_ZIP):
