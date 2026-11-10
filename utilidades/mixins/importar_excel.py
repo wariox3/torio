@@ -1,6 +1,7 @@
 """
 Mixin para importar datos a un ViewSet desde un archivo .xlsx.
 """
+import datetime
 from io import BytesIO
 from zipfile import BadZipFile
 
@@ -196,6 +197,8 @@ class ImportarExcelMixin:
                     valor = self._valor_ejemplo(field, fila, campo)
                 celda = ws.cell(row=fila + 1, column=col, value=valor)
                 celda.font = _FUENTE_NORMAL
+                if isinstance(valor, datetime.date):
+                    celda.number_format = 'yyyy-mm-dd'
 
         buf = BytesIO()
         wb.save(buf)
@@ -240,8 +243,7 @@ class ImportarExcelMixin:
                 return None
             return f'{encabezado} debe ser Sí o No (recibido: "{valor}")'
         if isinstance(field, dj_models.DateField):
-            import datetime as _dt
-            if isinstance(valor, (_dt.date, _dt.datetime)):
+            if isinstance(valor, (datetime.date, datetime.datetime)):
                 return None
             return f'{encabezado} debe ser una fecha (recibido: "{valor}")'
         if isinstance(field, dj_models.DecimalField):
@@ -271,7 +273,9 @@ class ImportarExcelMixin:
         if isinstance(field, dj_models.BooleanField):
             return 'Sí' if fila == 1 else 'No'
         if isinstance(field, dj_models.DateField):
-            return '2026-01-15' if fila == 1 else '2026-12-31'
+            # Una fecha de verdad, no el texto: el importar exige celdas de fecha
+            # (`_validar_tipo`) y la plantilla tiene que poder subirse tal cual.
+            return datetime.date(2026, 1, 15) if fila == 1 else datetime.date(2026, 12, 31)
         if isinstance(field, dj_models.DecimalField):
             return 100 * fila
         if isinstance(field, (

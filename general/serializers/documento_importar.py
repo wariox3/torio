@@ -1,6 +1,8 @@
+import datetime
+
 from rest_framework import serializers
 
-from contabilidad.models import ConCentroCosto
+from contabilidad.models import ConCentroCosto, ConCuenta
 from general.models import (
     GenAsesor,
     GenContacto,
@@ -17,6 +19,15 @@ from general.servicios.documento import (
     DOCUMENTO_CLASE_FACTURA_POS,
     DOCUMENTO_CLASE_NOTA_AJUSTE,
     DOCUMENTO_CLASES_CON_RESOLUCION,
+    _asignar_cartera,
+)
+from general.serializers.documento_detalle_importar import (
+    ErroresFila,
+    _decimal,
+    _entero_o_none,
+    _indice,
+    _Problemas,
+    _texto_o_none,
 )
 
 
@@ -227,3 +238,160 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
         if v is None or v == '':
             return None
         return v
+
+
+class GenDocumentoSaldoInicialImportarSerializer(serializers.Serializer):
+    """
+    Plantilla de los saldos iniciales: SALDO INICIAL CXC (clase 201) y CXP (401).
+
+    Un saldo inicial es un documento abierto que se trae del sistema anterior: la
+    factura que el cliente todavía debe, o la que se le debe al proveedor. No tiene
+    líneas, así que el `total` viene en el Excel y no de `recalcular_totales`.
+    Cada fila nace aprobada con su saldo (`_asignar_cartera`), igual que en itrio:
+    no hay nada que revisar antes, y en borrador no se podría cobrar ni pagar.
+
+    El tipo no viaja en el Excel: lo manda el front en `documento_tipo_id`. El
+    contacto va por número de identificación y la cuenta por código, que es lo
+    que el usuario tiene a mano; los ids no los conoce.
+
+    Un saldo ya importado (mismo tipo, número y contacto) se rechaza: el importar
+    solo crea.
+    """
+
+    model = GenDocumento
+    nombre_archivo = 'saldos_iniciales'
+    errores_completos = True
+
+    campos_excel = (
+        ('numero', 'Número'),
+        ('fecha', 'Fecha'),
+        ('fecha_vence', 'Fecha vence'),
+        ('contacto.numero_identificacion', 'Contacto'),
+        ('cuenta.codigo', 'Cuenta'),
+        ('total', 'Total'),
+        ('comentario', 'Comentario'),
+    )
+    campos_requeridos = {
+        'numero', 'fecha', 'fecha_vence', 'contacto.numero_identificacion', 'cuenta.codigo', 'total',
+    }
+
+    # La cuenta de ejemplo según el lado: clientes nacionales o proveedores.
+    CUENTA_EJEMPLO = {201: '130505', 401: '220505'}
+
+    LIMITE_ERRORES = 100
+    BATCH_BULK_CREATE = 500
+
+    def __init__(self, documento_tipo, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.documento_tipo = documento_tipo
+        cuenta = self.CUENTA_EJEMPLO.get(documento_tipo.documento_clase_id, '')
+        self.valores_ejemplo = {
+            'numero': (1001, 1002),
+            'fecha': (datetime.date(2025, 11, 15), datetime.date(2025, 12, 20)),
+            'fecha_vence': (datetime.date(2025, 12, 15), datetime.date(2026, 2, 18)),
+            'contacto.numero_identificacion': ('123456789', '900123456'),
+            'cuenta.codigo': (cuenta, cuenta),
+            'total': (250000, 1200000),
+            'comentario': ('', ''),
+        }
+
+    def procesar_lote(self, filas_validas):
+        if not filas_validas:
+            return 0, []
+
+        contactos = _indice(
+            filas_validas, 'contacto.numero_identificacion', GenContacto,
+            'numero_identificacion', 'número de identificación',
+        )
+        cuentas = _indice(filas_validas, 'cuenta.codigo', ConCuenta, 'codigo', 'código')
+
+        errores = []
+        nuevos = []
+        vistos = {}
+        for idx, datos in filas_validas:
+            problemas = _Problemas()
+            contacto = problemas.intentar(
+                lambda: contactos.obligatorio(datos.get('contacto.numero_identificacion'), 'Contacto'))
+            cuenta = problemas.intentar(lambda: self._cuenta(datos.get('cuenta.codigo'), cuentas))
+            numero = problemas.intentar(lambda: _entero_o_none(datos.get('numero'), 'Número'))
+            total = problemas.intentar(lambda: _decimal(datos.get('total'), 'Total'))
+            if total is not None and total <= 0:
+                problemas.mensajes.append('Total debe ser mayor que cero')
+
+            fecha = datos.get('fecha')
+            fecha_vence = datos.get('fecha_vence')
+            if fecha and fecha_vence and fecha_vence < fecha:
+                problemas.mensajes.append('Fecha vence no puede ser anterior a la fecha')
+
+            # El mismo saldo dos veces en el archivo.
+            if numero is not None and contacto is not None:
+                clave = (numero, contacto.pk)
+                if clave in vistos:
+                    problemas.mensajes.append(
+                        f'El número {numero} de este contacto ya está en la fila {vistos[clave]}')
+                else:
+                    vistos[clave] = idx
+
+            try:
+                problemas.levantar()
+            except ErroresFila as e:
+                errores.extend({'fila': idx, 'mensaje': m} for m in e.mensajes)
+                if len(errores) >= self.LIMITE_ERRORES:
+                    break
+                continue
+
+            documento = GenDocumento(
+                documento_tipo=self.documento_tipo,
+                numero=numero,
+                fecha=fecha,
+                fecha_contable=fecha,
+                fecha_vence=fecha_vence,
+                contacto=contacto,
+                cuenta=cuenta,
+                subtotal=total,
+                total=total,
+                comentario=_texto_o_none(datos.get('comentario')),
+                estado_aprobado=True,
+            )
+            _asignar_cartera(documento)
+            nuevos.append((idx, documento))
+
+        # Lo que ya está importado: mismo tipo, número y contacto.
+        if nuevos and len(errores) < self.LIMITE_ERRORES:
+            existentes = set(
+                GenDocumento.objects.filter(
+                    documento_tipo=self.documento_tipo,
+                    numero__in={d.numero for _, d in nuevos},
+                    contacto_id__in={d.contacto_id for _, d in nuevos},
+                ).values_list('numero', 'contacto_id')
+            )
+            for idx, documento in nuevos:
+                if (documento.numero, documento.contacto_id) in existentes:
+                    errores.append({
+                        'fila': idx,
+                        'mensaje': f'Ya existe el saldo inicial número {documento.numero} de este contacto',
+                    })
+
+        if errores:
+            errores.sort(key=lambda e: e['fila'])
+            return 0, errores[:self.LIMITE_ERRORES]
+
+        GenDocumento.objects.bulk_create(
+            [documento for _, documento in nuevos], batch_size=self.BATCH_BULK_CREATE,
+        )
+        return len(nuevos), []
+
+    @staticmethod
+    def _cuenta(codigo, indice):
+        cuenta = indice.obligatorio(codigo, 'Cuenta')
+        if not cuenta.permite_movimiento:
+            raise ValueError(f'La cuenta {cuenta.codigo} no permite movimientos')
+        return cuenta
+
+
+# Clase de documento → plantilla de importación. Una clase que no esté acá usa la
+# general (`GenDocumentoImportarSerializer`), con el tipo como columna del Excel.
+IMPORTAR_POR_CLASE = {
+    201: GenDocumentoSaldoInicialImportarSerializer,
+    401: GenDocumentoSaldoInicialImportarSerializer,
+}

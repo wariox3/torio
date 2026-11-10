@@ -9,12 +9,20 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from contabilidad.models import ConCentroCosto
 from contabilidad.servicios import depreciacion as depreciacion_servicio
-from general.models import GenContacto, GenDocumento, GenDocumentoConceptoCorreccion, GenResolucion, GenSede
+from general.models import (
+    GenContacto,
+    GenDocumento,
+    GenDocumentoConceptoCorreccion,
+    GenDocumentoTipo,
+    GenResolucion,
+    GenSede,
+)
 from general.serializers import (
     GenDocumentoConImpuestosSerializer,
     GenDocumentoCrearSerializer,
@@ -25,6 +33,7 @@ from general.serializers import (
     GenDocumentoSerializer,
 )
 from general.serializers.documento_exportar import EXPORTAR_POR_CLASE
+from general.serializers.documento_importar import IMPORTAR_POR_CLASE
 from general.servicios import cartera as cartera_servicio
 from general.servicios import contabilizar as contabilizar_servicio
 from general.servicios import documento as documento_servicio
@@ -32,6 +41,7 @@ from general.servicios import documento_imprimir
 from general.servicios import factura_electronica as factura_electronica_servicio
 from humano.servicios import nomina_electronica as nomina_electronica_servicio
 from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente, TienePermisoModelo
+from utilidades.throttles import ImportarUsuarioTenantThrottle
 from utilidades.filtros import aplicar_filtros
 from utilidades.mixins import (
     ExportarExcelMixin,
@@ -174,6 +184,64 @@ class GenDocumentoViewSet(
         except (TypeError, ValueError):
             raise ValidationError({'detail': '`formato_excel` debe ser un entero.'})
         return EXPORTAR_POR_CLASE.get(formato, GenDocumentoExportarSerializer)()
+
+    def get_serializer_importar(self):
+        """
+        `documento_tipo_id` (query string en `importar-ejemplo`, formulario en
+        `importar`) elige la plantilla por la clase del tipo. Sin él, o con un tipo
+        sin plantilla propia en `IMPORTAR_POR_CLASE`, va la general, que trae el
+        tipo como columna del Excel.
+        """
+        origen = self.request.query_params if self.request.method == 'GET' else self.request.data
+        valor = origen.get('documento_tipo_id')
+        if valor in (None, ''):
+            return GenDocumentoImportarSerializer()
+        try:
+            documento_tipo = GenDocumentoTipo.objects.get(pk=int(valor))
+        except (TypeError, ValueError):
+            raise ValidationError({'detail': '`documento_tipo_id` debe ser un entero.'})
+        except GenDocumentoTipo.DoesNotExist:
+            raise ValidationError({'detail': f'No existe el tipo de documento {valor}.'})
+        clase = IMPORTAR_POR_CLASE.get(documento_tipo.documento_clase_id)
+        if clase is None:
+            return GenDocumentoImportarSerializer()
+        return clase(documento_tipo)
+
+    @extend_schema(
+        summary='Descargar plantilla de importación de documentos',
+        description=(
+            'Con `documento_tipo_id` devuelve la plantilla de ese tipo si tiene una '
+            'propia (hoy los saldos iniciales, tipos 18 y 19); si no, o sin el '
+            'parámetro, la general.'
+        ),
+        parameters=[OpenApiParameter('documento_tipo_id', int, description='Tipo de documento')],
+    )
+    @action(detail=False, methods=['get'], url_path='importar-ejemplo')
+    def importar_ejemplo(self, request):
+        return super().importar_ejemplo(request)
+
+    @extend_schema(
+        summary='Importar documentos desde Excel',
+        description=(
+            'Recibe el .xlsx en `archivo` (multipart). Con `documento_tipo_id` usa la '
+            'plantilla de ese tipo: los saldos iniciales (18 y 19) se crean ya '
+            'aprobados, con su saldo pendiente. Procesamiento todo-o-nada.'
+        ),
+        request={'multipart/form-data': inline_serializer(
+            name='DocumentoImportarRequest',
+            fields={
+                'archivo': serializers.FileField(help_text='Archivo .xlsx'),
+                'documento_tipo_id': serializers.IntegerField(required=False),
+            },
+        )},
+    )
+    @action(
+        detail=False, methods=['post'],
+        parser_classes=[MultiPartParser],
+        throttle_classes=[ImportarUsuarioTenantThrottle],
+    )
+    def importar(self, request):
+        return super().importar(request)
 
     def get_queryset_excel(self):
         serializer = self.get_serializer_exportar()

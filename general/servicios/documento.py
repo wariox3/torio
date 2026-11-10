@@ -96,12 +96,15 @@ DOCUMENTO_CLASES_REFERENCIA_NOTA_CREDITO = {
 }
 
 # Clases que llevan cartera: al aprobarse el documento queda con saldo pendiente
-# de cobro o de pago. Son las de venta (100-105), las de compra (300-304), la
-# nómina (701), que queda por pagarle al empleado, y la seguridad social (703),
-# que queda por pagarle a cada entidad.
+# de cobro o de pago. Son las de venta (100-105), los saldos iniciales por cobrar
+# (201) y por pagar (401), las de compra (300-304), la nómina (701), que queda por
+# pagarle al empleado, y la seguridad social (703), que queda por pagarle a cada
+# entidad.
 DOCUMENTO_CLASES_CON_CARTERA = (
     100, 101, 102, 104, 105,
+    201,
     300, 301, 302, 303, 304,
+    401,
     701, 703,
 )
 
