@@ -2002,7 +2002,7 @@ class ContabilizarTests(_ContabilizarBase):
         for movimiento in self._movimientos(documento):
             self.assertIsNotNone(movimiento.fecha_creacion)
             # Fuera de un request no hay usuario en contexto.
-            self.assertIsNone(movimiento.usuario_id)
+            self.assertIsNone(movimiento.usuario)
 
     # ---------------------------------------------------------- validación ----
 

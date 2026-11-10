@@ -261,7 +261,7 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
         if turno.estado_cerrado:
             raise serializers.ValidationError({'turno': 'El turno está cerrado.'})
         request = self.context.get('request')
-        if request is None or turno.usuario_id != request.user.pk:
+        if request is None or turno.usuario != request.user.email:
             raise serializers.ValidationError({'turno': 'El turno es de otro cajero.'})
         datos['caja'] = turno.caja
 

@@ -25,6 +25,7 @@ from general.formatos.documento_pos import (
     _Guiones,
 )
 from general.models import GenCuentaBanco, GenDocumento
+from seguridad.cuenta import nombre_de_usuario
 from utilidades.formatos import configuracion_actual
 from venta.servicios import turno as turno_servicio
 
@@ -108,11 +109,10 @@ class FormatoTurnoCierre(FormatoDocumentoPos):
         ]
 
     def _datos_turno(self, turno, estilos):
-        usuario = turno.usuario
         return self._tabla((
             ('Caja', turno.caja.nombre),
             ('Sede', turno.caja.sede.nombre),
-            ('Cajero', (usuario.nombre_corto or '').strip() or usuario.email),
+            ('Cajero', nombre_de_usuario(turno.usuario)),
             ('Apertura', self._fecha_hora(turno.fecha_apertura)),
             ('Cierre', self._fecha_hora(turno.fecha_cierre)),
             ('Base', self._moneda(turno.base)),

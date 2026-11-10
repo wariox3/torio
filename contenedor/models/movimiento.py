@@ -18,9 +18,11 @@ class CtnMovimiento(models.Model):
         on_delete=models.SET_NULL,
         related_name='movimientos',
     )
+    # Nulable: al eliminar la cuenta el pago se conserva sin usuario.
     usuario = models.ForeignKey(
         'seguridad.SegUsuario',
-        on_delete=models.PROTECT,
+        null=True,
+        on_delete=models.SET_NULL,
         related_name='movimientos',
     )
     tipo = models.CharField(max_length=20)

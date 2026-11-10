@@ -41,6 +41,7 @@ from general.servicios.documento import (
     DOCUMENTO_CLASE_NOTA_DEBITO_VENTA,
 )
 from general.servicios.rededoc import Rededoc
+from seguridad.cuenta import nombre_de_usuario
 from utilidades.excepciones import con_detail
 from utilidades.zinc import Zinc
 
@@ -692,7 +693,7 @@ def emitir(documento_ids, cliente: Rededoc = None) -> dict:
         'documento_tipo', 'resolucion', 'plazo_pago', 'metodo_pago',
         'contacto__identificacion', 'contacto__ciudad__estado__pais',
         'documento_referencia', 'documento_concepto_correccion',
-        'caja', 'turno__usuario',
+        'caja', 'turno',
     ).in_bulk(documento_ids)
     # El asistente se revisa antes que los ids. Un lote solo de nóminas exige el
     # de nómina, no el de facturación.
@@ -984,8 +985,7 @@ def _cajero_pos(documento):
     turno = documento.turno
     if turno is None:
         return CAJERO_POS
-    usuario = turno.usuario
-    return (usuario.nombre_corto or '').strip() or usuario.email
+    return nombre_de_usuario(turno.usuario)
 
 
 def _bloque_pos(documento):

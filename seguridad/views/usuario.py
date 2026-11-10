@@ -2,7 +2,8 @@ import logging
 
 from django.conf import settings
 from django.core import signing
-from django.db import IntegrityError, models
+from django.db import models
+from django.db.models import ProtectedError
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiResponse,
@@ -16,7 +17,6 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
-from contenedor.models import CtnCliente, CtnContacto, CtnMovimiento, CtnSuscripcion
 from seguridad import cuenta as servicio_cuenta
 from seguridad import mfa as servicio_mfa
 from seguridad.foto import subir_foto
@@ -149,15 +149,14 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         description=(
             'Borra la cuenta por completo: la saca de todos los contenedores donde es '
             'miembro, cierra sus sesiones y borra su segundo factor, sus invitaciones y su '
-            'foto. La bitácora de accesos y las solicitudes se conservan sin autor. Solo '
+            'foto. La bitácora de accesos, las solicitudes, los pagos y los contactos de '
+            'facturación se conservan sin autor. Solo '
             'sobre la propia cuenta: otro id responde 404.\n\n'
             'Exige `password`. Con la verificación en dos pasos activa exige además '
             '`mfa_token` (de `POST /seguridad/mfa/desafio/`) y `codigo`; sin ellos responde '
             '400 con `codigo: mfa_requerido`.\n\n'
-            'Responde 409 si la cuenta es propietaria de algún contenedor (hay que '
-            'eliminarlo primero; nunca se borra en cascada), si tiene suscripciones, pagos '
-            'o contactos de facturación, o si dejó documentos, movimientos contables o '
-            'turnos de caja en algún contenedor.'
+            'Responde 409 si la cuenta tiene una membresía como propietaria de algún '
+            'contenedor: hay que eliminarlo primero, nunca se borra en cascada.'
         ),
         request=inline_serializer(
             name='UsuarioEliminarRequest',
@@ -171,7 +170,7 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             204: None,
             400: OpenApiResponse(_RespuestaDetalle, description='Clave o código inválidos'),
             404: OpenApiResponse(_RespuestaDetalle, description='No es la propia cuenta'),
-            409: OpenApiResponse(_RespuestaDetalle, description='Tiene contenedores o registros que la atan'),
+            409: OpenApiResponse(_RespuestaDetalle, description='Es propietaria de algún contenedor'),
         },
     )
     def destroy(self, request, *args, **kwargs):
@@ -187,45 +186,19 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'La clave es incorrecta.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Antes del segundo factor, para no gastarle un código a quien igual va a
-        # recibir un 409. `propietario` es la fuente de verdad; `owner_id` es
-        # informativo y nulable, pero también se mira.
-        propios = CtnCliente.objects.filter(
-            models.Q(owner=usuario)
-            | models.Q(pk__in=SegUsuarioCliente.objects.filter(
-                usuario=usuario, propietario=True,
-            ).values('cliente_id'))
-        ).order_by('nombre')
-        nombres = list(propios.values_list('nombre', flat=True))
+        # recibir un 409. Los contenedores no se borran en cascada: primero el
+        # propietario los elimina. Cuenta la membresía (`propietario`), no
+        # `CtnCliente.owner`, que es informativo y nulable.
+        nombres = list(
+            SegUsuarioCliente.objects.filter(usuario=usuario, propietario=True)
+            .order_by('cliente__nombre')
+            .values_list('cliente__nombre', flat=True)
+        )
         if nombres:
             return Response(
                 {
                     'detail': 'Eres propietario de: ' + ', '.join(nombres) + '. '
-                              'Elimina esos contenedores antes de eliminar tu cuenta.',
-                },
-                status=status.HTTP_409_CONFLICT,
-            )
-
-        # Lo que la cuenta pagó o contrató es historia de facturación de la plataforma.
-        if (
-            CtnSuscripcion.objects.filter(usuario=usuario).exists()
-            or CtnMovimiento.objects.filter(usuario=usuario).exists()
-            or CtnContacto.objects.filter(usuario=usuario).exists()
-        ):
-            return Response(
-                {
-                    'detail': 'Tu cuenta tiene suscripciones, pagos o contactos de facturación '
-                              'registrados y no se puede eliminar. Escríbenos a soporte.',
-                },
-                status=status.HTTP_409_CONFLICT,
-            )
-
-        # Documentos, asientos y turnos de caja necesitan saber quién los hizo.
-        nombres = servicio_cuenta.contenedores_con_registros(usuario)
-        if nombres:
-            return Response(
-                {
-                    'detail': 'Tienes documentos, movimientos o turnos de caja en: '
-                              + ', '.join(nombres) + '. No se puede eliminar tu cuenta.',
+                              'Elimina primero esos contenedores para poder eliminar tu cuenta.',
                 },
                 status=status.HTTP_409_CONFLICT,
             )
@@ -254,12 +227,13 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
 
         try:
             servicio_cuenta.eliminar_cuenta(usuario)
-        except IntegrityError:
-            # Algo en algún contenedor (uno del que ya salió, o un FK nuevo) todavía
-            # apunta a la cuenta; la base rechazó el borrado y no se tocó nada.
-            logger.warning('No se pudo eliminar la cuenta %s: tiene registros asociados.', usuario.pk)
+        except ProtectedError:
+            # Una suscripción de un contenedor que no es suyo todavía la referencia;
+            # no se tocó nada.
+            logger.warning('No se pudo eliminar la cuenta %s: tiene registros protegidos.', usuario.pk)
             return Response(
-                {'detail': 'Tu cuenta tiene registros asociados y no se puede eliminar.'},
+                {'detail': 'Tu cuenta tiene suscripciones asociadas y no se puede eliminar. '
+                           'Escríbenos a soporte.'},
                 status=status.HTTP_409_CONFLICT,
             )
 

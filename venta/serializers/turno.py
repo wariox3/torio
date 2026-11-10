@@ -18,15 +18,14 @@ class VenTurnoSerializer(serializers.ModelSerializer):
 
     # Config consumida por FiltrosDinamicosMixin
     campos_filtrables = {
-        'id', 'fecha_apertura', 'fecha_cierre', 'estado_cerrado', 'caja_id', 'usuario_id',
+        'id', 'fecha_apertura', 'fecha_cierre', 'estado_cerrado', 'caja_id', 'usuario',
         'caja__sede_id',
     }
-    select_related_lista = ('caja', 'caja__sede', 'usuario', 'cuenta_banco')
+    select_related_lista = ('caja', 'caja__sede', 'cuenta_banco')
     ordenamiento_default_lista = ('-id',)
 
     caja_nombre = serializers.CharField(source='caja.nombre', read_only=True, allow_null=True)
     caja_sede_nombre = serializers.CharField(source='caja.sede.nombre', read_only=True, allow_null=True)
-    usuario_nombre_corto = serializers.CharField(source='usuario.nombre_corto', read_only=True, allow_null=True)
     cuenta_banco_nombre = serializers.CharField(source='cuenta_banco.nombre', read_only=True, allow_null=True)
 
     class Meta:
@@ -44,7 +43,6 @@ class VenTurnoSerializer(serializers.ModelSerializer):
             'caja_nombre',
             'caja_sede_nombre',
             'usuario',
-            'usuario_nombre_corto',
             'cuenta_banco',
             'cuenta_banco_nombre',
         ]

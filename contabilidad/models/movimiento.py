@@ -11,6 +11,9 @@ class ConMovimiento(models.Model):
     detalle = models.CharField(max_length=150, null=True)
     cierre = models.BooleanField(default=False, db_default=False)
     saldo_inicial = models.BooleanField(default=False, db_default=False)
+    # Correo de quien contabilizó, como texto: un contenedor no apunta con FK a una
+    # cuenta de la plataforma, que se puede eliminar sin tocar el mayor.
+    usuario = models.CharField(max_length=254, null=True)
     comprobante = models.ForeignKey(
         'contabilidad.ConComprobante', on_delete=models.PROTECT,
         related_name='movimientos_comprobante_rel',
@@ -41,10 +44,6 @@ class ConMovimiento(models.Model):
     # porque los movimientos se escriben con `bulk_create`, que no dispara los
     # signals de auditoría.
     fecha_creacion = models.DateTimeField(null=True, auto_now_add=True)
-    usuario = models.ForeignKey(
-        'seguridad.SegUsuario', null=True, on_delete=models.PROTECT,
-        related_name='movimientos_usuario_rel',
-    )
 
     class Meta:
         db_table = 'con_movimiento'

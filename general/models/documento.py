@@ -87,6 +87,9 @@ class GenDocumento(models.Model):
     referencia_cue = models.CharField(max_length=150, null=True)
     referencia_numero = models.IntegerField(null=True)
     referencia_prefijo = models.CharField(max_length=50, null=True)
+    # Correo de quien lo hizo, como texto: un contenedor no apunta con FK a una
+    # cuenta de la plataforma, que se puede eliminar sin tocar sus documentos.
+    usuario = models.CharField(max_length=254, null=True)
     documento_tipo = models.ForeignKey(
         'general.GenDocumentoTipo',
         on_delete=models.PROTECT,
@@ -146,12 +149,6 @@ class GenDocumento(models.Model):
         null=True,
         on_delete=models.PROTECT,
         related_name='documentos_asesor_rel',
-    )
-    usuario = models.ForeignKey(
-        'seguridad.SegUsuario',
-        null=True,
-        on_delete=models.PROTECT,
-        related_name='documentos_usuario_rel',
     )
     cuenta_banco = models.ForeignKey(
         'general.GenCuentaBanco',

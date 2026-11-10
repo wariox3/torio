@@ -1,117 +1,66 @@
 """
-Eliminar una cuenta por completo: la fila de `SegUsuario`, todo lo que cuelga de
-ella en el schema público y su foto en B2.
+La cuenta de la plataforma vista desde afuera: cómo se muestra en los contenedores
+y cómo se elimina.
 
-No sirve `usuario.delete(force_drop=True)`: el Collector de Django recorre TODOS
-los modelos con FK a `SegUsuario`, incluidos los de los contenedores
-(`GenDocumento`, `ConMovimiento`, `VenTurno`), y desde el schema público esas
-tablas no existen (`no existe la relación «gen_documento»`). Por eso acá cada
-dependencia pública se resuelve a mano y la fila se borra con SQL.
-
-Si aparece un FK nuevo hacia `seg_usuario` y nadie lo agrega acá, no queda un
-huérfano: la restricción de la base rechaza el borrado al hacer COMMIT
-(`IntegrityError`), y la vista lo convierte en un 409.
+Ningún modelo de un contenedor apunta con FK a `SegUsuario`: guardan el correo de
+quien hizo algo como texto (`GenDocumento.usuario`, `ConMovimiento.usuario`,
+`VenTurno.usuario`). Así eliminar una cuenta no toca los documentos ni los libros
+de ninguna empresa, y el borrado solo resuelve dependencias del schema público.
 """
 
-from django.contrib.admin.models import LogEntry
-from django.db import connection, transaction
-from django_tenants.utils import schema_context
-from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
-from tenant_users.permissions.models import UserTenantPermissions
+from django.db import transaction
 
-from contenedor.models import CtnCliente, CtnInvitacion, CtnSolicitud
+from contenedor.models import CtnCliente
 from seguridad import foto
 from seguridad import mfa as servicio_mfa
-from seguridad.models import (
-    SegAcceso,
-    SegMfaCodigoRespaldo,
-    SegMfaDesafio,
-    SegMfaDispositivo,
-    SegMfaUsuario,
-    SegUsuario,
-    SegUsuarioCliente,
-)
+from seguridad.models import SegUsuario, SegUsuarioCliente
 
 
-def contenedores_con_registros(usuario) -> list[str]:
+def nombre_de_usuario(email):
     """
-    Nombres de los contenedores donde el usuario dejó registros que no se pueden
-    perder ni quedar sin autor: documentos, movimientos contables o turnos de caja.
+    Cómo mostrar a quien hizo algo en un contenedor, que guarda solo su correo.
 
-    Solo mira los contenedores `listo` donde todavía es miembro. Si dejó registros
-    en uno del que ya salió, lo ataja la restricción de la base al borrar.
+    El `nombre_corto` de la cuenta si todavía existe; si se eliminó, el correo.
     """
-    from contabilidad.models import ConMovimiento
-    from general.models import GenDocumento
-    from venta.models import VenTurno
-
-    nombres = []
-    clientes = CtnCliente.objects.filter(
-        pk__in=SegUsuarioCliente.objects.filter(usuario=usuario).values('cliente_id'),
-        estado=CtnCliente.ESTADO_LISTO,
-    ).order_by('nombre')
-    for cliente in clientes:
-        with schema_context(cliente.schema_name):
-            if (
-                GenDocumento.objects.filter(usuario=usuario).exists()
-                or ConMovimiento.objects.filter(usuario=usuario).exists()
-                or VenTurno.objects.filter(usuario=usuario).exists()
-            ):
-                nombres.append(cliente.nombre)
-    return nombres
+    if not email:
+        return ''
+    nombre = SegUsuario.objects.filter(email=email).values_list('nombre_corto', flat=True).first()
+    return (nombre or '').strip() or email
 
 
 def eliminar_cuenta(usuario) -> None:
     """
     Borra la cuenta. Quien llama ya validó que no es propietaria de ningún
-    contenedor ni tiene registros en ellos.
+    contenedor.
 
-    Lanza `IntegrityError` si la base encuentra todavía algo apuntando a la cuenta.
+    Lo que cuelga de ella en el público lo resuelve el `on_delete` de cada FK: se
+    van el segundo factor, las invitaciones y las membresías; quedan sin autor la
+    bitácora de accesos, las solicitudes, los pagos y los contactos de facturación.
+
+    Lanza `ProtectedError` si algo protegido todavía la referencia (una
+    suscripción de un contenedor que no es suyo).
     """
     usuario_id = usuario.pk
     imagen_uuid = usuario.imagen_uuid
 
     with transaction.atomic():
-        # Membresías: en un contenedor `listo` se sale con `remove_user`, que borra
-        # también su `UserTenantPermissions` dentro del schema. Uno que no está
-        # `listo` puede no tener tablas, así que basta con la fila pública.
+        # En un contenedor `listo` se sale con `remove_user`, que borra también su
+        # `UserTenantPermissions` dentro del schema: el CASCADE solo alcanza la fila
+        # del público. Uno que no está `listo` puede no tener tablas.
         membresias = SegUsuarioCliente.objects.filter(usuario=usuario).select_related('cliente')
         for membresia in membresias:
             if membresia.cliente.estado == CtnCliente.ESTADO_LISTO:
                 membresia.cliente.remove_user(usuario)
-            else:
-                membresia.delete()
 
-        # Lo que se va con la cuenta.
-        UserTenantPermissions.objects.filter(profile=usuario).delete()  # la del schema público
-        SegMfaCodigoRespaldo.objects.filter(usuario=usuario).delete()
-        SegMfaDesafio.objects.filter(usuario=usuario).delete()
-        SegMfaDispositivo.objects.filter(usuario=usuario).delete()
-        SegMfaUsuario.objects.filter(usuario=usuario).delete()
-        CtnInvitacion.objects.filter(usuario=usuario).delete()
-        CtnInvitacion.objects.filter(usuario_invitado=usuario).delete()
-        LogEntry.objects.filter(user=usuario).delete()
-
-        # Lo que se queda, sin autor: la bitácora de accesos (guarda el email que se
-        # tecleó) y las solicitudes, que son del contenedor y no de la persona.
-        SegAcceso.objects.filter(usuario=usuario).update(usuario=None)
-        CtnSolicitud.objects.filter(usuario=usuario).update(usuario=None)
-        CtnSolicitud.objects.filter(usuario_gestion=usuario).update(usuario_gestion=None)
-        CtnCliente.objects.filter(owner=usuario).update(owner=None)
-
-        # Las sesiones se blacklistean antes de soltar el token de la cuenta: un
-        # refresh robado no debe poder emitir más access tokens.
+        # Antes del borrado, que deja los tokens sin usuario (SET_NULL): un refresh
+        # robado no debe poder emitir más access tokens.
         servicio_mfa.invalidar_sesiones(usuario)
-        OutstandingToken.objects.filter(user=usuario).update(user=None)
 
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f'DELETE FROM {connection.ops.quote_name(SegUsuario._meta.db_table)} WHERE id = %s',
-                [usuario_id],
-            )
+        # `force_drop`: django-tenant-users prohíbe el `delete()` común y manda a
+        # usar su `delete_user()`, que solo desactiva y a un propietario le borra
+        # los contenedores.
+        usuario.delete(force_drop=True)
 
         # B2 no es transaccional: la foto se borra solo si el COMMIT pasó.
         if imagen_uuid:
-            transaction.on_commit(
-                lambda: foto.borrar_foto(usuario_id, imagen_uuid)
-            )
+            transaction.on_commit(lambda: foto.borrar_foto(usuario_id, imagen_uuid))

@@ -76,7 +76,7 @@ class VenTurnoViewSet(
     )
     @action(detail=False, methods=['get'])
     def abierto(self, request):
-        turno = self.get_queryset().filter(usuario=request.user, estado_cerrado=False).first()
+        turno = self.get_queryset().filter(usuario=request.user.email, estado_cerrado=False).first()
         if turno is None:
             raise NotFound('No tiene un turno abierto.')
         return Response(VenTurnoSerializer(turno).data)

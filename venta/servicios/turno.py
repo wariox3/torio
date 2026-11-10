@@ -37,14 +37,14 @@ def abrir(caja, usuario, base, cuenta_banco):
         raise ValidationError({'detail': 'La base no puede ser negativa.'})
     if base > 0 and cuenta_banco is None:
         raise ValidationError({'detail': 'Indique la cuenta bancaria donde queda la base.'})
-    if VenTurno.objects.filter(usuario=usuario, estado_cerrado=False).exists():
+    if VenTurno.objects.filter(usuario=usuario.email, estado_cerrado=False).exists():
         raise ValidationError({'detail': 'Ya tiene un turno abierto: ciérrelo antes de abrir otro.'})
 
     try:
         with transaction.atomic():
             return VenTurno.objects.create(
                 caja=caja,
-                usuario=usuario,
+                usuario=usuario.email,
                 base=base,
                 cuenta_banco=cuenta_banco,
                 fecha_apertura=timezone.now(),

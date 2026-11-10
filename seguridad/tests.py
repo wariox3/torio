@@ -1130,14 +1130,6 @@ class EliminarCuentaTests(TestCase):
         self.assertTrue(self._existe())
         self.assertTrue(type(contenedor).objects.filter(pk=contenedor.pk).exists())
 
-    def test_con_registros_en_un_contenedor_responde_409(self):
-        with patch('seguridad.cuenta.contenedores_con_registros', return_value=['Donde facturó']):
-            respuesta = self._eliminar()
-
-        self.assertEqual(respuesta.status_code, 409)
-        self.assertIn('Donde facturó', respuesta.data['detail'])
-        self.assertTrue(self._existe())
-
 
 @override_settings(MFA_ENCRYPTION_KEY=_CLAVE_MFA)
 class RegistroDeAccesoTests(TestCase):

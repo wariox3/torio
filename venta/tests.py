@@ -280,7 +280,7 @@ class VenTurnoTests(TenantTestCase):
         respuesta = self._abrir(base=50000, cuenta_banco=self.efectivo)
 
         self.assertEqual(respuesta.status_code, 201, respuesta.data)
-        self.assertEqual(respuesta.data['usuario'], self.cajero.id)
+        self.assertEqual(respuesta.data['usuario'], self.cajero.email)
         self.assertIs(respuesta.data['estado_cerrado'], False)
         self.assertEqual(Decimal(respuesta.data['base']), Decimal('50000'))
 

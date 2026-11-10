@@ -18,9 +18,11 @@ class CtnContacto(models.Model):
         on_delete=models.PROTECT,
         related_name='contactos',
     )
+    # Nulable: al eliminar la cuenta el contacto de facturación queda sin usuario.
     usuario = models.ForeignKey(
         'seguridad.SegUsuario',
-        on_delete=models.PROTECT,
+        null=True,
+        on_delete=models.SET_NULL,
         related_name='contactos',
     )
 

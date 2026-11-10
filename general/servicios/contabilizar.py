@@ -298,14 +298,14 @@ def _movimiento(comun, cuenta, signo, valor, detalle, etiqueta,
         detalle=detalle,
         cierre=cierre,
         contacto_id=contacto_id if cuenta.exige_contacto else None,
-        usuario_id=comun['usuario_id'],
+        usuario=comun['usuario'],
         centro_costo_id=centro_costo_id if cuenta.exige_centro_costo else None,
     )
 
 
-def _usuario_actual_id():
+def _usuario_actual_email():
     usuario = obtener_usuario_actual()
-    return usuario.pk if usuario is not None else None
+    return usuario.email if usuario is not None else None
 
 
 def _comprobante_id(documento):
@@ -344,7 +344,7 @@ def _movimientos(documento, periodo, campos_actualizar):
         'comprobante_id': comprobante_id,
         # Quién contabiliza. Fuera de un request (un comando, el shell) queda en
         # null, igual que en `gen_log`.
-        'usuario_id': _usuario_actual_id(),
+        'usuario': _usuario_actual_email(),
     }
 
     movimientos = []

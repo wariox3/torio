@@ -22,16 +22,13 @@ class VenTurno(models.Model):
     cantidad_documentos = models.IntegerField(default=0, db_default=0)
     estado_cerrado = models.BooleanField(default=False, db_default=False)
     comentario = models.CharField(max_length=500, null=True)
+    # Correo del cajero, el único que factura en el turno. Texto y no FK: un
+    # contenedor no apunta a una cuenta de la plataforma, que se puede eliminar.
+    usuario = models.CharField(max_length=254)
     caja = models.ForeignKey(
         'venta.VenCaja',
         on_delete=models.PROTECT,
         related_name='turnos_caja_rel',
-    )
-    # El cajero: el único que factura en el turno.
-    usuario = models.ForeignKey(
-        'seguridad.SegUsuario',
-        on_delete=models.PROTECT,
-        related_name='turnos_usuario_rel',
     )
     # La cuenta donde está la base, normalmente la de efectivo de la caja. En el
     # arqueo la base se suma a lo esperado de esta cuenta.
