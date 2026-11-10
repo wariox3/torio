@@ -33,6 +33,7 @@ from seguridad.models import (
     SegMfaDesafio,
     SegMfaUsuario,
     SegUsuario,
+    SegUsuarioCliente,
 )
 from seguridad.serializers import SegUsuarioMeSerializer
 from utilidades import backblaze, imagenes
@@ -990,6 +991,152 @@ class CambioDeCelularTests(TestCase):
         self._activar_sms()
         respuesta = self.client.patch(self.url, {'nombre_corto': 'Nuevo nombre'})
         self.assertEqual(respuesta.status_code, 200)
+
+
+@override_settings(MFA_ENCRYPTION_KEY=_CLAVE_MFA)
+class EliminarCuentaTests(TestCase):
+    """`DELETE /seguridad/usuario/<id>/`: borra la propia cuenta por completo."""
+
+    CLAVE = 'clave-de-prueba-123'
+
+    def setUp(self):
+        cache.clear()
+        self.usuario = SegUsuario.objects.create(email='eliminar@torio.test', is_verified=True)
+        self.usuario.set_password(self.CLAVE)
+        self.usuario.save()
+        self.client = APIClient()
+        self.client.force_authenticate(self.usuario)
+        self.url = f'/seguridad/usuario/{self.usuario.pk}/'
+
+    def _eliminar(self, **datos):
+        return self.client.delete(self.url, {'password': self.CLAVE, **datos}, format='json')
+
+    def _existe(self):
+        return SegUsuario.objects.filter(pk=self.usuario.pk).exists()
+
+    def _activar_mfa(self):
+        SegMfaUsuario.objects.create(
+            usuario=self.usuario, metodo=METODO_CORREO, activo=True, fecha_activacion=timezone.now(),
+        )
+        desafio, codigo = servicio_mfa.crear_desafio(self.usuario, METODO_CORREO)
+        return servicio_mfa.firmar_desafio(desafio), codigo
+
+    def _contenedor(self, schema, nombre):
+        from contenedor.models import CtnCliente
+
+        cliente = CtnCliente(
+            schema_name=schema, nombre=nombre, celular='+573000000000',
+            correo=f'{schema}@ejemplo.com', estado=CtnCliente.ESTADO_CREANDO,
+        )
+        cliente.auto_create_schema = False
+        cliente.save()
+        return cliente
+
+    def test_borra_la_cuenta_y_cierra_sus_sesiones(self):
+        refresh = RefreshToken.for_user(self.usuario)
+
+        respuesta = self._eliminar()
+
+        self.assertEqual(respuesta.status_code, 204, respuesta.content)
+        self.assertFalse(self._existe())
+        self.assertEqual(
+            APIClient().post('/seguridad/refresh/', {'refresh': str(refresh)}).status_code, 401,
+        )
+        login = APIClient().post('/seguridad/login/', {'email': self.usuario.email, 'password': self.CLAVE})
+        self.assertEqual(login.status_code, 401)
+
+    def test_el_correo_queda_libre_para_registrarse_otra_vez(self):
+        self._eliminar()
+
+        with patch('seguridad.views.usuario.verify_turnstile'), patch('seguridad.views.usuario.Zinc'):
+            registro = APIClient().post('/seguridad/usuario/', {
+                'email': 'eliminar@torio.test', 'password': self.CLAVE,
+            })
+
+        self.assertEqual(registro.status_code, 201, registro.content)
+
+    def test_borra_lo_que_cuelga_y_conserva_la_bitacora_sin_autor(self):
+        token, codigo = self._activar_mfa()
+        servicio_mfa.generar_codigos_respaldo(self.usuario)
+        servicio_acceso.registrar_acceso(
+            RequestFactory().post('/seguridad/login/'), RESULTADO_OK,
+            usuario=self.usuario, email=self.usuario.email,
+        )
+        contenedor = self._contenedor('eliminar_miembro', 'Donde trabaja')
+        SegUsuarioCliente.objects.create(usuario=self.usuario, cliente=contenedor)
+
+        respuesta = self._eliminar(mfa_token=token, codigo=codigo)
+
+        self.assertEqual(respuesta.status_code, 204, respuesta.content)
+        self.assertFalse(SegMfaUsuario.objects.filter(usuario_id=self.usuario.pk).exists())
+        self.assertFalse(SegMfaCodigoRespaldo.objects.filter(usuario_id=self.usuario.pk).exists())
+        self.assertFalse(SegMfaDesafio.objects.filter(usuario_id=self.usuario.pk).exists())
+        self.assertFalse(SegUsuarioCliente.objects.filter(usuario_id=self.usuario.pk).exists())
+        acceso = SegAcceso.objects.get(email=self.usuario.email)
+        self.assertIsNone(acceso.usuario_id)
+
+    def test_borra_la_foto_despues_del_commit(self):
+        imagen = '11111111-2222-3333-4444-555555555555'
+        SegUsuario.objects.filter(pk=self.usuario.pk).update(imagen_uuid=imagen)
+
+        with patch('seguridad.foto.borrar_foto') as borrar, self.captureOnCommitCallbacks(execute=True):
+            respuesta = self._eliminar()
+
+        self.assertEqual(respuesta.status_code, 204, respuesta.content)
+        borrar.assert_called_once()
+        self.assertEqual(borrar.call_args.args[0], self.usuario.pk)
+        self.assertEqual(str(borrar.call_args.args[1]), imagen)
+
+    def test_sin_clave_o_con_clave_mala_no_hace_nada(self):
+        for datos in ({}, {'password': 'otra-clave'}):
+            with self.subTest(datos=datos):
+                respuesta = self.client.delete(self.url, datos, format='json')
+                self.assertEqual(respuesta.status_code, 400)
+        self.assertTrue(self._existe())
+
+    def test_otra_cuenta_responde_404(self):
+        ajena = SegUsuario.objects.create(email='ajena@torio.test', is_verified=True)
+
+        respuesta = self.client.delete(f'/seguridad/usuario/{ajena.pk}/', {'password': self.CLAVE}, format='json')
+
+        self.assertEqual(respuesta.status_code, 404)
+        self.assertTrue(SegUsuario.objects.filter(pk=ajena.pk).exists())
+
+    def test_con_mfa_activo_exige_codigo(self):
+        self._activar_mfa()
+
+        respuesta = self._eliminar()
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.data['codigo'], 'mfa_requerido')
+        self.assertTrue(self._existe())
+
+    def test_con_codigo_invalido_no_se_elimina(self):
+        token, codigo = self._activar_mfa()
+
+        respuesta = self._eliminar(mfa_token=token, codigo='000000' if codigo != '000000' else '111111')
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertTrue(self._existe())
+
+    def test_propietario_de_un_contenedor_responde_409_y_no_lo_toca(self):
+        contenedor = self._contenedor('eliminar_propio', 'Mi empresa')
+        SegUsuarioCliente.objects.create(usuario=self.usuario, cliente=contenedor, propietario=True)
+
+        respuesta = self._eliminar()
+
+        self.assertEqual(respuesta.status_code, 409)
+        self.assertIn('Mi empresa', respuesta.data['detail'])
+        self.assertTrue(self._existe())
+        self.assertTrue(type(contenedor).objects.filter(pk=contenedor.pk).exists())
+
+    def test_con_registros_en_un_contenedor_responde_409(self):
+        with patch('seguridad.cuenta.contenedores_con_registros', return_value=['Donde facturó']):
+            respuesta = self._eliminar()
+
+        self.assertEqual(respuesta.status_code, 409)
+        self.assertIn('Donde facturó', respuesta.data['detail'])
+        self.assertTrue(self._existe())
 
 
 @override_settings(MFA_ENCRYPTION_KEY=_CLAVE_MFA)

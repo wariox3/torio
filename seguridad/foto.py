@@ -40,3 +40,8 @@ def subir_foto(archivo, usuario):
     if anterior:
         imagen_publica.borrar(_prefijo(usuario.id), anterior)
     return nuevo
+
+
+def borrar_foto(user_id: int, imagen_uuid) -> None:
+    """Borra el juego de la foto en B2. Un fallo se registra y no corta el flujo."""
+    imagen_publica.borrar(_prefijo(user_id), imagen_uuid)

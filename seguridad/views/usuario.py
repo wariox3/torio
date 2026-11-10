@@ -2,7 +2,7 @@ import logging
 
 from django.conf import settings
 from django.core import signing
-from django.db import models
+from django.db import IntegrityError, models
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiResponse,
@@ -16,9 +16,11 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
+from contenedor.models import CtnCliente, CtnContacto, CtnMovimiento, CtnSuscripcion
+from seguridad import cuenta as servicio_cuenta
 from seguridad import mfa as servicio_mfa
 from seguridad.foto import subir_foto
-from seguridad.models import METODO_SMS, SegMfaUsuario, SegUsuario
+from seguridad.models import METODO_SMS, SegMfaUsuario, SegUsuario, SegUsuarioCliente
 from seguridad.serializers import (
     SegUsuarioActualizarSerializer,
     SegUsuarioMeSerializer,
@@ -140,6 +142,132 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return None
+
+    @extend_schema(
+        tags=['Usuarios'],
+        summary='Eliminar la propia cuenta',
+        description=(
+            'Borra la cuenta por completo: la saca de todos los contenedores donde es '
+            'miembro, cierra sus sesiones y borra su segundo factor, sus invitaciones y su '
+            'foto. La bitácora de accesos y las solicitudes se conservan sin autor. Solo '
+            'sobre la propia cuenta: otro id responde 404.\n\n'
+            'Exige `password`. Con la verificación en dos pasos activa exige además '
+            '`mfa_token` (de `POST /seguridad/mfa/desafio/`) y `codigo`; sin ellos responde '
+            '400 con `codigo: mfa_requerido`.\n\n'
+            'Responde 409 si la cuenta es propietaria de algún contenedor (hay que '
+            'eliminarlo primero; nunca se borra en cascada), si tiene suscripciones, pagos '
+            'o contactos de facturación, o si dejó documentos, movimientos contables o '
+            'turnos de caja en algún contenedor.'
+        ),
+        request=inline_serializer(
+            name='UsuarioEliminarRequest',
+            fields={
+                'password': serializers.CharField(),
+                'mfa_token': serializers.CharField(required=False),
+                'codigo': serializers.CharField(required=False),
+            },
+        ),
+        responses={
+            204: None,
+            400: OpenApiResponse(_RespuestaDetalle, description='Clave o código inválidos'),
+            404: OpenApiResponse(_RespuestaDetalle, description='No es la propia cuenta'),
+            409: OpenApiResponse(_RespuestaDetalle, description='Tiene contenedores o registros que la atan'),
+        },
+    )
+    def destroy(self, request, *args, **kwargs):
+        # El `destroy` de DRF llama a `usuario.delete()`, que django-tenant-users
+        # prohíbe (DeleteError → 500), y su `delete_user()` a un propietario le
+        # elimina los contenedores sin preguntar. El borrado está en `seguridad.cuenta`.
+        usuario = self.get_object()
+
+        password = request.data.get('password', '')
+        if not password:
+            return Response({'detail': 'password es requerido.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not usuario.check_password(password):
+            return Response({'detail': 'La clave es incorrecta.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Antes del segundo factor, para no gastarle un código a quien igual va a
+        # recibir un 409. `propietario` es la fuente de verdad; `owner_id` es
+        # informativo y nulable, pero también se mira.
+        propios = CtnCliente.objects.filter(
+            models.Q(owner=usuario)
+            | models.Q(pk__in=SegUsuarioCliente.objects.filter(
+                usuario=usuario, propietario=True,
+            ).values('cliente_id'))
+        ).order_by('nombre')
+        nombres = list(propios.values_list('nombre', flat=True))
+        if nombres:
+            return Response(
+                {
+                    'detail': 'Eres propietario de: ' + ', '.join(nombres) + '. '
+                              'Elimina esos contenedores antes de eliminar tu cuenta.',
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # Lo que la cuenta pagó o contrató es historia de facturación de la plataforma.
+        if (
+            CtnSuscripcion.objects.filter(usuario=usuario).exists()
+            or CtnMovimiento.objects.filter(usuario=usuario).exists()
+            or CtnContacto.objects.filter(usuario=usuario).exists()
+        ):
+            return Response(
+                {
+                    'detail': 'Tu cuenta tiene suscripciones, pagos o contactos de facturación '
+                              'registrados y no se puede eliminar. Escríbenos a soporte.',
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # Documentos, asientos y turnos de caja necesitan saber quién los hizo.
+        nombres = servicio_cuenta.contenedores_con_registros(usuario)
+        if nombres:
+            return Response(
+                {
+                    'detail': 'Tienes documentos, movimientos o turnos de caja en: '
+                              + ', '.join(nombres) + '. No se puede eliminar tu cuenta.',
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        if servicio_mfa.mfa_activo(usuario):
+            mfa_token = request.data.get('mfa_token')
+            codigo = request.data.get('codigo')
+            if not mfa_token or not codigo:
+                return Response(
+                    {
+                        'detail': 'Para eliminar tu cuenta confirma el código de verificación.',
+                        'codigo': 'mfa_requerido',
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                verificado = servicio_mfa.verificar_desafio(mfa_token, codigo).usuario
+            except servicio_mfa.MfaError as e:
+                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            # Un desafío es de quien lo abrió: otra cuenta no puede cerrarlo por esta.
+            if verificado != usuario:
+                return Response(
+                    {'detail': 'La sesión de verificación expiró. Intenta de nuevo.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        try:
+            servicio_cuenta.eliminar_cuenta(usuario)
+        except IntegrityError:
+            # Algo en algún contenedor (uno del que ya salió, o un FK nuevo) todavía
+            # apunta a la cuenta; la base rechazó el borrado y no se tocó nada.
+            logger.warning('No se pudo eliminar la cuenta %s: tiene registros asociados.', usuario.pk)
+            return Response(
+                {'detail': 'Tu cuenta tiene registros asociados y no se puede eliminar.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        respuesta = Response(status=status.HTTP_204_NO_CONTENT)
+        dominio = settings.AUTH_COOKIE_DOMAIN
+        respuesta.delete_cookie('access_token', domain=dominio)
+        respuesta.delete_cookie('refresh_token', domain=dominio)
+        return respuesta
 
     def get_throttles(self):
         scopes = {
@@ -375,7 +503,8 @@ class SegUsuarioViewSet(viewsets.ModelViewSet):
         search = request.query_params.get('search', '').strip()
         # SegUsuario.Meta no define `ordering`, y paginar sin orden reparte los
         # mismos usuarios entre páginas distintas; `email` es único y desempata.
-        qs = SegUsuario.objects.all().order_by('nombre_corto', 'email')
+        # Una cuenta desactivada no puede entrar: no se ofrece para invitar.
+        qs = SegUsuario.objects.filter(is_active=True).order_by('nombre_corto', 'email')
         if search:
             qs = qs.filter(
                 models.Q(nombre_corto__icontains=search) | models.Q(email__icontains=search)

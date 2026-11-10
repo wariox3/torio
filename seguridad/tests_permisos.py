@@ -521,6 +521,25 @@ class MembresiaTests(PermisosBase):
         self.assertFalse(SegUsuarioClienteGrupo.objects.filter(usuario_cliente_id=fila.id).exists())
         self.assertFalse(SegUsuarioClientePermiso.objects.filter(usuario_cliente_id=fila.id).exists())
 
+    def test_eliminar_la_cuenta_la_saca_del_contenedor(self):
+        usuario, fila = self._miembro('eliminar.permisos@ejemplo.com', grupos=[(self.grupo_item, True)])
+        usuario.set_password('clave-de-prueba-123')
+        usuario.save()
+        with schema_context(ESQUEMA):
+            UserTenantPermissions.objects.create(profile=usuario)
+
+        respuesta = self.client.delete(
+            f'/seguridad/usuario/{usuario.pk}/', {'password': 'clave-de-prueba-123'},
+            content_type='application/json', **self._headers(usuario),
+        )
+
+        self.assertEqual(respuesta.status_code, 204, respuesta.content)
+        self.assertFalse(SegUsuario.objects.filter(pk=usuario.pk).exists())
+        self.assertFalse(SegUsuarioCliente.objects.filter(pk=fila.pk).exists())
+        self.assertFalse(SegUsuarioClienteGrupo.objects.filter(usuario_cliente_id=fila.pk).exists())
+        with schema_context(ESQUEMA):
+            self.assertFalse(UserTenantPermissions.objects.filter(profile_id=usuario.pk).exists())
+
     def test_lista_usuario_trae_superusuario_y_grupos(self):
         usuario, _ = self._miembro(grupos=[(self.grupo_item, False)])
 
