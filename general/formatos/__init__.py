@@ -4,13 +4,21 @@ from .documento_egreso import FormatoDocumentoEgreso
 from .documento_factura import FormatoDocumentoFactura
 from .documento_generico import FormatoDocumentoGenerico
 from .documento_nomina import FormatoDocumentoNomina
+from .documento_nota import FormatoDocumentoNota, FormatoDocumentoNotaCredito, FormatoDocumentoNotaDebito
+from .documento_nota_compra import (
+    FormatoDocumentoNotaCompra,
+    FormatoDocumentoNotaCreditoCompra,
+    FormatoDocumentoNotaDebitoCompra,
+)
 from .documento_pago import FormatoDocumentoPago
 from .documento_pos import FormatoDocumentoPos, FormatoDocumentoPosElectronico
 from .documento_soporte import FormatoDocumentoSoporte
 
 __all__ = [
     'FormatoBase', 'FormatoDocumentoCuentaCobro', 'FormatoDocumentoEgreso',
-    'FormatoDocumentoFactura', 'FormatoDocumentoGenerico', 'FormatoDocumentoNomina', 'FormatoDocumentoPago',
-    'FormatoDocumentoPos', 'FormatoDocumentoPosElectronico',
+    'FormatoDocumentoFactura', 'FormatoDocumentoGenerico', 'FormatoDocumentoNomina',
+    'FormatoDocumentoNota', 'FormatoDocumentoNotaCredito', 'FormatoDocumentoNotaDebito',
+    'FormatoDocumentoNotaCompra', 'FormatoDocumentoNotaCreditoCompra', 'FormatoDocumentoNotaDebitoCompra',
+    'FormatoDocumentoPago', 'FormatoDocumentoPos', 'FormatoDocumentoPosElectronico',
     'FormatoDocumentoSoporte',
 ]

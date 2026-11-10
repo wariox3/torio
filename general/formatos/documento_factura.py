@@ -110,6 +110,7 @@ class FormatoDocumentoFactura(FormatoBase):
     nombre_codigo = 'CUFE'
     titulo_electronico = 'REPRESENTACIÓN GRÁFICA DE LA FACTURA ELECTRÓNICA DE VENTA'
     aviso_sin_validar = 'FACTURA SIN VALIDAR ANTE LA DIAN'
+    etiqueta_total = 'TOTAL A PAGAR'
 
     # Los campos de la configuración con el texto libre de arriba y de abajo. Un
     # formato que no lo lleva los deja en `None`.
@@ -211,15 +212,19 @@ class FormatoDocumentoFactura(FormatoBase):
         return f'{valor.normalize():,f}'
 
     @staticmethod
-    def _numero(documento):
+    def _prefijo(documento):
+        """El prefijo con que la DIAN numera el documento: el de su resolución."""
+        return (documento.resolucion.prefijo or '') if documento.resolucion_id else ''
+
+    @classmethod
+    def _numero(cls, documento):
         """
-        «FE2813»: el prefijo de la resolución pegado al número, como lo numera la DIAN.
+        «FE2813»: el prefijo pegado al número, como lo numera la DIAN.
         Sin número, el recuadro queda en blanco pero con su alto.
         """
         if documento.numero is None:
             return '&nbsp;'
-        prefijo = documento.resolucion.prefijo if documento.resolucion_id else ''
-        return escape(f'{prefijo or ""}{documento.numero}')
+        return escape(f'{cls._prefijo(documento)}{documento.numero}')
 
     def _filas(self, pares, estilos):
         return [
@@ -556,7 +561,7 @@ class FormatoDocumentoFactura(FormatoBase):
             for etiqueta, valor in lineas
         ]
         filas.append([
-            Paragraph('TOTAL A PAGAR', estilos['pagar_etiqueta']),
+            Paragraph(self.etiqueta_total, estilos['pagar_etiqueta']),
             Paragraph(self._moneda(documento.total), estilos['pagar_valor']),
         ])
 
@@ -583,34 +588,10 @@ class FormatoDocumentoFactura(FormatoBase):
         La resolución y el proveedor se imprimen igual, porque no dependen de la
         validación.
         """
-        cufe = documento.cue
-        resolucion = documento.resolucion
-
-        if resolucion is not None:
-            texto_resolucion = (
-                f'N° {self._texto(resolucion.numero)} del {self._texto(resolucion.fecha_desde)}, '
-                f'prefijo {self._texto(resolucion.prefijo) or "sin prefijo"}, rango del '
-                f'{resolucion.consecutivo_desde} al {resolucion.consecutivo_hasta}, '
-                f'vigente hasta el {self._texto(resolucion.fecha_hasta)}'
-            )
-        else:
-            texto_resolucion = ''
-
-        validacion = ''
-        if documento.fecha_validacion:
-            validacion = timezone.localtime(documento.fecha_validacion).strftime('%Y-%m-%d %H:%M:%S')
-
-        if cufe:
-            primera = (self.nombre_codigo, Paragraph(escape(cufe), estilos['cufe']))
-        else:
-            primera = ('ESTADO', Paragraph(
-                f'DOCUMENTO SIN VALIDAR ANTE LA DIAN: todavía no tiene {self.nombre_codigo}.',
-                estilos['aviso'],
-            ))
         pares = (
-            primera,
-            ('RESOLUCIÓN DIAN', texto_resolucion),
-            ('FECHA VALIDACIÓN', validacion),
+            self._codigo_electronico(documento, estilos),
+            *self._respaldo_electronico(documento, estilos),
+            ('FECHA VALIDACIÓN', self._fecha_validacion(documento)),
             ('SOFTWARE', f'{SOFTWARE} · {MODALIDAD_SOFTWARE}'),
             ('FABRICANTE', FABRICANTE_SOFTWARE),
         )
@@ -651,6 +632,33 @@ class FormatoDocumentoFactura(FormatoBase):
         ]))
         return tabla
 
+    def _codigo_electronico(self, documento, estilos):
+        """El código que dio la DIAN o, si todavía no lo tiene, el aviso."""
+        if documento.cue:
+            return (self.nombre_codigo, Paragraph(escape(documento.cue), estilos['cufe']))
+        return ('ESTADO', Paragraph(
+            f'DOCUMENTO SIN VALIDAR ANTE LA DIAN: todavía no tiene {self.nombre_codigo}.',
+            estilos['aviso'],
+        ))
+
+    def _respaldo_electronico(self, documento, estilos):
+        """Lo que respalda la numeración: en la factura, su resolución de la DIAN."""
+        resolucion = documento.resolucion
+        if resolucion is None:
+            return (('RESOLUCIÓN DIAN', ''),)
+        return (('RESOLUCIÓN DIAN', (
+            f'N° {self._texto(resolucion.numero)} del {self._texto(resolucion.fecha_desde)}, '
+            f'prefijo {self._texto(resolucion.prefijo) or "sin prefijo"}, rango del '
+            f'{resolucion.consecutivo_desde} al {resolucion.consecutivo_hasta}, '
+            f'vigente hasta el {self._texto(resolucion.fecha_hasta)}'
+        )),)
+
+    @staticmethod
+    def _fecha_validacion(documento):
+        if not documento.fecha_validacion:
+            return ''
+        return timezone.localtime(documento.fecha_validacion).strftime('%Y-%m-%d %H:%M:%S')
+
     @classmethod
     def _qr(cls, documento, configuracion):
         return dibujo_qr(cls.contenido_qr(documento, configuracion), LADO_QR)
@@ -678,8 +686,7 @@ class FormatoDocumentoFactura(FormatoBase):
         validada: quien lo escanee ve qué factura es, pero no llega a nada que la
         haga pasar por válida.
         """
-        prefijo = (documento.resolucion.prefijo or '') if documento.resolucion_id else ''
-        numero = f'{prefijo}{documento.numero}' if documento.numero is not None else ''
+        numero = f'{cls._prefijo(documento)}{documento.numero}' if documento.numero is not None else ''
         contacto = documento.contacto
         pares = (
             ('NumFac', numero),

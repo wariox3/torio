@@ -228,6 +228,8 @@ class GenDocumentoViewSet(
             # datos del adquiriente.
             'resolucion', 'metodo_pago', 'plazo_pago', 'cuenta_banco__cuenta_banco_tipo',
             'contacto__identificacion', 'contacto__ciudad',
+            # Las notas: la factura que corrigen y por qué.
+            'documento_referencia__resolucion', 'documento_concepto_correccion',
         ).prefetch_related(
             'documentos_detalles_documento_rel__item',
             'documentos_detalles_documento_rel__cuenta',

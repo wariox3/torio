@@ -12,6 +12,10 @@ from general.formatos import (
     FormatoDocumentoFactura,
     FormatoDocumentoGenerico,
     FormatoDocumentoNomina,
+    FormatoDocumentoNotaCredito,
+    FormatoDocumentoNotaCreditoCompra,
+    FormatoDocumentoNotaDebito,
+    FormatoDocumentoNotaDebitoCompra,
     FormatoDocumentoPago,
     FormatoDocumentoPos,
     FormatoDocumentoPosElectronico,
@@ -34,7 +38,11 @@ from utilidades.formatos.pagina import (
 #
 # El día que sean muchos, esto pasa a ser un mapa por tipo o vuelve a la columna;
 # el punto de entrada —`_clase_formato`— no cambia.
+DOCUMENTO_TIPO_NOTA_CREDITO_VENTA = 2
+DOCUMENTO_TIPO_NOTA_DEBITO_VENTA = 3
 DOCUMENTO_TIPO_PAGO = 4  # mismo id que `contabilizar.DOCUMENTO_TIPO_PAGO`
+DOCUMENTO_TIPO_NOTA_CREDITO_COMPRA = 6
+DOCUMENTO_TIPO_NOTA_DEBITO_COMPRA = 7
 DOCUMENTO_TIPO_EGRESO = 8  # mismo id que `contabilizar.DOCUMENTO_TIPO_EGRESO`
 DOCUMENTO_TIPO_DOCUMENTO_SOPORTE = 11
 DOCUMENTO_TIPO_CUENTA_COBRO = 17
@@ -51,6 +59,10 @@ DOCUMENTO_TIPOS_NOMINA = (
 
 FORMATOS = {
     DOCUMENTO_TIPO_FACTURA_VENTA: FormatoDocumentoFactura,
+    DOCUMENTO_TIPO_NOTA_CREDITO_VENTA: FormatoDocumentoNotaCredito,
+    DOCUMENTO_TIPO_NOTA_DEBITO_VENTA: FormatoDocumentoNotaDebito,
+    DOCUMENTO_TIPO_NOTA_CREDITO_COMPRA: FormatoDocumentoNotaCreditoCompra,
+    DOCUMENTO_TIPO_NOTA_DEBITO_COMPRA: FormatoDocumentoNotaDebitoCompra,
     DOCUMENTO_TIPO_CUENTA_COBRO: FormatoDocumentoCuentaCobro,
     DOCUMENTO_TIPO_FACTURA_POS: FormatoDocumentoPos,
     DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO: FormatoDocumentoPosElectronico,
