@@ -148,6 +148,52 @@ class SegUsuarioClienteViewSet(
         return self.get_paginated_response(SegUsuarioClienteSerializer(pagina, many=True).data)
 
     @extend_schema(
+        summary='Miembros a los que se puede transferir el contenedor',
+        description=(
+            'Las membresías del contenedor que pueden recibir la propiedad en '
+            '`POST /contenedor/cliente/<id>/transferir/`: todas menos la del propietario '
+            'y las de soporte (los administradores sí salen). Solo el propietario; a '
+            'cualquier otro, 404. Sin `X-Tenant`.'
+        ),
+        parameters=[
+            OpenApiParameter('cliente_id', int, required=True, description='ID del cliente'),
+        ],
+        responses={
+            200: SegUsuarioClienteSerializer(many=True),
+            400: OpenApiResponse(
+                inline_serializer('UsuarioClienteTransferibleError', {'detail': serializers.CharField()}),
+                description='cliente_id faltante o inválido',
+            ),
+            404: OpenApiResponse(
+                inline_serializer('UsuarioClienteTransferibleNotFound', {'detail': serializers.CharField()}),
+                description='No existe el contenedor o no es su propietario',
+            ),
+        },
+    )
+    @action(detail=False, methods=['get'], url_path='transferible')
+    def transferible(self, request):
+        # Importado acá para no acoplar seguridad a contenedor al cargar el módulo.
+        from contenedor.models import CtnCliente
+
+        cliente_id = request.query_params.get('cliente_id', '')
+        if not cliente_id.isdigit():
+            return Response(
+                {'detail': 'cliente_id es requerido y debe ser numérico.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Solo el propietario transfiere. Contenedor inexistente y no serlo
+        # responden igual: un 403 confirmaría que ese id existe.
+        cliente = CtnCliente.objects.filter(pk=cliente_id).first()
+        if cliente is None or not cliente.es_propietario(request.user):
+            return Response({'detail': 'Cliente no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Las mismas exclusiones que valida `transferir`: él mismo y el soporte.
+        qs = self.get_queryset().filter(cliente=cliente).exclude(propietario=True).exclude(soporte=True)
+        pagina = self.paginate_queryset(qs)
+        return self.get_paginated_response(SegUsuarioClienteSerializer(pagina, many=True).data)
+
+    @extend_schema(
         summary='Membresía del usuario autenticado en un contenedor',
         description=(
             'Devuelve la membresía de quien consulta en el contenedor `schema_name`, '
