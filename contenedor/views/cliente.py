@@ -56,7 +56,7 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         # Un usuario solo ve y opera sobre los contenedores de los que es
         # miembro. `create` no usa el queryset, así que no queda bloqueado.
         # La autorización fina de escritura (update/destroy) la refina cada
-        # acción contra is_superuser del contenedor.
+        # acción contra la membresía (`es_superusuario`, `es_propietario`).
         #
         # Un contenedor en `creando` ya aparece: la membresía del owner la crea
         # el request, no la tarea.
@@ -74,6 +74,11 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         # límites generales.
         throttles = super().get_throttles()
         if self.action == 'create':
+            throttles.append(ScopedRateThrottle())
+        elif self.action == 'transferir':
+            # Exige la clave: sin un tope propio, una sesión robada la adivina
+            # al ritmo del límite general.
+            self.throttle_scope = 'transferir_contenedor'
             throttles.append(ScopedRateThrottle())
         return throttles
 
@@ -189,12 +194,11 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         # La membresía sí va acá, aunque su `UserTenantPermissions` lo crea la
         # tarea: vive en el schema del tenant, que todavía no tiene tablas. Así el
         # contenedor aparece en `lista-usuario` desde ya. El owner no necesita
-        # grupos: `is_superuser` se salta TienePermisoModelo.
+        # grupos: `propietario` se salta TienePermisoModelo.
         SegUsuarioCliente.objects.create(
             usuario=request.user,
             cliente=cliente,
             propietario=True,
-            is_superuser=True,
         )
 
         fecha_inicio = date.today()
@@ -238,14 +242,14 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         description=(
             'Vuelve a encolar la creación de un contenedor en `error`, o en `creando` '
             'hace más de 30 minutos (la tarea se perdió). Retoma donde quedó: lo ya '
-            'migrado o cargado no se repite. Solo el owner.'
+            'migrado o cargado no se repite. Owner o administrador.'
         ),
         request=None,
         responses={
             202: CtnClienteSerializer,
             403: OpenApiResponse(
                 inline_serializer('ClienteReintentarForbiddenSerializer', {'detail': serializers.CharField()}),
-                description='No es el owner',
+                description='No administra el contenedor',
             ),
             409: OpenApiResponse(
                 inline_serializer('ClienteReintentarConflictoSerializer', {'detail': serializers.CharField()}),
@@ -267,11 +271,11 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Por owner y no por `es_superusuario`: esa consulta lee el schema del
-        # tenant, que en un contenedor fallido puede no tener tablas.
-        if cliente.owner_id != request.user.id:
+        # `es_superusuario` lee la membresía, en el público: sirve aunque el
+        # schema del contenedor fallido no tenga tablas.
+        if not cliente.es_superusuario(request.user):
             return Response(
-                {'detail': 'Solo el owner del contenedor puede reintentar su creación.'},
+                {'detail': 'Solo un administrador del contenedor puede reintentar su creación.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -315,8 +319,7 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
     )
     def update(self, request, *args, **kwargs):
         cliente = self.get_object()
-        # `es_superusuario` lee el schema del tenant, que mientras se crea no
-        # tiene tablas.
+        # Editar un contenedor que se está creando o falló no tiene sentido.
         if cliente.estado != CtnCliente.ESTADO_LISTO:
             return Response(
                 {'detail': 'El contenedor todavía no está listo.'},
@@ -332,15 +335,15 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
     @extend_schema(
         summary='Eliminar contenedor',
         description=(
-            'Elimina el cliente y su schema. Solo un superusuario del contenedor puede '
-            'hacerlo; si la creación falló (`estado: error`), el owner. Uno en '
-            '`creando` no se puede eliminar hasta que termine.'
+            'Elimina el cliente y su schema. Solo el propietario, también si la '
+            'creación falló (`estado: error`). Uno en `creando` no se puede eliminar '
+            'hasta que termine.'
         ),
         responses={
             204: None,
             403: OpenApiResponse(
                 inline_serializer('ClienteDeleteForbiddenSerializer', {'detail': serializers.CharField()}),
-                description='Sin permisos de superusuario en el contenedor',
+                description='No es el propietario',
             ),
             409: OpenApiResponse(
                 inline_serializer('ClienteDeleteCreandoSerializer', {'detail': serializers.CharField()}),
@@ -364,13 +367,12 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        # La autorización se resuelve contra `is_superuser` de la membresía, no
-        # contra owner_id: esa es la fuente de verdad de permisos. Vive en el
-        # público, así que sirve también para un contenedor en `error`, cuyo
+        # Solo el dueño, por su membresía: un administrador no lo elimina. Vive en
+        # el público, así que sirve también para un contenedor en `error`, cuyo
         # schema puede no tener tablas.
-        if not cliente.es_superusuario(request.user):
+        if not cliente.es_propietario(request.user):
             return Response(
-                {'detail': 'Solo un superusuario del contenedor puede eliminarlo.'},
+                {'detail': 'Solo el propietario del contenedor puede eliminarlo.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -422,8 +424,8 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
             '`POST` (multipart, campo `imagen`) la carga o la reemplaza: acepta JPEG, '
             'PNG o WEBP (máx 5 MB) y genera original (1024px) y thumbnail (320×320) '
             'en WEBP. `DELETE` la quita; quitarla a uno sin imagen no es error. Las '
-            'dos responden el contenedor, con `imagen` e `imagen_thumbnail`. Solo el '
-            'owner.\n\n'
+            'dos responden el contenedor, con `imagen` e `imagen_thumbnail`. Owner o '
+            'administrador.\n\n'
             'Es la imagen que identifica al contenedor en la interfaz, no el logotipo '
             'de los formatos impresos (`/general/configuracion/logotipo/`).'
         ),
@@ -439,7 +441,7 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
             ),
             403: OpenApiResponse(
                 inline_serializer('ClienteImagenForbiddenSerializer', {'detail': serializers.CharField()}),
-                description='No es el owner',
+                description='No administra el contenedor',
             ),
         },
     )
@@ -449,11 +451,11 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
     )
     def imagen(self, request, pk=None):
         cliente = self.get_object()
-        # Por owner y no por `es_superusuario`: la imagen vive en el schema
-        # público, y así tampoco depende de que el schema del tenant esté listo.
-        if cliente.owner_id != request.user.id:
+        # La imagen vive en el schema público, y `es_superusuario` también: no
+        # depende de que el schema del tenant esté listo.
+        if not cliente.es_superusuario(request.user):
             return Response(
-                {'detail': 'Solo el owner del contenedor puede cambiar su imagen.'},
+                {'detail': 'Solo un administrador del contenedor puede cambiar su imagen.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -470,6 +472,88 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
             imagen_servicio.subir(archivo, cliente)
         except ValueError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(CtnClienteSerializer(cliente).data)
+
+    @extend_schema(
+        summary='Transferir la propiedad del contenedor',
+        description=(
+            'Pasa la propiedad a otro miembro del contenedor (`usuario_cliente` es el id '
+            'de su membresía). Solo el propietario, con su clave, y con el contenedor `listo`. '
+            'El nuevo queda `propietario`; el anterior, como miembro '
+            '`administrador`. Se borran las invitaciones pendientes '
+            'que envió el anterior dueño. No pide aceptación del destino. Sin `X-Tenant`.'
+        ),
+        request=inline_serializer('ClienteTransferirRequest', {
+            'usuario_cliente': serializers.IntegerField(),
+            'password': serializers.CharField(),
+        }),
+        responses={
+            200: CtnClienteSerializer,
+            400: OpenApiResponse(
+                inline_serializer('ClienteTransferirErrorSerializer', {'detail': serializers.CharField()}),
+                description='Clave incorrecta, o membresía faltante, ajena, de soporte o propia',
+            ),
+            403: OpenApiResponse(description='No es el propietario'),
+            404: OpenApiResponse(description='El contenedor no existe o no es miembro'),
+            409: OpenApiResponse(description='El contenedor no está listo'),
+        },
+    )
+    @action(detail=True, methods=['post'], url_path='transferir')
+    @transaction.atomic
+    def transferir(self, request, pk=None):
+        # Sin el `distinct` de `get_queryset`, que PostgreSQL no admite con FOR
+        # UPDATE. El lock pone en fila dos transferencias simultáneas.
+        cliente = CtnCliente.objects.select_for_update(of=('self',)).filter(
+            pk=pk, segusuariocliente__usuario=request.user,
+        ).first()
+        if cliente is None:
+            return Response(
+                {'detail': f'El cliente con id "{pk}" no existe.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not cliente.es_propietario(request.user):
+            return Response(
+                {'detail': 'Solo el propietario del contenedor puede transferir su propiedad.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if cliente.estado != CtnCliente.ESTADO_LISTO:
+            return Response(
+                {'detail': 'El contenedor todavía no está listo.'}, status=status.HTTP_409_CONFLICT,
+            )
+
+        password = request.data.get('password')
+        if not password or not isinstance(password, str):
+            return Response({'detail': 'password es requerido.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.check_password(password):
+            return Response({'detail': 'La clave es incorrecta.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        usuario_cliente_id = request.data.get('usuario_cliente')
+        if not isinstance(usuario_cliente_id, int) or isinstance(usuario_cliente_id, bool):
+            return Response(
+                {'detail': 'usuario_cliente es requerido y debe ser un id.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Una membresía de otro contenedor responde igual que una inexistente.
+        membresia = SegUsuarioCliente.objects.filter(pk=usuario_cliente_id, cliente=cliente).first()
+        if membresia is None:
+            return Response(
+                {'detail': 'El usuario no es miembro de este contenedor.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if membresia.usuario_id == request.user.id:
+            return Response(
+                {'detail': 'Ya eres el propietario de este contenedor.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if membresia.soporte:
+            return Response(
+                {'detail': 'La propiedad no se puede transferir a un usuario de soporte.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cliente.transferir_propiedad(membresia)
         return Response(CtnClienteSerializer(cliente).data)
 
     @extend_schema(
@@ -580,10 +664,10 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
         summary='Abrir soporte en un contenedor',
         description=(
             'Solo staff con MFA activo. Hace al staff miembro del contenedor marcado como '
-            '`soporte` y con `is_superuser`: desde ahí entra con '
+            '`soporte`, con todos los permisos: desde ahí entra con '
             '`X-Tenant` como cualquier miembro, aunque la suscripción esté vencida. No '
             'puede modificar ni eliminar el contenedor. No vence: se cierra con '
-            '`DELETE /seguridad/usuario-cliente/<id>/`, que puede hacer él o el owner. '
+            '`DELETE /seguridad/usuario-cliente/<id>/`, que puede hacer él, el owner o un administrador. '
             'Responde la membresía con la forma de `lista-usuario`.'
         ),
         request=None,
@@ -624,7 +708,6 @@ class CtnClienteViewSet(viewsets.ModelViewSet):
             membresia = cliente.add_user(
                 request.user,
                 soporte=True,
-                is_superuser=True,
             )
         except ExistsError:
             return Response(

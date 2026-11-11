@@ -59,7 +59,7 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
     )
     cliente_imagen = serializers.SerializerMethodField()
     cliente_imagen_thumbnail = serializers.SerializerMethodField()
-    # El efectivo: propietario y soporte tienen todo aunque su fila no lo marque.
+    # Calculado: propietario, administrador y soporte tienen todos los permisos.
     is_superuser = serializers.SerializerMethodField()
     suscripcion_id = serializers.IntegerField(source='cliente.suscripcion.id', read_only=True)
     suscripcion_fecha_fin = serializers.DateField(source='cliente.suscripcion.fecha_fin', read_only=True)
@@ -78,14 +78,14 @@ class CtnClienteListaUsuarioSerializer(serializers.ModelSerializer):
             'cliente_fecha_ultima_conexion', 'cliente_imagen', 'cliente_imagen_thumbnail',
             'suscripcion_id', 'suscripcion_fecha_fin', 'suscripcion_frecuencia',
             'suscripcion_suscripcion_tipo_nombre',
-            'propietario', 'soporte', 'is_superuser', 'grupos',
+            'propietario', 'administrador', 'soporte', 'is_superuser', 'grupos',
         ]
 
     def get_cliente_imagen(self, obj) -> str | None:
         return imagen_servicio.url_original(obj.cliente)
 
     def get_is_superuser(self, obj) -> bool:
-        return obj.is_superuser or obj.propietario or obj.soporte
+        return obj.propietario or obj.administrador or obj.soporte
 
     def get_cliente_imagen_thumbnail(self, obj) -> str | None:
         return imagen_servicio.url_thumbnail(obj.cliente)

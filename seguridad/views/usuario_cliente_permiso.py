@@ -26,7 +26,7 @@ class SegUsuarioClientePermisoViewSet(
 
     Se suman a los de sus grupos con `heredar_permisos`, nunca restan
     (`docs/permisos.md`). Vive en el público: sin `X-Tenant`. Cualquier miembro
-    ve los de su contenedor; solo el owner los agrega o quita, y nunca a una
+    ve los de su contenedor; solo el owner o un administrador los agrega o quita, y nunca a una
     membresía de soporte. No hay PUT: la fila es solo el par (miembro, permiso).
     """
 
@@ -55,13 +55,13 @@ class SegUsuarioClientePermisoViewSet(
         return super().list(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-        if serializer.validated_data['usuario_cliente'].cliente.owner_id != self.request.user.id:
-            raise PermissionDenied('Solo el owner del contenedor puede modificar los permisos.')
+        if not serializer.validated_data['usuario_cliente'].cliente.es_superusuario(self.request.user):
+            raise PermissionDenied('Solo un administrador del contenedor puede modificar los permisos.')
         serializer.save()
 
     def perform_destroy(self, instance):
-        if instance.usuario_cliente.cliente.owner_id != self.request.user.id:
-            raise PermissionDenied('Solo el owner del contenedor puede modificar los permisos.')
+        if not instance.usuario_cliente.cliente.es_superusuario(self.request.user):
+            raise PermissionDenied('Solo un administrador del contenedor puede modificar los permisos.')
         if instance.usuario_cliente.soporte:
             raise serializers.ValidationError(
                 {'detail': 'Los permisos de un usuario de soporte no se modifican.'}

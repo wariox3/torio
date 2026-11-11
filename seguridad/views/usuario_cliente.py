@@ -27,7 +27,7 @@ class SegUsuarioClienteViewSet(
     serializer_class = SegUsuarioClienteSerializer
     permission_classes = [IsAuthenticated]
 
-    campos_filtrables = {'cliente_id', 'usuario_id', 'propietario'}
+    campos_filtrables = {'cliente_id', 'usuario_id', 'propietario', 'administrador'}
     select_related_lista = ('usuario',)
     ordenamiento_default_lista = ('usuario__nombre_corto',)
 
@@ -68,10 +68,13 @@ class SegUsuarioClienteViewSet(
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Solo el propio miembro (se sale) o el owner del contenedor (lo saca).
-        # A cualquier otro se le responde igual que si la membresía no existiera:
-        # un 403 confirmaría que ese id es de alguien.
-        if request.user.id not in (membresia.usuario_id, membresia.cliente.owner_id):
+        # Solo el propio miembro (se sale) o un administrador del contenedor (lo
+        # saca). A cualquier otro se le responde igual que si la membresía no
+        # existiera: un 403 confirmaría que ese id es de alguien.
+        if (
+            membresia.usuario_id != request.user.id
+            and not membresia.cliente.es_superusuario(request.user)
+        ):
             return Response(
                 {'detail': 'No se encontró el acceso de usuario a cliente.'},
                 status=status.HTTP_404_NOT_FOUND,
@@ -86,6 +89,53 @@ class SegUsuarioClienteViewSet(
             return Response({'detail': str(e)}, status=status.HTTP_409_CONFLICT)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        summary='Marcar o desmarcar administrador',
+        description=(
+            'Cambia `administrador` de una membresía. Owner o administrador; '
+            'nunca sobre el propietario ni sobre una membresía de soporte. Sin `X-Tenant`.'
+        ),
+        request=inline_serializer(
+            'UsuarioClienteAdministrador', {'administrador': serializers.BooleanField()},
+        ),
+        responses={
+            200: SegUsuarioClienteSerializer,
+            400: OpenApiResponse(
+                inline_serializer('UsuarioClienteAdministradorError', {'detail': serializers.CharField()}),
+                description='Valor inválido, membresía del propietario o de soporte',
+            ),
+            403: OpenApiResponse(description='Quien consulta no administra el contenedor'),
+            404: OpenApiResponse(description='Membresía no encontrada'),
+        },
+    )
+    @action(detail=True, methods=['post'], url_path='administrador')
+    def administrador(self, request, pk=None):
+        membresia = self.get_object()
+
+        if not membresia.cliente.es_superusuario(request.user):
+            raise PermissionDenied('Solo un administrador del contenedor puede marcar administradores.')
+
+        valor = request.data.get('administrador')
+        if not isinstance(valor, bool):
+            return Response(
+                {'detail': 'administrador es requerido y debe ser booleano.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if membresia.propietario:
+            return Response(
+                {'detail': 'El propietario no se puede marcar como administrador.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if membresia.soporte:
+            return Response(
+                {'detail': 'Un usuario de soporte no se puede marcar como administrador.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        membresia.administrador = valor
+        membresia.save(update_fields=['administrador'])
+        return Response(SegUsuarioClienteSerializer(membresia).data)
 
     @action(detail=False, methods=['get'], url_path='lista-cliente')
     def lista_cliente(self, request):

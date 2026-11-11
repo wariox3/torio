@@ -1,6 +1,6 @@
 # Permisos dentro de un contenedor
 
-Estado: **implementado**. Modelos `seguridad/models/usuario_cliente.py` (`is_superuser`),
+Estado: **implementado**. Modelos `seguridad/models/usuario_cliente.py` (`propietario`, `administrador`, `soporte`),
 `usuario_cliente_grupo.py` y `usuario_cliente_permiso.py` (migraciones `seguridad/0032` y
 `0033`). El cálculo está en `seguridad/models/usuario.py` (`SegUsuario.has_perm` y
 compañía), la regla por petición en `seguridad/permissions.py` (`TienePermisoModelo`) y los
@@ -24,7 +24,7 @@ público y ya representa «este usuario en este contenedor».
 
 ```
 public.seg_usuario_cliente                (usuario + contenedor)
- ├─ is_superuser, propietario o soporte  → todos los permisos en ese contenedor
+ ├─ propietario, administrador o soporte → todos los permisos en ese contenedor
  ├─ seg_usuario_cliente_grupo             → auth_group (+ heredar_permisos)
  │                                          └─ auth_group_permissions → auth_permission
  └─ seg_usuario_cliente_permiso           → auth_permission (permisos personalizados)
@@ -34,8 +34,8 @@ public.seg_usuario_cliente                (usuario + contenedor)
 |---|---|
 | `auth_permission` | Catálogo de Django: un permiso por modelo y acción (`view_`, `add_`, `change_`, `delete_`). Lo llena `migrate`. |
 | `auth_group` / `auth_group_permissions` | Los 8 grupos del producto con ids fijos (`seguridad/grupos.py`). Sus permisos los aplica `sincronizar_grupos`, que corre `cargar_geodata`. |
-| `seg_usuario_cliente.is_superuser` | Superusuario **en ese contenedor**. Lo tienen el dueño (al crear el contenedor) y el soporte. |
-| `seg_usuario_cliente.propietario` | El dueño. **Basta para tener todo**, aunque su fila no tenga `is_superuser`: `has_perm`, `es_superusuario`, pendientes y el `is_superuser` que devuelve la API lo leen como `is_superuser OR propietario`. |
+| `seg_usuario_cliente.propietario` | El dueño. **Tiene todo**: `has_perm`, pendientes y el `is_superuser` que calcula la API lo leen como `propietario OR administrador OR soporte`, y `es_superusuario` como `propietario OR administrador`. Solo él transfiere la propiedad y elimina el contenedor (`es_propietario`). |
+| `seg_usuario_cliente.administrador` | Lo marca el dueño o otro administrador (`POST /seguridad/usuario-cliente/<id>/administrador/`), nunca sobre el propietario ni el soporte. **Tiene todo lo del dueño** —permisos (`has_perm`, pendientes, `is_superuser` de la API) y `es_superusuario`: editar el contenedor y su imagen, invitar, grupos, permisos, administradores, sacar miembros, reintentar la creación— **salvo transferir la propiedad y eliminar el contenedor**. Al transferir, el dueño anterior queda administrador. |
 | `seg_usuario_cliente.soporte` | Staff de la plataforma dando soporte. **También basta para tener todos los permisos** (`has_perm`, pendientes, `is_superuser` de la API), pero no cuenta en `es_superusuario`: no modifica ni elimina el contenedor. |
 | `seg_usuario_cliente_grupo` | Grupos del miembro. `heredar_permisos` (por defecto `true`) decide si el grupo da sus permisos. |
 | `seg_usuario_cliente_permiso` | Permisos sueltos del miembro: **cualquier** permiso, esté o no en sus grupos. |
@@ -80,8 +80,8 @@ de un contenedor: los usa `EsStaff` (panel de administración y soporte) y los c
 schema:
 
 1. Una consulta a `seg_usuario_cliente` por `(usuario_id, cliente_id)` para obtener la
-   membresía, su `is_superuser`, su `propietario` y su `soporte`.
-2. Si no es superusuario, propietario ni soporte, una consulta con `UNION`: los permisos de sus grupos con
+   membresía, su `propietario`, su `administrador` y su `soporte`.
+2. Si no tiene ninguna de las tres, una consulta con `UNION`: los permisos de sus grupos con
    `heredar_permisos` y sus permisos personalizados.
 
 Todo va por índice (`(usuario_id, cliente_id)`, `(usuario_cliente_id, grupo_id)`,
@@ -130,15 +130,17 @@ es lo que usa el front para mostrar u ocultar botones.
 
 | Momento | Qué queda |
 |---|---|
-| Crear contenedor (`POST /contenedor/cliente/`) | El dueño: `propietario` e `is_superuser` |
-| Soporte (`POST /contenedor/cliente/<id>/soporte/`) | `soporte` e `is_superuser` |
+| Crear contenedor (`POST /contenedor/cliente/`) | El dueño: `propietario` |
+| Marcar administrador (`POST /seguridad/usuario-cliente/<id>/administrador/`) | `administrador` |
+| Transferir (`POST /contenedor/cliente/<id>/transferir/`, con clave) | El nuevo: `propietario`; el anterior: `administrador`. Se borran sus invitaciones pendientes |
+| Soporte (`POST /contenedor/cliente/<id>/soporte/`) | `soporte` |
 | Aceptar invitación | Los `grupo_ids` de la invitación (opcional), con `heredar_permisos = true` |
 | `POST`/`DELETE /seguridad/usuario-cliente-grupo/` | Agrega o quita un grupo, con su `heredar_permisos` |
 | `POST`/`DELETE /seguridad/usuario-cliente-permiso/` | Agrega o quita un permiso personalizado |
 | Salir del contenedor (`DELETE /seguridad/usuario-cliente/<id>/`) | Se borra la membresía con sus grupos y permisos (CASCADE) |
 
-El `POST` y el `DELETE` de grupos y de permisos solo los hace el **dueño** del contenedor (`owner_id`);
-otro miembro recibe 403. A una membresía de soporte no se le editan (400). El `GET` lo
+El `POST` y el `DELETE` de grupos y de permisos los hacen el **dueño** o un **administrador**
+del contenedor (`es_superusuario`); otro miembro recibe 403. A una membresía de soporte no se le editan (400). El `GET` lo
 puede hacer cualquier miembro del contenedor.
 
 ### `/seguridad/usuario-cliente-grupo/` y `/seguridad/usuario-cliente-permiso/`
@@ -166,17 +168,17 @@ POST /seguridad/usuario-cliente-permiso/ { "usuario_cliente": 5, "permiso": 101 
 No hay `PUT`: para cambiar `heredar_permisos` se quita el grupo y se vuelve a agregar. Las
 validaciones están en el serializer y responden 400 con `detail`: membresía inexistente o
 de un contenedor al que no se pertenece, membresía de soporte, grupo o permiso
-inexistente, permiso de una app no asignable y repetido. Que solo el owner modifique se
-revisa en la vista (403). Las filas de un contenedor al que no se pertenece no se listan
+inexistente, permiso de una app no asignable y repetido. Que solo el owner o un administrador
+modifique se revisa en la vista (403). Las filas de un contenedor al que no se pertenece no se listan
 y su `DELETE` da 404.
 
 ## 7. Menú y pendientes
 
-- `lista-usuario` y `usuario-cliente` devuelven, por membresía, `is_superuser` (el efectivo:
-  `true` también para el propietario y el soporte) y `grupos` (ids). El front muestra el módulo de cada grupo del producto, y todos si es
+- `lista-usuario` y `usuario-cliente` devuelven, por membresía, `is_superuser` (calculado:
+  `true` para el propietario, el administrador y el soporte; no es una columna) y `grupos` (ids). El front muestra el módulo de cada grupo del producto, y todos si es
   superusuario.
 - `CtnPendienteTipo.grupo` dice de qué módulo es cada pendiente. Un pendiente se ve si la
-  membresía es superusuario, propietaria o de soporte, o tiene ese grupo, herede o no (`docs/pendientes.md`).
+  membresía es propietaria, administradora o de soporte, o tiene ese grupo, herede o no (`docs/pendientes.md`).
 
 ## 8. Límites conocidos
 
@@ -192,9 +194,7 @@ y su `DELETE` da 404.
 
 ## 9. Despliegue de este cambio
 
-Las migraciones 0032/0033 solo crean estructura. El propietario y el soporte ya tienen
-todo por serlo (2026-11-03), así que el `UPDATE` ya no hace falta; correrlo no estorba:
-
-```sql
-UPDATE seg_usuario_cliente SET is_superuser = TRUE WHERE propietario OR soporte;
-```
+Las migraciones 0032/0033 solo crean estructura. La 0035 (2026-11-11) quita
+`seg_usuario_cliente.is_superuser`: antes pasa a `administrador` toda membresía que lo tuviera
+sin ser propietaria ni de soporte (las que se marcaron con un `UPDATE` manual), así que nadie
+pierde acceso y no hay que correr nada a mano.

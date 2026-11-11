@@ -51,7 +51,7 @@ class SegUsuario(UserProfile):
     # --- Autorización -------------------------------------------------------
     #
     # Dentro de un contenedor, los permisos salen de la membresía en el público
-    # (`SegUsuarioCliente.is_superuser`, `SegUsuarioClienteGrupo` y
+    # (`SegUsuarioCliente.propietario`/`administrador`/`soporte`, `SegUsuarioClienteGrupo` y
     # `SegUsuarioClientePermiso`), no de
     # `UserTenantPermissions` como hace django-tenant-users: así se pueden leer
     # sin entrar al schema del contenedor. En el público se deja la librería tal
@@ -65,18 +65,17 @@ class SegUsuario(UserProfile):
     def _permisos_contenedor(self):
         """(is_superuser, {'app_label.codename'}) en el contenedor activo.
 
-        El propietario y el soporte tienen todo, aunque su membresía no tenga
-        `is_superuser`: serlo basta.
+        `is_superuser` es efectivo: lo da ser propietario, administrador o soporte.
         """
         from seguridad.models import SegUsuarioCliente
 
         membresia = SegUsuarioCliente.objects.filter(
             usuario_id=self.pk, cliente_id=connection.tenant.pk,
-        ).values_list('id', 'is_superuser', 'propietario', 'soporte').first()
+        ).values_list('id', 'propietario', 'administrador', 'soporte').first()
         if membresia is None:
             return False, frozenset()
-        membresia_id, es_superusuario, propietario, soporte = membresia
-        if es_superusuario or propietario or soporte:
+        membresia_id, propietario, administrador, soporte = membresia
+        if propietario or administrador or soporte:
             return True, frozenset()
         # Se suman: los de sus grupos con `heredar_permisos` y sus permisos
         # personalizados. Un grupo sin `heredar_permisos` no aporta nada acá.

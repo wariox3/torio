@@ -12,7 +12,7 @@ class SegUsuarioClienteSerializer(serializers.ModelSerializer):
         source='cliente.schema_name', read_only=True, allow_null=True,
     )
     cliente_imagen_thumbnail = serializers.SerializerMethodField()
-    # El efectivo: propietario y soporte tienen todo aunque su fila no lo marque.
+    # Calculado: propietario, administrador y soporte tienen todos los permisos.
     is_superuser = serializers.SerializerMethodField()
     # Ids de los grupos (`auth.Group`) de esta membresía: sus permisos en el
     # contenedor, y con ellos el menú. Con `is_superuser` tiene todos.
@@ -32,14 +32,15 @@ class SegUsuarioClienteSerializer(serializers.ModelSerializer):
             'cliente_schema_name',
             'cliente_imagen_thumbnail',
             'propietario',
+            'administrador',
             'soporte',
             'is_superuser',
             'grupos',
         ]
-        read_only_fields = ['id', 'soporte', 'is_superuser']
+        read_only_fields = ['id', 'administrador', 'soporte', 'is_superuser']
 
     def get_is_superuser(self, obj) -> bool:
-        return obj.is_superuser or obj.propietario or obj.soporte
+        return obj.propietario or obj.administrador or obj.soporte
 
     def get_cliente_imagen_thumbnail(self, obj) -> str | None:
         return imagen_servicio.url_thumbnail(obj.cliente)

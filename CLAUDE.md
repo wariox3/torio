@@ -50,7 +50,7 @@ Tenant isolation is covered by `contenedor/tests_aislamiento.py` (`python manage
 **Staff support access.** Platform staff (`is_staff` in the *public* schema, `EsStaff`) see every
 container at `GET /contenedor/cliente/administrar/` and enter one with
 `POST /contenedor/cliente/<id>/soporte/` (MFA required): that creates a normal membership with
-`SegUsuarioCliente.soporte = True` and `is_superuser`, so all tenant permission
+`SegUsuarioCliente.soporte = True`, which grants every permission, so all tenant permission
 checks work unchanged. It never expires — it is closed with the regular
 `DELETE /seguridad/usuario-cliente/<id>/` (the staff member or the owner) and leaves no history.
 A support membership is **not** a user of the client: `es_superusuario` returns `False` for it
@@ -60,7 +60,7 @@ A support membership is **not** a user of the client: `es_superusuario` returns 
 
 **Tenant authorization lives in the public schema, on the membership.** Inside a container,
 `SegUsuario.has_perm()` / `is_superuser` (overridden in `seguridad/models/usuario.py`) read
-`SegUsuarioCliente.is_superuser`, `SegUsuarioClienteGrupo` (membership ↔ `auth.Group`) and
+the `SegUsuarioCliente` flags (`propietario`, `administrador`, `soporte`), `SegUsuarioClienteGrupo` (membership ↔ `auth.Group`) and
 `SegUsuarioClientePermiso` (membership ↔ `auth.Permission`) for `connection.tenant` — **not** django-tenant-users' `UserTenantPermissions`, which is still
 created (empty) only for library compatibility. That makes a member's permissions readable
 without entering the container's schema (`lista-usuario`, `GET /contenedor/pendiente/`). In the
@@ -69,12 +69,15 @@ the product's fixed ones (`seguridad/grupos.py`). Permissions **add up**, never 
 permission is granted if any of the member's groups with `heredar_permisos = true` contains it
 or it is one of the member's personalized permissions (any permission, in a group of theirs or
 not). A group with `heredar_permisos = false` grants nothing — it only puts the module in the
-member's menu and pending items. Superuser → everything, and so does being the
-container's owner (`propietario`) or a support membership (`soporte`): permission
-readers treat it as `is_superuser OR propietario OR soporte`, and the API returns that
-effective value. `es_superusuario` (modify/delete the container) still excludes support.
-The owner of a new container and a support membership get `is_superuser`; an invitation
-carries optional `grupo_ids` (inheriting); afterwards only the owner adds or removes, one at
+member's menu and pending items. Being the container's owner (`propietario`), an
+administrator (`administrador`) or a support membership (`soporte`) grants everything —
+there is no `is_superuser` column on the membership; the API's `is_superuser` is computed
+as `propietario OR administrador OR soporte`. `es_superusuario` (administer the container: edit it and its image, invite,
+groups, permissions, administrators, remove members, retry creation) excludes support;
+`es_propietario` (only the owner: transfer ownership at `POST .../transferir/` with the
+password, and delete the container) excludes administrators too.
+An invitation
+carries optional `grupo_ids` (inheriting); afterwards the owner or an administrator adds or removes, one at
 a time, a member's groups (with `heredar_permisos`) at `/seguridad/usuario-cliente-grupo/`
 and personalized permissions at `/seguridad/usuario-cliente-permiso/` (never a support
 membership). The menu and

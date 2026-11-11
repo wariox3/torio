@@ -41,12 +41,12 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
 
     @extend_schema(
         summary='Invitar usuario al contenedor',
-        description='Envía una invitación a un usuario registrado. Solo el owner puede invitar.',
+        description='Envía una invitación a un usuario registrado. Solo el owner o un administrador.',
         request=CtnInvitacionCrearSerializer,
         responses={
             201: CtnInvitacionSerializer,
             400: OpenApiResponse(_RespuestaDetalle, description='El usuario ya es miembro'),
-            403: OpenApiResponse(_RespuestaDetalle, description='Solo el owner puede invitar'),
+            403: OpenApiResponse(_RespuestaDetalle, description='No administra el contenedor'),
             404: OpenApiResponse(_RespuestaDetalle, description='Usuario no encontrado'),
         },
     )
@@ -58,9 +58,9 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         usuario_id = serializador.validated_data['usuario_id']
         grupos = serializador.validated_data.get('grupos') or []
 
-        if cliente.owner_id != request.user.id:
+        if not cliente.es_superusuario(request.user):
             return Response(
-                {'detail': 'Solo el owner del contenedor puede invitar usuarios.'},
+                {'detail': 'Solo un administrador del contenedor puede invitar usuarios.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -148,7 +148,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         summary='Invitaciones pendientes de un cliente',
         description=(
             'Retorna las invitaciones pendientes enviadas desde un cliente. Solo el '
-            'owner del contenedor.'
+            'owner o un administrador del contenedor.'
         ),
         parameters=[
             OpenApiParameter('cliente_id', int, required=True, description='ID del cliente'),
@@ -156,7 +156,7 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         responses={
             200: CtnInvitacionClienteSerializer(many=True),
             400: OpenApiResponse(_RespuestaDetalle, description='cliente_id requerido'),
-            404: OpenApiResponse(_RespuestaDetalle, description='Cliente no encontrado o no es el owner'),
+            404: OpenApiResponse(_RespuestaDetalle, description='Cliente no encontrado o no lo administra'),
         },
     )
     @action(detail=False, methods=['get'], url_path='pendiente-cliente')
@@ -165,10 +165,11 @@ class CtnInvitacionViewSet(viewsets.GenericViewSet):
         if not cliente_id or not cliente_id.isdigit():
             return Response({'detail': 'cliente_id es requerido.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Las invitaciones traen nombre y correo de los invitados: solo las ve el
-        # owner. A cualquier otro se le responde como si el cliente no existiera,
-        # para no confirmar qué ids son contenedores.
-        if not CtnCliente.objects.filter(id=cliente_id, owner=request.user).exists():
+        # Las invitaciones traen nombre y correo de los invitados: solo las ven
+        # el owner y los administradores. A cualquier otro se le responde como
+        # si el cliente no existiera, para no confirmar qué ids son contenedores.
+        cliente = CtnCliente.objects.filter(id=cliente_id).first()
+        if cliente is None or not cliente.es_superusuario(request.user):
             return Response({'detail': 'Cliente no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
 
         qs = CtnInvitacion.objects.filter(
