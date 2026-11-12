@@ -186,12 +186,3 @@ class ConMovimientoInformeBaseEstadoSerializer(serializers.Serializer):
     codigo = serializers.CharField(read_only=True)
     nombre = serializers.CharField(read_only=True)
     saldo = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)
-
-
-class ConMovimientoInformeBaseEstadoTotalesSerializer(serializers.Serializer):
-    """Total de los estados: la suma de los saldos del periodo."""
-
-    tipo_fila = None
-    columnas = ('saldo',)
-
-    saldo = serializers.DecimalField(max_digits=20, decimal_places=6, read_only=True)

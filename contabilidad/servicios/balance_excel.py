@@ -14,6 +14,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from contabilidad.servicios import estado_resultados as er
+from contabilidad.servicios import situacion_financiera as sf
 
 _FUENTE = 'Arial'
 _FONDO = PatternFill('solid', fgColor='9CDFEB')
@@ -213,13 +214,100 @@ def excel_estado_resultados(filas, empresa, fecha_desde, fecha_hasta, desde_ante
     wb.save(buf)
     return buf.getvalue(), 'estado_resultados_formal.xlsx'
 
+# Negativos entre paréntesis: la convención de un estado financiero presentado.
+IMPORTE_CONTABLE = '#,##0.00;(#,##0.00)'
+_BORDE_DOBLE = Border(top=Side(style='thin'), bottom=Side(style='double'))
+_FIRMAS = (
+    ('Representante legal', 'C.C.'),
+    ('Contador público', 'T.P.'),
+    ('Revisor fiscal', 'T.P.'),
+)
+
+
+def excel_situacion_financiera(filas, empresa, fecha_corte, fecha_anterior):
+    """
+    El estado de situación financiera formal (`servicios.situacion_financiera`):
+    el bloque de título con el corte, las secciones con el corte actual, el
+    anterior y la variación, y al pie las líneas de firma.
+    """
+    columnas = [
+        ('codigo', 'Código', TEXTO),
+        ('nombre', 'Concepto', TEXTO),
+        ('actual', f'{fecha_corte} ($)', IMPORTE_CONTABLE),
+    ]
+    if fecha_anterior is not None:
+        columnas += [
+            ('anterior', f'{fecha_anterior} ($)', IMPORTE_CONTABLE),
+            ('variacion', 'Variación ($)', IMPORTE_CONTABLE),
+            ('porcentaje', 'Variación (%)', PORCENTAJE),
+        ]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'estado_situacion_financiera'
+
+    anchos = [0] * len(columnas)
+    rango = (f'Fecha de corte: {fecha_corte}',)
+    if fecha_anterior is not None:
+        rango += (f'Comparado con: {fecha_anterior}',)
+    _bloque_titulo(ws, 'Estado de situación financiera', empresa, None, None, anchos, rango)
+    _encabezados(ws, columnas, anchos)
+
+    numero = _FILA_ENCABEZADOS
+    for fila in filas:
+        tipo = fila['tipo']
+        # Una fila en blanco antes de cada sección y del total final, para que
+        # el estado se lea por bloques.
+        if tipo in (sf.SECCION, sf.TOTAL_FINAL):
+            numero += 1
+        numero += 1
+        for indice, (campo, _, formato_numero) in enumerate(columnas):
+            valor = fila[campo]
+            if campo == 'nombre':
+                if tipo in (sf.LINEA, sf.RESULTADO):
+                    valor = f'        {valor}'
+                elif tipo in (sf.SUBSECCION, sf.SUBTOTAL):
+                    valor = f'    {valor}'
+                elif tipo in (sf.SECCION, sf.TOTAL, sf.TOTAL_FINAL):
+                    valor = valor.upper()
+            celda = ws.cell(row=numero, column=indice + 1, value=valor)
+            celda.font = Font(name=_FUENTE, size=10, bold=tipo not in (sf.LINEA, sf.RESULTADO))
+            celda.number_format = formato_numero
+            if indice >= 2:
+                if tipo == sf.SUBTOTAL:
+                    celda.border = _BORDE_TOTAL
+                elif tipo in (sf.TOTAL, sf.TOTAL_FINAL):
+                    celda.border = _BORDE_DOBLE
+            if tipo == sf.TOTAL_FINAL:
+                celda.fill = _FONDO_UTILIDAD
+            anchos[indice] = max(
+                anchos[indice],
+                _largo_importe(valor) + 2 if formato_numero == IMPORTE_CONTABLE else _largo(valor),
+            )
+
+    # Las firmas van a mano: tres líneas con el cargo y el documento debajo.
+    numero += 4
+    for indice, (cargo, documento) in enumerate(_FIRMAS):
+        columna = 2 + indice if len(columnas) > 3 else 1 + indice
+        linea = ws.cell(row=numero, column=columna, value=cargo)
+        linea.border = Border(top=Side(style='thin'))
+        linea.font = Font(name=_FUENTE, size=10, bold=True)
+        ws.cell(row=numero + 1, column=columna, value=documento).font = Font(name=_FUENTE, size=9)
+
+    for indice, ancho in enumerate(anchos):
+        ws.column_dimensions[get_column_letter(indice + 1)].width = max(ancho + 1, 18 if indice >= 2 else 0)
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue(), f'estado_situacion_financiera_{fecha_corte}.xlsx'
+
 
 def _largo_importe(valor):
     """Ancho de un importe como lo muestra el formato, con separador de miles."""
     return 0 if valor is None else len(f'{valor:,.2f}')
 
 
-def _bloque_titulo(ws, titulo, empresa, fecha_desde, fecha_hasta, anchos):
+def _bloque_titulo(ws, titulo, empresa, fecha_desde, fecha_hasta, anchos, rango=None):
     # El fondo va solo en la celda de arriba a la izquierda: es la que Excel
     # pinta a lo ancho de la combinación.
     ultima = get_column_letter(len(anchos))
@@ -236,7 +324,7 @@ def _bloque_titulo(ws, titulo, empresa, fecha_desde, fecha_hasta, anchos):
         celda.fill = _FONDO
         anchos[0] = max(anchos[0], _largo(texto))
 
-    rango = (f'Fecha desde: {fecha_desde}', f'Fecha hasta: {fecha_hasta}')
+    rango = rango or (f'Fecha desde: {fecha_desde}', f'Fecha hasta: {fecha_hasta}')
     for numero, texto in enumerate(rango, start=4):
         celda = ws.cell(row=numero, column=1, value=texto)
         celda.font = Font(name=_FUENTE, size=10)

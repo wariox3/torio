@@ -21,5 +21,6 @@ from .movimiento import ConMovimientoViewSet
 from .movimiento_informe import ConMovimientoInformeViewSet
 from .movimiento_informe_base import ConMovimientoInformeBaseViewSet
 from .movimiento_informe_resultado import ConMovimientoInformeResultadoViewSet
+from .movimiento_informe_situacion import ConMovimientoInformeSituacionViewSet
 from .periodo import ConPeriodoViewSet
 from .tablero import ConTableroViewSet

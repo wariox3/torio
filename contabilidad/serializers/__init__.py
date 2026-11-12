@@ -51,9 +51,9 @@ from .movimiento_informe_base import (
     ConMovimientoInformeBaseCertificadoSerializer,
     ConMovimientoInformeBaseCertificadoTotalesSerializer,
     ConMovimientoInformeBaseEstadoSerializer,
-    ConMovimientoInformeBaseEstadoTotalesSerializer,
 )
 from .movimiento_informe_resultado import ConMovimientoInformeResultadoFormalSerializer
+from .movimiento_informe_situacion import ConMovimientoInformeSituacionFormalSerializer
 from .movimiento_seleccionar import ConMovimientoSeleccionarSerializer
 from .periodo import ConPeriodoSerializer
 from .periodo_exportar import ConPeriodoExportarSerializer

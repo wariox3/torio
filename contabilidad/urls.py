@@ -22,6 +22,7 @@ from contabilidad.views import (
     ConMetodoDepreciacionViewSet,
     ConMovimientoInformeBaseViewSet,
     ConMovimientoInformeResultadoViewSet,
+    ConMovimientoInformeSituacionViewSet,
     ConMovimientoInformeViewSet,
     ConMovimientoViewSet,
     ConPeriodoViewSet,
@@ -55,6 +56,9 @@ router.register(
 )
 router.register(
     r'movimiento-informe-resultado', ConMovimientoInformeResultadoViewSet, basename='movimiento-informe-resultado',
+)
+router.register(
+    r'movimiento-informe-situacion', ConMovimientoInformeSituacionViewSet, basename='movimiento-informe-situacion',
 )
 router.register(r'periodo', ConPeriodoViewSet, basename='periodo')
 router.register(r'tablero', ConTableroViewSet, basename='tablero')

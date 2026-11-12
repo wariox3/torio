@@ -229,6 +229,11 @@ SPECTACULAR_SETTINGS = {
     'SWAGGER_UI_SETTINGS': {
         'persistAuthorization': True,
     },
+    # Los estados financieros (resultados y situación) comparten `informe: base | formal`;
+    # sin nombre explícito el enum sale con un hash.
+    'ENUM_NAME_OVERRIDES': {
+        'InformeEstadoFinancieroEnum': 'contabilidad.views.movimiento_informe_situacion.INFORMES',
+    },
     'POSTPROCESSING_HOOKS': [
         'drf_spectacular.hooks.postprocess_schema_enums',
         'utilidades.openapi.agregar_header_tenant',
