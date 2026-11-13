@@ -5,6 +5,7 @@ import re
 import uuid as uuid_lib
 import zipfile
 from datetime import date, datetime, time, timedelta
+from datetime import timezone as dt_timezone
 from decimal import Decimal
 from unittest import mock
 
@@ -9562,6 +9563,75 @@ class EmitirTests(TenantTestCase):
 
         self.assertEqual(respuesta.data, {'emitidos': [nota.id], 'con_error': []})
         self.assertIsNone(cliente.crear_documento.call_args.args[0]['documento_referencia'])
+
+    # ---- nota de ajuste ----
+
+    CUDS = 'ab' * 48
+
+    def _nota_ajuste(self, enviado=True, cue=None, fecha_validacion=None, validado=True):
+        """
+        La nota de ajuste y su documento soporte. `enviado` dice si el soporte salió
+        por torio (tiene `electronico_id`); si no, se emitió desde itrio y solo se
+        conocen su `cue` y su `fecha_validacion`.
+        """
+        self.soporte = self._documento_soporte(
+            detalles=False, estado_electronico=validado, cue=cue,
+            fecha_validacion=fecha_validacion,
+            electronico_id=uuid_lib.UUID('11111111-2222-3333-4444-555555555555') if enviado else None,
+        )
+        clase = GenDocumentoClase.objects.create(id=304, nombre='Nota de ajuste')
+        tipo = GenDocumentoTipo.objects.create(
+            id=12, nombre='NOTA DE AJUSTE', compra=True, codigo=13, documento_clase=clase,
+        )
+        return self._documento(
+            documento_tipo=tipo, resolucion=None, numero=5, documento_referencia=self.soporte,
+            documento_concepto_correccion=GenDocumentoConceptoCorreccion.objects.create(
+                id=14, codigo='5', nombre='Otros', documento_clase=clase,
+            ),
+        )
+
+    def _payload_ajuste(self, nota):
+        cliente = self._cliente()
+        respuesta = self._llamar({'ids': [nota.id]}, cliente)
+        self.assertEqual(respuesta.data, {'emitidos': [nota.id], 'con_error': []})
+        return cliente.crear_documento.call_args.args[0]
+
+    def test_la_nota_de_ajuste_de_un_soporte_enviado_lleva_su_id(self):
+        payload = self._payload_ajuste(self._nota_ajuste())
+
+        self.assertEqual(payload['documento_referencia'], '11111111-2222-3333-4444-555555555555')
+        self.assertIsNone(payload['documento_referencia_externo'])
+        self.assertEqual(payload['prefijo'], 'DSAJ')
+        self.assertEqual(payload['concepto_correccion'], '5')
+
+    def test_la_nota_de_ajuste_de_un_soporte_de_itrio_lo_describe(self):
+        """Sin id en rededoc, va con lo que la DIAN conoce: número, CUDS y fecha de emisión."""
+        # 03:00 UTC es todavía el día anterior en Bogotá.
+        nota = self._nota_ajuste(
+            enviado=False, cue=self.CUDS,
+            fecha_validacion=datetime(2026, 1, 10, 3, 0, tzinfo=dt_timezone.utc),
+        )
+
+        payload = self._payload_ajuste(nota)
+
+        self.assertIsNone(payload['documento_referencia'])
+        self.assertEqual(payload['documento_referencia_externo'], {
+            'numero': 'SETP990000011', 'cufe_cude': self.CUDS, 'fecha': '2026-01-09',
+        })
+
+    def test_sin_fecha_de_validacion_va_la_fecha_del_soporte(self):
+        payload = self._payload_ajuste(self._nota_ajuste(enviado=False, cue=self.CUDS))
+
+        self.assertEqual(payload['documento_referencia_externo']['fecha'], '2026-01-15')
+
+    def test_la_nota_de_ajuste_de_un_soporte_sin_id_ni_cuds_no_se_emite(self):
+        self._con_error(self._nota_ajuste(enviado=False), 'no ha sido enviado electrónicamente')
+
+    def test_la_nota_de_ajuste_de_un_soporte_sin_validar_no_se_emite(self):
+        self._con_error(
+            self._nota_ajuste(enviado=False, cue=self.CUDS, validado=False),
+            'todavía no está validado por la DIAN',
+        )
 
     def test_la_factura_sigue_sin_llevar_retenciones(self):
         documento = self._documento()

@@ -692,7 +692,8 @@ def emitir(documento_ids, cliente: Rededoc = None) -> dict:
     documentos = GenDocumento.objects.select_related(
         'documento_tipo', 'resolucion', 'plazo_pago', 'metodo_pago',
         'contacto__identificacion', 'contacto__ciudad__estado__pais',
-        'documento_referencia', 'documento_concepto_correccion',
+        'documento_referencia__documento_tipo', 'documento_referencia__resolucion',
+        'documento_concepto_correccion',
         'caja', 'turno',
     ).in_bulk(documento_ids)
     # El asistente se revisa antes que los ids. Un lote solo de nóminas exige el
@@ -1223,6 +1224,12 @@ def _armar_nota_ajuste(documento, parametro):
     referencia», y además exige que la DIAN lo haya aceptado. Se revisa acá para
     que el error salga en torio y no como un rechazo de rededoc.
 
+    Si el documento soporte se emitió por fuera de torio (p. ej. desde itrio) no
+    tiene `electronico_id` que mandar. Entonces viaja en
+    `documento_referencia_externo` con lo que la DIAN conoce de él: el número con
+    el prefijo de su resolución, su CUDS (`cue`) y la fecha en que se validó.
+    Rededoc no puede comprobar que exista; lo comprueba la DIAN.
+
     Como las notas de venta, no se numera contra una resolución —va con su
     prefijo de `PREFIJOS_NOTA`— ni lleva vencimiento.
 
@@ -1262,7 +1269,7 @@ def _armar_nota_ajuste(documento, parametro):
             f'El documento {referencia.numero or referencia.id} que ajusta la nota '
             f'{documento.id} no es un documento soporte.'
         )
-    elif not referencia.electronico_id:
+    elif not referencia.electronico_id and not referencia.cue:
         errores.append(
             f'El documento soporte {referencia.numero or referencia.id} que ajusta la nota '
             f'{documento.id} no ha sido enviado electrónicamente.'
@@ -1277,6 +1284,21 @@ def _armar_nota_ajuste(documento, parametro):
     detalles = _o_error(errores, _detalles, documento, True)
     if errores:
         raise _ErroresDocumento(errores)
+
+    # Enviado desde torio: rededoc lo tiene y basta su id. Si no, va descrito.
+    referencia_externa = None
+    if not referencia.electronico_id:
+        prefijo = referencia.resolucion.prefijo if referencia.resolucion_id else None
+        validado = referencia.fecha_validacion
+        referencia_externa = {
+            'numero': f'{prefijo or ""}{referencia.numero}',
+            'cufe_cude': referencia.cue,
+            # La fecha con que la DIAN lo conoce es la de su emisión, que es
+            # el día en que se validó; `fecha` es la de la compra.
+            'fecha': (
+                timezone.localdate(validado) if validado else referencia.fecha
+            ).isoformat(),
+        }
 
     credito = bool(documento.plazo_pago and documento.plazo_pago.dias > 0)
     return {
@@ -1293,7 +1315,8 @@ def _armar_nota_ajuste(documento, parametro):
         'forma_pago': FORMA_PAGO_CREDITO if credito else FORMA_PAGO_CONTADO,
         'medio_pago': getattr(documento.metodo_pago, 'codigo', None) or MEDIO_PAGO_NO_DEFINIDO,
         'moneda': MONEDA,
-        'documento_referencia': str(referencia.electronico_id),
+        'documento_referencia': str(referencia.electronico_id) if referencia.electronico_id else None,
+        'documento_referencia_externo': referencia_externa,
         'concepto_correccion': concepto.codigo,
         'adquiriente': adquiriente,
         'detalles': detalles,
