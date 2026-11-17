@@ -137,6 +137,7 @@ DOCUMENTO_CLASES_QUE_PERMITEN_DESAPROBAR = (
     500, 501,                 # entrada y salida de almacén
     601, 602, 603,            # asiento, depreciación y cierre contable
     701,                      # nómina: se desaprueba con su programación
+    702,                      # nómina electrónica, mientras no se haya enviado
 )
 
 DOCUMENTO_TIPO_REMISION = 29
@@ -1091,6 +1092,11 @@ def anular(documento_id):
         documento.documentos_detalles_documento_rel.update(
             **dict.fromkeys(_CAMPOS_EN_CERO_DETALLE, 0)
         )
+        # Una nómina electrónica anulada nunca va a la DIAN (sin enviar es
+        # requisito): queda como registro del consecutivo gastado y suelta sus
+        # nóminas, que se reportan en la siguiente que se genere.
+        if documento.documento_tipo.documento_clase_id == DOCUMENTO_CLASE_NOMINA_ELECTRONICA:
+            GenDocumento.objects.filter(documento_referencia=documento).update(documento_referencia=None)
 
         for campo in _CAMPOS_EN_CERO_DOCUMENTO:
             setattr(documento, campo, Decimal('0'))

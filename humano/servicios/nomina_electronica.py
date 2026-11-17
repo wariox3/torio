@@ -3,14 +3,26 @@ Nómina electrónica: el documento soporte de pago de nómina que se reporta a l
 DIAN por rededoc. Portado de `generar_nomina_electronica` y `emitir` de itrio.
 
 **Generar** junta, por empleado y mes, las nóminas aprobadas (clase 701:
-nómina, prima, cesantía, interés y liquidación) en un documento de tipo NOMINA ELECTRONICA.
+nómina, prima, cesantía, interés y liquidación) que todavía no se han reportado
+en un documento de tipo NOMINA ELECTRONICA.
 Cada nómina queda como una línea y apunta a su electrónica por
 `documento_referencia`; de ahí la saca el envío y por ahí se sabe que ya está
 reportada. Se genera aprobado, como en itrio: es un resumen de nóminas ya
 aprobadas, no algo que alguien vaya a editar.
 
+Un empleado puede tener **varias electrónicas en el mismo mes**: quien paga por
+quincena puede reportar la primera antes de que exista la segunda. Volver a
+generar crea otra electrónica solo con las nóminas nuevas, con las mismas fechas
+del mes; la que ya existe no se toca.
+
 **Desgenerar** borra las electrónicas del mes que todavía no se enviaron y
 libera sus nóminas, para corregir y volver a generar.
+
+Una sola electrónica sin enviar también se puede **desaprobar** (conserva el
+número y sus nóminas) y, ya desaprobada, **eliminar**: al borrarla suelta sus
+nóminas, que quedan listas para volver a generar. **Anularla** (aprobada y sin
+enviar) también las suelta, pero el documento se queda, en cero, como registro
+del consecutivo que se gastó.
 
 **Armar** el envío convierte las líneas de las nóminas en los conceptos de
 rededoc (`NominaConcepto` en nobelio) por el tipo de concepto, como itrio. Los
@@ -153,12 +165,13 @@ def _electronicas_del_mes(desde, hasta):
 
 def generar(anio, mes):
     """
-    Crea las nóminas electrónicas del mes, una por empleado. Todo o nada: si a
-    un empleado le falta algo, no se crea ninguna y `errores` dice a quién.
+    Crea las nóminas electrónicas del mes, una por empleado, con las nóminas que
+    aún no están reportadas. Todo o nada: si a un empleado le falta algo, no se
+    crea ninguna y `errores` dice a quién.
 
-    Un empleado que ya tiene electrónica en el mes y nóminas nuevas sin reportar
-    es un error: hay que desgenerar (si no se envió) y volver a generar, porque
-    la DIAN espera un solo documento por empleado y periodo.
+    Si el empleado ya tiene electrónica en el mes (la primera quincena, por
+    ejemplo), se le crea otra con las nóminas nuevas y con las mismas fechas del
+    mes; cada nómina queda atada a la electrónica en la que se reportó.
     """
     desde, hasta = _mes(anio, mes)
     with transaction.atomic():
@@ -179,20 +192,12 @@ def generar(anio, mes):
         for nomina in nominas:
             por_empleado[nomina.contacto_id].append(nomina)
 
-        con_electronica = set(
-            _electronicas_del_mes(desde, hasta).values_list('contacto_id', flat=True)
-        )
         errores = []
         for contacto_id, suyas in por_empleado.items():
             contacto = suyas[0].contacto
             nombre = contacto.nombre_corto if contacto else f'contacto {contacto_id}'
             if contacto is None:
                 errores.append({'contacto_id': None, 'mensaje': f'Las nóminas {[n.numero for n in suyas]} no tienen empleado.'})
-            elif contacto_id in con_electronica:
-                errores.append({'contacto_id': contacto_id, 'mensaje': (
-                    f'{nombre} ya tiene nómina electrónica en el mes y nóminas nuevas sin reportar: '
-                    'desgenere y vuelva a generar.'
-                )})
             elif not contacto.nombre1 or not contacto.apellido1:
                 errores.append({'contacto_id': contacto_id, 'mensaje': f'{nombre} no tiene nombre1 o apellido1.'})
             elif suyas[-1].contrato is None:

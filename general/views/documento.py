@@ -261,6 +261,11 @@ class GenDocumentoViewSet(
                 raise NotFound('Documento no encontrado.')
             if not documento.es_mutable():
                 raise ValidationError('El documento no es modificable.')
+            # Una nómina electrónica (desaprobada y sin enviar) suelta sus nóminas
+            # para que se puedan volver a generar; sin esto su FK `PROTECT` impide
+            # el borrado.
+            if documento.documento_tipo.documento_clase_id == documento_servicio.DOCUMENTO_CLASE_NOMINA_ELECTRONICA:
+                GenDocumento.objects.filter(documento_referencia=documento).update(documento_referencia=None)
             documento.documentos_detalles_documento_rel.all().delete()
             # Un documento modificable puede tener pagos registrados, y la FK los
             # protege: sin esto el borrado falla con `ProtectedError`.
@@ -321,6 +326,9 @@ class GenDocumentoViewSet(
             'han reportado, aprobada y numerada (ver '
             '`humano.servicios.nomina_electronica`). Todo o nada: si a un empleado le '
             'falta algo, `errores` dice a quién y no se crea ninguna.\n\n'
+            'Se puede generar varias veces en el mismo mes (nómina por quincena): cada '
+            'vez crea otra electrónica por empleado con las nóminas nuevas, con las '
+            'mismas fechas del mes, y las ya generadas no se tocan.\n\n'
             'Hoy solo genera nómina electrónica; las plantillas recurrentes van por '
             '`documento/generar-recurrente/`.\n\n'
             'Responde `{"generados": <n>, "ids": [...]}`.'
