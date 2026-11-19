@@ -12,6 +12,7 @@
     { "id": 9,  "nombre": "Sudameris"          },
     { "id": 10, "nombre": "Banco itau"         },
     { "id": 11, "nombre": "Banco de bogota"    },
-    { "id": 12, "nombre": "Nu bank"            }
+    { "id": 12, "nombre": "Nu bank"            },
+    { "id": 13, "nombre": "Nequi"              }
   ]
 }
