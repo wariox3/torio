@@ -34,6 +34,7 @@ class GenDocumentoExportarSerializer(serializers.Serializer):
         ('fecha', 'Fecha'),
         ('fecha_contable', 'Fecha contable'),
         ('documento_tipo.nombre', 'Tipo documento'),
+        ('contacto.numero_identificacion', 'Identificación'),
         ('contacto.nombre_corto', 'Contacto'),
         ('centro_costo.codigo', 'Centro de costo'),
         ('centro_costo.nombre', 'Centro de costo nombre'),
@@ -184,6 +185,7 @@ class GenDocumentoInventarioExportarSerializer(GenDocumentoExportarSerializer):
     select_related_excel = ('documento_tipo', 'contacto', 'almacen')
 
     campos_excel = _ENCABEZADO + (
+        ('contacto.numero_identificacion', 'Identificación'),
         ('contacto.nombre_corto', 'Contacto'),
         ('almacen.nombre', 'Almacén'),
         ('comentario', 'Comentario'),
@@ -205,6 +207,7 @@ class GenDocumentoContableExportarSerializer(GenDocumentoExportarSerializer):
     campos_excel = _ENCABEZADO + (
         ('fecha_contable', 'Fecha contable'),
         ('comprobante.nombre', 'Comprobante'),
+        ('contacto.numero_identificacion', 'Identificación'),
         ('contacto.nombre_corto', 'Contacto'),
         ('centro_costo.codigo', 'Centro de costo'),
         ('comentario', 'Comentario'),
