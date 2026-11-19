@@ -1,4 +1,6 @@
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from decimal import Decimal, InvalidOperation
+
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
@@ -12,7 +14,8 @@ from humano.serializers import (
     HumContratoSerializer,
     HumLiquidacionSerializer,
 )
-from humano.servicios import LiquidacionError, terminar_contrato
+from humano.servicios import LiquidacionError, periodo_sugerido, terminar_contrato
+from humano.servicios.vacacion import DIAS_VACACION_ANIO
 from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import (
     ExportarExcelMixin,
@@ -134,3 +137,50 @@ class HumContratoViewSet(
             return Response({'detail': e.detail}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(HumLiquidacionSerializer(liquidacion).data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Periodo de vacaciones sugerido',
+        description=(
+            'El periodo que cubrirían `dias` días de vacaciones (hábiles disfrutados '
+            'más en dinero; 15 si no se envía) a partir del último periodo cubierto '
+            'del contrato. Cada día de vacaciones cubre 24 días del periodo (15 por '
+            'cada 360), así que tomar menos de 15 cierra el periodo en proporción. El '
+            'último periodo cubierto se calcula desde `fecha_ultimo_pago_vacacion` '
+            'del contrato sumando los días de sus novedades de vacaciones '
+            '(`dias_disfrutados` + `dias_dinero`).\n\n'
+            '`dias_causados` son los días de vacaciones ganados desde el inicio del '
+            'periodo hasta hoy (o hasta el fin del contrato, si terminó) y aún no tomados.'
+        ),
+        parameters=[
+            OpenApiParameter('contrato_id', int, required=True),
+            OpenApiParameter('dias', float, required=False, description='Días a tomar; 15 por defecto.'),
+        ],
+        responses=inline_serializer('PeriodoVacacion', {
+            'fecha_desde_periodo': serializers.DateField(),
+            'fecha_hasta_periodo': serializers.DateField(),
+            'dias_causados': serializers.DecimalField(max_digits=10, decimal_places=3),
+        }),
+    )
+    @action(detail=False, methods=['get'], url_path='periodo-vacacion')
+    def periodo_vacacion(self, request):
+        contrato_id = request.query_params.get('contrato_id', '')
+        if not contrato_id.isdigit():
+            return Response({'detail': 'contrato_id es requerido y debe ser un número.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        dias = request.query_params.get('dias')
+        if dias is None:
+            dias = DIAS_VACACION_ANIO
+        else:
+            try:
+                dias = Decimal(dias)
+            except InvalidOperation:
+                return Response({'detail': 'dias debe ser un número.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not dias.is_finite() or dias <= 0:
+                return Response({'detail': 'dias debe ser mayor que cero.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            contrato = HumContrato.objects.get(pk=contrato_id)
+        except HumContrato.DoesNotExist:
+            raise NotFound('Contrato no encontrado.')
+
+        return Response(periodo_sugerido(contrato, dias), status=status.HTTP_200_OK)

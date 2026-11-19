@@ -20,6 +20,7 @@ from humano.models import (
     HumTipoCosto,
     HumTipoCotizante,
 )
+from humano.servicios.vacacion import corte_inicial
 
 
 class HumContratoImportarSerializer(serializers.Serializer):
@@ -139,6 +140,10 @@ class HumContratoImportarSerializer(serializers.Serializer):
             return 0, errores
 
         if nuevos:
+            # Mismo corte que al crear por el API: el primer periodo de
+            # vacaciones arranca con el contrato.
+            for contrato in nuevos:
+                contrato.fecha_ultimo_pago_vacacion = corte_inicial(contrato)
             HumContrato.objects.bulk_create(nuevos, batch_size=self.BATCH_BULK_CREATE)
         return len(nuevos), []
 

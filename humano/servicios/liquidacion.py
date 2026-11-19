@@ -17,6 +17,7 @@ from general.models import GenConfiguracion, GenDocumento, GenDocumentoDetalle
 from general.servicios import documento as servicio_documento
 from humano.models import HumConcepto, HumContrato, HumLiquidacion, HumLiquidacionAdicional
 from humano.servicios.nomina import redondear
+from humano.servicios.vacacion import ultimo_periodo_vacacion
 from utilidades.fechas import dias_prestacionales
 
 DOCUMENTO_TIPO_LIQUIDACION = 28
@@ -95,7 +96,10 @@ def liquidar(liquidacion):
         desde, hasta = liquidacion.fecha_desde, liquidacion.fecha_hasta
         dias_cesantia = _dias_desde(contrato.fecha_ultimo_pago_cesantia, desde, hasta)
         dias_prima = _dias_desde(contrato.fecha_ultimo_pago_prima, desde, hasta)
-        dias_vacacion = _dias_desde(contrato.fecha_ultimo_pago_vacacion, desde, hasta)
+        # Las vacaciones se pagan desde el último periodo cubierto por las
+        # novedades de vacaciones, no desde el corte con que se creó el contrato.
+        ultimo_vacacion = ultimo_periodo_vacacion(contrato)
+        dias_vacacion = _dias_desde(ultimo_vacacion, desde, hasta)
 
         salario = contrato.salario
         salario_prestacion = salario
@@ -121,7 +125,8 @@ def liquidar(liquidacion):
         liquidacion.fecha_ultimo_pago = contrato.fecha_ultimo_pago
         liquidacion.fecha_ultimo_pago_cesantia = contrato.fecha_ultimo_pago_cesantia or desde
         liquidacion.fecha_ultimo_pago_prima = contrato.fecha_ultimo_pago_prima or desde
-        liquidacion.fecha_ultimo_pago_vacacion = contrato.fecha_ultimo_pago_vacacion or desde
+        # Sin vacaciones previas se muestra el inicio, como en prima y cesantía.
+        liquidacion.fecha_ultimo_pago_vacacion = max(ultimo_vacacion, desde)
         _sumar_adicionales(liquidacion)
         liquidacion.save()
     return liquidacion

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from humano.models import HumContrato
+from humano.servicios.vacacion import corte_inicial
 
 
 class HumContratoSerializer(serializers.ModelSerializer):
@@ -135,3 +136,11 @@ class HumContratoSerializer(serializers.ModelSerializer):
             )
 
         return attrs
+
+    def create(self, validated_data):
+        # Sin vacaciones previas, el corte queda el día anterior al inicio: el
+        # primer periodo de vacaciones arranca con el contrato. Un empleado que
+        # trae vacaciones de otro sistema manda la fecha hasta la que las tomó.
+        if validated_data.get('fecha_ultimo_pago_vacacion') is None:
+            validated_data['fecha_ultimo_pago_vacacion'] = corte_inicial(HumContrato(**validated_data))
+        return super().create(validated_data)

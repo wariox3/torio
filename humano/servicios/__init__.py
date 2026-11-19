@@ -29,3 +29,4 @@ from .programacion import (
     eliminar_detalles,
     generar_programacion,
 )
+from .vacacion import periodo_sugerido, ultimo_periodo_vacacion
