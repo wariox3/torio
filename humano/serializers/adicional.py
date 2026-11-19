@@ -37,3 +37,18 @@ class HumAdicionalSerializer(serializers.ModelSerializer):
             'contrato_contacto_numero_identificacion',
         ]
         read_only_fields = ['id']
+
+    # `permanente` no lo decide el front, sale de `programacion`: un adicional de una
+    # programación se paga solo en esa nómina, y uno sin programación se paga en
+    # todas hasta inactivarlo.
+
+    def create(self, validated_data):
+        validated_data['permanente'] = validated_data.get('programacion') is None
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        # Un PATCH que no trae `programacion` conserva la que tenía, y con ella
+        # se recalcula: así un `permanente` suelto en el body tampoco lo cambia.
+        programacion = validated_data.get('programacion', instance.programacion)
+        validated_data['permanente'] = programacion is None
+        return super().update(instance, validated_data)
