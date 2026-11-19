@@ -89,7 +89,7 @@ class GenContactoViewSet(
     @action(detail=False, methods=['get'], pagination_class=SeleccionarPaginacion)
     def seleccionar(self, request):
         qs = GenContacto.objects.select_related(
-            'ciudad', 'plazo_pago', 'plazo_pago_proveedor',
+            'ciudad', 'plazo_pago', 'plazo_pago_proveedor', 'asesor',
         ).order_by('nombre_corto')
         search = request.query_params.get('search', '').strip()
         if search:
