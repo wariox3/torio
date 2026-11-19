@@ -32,6 +32,7 @@ from general import tasks as tareas
 from general.formatos import (
     FormatoDocumentoCuentaCobro,
     FormatoDocumentoFactura,
+    FormatoDocumentoGenerico,
     FormatoDocumentoPos,
     FormatoDocumentoPosElectronico,
     FormatoDocumentoSoporte,
@@ -10015,6 +10016,15 @@ class FormatoFacturaTests(TenantTestCase):
         recorrer(FormatoDocumentoFactura(documento).construir())
         return ' '.join(textos)
 
+    def test_la_descripcion_lleva_la_referencia_del_item(self):
+        self.item.referencia = 'XYZ-01'
+        self.item.save()
+
+        self.assertIn('FIRMA DIGITAL Ref: XYZ-01', self._textos(self._factura()))
+
+    def test_sin_referencia_no_sale_ref(self):
+        self.assertNotIn('Ref:', self._textos(self._factura()))
+
     def test_la_factura_de_venta_usa_su_formato(self):
         documento = self._factura()
         self.assertIs(documento_imprimir._clase_formato(documento), FormatoDocumentoFactura)
@@ -10287,12 +10297,16 @@ class FormatoFacturaTests(TenantTestCase):
         self.assertEqual(numeros[paginas_larga:], [(1, 1)])
 
     def test_un_documento_que_no_numera_no_suma_hojas_a_la_factura(self):
-        """El pago que va después de una factura no lleva número ni cuenta como hoja suya."""
-        otro = GenDocumentoTipo.objects.create(id=2, nombre='NOTA')
+        """El documento sin numerar que va después de una factura no cuenta como hoja suya."""
+        # Un tipo sin formato propio, que cae en el genérico (no numera). No sirve
+        # cualquier id bajo: el 2 era uno así hasta que pasó a ser la nota crédito,
+        # que hereda de la factura y sí numera.
+        otro = GenDocumentoTipo.objects.create(id=999, nombre='OTRO')
         factura = self._factura()
-        nota = self._factura(documento_tipo=otro)
+        sin_numerar = self._factura(documento_tipo=otro)
+        self.assertIs(documento_imprimir._clase_formato(sin_numerar), FormatoDocumentoGenerico)
 
-        self.assertEqual(self._numeros_de_pagina([factura, nota]), [(1, 1)])
+        self.assertEqual(self._numeros_de_pagina([factura, sin_numerar]), [(1, 1)])
 
 
 def _contacto_facturacion(correo_facturacion='facturas@x.com'):

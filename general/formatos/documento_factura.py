@@ -445,9 +445,12 @@ class FormatoDocumentoFactura(FormatoBase):
             if detalle.item_id
         ]
         for detalle in lineas:
-            # Siempre el nombre del ítem; el detalle de la línea lo complementa
-            # debajo, en gris y más pequeño para que no se confunda con el nombre.
+            # Siempre el nombre del ítem, con su referencia al final si la tiene;
+            # el detalle de la línea lo complementa debajo, en gris y más pequeño
+            # para que no se confunda con el nombre.
             descripcion = self._texto(detalle.item.nombre)
+            if detalle.item.referencia:
+                descripcion += f' Ref: {self._texto(detalle.item.referencia)}'
             if detalle.detalle:
                 descripcion += (
                     f'<br/><font size="6" color="{_GRIS_TEXTO.hexval()}">'
