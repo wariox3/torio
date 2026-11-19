@@ -6,7 +6,10 @@ from humano.models.programacion_detalle import MENSAJE_PROGRAMACION_CERRADA
 
 class HumProgramacionDetalleSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'programacion_id', 'contrato_id', 'ingreso', 'retiro'}
+    campos_filtrables = {
+        'id', 'programacion_id', 'contrato_id', 'ingreso', 'retiro',
+        'contrato__contacto__numero_identificacion', 'contrato__contacto__nombre_corto',
+    }
     select_related_lista = ('programacion', 'contrato', 'contrato__contacto')
     ordenamiento_default_lista = ('-id',)
 
