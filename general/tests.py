@@ -44,6 +44,7 @@ from general.models import (
     GenAsesor,
     GenCiudad,
     GenConfiguracion,
+    GenConfiguracionUsuario,
     GenContacto,
     GenCuentaBanco,
     GenCuentaBancoTipo,
@@ -72,7 +73,6 @@ from general.models import (
     GenResolucion,
     GenSede,
     GenTipoPersona,
-    GenUsuarioConfiguracion,
 )
 from general.serializers import (
     GenAsesorImportarSerializer,
@@ -96,6 +96,7 @@ from general.servicios import rededoc as rededoc_servicio
 from general.servicios import resumen as resumen_servicio
 from general.views.archivo import GenArchivoViewSet
 from general.views.configuracion import GenConfiguracionViewSet
+from general.views.configuracion_usuario import GenConfiguracionUsuarioViewSet
 from general.views.documento import GenDocumentoViewSet
 from general.views.documento_concepto_correccion import GenDocumentoConceptoCorreccionViewSet
 from general.views.documento_detalle import GenDocumentoDetalleViewSet
@@ -116,7 +117,6 @@ from general.views.tablero import (
     ResultadoRespuestaSerializer,
     ResumenRespuestaSerializer,
 )
-from general.views.usuario_configuracion import GenUsuarioConfiguracionViewSet
 from inventario.models import InvAlmacen, InvExistencia
 from seguridad.models import SegUsuario
 from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente
@@ -1688,13 +1688,13 @@ class _ConfiguracionViewSinPermisos(GenConfiguracionViewSet):
     throttle_classes = []
 
 
-class _UsuarioConfiguracionViewSinPermisos(GenUsuarioConfiguracionViewSet):
+class _ConfiguracionUsuarioViewSinPermisos(GenConfiguracionUsuarioViewSet):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
     throttle_classes = []
 
 
-class GenUsuarioConfiguracionViewTests(TenantTestCase):
+class GenConfiguracionUsuarioViewTests(TenantTestCase):
     """
     La configuración del usuario: siempre la de `request.user`, una fila por usuario.
     """
@@ -1708,8 +1708,8 @@ class GenUsuarioConfiguracionViewTests(TenantTestCase):
 
     def _llamar(self, accion, usuario_id=1, cuerpo=None):
         metodo = 'patch' if accion == 'actualizar' else 'get'
-        vista = _UsuarioConfiguracionViewSinPermisos.as_view({metodo: accion})
-        url = f'/general/usuario-configuracion/{accion}/'
+        vista = _ConfiguracionUsuarioViewSinPermisos.as_view({metodo: accion})
+        url = f'/general/configuracion-usuario/{accion}/'
         if metodo == 'patch':
             peticion = self.factory.patch(url, cuerpo, format='json')
         else:
@@ -1726,7 +1726,7 @@ class GenUsuarioConfiguracionViewTests(TenantTestCase):
             'almacen': None, 'almacen_nombre': None,
             'caja': None, 'caja_nombre': None,
         })
-        self.assertTrue(GenUsuarioConfiguracion.objects.filter(usuario_id=1).exists())
+        self.assertTrue(GenConfiguracionUsuario.objects.filter(usuario_id=1).exists())
 
     def test_actualizar_guarda_los_tres_y_null_los_quita(self):
         cuerpo = {'sede': self.sede.id, 'almacen': self.almacen.id, 'caja': self.caja.id}
@@ -1777,7 +1777,7 @@ class GenUsuarioConfiguracionViewTests(TenantTestCase):
 
         sede.delete()
 
-        self.assertIsNone(GenUsuarioConfiguracion.objects.get(usuario_id=1).sede_id)
+        self.assertIsNone(GenConfiguracionUsuario.objects.get(usuario_id=1).sede_id)
 
 
 class GenParametroViewTests(TenantTestCase):

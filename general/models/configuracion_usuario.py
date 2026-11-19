@@ -1,13 +1,13 @@
 from django.db import models
 
 
-class GenUsuarioConfiguracion(models.Model):
+class GenConfiguracionUsuario(models.Model):
     """
     Las preferencias de un usuario dentro de este contenedor: una fila por usuario.
 
     Son valores **por defecto** que el front propone (al crear un documento, al
     abrir el POS…); no limitan nada, el usuario puede escoger otro. Solo los edita
-    el propio usuario, por `/general/usuario-configuracion/`.
+    el propio usuario, por `/general/configuracion-usuario/`.
 
     `usuario_id` es el `SegUsuario.pk` sin FK, como en `GenLog`: la cuenta vive en
     el esquema público y ningún modelo del tenant le pone FK. Si el usuario sale
@@ -22,23 +22,23 @@ class GenUsuarioConfiguracion(models.Model):
         'general.GenSede',
         null=True,
         on_delete=models.SET_NULL,
-        related_name='usuarios_configuracion_sede_rel',
+        related_name='configuraciones_usuario_sede_rel',
     )
     almacen = models.ForeignKey(
         'inventario.InvAlmacen',
         null=True,
         on_delete=models.SET_NULL,
-        related_name='usuarios_configuracion_almacen_rel',
+        related_name='configuraciones_usuario_almacen_rel',
     )
     caja = models.ForeignKey(
         'venta.VenCaja',
         null=True,
         on_delete=models.SET_NULL,
-        related_name='usuarios_configuracion_caja_rel',
+        related_name='configuraciones_usuario_caja_rel',
     )
 
     class Meta:
-        db_table = 'gen_usuario_configuracion'
+        db_table = 'gen_configuracion_usuario'
         verbose_name = 'Configuración de usuario'
         verbose_name_plural = 'Configuraciones de usuario'
 

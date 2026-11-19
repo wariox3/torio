@@ -5,6 +5,7 @@ from .asesor import GenAsesor
 from .banco import GenBanco
 from .ciudad import GenCiudad
 from .configuracion import GenConfiguracion
+from .configuracion_usuario import GenConfiguracionUsuario
 from .contacto import GenContacto
 from .cuenta_banco import GenCuentaBanco
 from .cuenta_banco_clase import GenCuentaBancoClase
@@ -40,4 +41,3 @@ from .responsabilidad import GenResponsabilidad
 from .sector import GenSector
 from .sede import GenSede
 from .tipo_persona import GenTipoPersona
-from .usuario_configuracion import GenUsuarioConfiguracion

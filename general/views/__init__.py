@@ -3,6 +3,7 @@ from .asesor import GenAsesorViewSet
 from .banco import GenBancoViewSet
 from .ciudad import GenCiudadViewSet
 from .configuracion import GenConfiguracionViewSet
+from .configuracion_usuario import GenConfiguracionUsuarioViewSet
 from .contacto import GenContactoViewSet
 from .cuenta_banco import GenCuentaBancoViewSet
 from .cuenta_banco_clase import GenCuentaBancoClaseViewSet
@@ -42,4 +43,3 @@ from .sector import GenSectorViewSet
 from .sede import GenSedeViewSet
 from .tablero import GenTableroViewSet
 from .tipo_persona import GenTipoPersonaViewSet
-from .usuario_configuracion import GenUsuarioConfiguracionViewSet

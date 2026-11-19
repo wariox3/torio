@@ -3,12 +3,12 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from general.models import GenUsuarioConfiguracion
-from general.serializers import GenUsuarioConfiguracionSerializer
+from general.models import GenConfiguracionUsuario
+from general.serializers import GenConfiguracionUsuarioSerializer
 
 
 @extend_schema(tags=['Configuracion'])
-class GenUsuarioConfiguracionViewSet(viewsets.GenericViewSet):
+class GenConfiguracionUsuarioViewSet(viewsets.GenericViewSet):
     """
     La configuración del usuario autenticado en este contenedor.
 
@@ -17,11 +17,11 @@ class GenUsuarioConfiguracionViewSet(viewsets.GenericViewSet):
     miembro (los permisos por defecto).
     """
 
-    serializer_class = GenUsuarioConfiguracionSerializer
+    serializer_class = GenConfiguracionUsuarioSerializer
 
     def _obtener_instancia(self):
         instancia, _ = (
-            GenUsuarioConfiguracion.objects
+            GenConfiguracionUsuario.objects
             .select_related('sede', 'almacen', 'caja')
             .get_or_create(usuario_id=self.request.user.pk)
         )
@@ -30,21 +30,21 @@ class GenUsuarioConfiguracionViewSet(viewsets.GenericViewSet):
     @extend_schema(
         summary='Mi configuración',
         description='La crea vacía en el primer acceso.',
-        responses=GenUsuarioConfiguracionSerializer,
+        responses=GenConfiguracionUsuarioSerializer,
     )
     @action(detail=False, methods=['get'])
     def obtener(self, request):
-        return Response(GenUsuarioConfiguracionSerializer(self._obtener_instancia()).data)
+        return Response(GenConfiguracionUsuarioSerializer(self._obtener_instancia()).data)
 
     @extend_schema(
         summary='Actualizar mi configuración',
         description='Parcial. `null` quita el valor por defecto.',
-        request=GenUsuarioConfiguracionSerializer,
-        responses=GenUsuarioConfiguracionSerializer,
+        request=GenConfiguracionUsuarioSerializer,
+        responses=GenConfiguracionUsuarioSerializer,
     )
     @action(detail=False, methods=['patch'])
     def actualizar(self, request):
-        serializer = GenUsuarioConfiguracionSerializer(
+        serializer = GenConfiguracionUsuarioSerializer(
             self._obtener_instancia(), data=request.data, partial=True,
         )
         serializer.is_valid(raise_exception=True)

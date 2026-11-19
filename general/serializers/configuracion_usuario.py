@@ -1,15 +1,15 @@
 from rest_framework import serializers
 
-from general.models import GenUsuarioConfiguracion
+from general.models import GenConfiguracionUsuario
 
 
-class GenUsuarioConfiguracionSerializer(serializers.ModelSerializer):
+class GenConfiguracionUsuarioSerializer(serializers.ModelSerializer):
     sede_nombre = serializers.CharField(source='sede.nombre', read_only=True, allow_null=True)
     almacen_nombre = serializers.CharField(source='almacen.nombre', read_only=True, allow_null=True)
     caja_nombre = serializers.CharField(source='caja.nombre', read_only=True, allow_null=True)
 
     class Meta:
-        model = GenUsuarioConfiguracion
+        model = GenConfiguracionUsuario
         fields = [
             'sede',
             'sede_nombre',

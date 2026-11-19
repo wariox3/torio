@@ -6,6 +6,7 @@ from general.views import (
     GenBancoViewSet,
     GenCiudadViewSet,
     GenConfiguracionViewSet,
+    GenConfiguracionUsuarioViewSet,
     GenContactoViewSet,
     GenCuentaBancoClaseViewSet,
     GenCuentaBancoTipoViewSet,
@@ -45,7 +46,6 @@ from general.views import (
     GenSedeViewSet,
     GenTableroViewSet,
     GenTipoPersonaViewSet,
-    GenUsuarioConfiguracionViewSet,
 )
 
 router = DefaultRouter()
@@ -54,6 +54,9 @@ router.register(r'asesor', GenAsesorViewSet, basename='asesor')
 router.register(r'banco', GenBancoViewSet, basename='banco')
 router.register(r'ciudad', GenCiudadViewSet, basename='ciudad')
 router.register(r'configuracion', GenConfiguracionViewSet, basename='configuracion')
+router.register(
+    r'configuracion-usuario', GenConfiguracionUsuarioViewSet, basename='configuracion-usuario',
+)
 router.register(r'contacto', GenContactoViewSet, basename='contacto')
 router.register(r'cuenta-banco', GenCuentaBancoViewSet, basename='cuenta-banco')
 router.register(r'cuenta-banco-clase', GenCuentaBancoClaseViewSet, basename='cuenta-banco-clase')
@@ -107,8 +110,5 @@ router.register(r'sector', GenSectorViewSet, basename='sector')
 router.register(r'sede', GenSedeViewSet, basename='sede')
 router.register(r'tablero', GenTableroViewSet, basename='tablero')
 router.register(r'tipo-persona', GenTipoPersonaViewSet, basename='tipo-persona')
-router.register(
-    r'usuario-configuracion', GenUsuarioConfiguracionViewSet, basename='usuario-configuracion',
-)
 
 urlpatterns = router.urls

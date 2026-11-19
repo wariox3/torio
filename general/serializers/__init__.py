@@ -5,6 +5,7 @@ from .asesor_importar import GenAsesorImportarSerializer
 from .banco import GenBancoSeleccionarSerializer
 from .ciudad import GenCiudadSeleccionarSerializer
 from .configuracion import GenConfiguracionSerializer
+from .configuracion_usuario import GenConfiguracionUsuarioSerializer
 from .contacto import GenContactoSerializer
 from .contacto_exportar import GenContactoExportarSerializer
 from .contacto_importar import GenContactoImportarSerializer
@@ -93,4 +94,3 @@ from .sede_exportar import GenSedeExportarSerializer
 from .sede_importar import GenSedeImportarSerializer
 from .sede_seleccionar import GenSedeSeleccionarSerializer
 from .tipo_persona import GenTipoPersonaSeleccionarSerializer
-from .usuario_configuracion import GenUsuarioConfiguracionSerializer
