@@ -1,7 +1,7 @@
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
@@ -78,6 +78,15 @@ class HumAdicionalViewSet(
     serializer_class = HumAdicionalSerializer
     serializer_class_exportar = HumAdicionalExportarSerializer
     permission_classes = [TienePermisoModelo]
+
+    def perform_destroy(self, instance):
+        # Nada apunta al adicional, así que la base dejaría borrarlo aunque su
+        # programación ya lo haya pagado; la nómina quedaría con una línea de un
+        # adicional que no existe.
+        programacion = instance.programacion
+        if programacion is not None and (programacion.estado_generado or programacion.estado_aprobado):
+            raise ValidationError({'detail': MENSAJE_PROGRAMACION_CERRADA})
+        instance.delete()
 
     def get_queryset(self):
         qs = HumAdicional.objects.select_related(

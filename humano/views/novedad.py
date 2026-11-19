@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
+from general.models import GenDocumentoDetalle
 from humano.models import HumNovedad
 from humano.serializers import (
     HumNovedadExportarSerializer,
@@ -74,6 +75,27 @@ class HumNovedadViewSet(
 
     def perform_update(self, serializer):
         self._guardar_y_liquidar(serializer)
+
+    def perform_destroy(self, instance):
+        # Las dos FK que apuntan a la novedad son PROTECT; se revisan antes para
+        # decir qué la está usando y cómo liberarla.
+        linea = (
+            GenDocumentoDetalle.objects.filter(novedad=instance)
+            .select_related('documento__documento_tipo').order_by('id').first()
+        )
+        if linea is not None:
+            documento = linea.documento
+            nombre = ' '.join(
+                str(parte) for parte in (documento.documento_tipo.nombre, documento.numero) if parte is not None
+            )
+            paso = 'desapruebe y desgenere' if documento.estado_aprobado else 'desgenere'
+            raise ValidationError({'detail': (
+                f'La novedad está en el documento {documento.pk} ({nombre}); '
+                f'{paso} la programación antes de eliminarla.'
+            )})
+        if HumNovedad.objects.filter(novedad_referencia=instance).exists():
+            raise ValidationError({'detail': 'La novedad tiene prórrogas; elimínelas primero.'})
+        instance.delete()
 
     @extend_schema(
         request=inline_serializer('NovedadLiquidarRequest', {'id': serializers.IntegerField()}),

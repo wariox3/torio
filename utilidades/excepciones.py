@@ -11,6 +11,9 @@ la prueba `RespuestasDeErrorTests` revisa que las que llevan un dict literal
 traigan `detail`.
 """
 
+from django.db.models import ProtectedError, RestrictedError
+from rest_framework import status
+from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
 MENSAJE_POR_DEFECTO = 'La petición no se pudo procesar.'
@@ -22,10 +25,27 @@ CAMPOS_SIN_PREFIJO = ('non_field_errors', 'mensaje')
 
 
 def manejador_excepciones(exc, context):
+    if isinstance(exc, (ProtectedError, RestrictedError)):
+        return Response({'detail': mensaje_protegido(exc)}, status=status.HTTP_400_BAD_REQUEST)
     respuesta = exception_handler(exc, context)
     if respuesta is not None:
         respuesta.data = con_detail(respuesta.data)
     return respuesta
+
+
+def mensaje_protegido(exc):
+    """
+    Mensaje para un borrado que la base no permite porque otros registros apuntan
+    con `PROTECT` o `RESTRICT` a lo que se quería borrar.
+
+    Es el respaldo: sin esto el error salía como un 500. La vista que conoce su
+    caso (la novedad que está en una nómina) da un mensaje más preciso antes.
+    """
+    objetos = getattr(exc, 'protected_objects', None) or getattr(exc, 'restricted_objects', None) or ()
+    modelos = sorted({str(objeto._meta.verbose_name) for objeto in objetos})
+    if not modelos:
+        return 'No se puede eliminar: otros registros lo usan.'
+    return f'No se puede eliminar: lo usan registros de {", ".join(modelos)}.'
 
 
 def con_detail(datos):

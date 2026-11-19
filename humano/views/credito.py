@@ -2,8 +2,10 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from general.models import GenDocumentoDetalle
 from humano.models import HumCredito
 from humano.serializers import (
     HumCreditoExportarSerializer,
@@ -46,6 +48,27 @@ class HumCreditoViewSet(
     serializer_class_exportar = HumCreditoExportarSerializer
     serializer_class_importar = HumCreditoImportarSerializer
     permission_classes = [TienePermisoModelo]
+
+    def perform_destroy(self, instance):
+        # Las líneas de nómina que descontaron cuotas apuntan al crédito con
+        # PROTECT; se revisa antes para decir dónde está y qué hacer.
+        linea = (
+            GenDocumentoDetalle.objects.filter(credito=instance)
+            .select_related('documento__documento_tipo').order_by('id').first()
+        )
+        if linea is not None:
+            documento = linea.documento
+            nombre = ' '.join(
+                str(parte) for parte in (documento.documento_tipo.nombre, documento.numero) if parte is not None
+            )
+            raise ValidationError({'detail': (
+                f'El crédito tiene cuotas descontadas en el documento {documento.pk} ({nombre}); '
+                f'inactívelo en lugar de eliminarlo.'
+            )})
+        # Un crédito migrado puede traer abonos sin líneas de nómina que los respalden.
+        if instance.abono > 0:
+            raise ValidationError({'detail': 'El crédito tiene abonos; inactívelo en lugar de eliminarlo.'})
+        instance.delete()
 
     def get_queryset(self):
         qs = HumCredito.objects.select_related(
