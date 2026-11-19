@@ -15,6 +15,8 @@ class HumAporteContrato(models.Model):
     cotizacion_voluntario_pension_aportante = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     cotizacion_solidaridad_solidaridad = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     cotizacion_solidaridad_subsistencia = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    cotizacion_fondo_empresa = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
+    cotizacion_fondo_empleado = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     cotizacion_salud = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     cotizacion_salud_empresa = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     cotizacion_salud_empleado = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)

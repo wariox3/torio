@@ -37,6 +37,8 @@ class HumAporteContratoSerializer(serializers.ModelSerializer):
             'cotizacion_voluntario_pension_aportante',
             'cotizacion_solidaridad_solidaridad',
             'cotizacion_solidaridad_subsistencia',
+            'cotizacion_fondo_empresa',
+            'cotizacion_fondo_empleado',
             'cotizacion_salud',
             'cotizacion_salud_empresa',
             'cotizacion_salud_empleado',

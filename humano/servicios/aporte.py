@@ -10,6 +10,7 @@ aprobar todavía puede cambiar.
 import math
 from collections import defaultdict
 from decimal import Decimal
+from operator import attrgetter
 
 from django.db import transaction
 from django.db.models import Q, Sum
@@ -61,6 +62,14 @@ _COTIZACIONES = (
     'cotizacion_voluntario_pension_afiliado', 'cotizacion_voluntario_pension_aportante',
     'cotizacion_salud', 'cotizacion_riesgos', 'cotizacion_caja', 'cotizacion_sena', 'cotizacion_icbf',
     'cotizacion_total',
+)
+
+# Lo que paga cada parte, por contrato y sumado en el aporte. Las `_empleado` salen
+# de la nómina al cargar; las `_empresa` se calculan al generar.
+_PARTES = (
+    'cotizacion_pension_total', 'cotizacion_pension_empresa', 'cotizacion_pension_empleado',
+    'cotizacion_fondo_empresa', 'cotizacion_fondo_empleado',
+    'cotizacion_salud_empresa', 'cotizacion_salud_empleado',
 )
 
 
@@ -173,13 +182,17 @@ def cargar_contratos_aporte(aporte):
             if error_terminacion:
                 dias = 0
 
-            ibc = pension_empleado = salud_empleado = Decimal('0')
+            ibc = pension_empleado = fondo_empleado = salud_empleado = Decimal('0')
             for fila in nomina.get(contrato.id, ()):
                 if not fecha_desde <= fila['documento__fecha'] <= fecha_hasta:
                     continue
                 ibc += fila['ibc'] or 0
+                # `cotizacion_pension_empleado` incluye el fondo, como la PILA;
+                # el fondo se lleva además aparte porque se causa en su documento.
                 if fila['concepto_id'] in (CONCEPTO_PENSION, CONCEPTO_FONDO_SOLIDARIDAD):
                     pension_empleado += fila['pago'] or 0
+                if fila['concepto_id'] == CONCEPTO_FONDO_SOLIDARIDAD:
+                    fondo_empleado += fila['pago'] or 0
                 elif fila['concepto_id'] == CONCEPTO_SALUD:
                     salud_empleado += fila['pago'] or 0
 
@@ -192,6 +205,7 @@ def cargar_contratos_aporte(aporte):
                 salario=contrato.salario,
                 base_cotizacion=ibc,
                 cotizacion_pension_empleado=pension_empleado,
+                cotizacion_fondo_empleado=fondo_empleado,
                 cotizacion_salud_empleado=salud_empleado,
                 ingreso=aporte.fecha_desde <= contrato.fecha_desde <= aporte.fecha_hasta_periodo,
                 retiro=(
@@ -470,10 +484,7 @@ def _totalizar(aporte, aporte_contratos, detalles):
         for campo in _COTIZACIONES:
             por_contrato[detalle.aporte_contrato_id][campo] += getattr(detalle, campo)
 
-    for campo in _COTIZACIONES + (
-        'cotizacion_pension_total', 'cotizacion_pension_empresa', 'cotizacion_pension_empleado',
-        'cotizacion_salud_empresa', 'cotizacion_salud_empleado',
-    ):
+    for campo in _COTIZACIONES + _PARTES:
         setattr(aporte, campo, Decimal('0'))
 
     for aporte_contrato in aporte_contratos:
@@ -489,15 +500,23 @@ def _totalizar(aporte, aporte_contratos, detalles):
         aporte_contrato.cotizacion_pension_empresa = (
             aporte_contrato.cotizacion_pension_total - aporte_contrato.cotizacion_pension_empleado
         )
+        # El fondo es todo del empleado: lo que le toca a la empresa es solo la
+        # diferencia entre la PILA, que aproxima a la centena, y lo descontado.
+        # Ya está dentro de `cotizacion_pension_empresa`; se lleva aparte porque
+        # el fondo se causa en su propio documento.
+        aporte_contrato.cotizacion_fondo_empresa = (
+            sumas['cotizacion_solidaridad_solidaridad'] + sumas['cotizacion_solidaridad_subsistencia']
+            - aporte_contrato.cotizacion_fondo_empleado
+        )
         aporte_contrato.cotizacion_salud_empresa = sumas['cotizacion_salud'] - aporte_contrato.cotizacion_salud_empleado
-        for campo in _COTIZACIONES + (
-            'cotizacion_pension_total', 'cotizacion_pension_empresa', 'cotizacion_pension_empleado',
-            'cotizacion_salud_empresa', 'cotizacion_salud_empleado',
-        ):
+        for campo in _COTIZACIONES + _PARTES:
             setattr(aporte, campo, getattr(aporte, campo) + getattr(aporte_contrato, campo))
     HumAporteContrato.objects.bulk_update(
         aporte_contratos,
-        list(_COTIZACIONES) + ['cotizacion_pension_total', 'cotizacion_pension_empresa', 'cotizacion_salud_empresa'],
+        list(_COTIZACIONES) + [
+            'cotizacion_pension_total', 'cotizacion_pension_empresa', 'cotizacion_fondo_empresa',
+            'cotizacion_salud_empresa',
+        ],
     )
 
 
@@ -557,13 +576,15 @@ def desgenerar_aporte(aporte):
         HumAporteDetalle.objects.filter(aporte_contrato__aporte=aporte).delete()
         HumAporteEntidad.objects.filter(aporte=aporte).delete()
         en_cero = {campo: 0 for campo in _COTIZACIONES + (
-            'cotizacion_pension_total', 'cotizacion_pension_empresa', 'cotizacion_salud_empresa',
+            'cotizacion_pension_total', 'cotizacion_pension_empresa', 'cotizacion_fondo_empresa',
+            'cotizacion_salud_empresa',
         )}
         HumAporteContrato.objects.filter(aporte=aporte).update(**en_cero)
 
         for campo in en_cero:
             setattr(aporte, campo, 0)
         aporte.cotizacion_pension_empleado = 0
+        aporte.cotizacion_fondo_empleado = 0
         aporte.cotizacion_salud_empleado = 0
         aporte.base_cotizacion = 0
         aporte.lineas = 0
@@ -574,23 +595,37 @@ def desgenerar_aporte(aporte):
 
 # ----------------------------------------------------------- aprobar ----
 
-# Por cada tipo de entidad: el campo de `HumAporteContrato` que dice a cuál se le
-# paga, lo que suma el contrato y la parte que pone la empresa.
+def _fondo_total(ac):
+    return ac.cotizacion_solidaridad_solidaridad + ac.cotizacion_solidaridad_subsistencia
+
+
+# Por cada tipo de documento: el campo de `HumAporteContrato` que dice a qué
+# entidad se le paga, lo que suma el contrato y la parte que pone la empresa.
+#
+# Pensión y fondo de solidaridad se le pagan a la misma administradora, pero van en
+# documentos separados: la nómina puede acreditar la deducción de cada uno a una
+# cuenta distinta (`HumConceptoCuenta`), y el egreso solo debita la cuenta del
+# documento. Con uno solo, la cuenta del fondo no se cancelaría nunca. Por eso al
+# de pensión se le resta lo del fondo.
 _DOCUMENTOS_ENTIDAD = (
-    ('PENSION', 'entidad_pension', 'cotizacion_pension_total', 'cotizacion_pension_empresa'),
-    ('SALUD', 'entidad_salud', 'cotizacion_salud', 'cotizacion_salud_empresa'),
-    ('CAJA', 'entidad_caja', 'cotizacion_caja', 'cotizacion_caja'),
-    ('RIESGO', 'entidad_riesgo', 'cotizacion_riesgos', 'cotizacion_riesgos'),
-    ('SENA', 'entidad_sena', 'cotizacion_sena', 'cotizacion_sena'),
-    ('ICBF', 'entidad_icbf', 'cotizacion_icbf', 'cotizacion_icbf'),
+    ('PENSION', 'entidad_pension',
+     lambda ac: ac.cotizacion_pension_total - _fondo_total(ac),
+     lambda ac: ac.cotizacion_pension_empresa - ac.cotizacion_fondo_empresa),
+    ('Fondo solidaridad', 'entidad_pension', _fondo_total, attrgetter('cotizacion_fondo_empresa')),
+    ('SALUD', 'entidad_salud', attrgetter('cotizacion_salud'), attrgetter('cotizacion_salud_empresa')),
+    ('CAJA', 'entidad_caja', attrgetter('cotizacion_caja'), attrgetter('cotizacion_caja')),
+    ('RIESGO', 'entidad_riesgo', attrgetter('cotizacion_riesgos'), attrgetter('cotizacion_riesgos')),
+    ('SENA', 'entidad_sena', attrgetter('cotizacion_sena'), attrgetter('cotizacion_sena')),
+    ('ICBF', 'entidad_icbf', attrgetter('cotizacion_icbf'), attrgetter('cotizacion_icbf')),
 )
 
 
 def aprobar_aporte(aporte):
     """
     Crea y aprueba un documento de seguridad social (tipo 22) por cada entidad con
-    algo por pagar, con una línea por contrato. El consecutivo y la cartera los
-    pone `general.servicios.documento.aprobar`.
+    algo por pagar —el fondo de solidaridad en uno aparte del de pensión—, con una
+    línea por contrato. El consecutivo y la cartera los pone
+    `general.servicios.documento.aprobar`.
     """
     with transaction.atomic():
         aporte = _bloquear(aporte)
@@ -601,7 +636,7 @@ def aprobar_aporte(aporte):
 
         aporte_contratos = list(
             HumAporteContrato.objects.filter(aporte=aporte)
-            .select_related(*(campo for _, campo, _, _ in _DOCUMENTOS_ENTIDAD), 'contrato')
+            .select_related(*{campo for _, campo, _, _ in _DOCUMENTOS_ENTIDAD}, 'contrato')
             .order_by('id')
         )
         # El documento va a nombre del contacto de la entidad, que se ubica por su
@@ -612,18 +647,19 @@ def aprobar_aporte(aporte):
         for tipo, campo, total, _ in _DOCUMENTOS_ENTIDAD:
             for aporte_contrato in aporte_contratos:
                 entidad = getattr(aporte_contrato, campo)
-                if entidad is not None and getattr(aporte_contrato, total) > 0:
-                    entidades[(tipo, entidad.id)] = entidad
+                # Pensión y fondo comparten entidad: se informa una vez.
+                if entidad is not None and total(aporte_contrato) > 0 and entidad.id not in entidades:
+                    entidades[entidad.id] = (tipo, entidad)
         contactos = dict(
             GenContacto.objects.filter(
-                numero_identificacion__in={entidad.numero_identificacion for entidad in entidades.values()},
+                numero_identificacion__in={entidad.numero_identificacion for _, entidad in entidades.values()},
             ).order_by('id').values_list('numero_identificacion', 'id')
         )
         errores = [
             {'tipo': tipo, 'entidad': entidad.nombre, 'mensaje': (
                 f'La entidad {entidad.nombre} ({entidad.numero_identificacion}) no existe en contactos.'
             )}
-            for (tipo, _), entidad in entidades.items()
+            for tipo, entidad in entidades.values()
             if entidad.numero_identificacion not in contactos
         ]
         if errores:
@@ -634,7 +670,7 @@ def aprobar_aporte(aporte):
             por_entidad = defaultdict(list)
             for aporte_contrato in aporte_contratos:
                 entidad = getattr(aporte_contrato, campo)
-                if entidad is not None and getattr(aporte_contrato, total) > 0:
+                if entidad is not None and total(aporte_contrato) > 0:
                     por_entidad[entidad].append(aporte_contrato)
 
             for entidad, contratos in por_entidad.items():
@@ -647,8 +683,8 @@ def aprobar_aporte(aporte):
                     fecha_vence=aporte.fecha_desde,
                     fecha_contable=aporte.fecha_desde,
                     fecha_hasta=aporte.fecha_hasta,
-                    subtotal=sum(getattr(ac, empresa) for ac in contratos),
-                    total=sum(getattr(ac, total) for ac in contratos),
+                    subtotal=sum(empresa(ac) for ac in contratos),
+                    total=sum(total(ac) for ac in contratos),
                 )
                 GenDocumentoDetalle.objects.bulk_create(
                     GenDocumentoDetalle(
@@ -657,8 +693,8 @@ def aprobar_aporte(aporte):
                         detalle=tipo,
                         contacto_id=ac.contrato.contacto_id,
                         contrato_id=ac.contrato_id,
-                        precio=getattr(ac, empresa),
-                        pago=getattr(ac, total),
+                        precio=empresa(ac),
+                        pago=total(ac),
                     )
                     for ac in contratos
                 )

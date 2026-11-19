@@ -477,7 +477,8 @@
         {"id": 3, "cuenta": 40},
         {"id": 4, "cuenta": 39},
         {"id": 5, "cuenta": 40},
-        {"id": 6, "cuenta": 40}
+        {"id": 6, "cuenta": 40},
+        {"id": 7, "cuenta": 41}
       ]
     },
     "humano.HumConfiguracionProvision": {

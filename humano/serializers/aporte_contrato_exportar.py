@@ -34,6 +34,8 @@ class HumAporteContratoExportarSerializer(serializers.Serializer):
         ('cotizacion_voluntario_pension_aportante', 'Voluntario pensión aportante'),
         ('cotizacion_solidaridad_solidaridad', 'Fondo solidaridad'),
         ('cotizacion_solidaridad_subsistencia', 'Fondo subsistencia'),
+        ('cotizacion_fondo_empresa', 'Fondo empresa'),
+        ('cotizacion_fondo_empleado', 'Fondo empleado'),
         ('cotizacion_salud', 'Cotización salud'),
         ('cotizacion_salud_empresa', 'Cotización salud empresa'),
         ('cotizacion_salud_empleado', 'Cotización salud empleado'),

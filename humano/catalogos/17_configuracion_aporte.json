@@ -7,29 +7,34 @@
       "orden": 1
     },
     {
+      "id": 7,
+      "tipo": "Fondo solidaridad",
+      "orden": 2
+    },
+    {
       "id": 2,
       "tipo": "SALUD",
-      "orden": 2
+      "orden": 3
     },
     {
       "id": 3,
       "tipo": "CAJA",
-      "orden": 3
+      "orden": 4
     },
     {
       "id": 4,
       "tipo": "RIESGO",
-      "orden": 4
+      "orden": 5
     },
     {
       "id": 5,
       "tipo": "SENA",
-      "orden": 5
+      "orden": 6
     },
     {
       "id": 6,
       "tipo": "ICBF",
-      "orden": 6
+      "orden": 7
     }
   ]
 }

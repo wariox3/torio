@@ -52,6 +52,9 @@ DOCUMENTO_TIPO_EGRESO = 8
 DOCUMENTO_TIPO_ASIENTO = 13
 DOCUMENTO_TIPO_NOMINA = 14
 DOCUMENTO_TIPO_SEGURIDAD_SOCIAL = 22
+# El fondo de solidaridad no tiene configuración de provisión propia: lo poco que
+# pone la empresa —la diferencia de redondeo de la PILA— va al gasto de pensión.
+CLASE_GASTO_SEGURIDAD_SOCIAL = {'Fondo solidaridad': 'PENSION'}
 DOCUMENTO_TIPO_CIERRE = 25
 
 # Conceptos de nómina cuyo movimiento se detalla con el empleado en vez del
@@ -405,11 +408,20 @@ def _movimientos_cartera(documento, comun, campos_actualizar):
                 cuenta = configuracion.cuenta
             valor = documento.subtotal
 
-        movimientos.append(_movimiento(
-            comun, cuenta, -tipo.operacion, valor, 'PROVEEDOR',
-            f'La cuenta por pagar del tipo de documento «{tipo.nombre}»',
-            contacto_id=documento.contacto_id,
-        ))
+        # La seguridad social solo causa la parte de la empresa; sin ella (salud
+        # exonerada, fondo de solidaridad) no hay movimiento, pero el documento
+        # igual queda con su cuenta, que es la que debita el egreso.
+        if valor or documento.documento_tipo_id != DOCUMENTO_TIPO_SEGURIDAD_SOCIAL:
+            movimientos.append(_movimiento(
+                comun, cuenta, -tipo.operacion, valor, 'PROVEEDOR',
+                f'La cuenta por pagar del tipo de documento «{tipo.nombre}»',
+                contacto_id=documento.contacto_id,
+            ))
+        elif cuenta is None:
+            raise ValidationError(
+                f'La cuenta por pagar del tipo de documento «{tipo.nombre}»: '
+                f'no tiene cuenta contable establecida.'
+            )
         documento.cuenta_id = cuenta.pk
         if 'cuenta' not in campos_actualizar:
             campos_actualizar.append('cuenta')
@@ -585,11 +597,16 @@ def _movimientos_nomina(documento, detalle, comun):
 
 
 def _movimientos_seguridad_social(documento, detalle, comun):
+    # Lo que pone la empresa: en salud exonerada o en el fondo de solidaridad, que
+    # es todo del empleado, suele ser 0, y un movimiento en cero no aporta nada.
+    if not detalle.precio:
+        return []
     contrato = _contrato_exigido(detalle.contrato, f'Detalle {detalle.pk}')
     clase = detalle.detalle
     configuracion = (
         HumConfiguracionProvision.objects.select_related('cuenta_debito')
-        .filter(tipo=clase, tipo_costo_id=contrato.tipo_costo_id).first()
+        .filter(tipo=CLASE_GASTO_SEGURIDAD_SOCIAL.get(clase, clase), tipo_costo_id=contrato.tipo_costo_id)
+        .first()
     )
     cuenta = configuracion.cuenta_debito if configuracion is not None else None
 
