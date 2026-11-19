@@ -40,3 +40,4 @@ from .responsabilidad import GenResponsabilidad
 from .sector import GenSector
 from .sede import GenSede
 from .tipo_persona import GenTipoPersona
+from .usuario_configuracion import GenUsuarioConfiguracion

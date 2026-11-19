@@ -93,3 +93,4 @@ from .sede_exportar import GenSedeExportarSerializer
 from .sede_importar import GenSedeImportarSerializer
 from .sede_seleccionar import GenSedeSeleccionarSerializer
 from .tipo_persona import GenTipoPersonaSeleccionarSerializer
+from .usuario_configuracion import GenUsuarioConfiguracionSerializer

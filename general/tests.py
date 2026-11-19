@@ -72,6 +72,7 @@ from general.models import (
     GenResolucion,
     GenSede,
     GenTipoPersona,
+    GenUsuarioConfiguracion,
 )
 from general.serializers import (
     GenAsesorImportarSerializer,
@@ -115,6 +116,7 @@ from general.views.tablero import (
     ResultadoRespuestaSerializer,
     ResumenRespuestaSerializer,
 )
+from general.views.usuario_configuracion import GenUsuarioConfiguracionViewSet
 from inventario.models import InvAlmacen, InvExistencia
 from seguridad.models import SegUsuario
 from seguridad.permissions import EsMiembroDelTenant, SuscripcionVigente
@@ -124,6 +126,7 @@ from utilidades.formatos.empresa import LADO_LOGO, SEPARACION_LOGO
 from utilidades.formatos.pagina import ANCHO_CONTENIDO
 from utilidades.mixins import ImportarExcelMixin
 from utilidades.zinc import Zinc
+from venta.models import VenCaja
 
 
 class _ModeloViewSinPermisos(GenModeloViewSet):
@@ -1683,6 +1686,98 @@ class _ConfiguracionViewSinPermisos(GenConfiguracionViewSet):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
     throttle_classes = []
+
+
+class _UsuarioConfiguracionViewSinPermisos(GenUsuarioConfiguracionViewSet):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = []
+
+
+class GenUsuarioConfiguracionViewTests(TenantTestCase):
+    """
+    La configuración del usuario: siempre la de `request.user`, una fila por usuario.
+    """
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.sede = GenSede.objects.create(nombre='Norte')
+        self.otra_sede = GenSede.objects.create(nombre='Sur')
+        self.caja = VenCaja.objects.create(nombre='Caja 1', sede=self.sede)
+        self.almacen = InvAlmacen.objects.create(nombre='Principal')
+
+    def _llamar(self, accion, usuario_id=1, cuerpo=None):
+        metodo = 'patch' if accion == 'actualizar' else 'get'
+        vista = _UsuarioConfiguracionViewSinPermisos.as_view({metodo: accion})
+        url = f'/general/usuario-configuracion/{accion}/'
+        if metodo == 'patch':
+            peticion = self.factory.patch(url, cuerpo, format='json')
+        else:
+            peticion = self.factory.get(url)
+        force_authenticate(peticion, user=SegUsuario(id=usuario_id))
+        return vista(peticion)
+
+    def test_obtener_crea_la_fila_vacia(self):
+        respuesta = self._llamar('obtener')
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data, {
+            'sede': None, 'sede_nombre': None,
+            'almacen': None, 'almacen_nombre': None,
+            'caja': None, 'caja_nombre': None,
+        })
+        self.assertTrue(GenUsuarioConfiguracion.objects.filter(usuario_id=1).exists())
+
+    def test_actualizar_guarda_los_tres_y_null_los_quita(self):
+        cuerpo = {'sede': self.sede.id, 'almacen': self.almacen.id, 'caja': self.caja.id}
+        respuesta = self._llamar('actualizar', cuerpo=cuerpo)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data['sede_nombre'], 'Norte')
+        self.assertEqual(respuesta.data['almacen_nombre'], 'Principal')
+        self.assertEqual(respuesta.data['caja_nombre'], 'Caja 1')
+
+        respuesta = self._llamar('actualizar', cuerpo={'almacen': None})
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIsNone(respuesta.data['almacen'])
+        self.assertEqual(respuesta.data['sede'], self.sede.id)
+
+    def test_cada_usuario_tiene_la_suya(self):
+        self._llamar('actualizar', usuario_id=1, cuerpo={'sede': self.sede.id})
+        self._llamar('actualizar', usuario_id=2, cuerpo={'sede': self.otra_sede.id})
+
+        self.assertEqual(self._llamar('obtener', usuario_id=1).data['sede'], self.sede.id)
+        self.assertEqual(self._llamar('obtener', usuario_id=2).data['sede'], self.otra_sede.id)
+
+    def test_la_caja_tiene_que_ser_de_la_sede(self):
+        respuesta = self._llamar('actualizar', cuerpo={'sede': self.otra_sede.id, 'caja': self.caja.id})
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertIn('detail', respuesta.data)
+
+    def test_cambiar_la_sede_valida_contra_la_caja_guardada(self):
+        self._llamar('actualizar', cuerpo={'sede': self.sede.id, 'caja': self.caja.id})
+
+        respuesta = self._llamar('actualizar', cuerpo={'sede': self.otra_sede.id})
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_la_caja_inactiva_no_se_acepta(self):
+        self.caja.estado_activo = False
+        self.caja.save()
+
+        respuesta = self._llamar('actualizar', cuerpo={'caja': self.caja.id})
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_borrar_la_sede_solo_quita_el_valor(self):
+        sede = GenSede.objects.create(nombre='Temporal')
+        self._llamar('actualizar', cuerpo={'sede': sede.id})
+
+        sede.delete()
+
+        self.assertIsNone(GenUsuarioConfiguracion.objects.get(usuario_id=1).sede_id)
 
 
 class GenParametroViewTests(TenantTestCase):

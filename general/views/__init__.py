@@ -42,3 +42,4 @@ from .sector import GenSectorViewSet
 from .sede import GenSedeViewSet
 from .tablero import GenTableroViewSet
 from .tipo_persona import GenTipoPersonaViewSet
+from .usuario_configuracion import GenUsuarioConfiguracionViewSet
