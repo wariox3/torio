@@ -20,6 +20,7 @@ from general.models import (
 from general.models.documento import DOCUMENTO_TIPO_FACTURA_VENTA
 from general.servicios import contabilizar as contabilizar_servicio
 from general.servicios.supervigilancia import LiquidadorSupervigilancia
+from humano.models import HumConceptoCuenta
 from inventario.models import InvExistencia
 from utilidades.moneda import redondear_moneda
 
@@ -1527,8 +1528,14 @@ def actualizar_contabilidad(documento_id, datos):
     `contacto` y `base` siguen a la cuenta del detalle, como al contabilizar: lo
     que la cuenta exige no puede quedar vacío, y lo que no exige no se acepta
     —`contabilizar` lo descartaría y el usuario creería haberlo corregido—. Por
-    eso solo van en una línea de cuenta (`C`): en las demás la cuenta no está en
-    el detalle, y en un recibo o un egreso el contacto es el de la cartera.
+    eso solo van donde se sabe qué cuenta es: en una línea de cuenta (`C`), la
+    del detalle; en una de nómina (`N`), la que le da al concepto `HumConceptoCuenta`
+    según el tipo de costo del contrato, igual que `_movimientos_nomina`. En las
+    demás la cuenta sale de otro lado, y en un recibo o un egreso el contacto es
+    el de la cartera.
+
+    Por lo mismo el `centro_costo` no se acepta en nómina ni seguridad social
+    (`N`, `S`): al contabilizar se toma el del contrato y no el del detalle.
     """
     with transaction.atomic():
         try:
@@ -1543,7 +1550,7 @@ def actualizar_contabilidad(documento_id, datos):
         pedidos = datos.get('detalles', [])
         detalles = {
             detalle.pk: detalle
-            for detalle in GenDocumentoDetalle.objects.select_for_update(of=('self',)).select_related('cuenta').filter(
+            for detalle in GenDocumentoDetalle.objects.select_for_update(of=('self',)).select_related('cuenta', 'concepto').filter(
                 documento_id=documento.pk, pk__in=[pedido['id'] for pedido in pedidos],
             )
         }
@@ -1556,6 +1563,22 @@ def actualizar_contabilidad(documento_id, datos):
         if errores:
             raise DetallesInvalidos('Hay detalles que no pertenecen al documento.', errores)
 
+        # La cuenta de las líneas de nómina sale del concepto y del tipo de costo
+        # del contrato del documento; se busca de una vez para todas.
+        cuentas_nomina = {}
+        conceptos_nomina = {
+            detalle.concepto_id for detalle in detalles.values()
+            if detalle.tipo_registro == 'N' and detalle.concepto_id
+        }
+        if conceptos_nomina and documento.contrato_id:
+            tipo_costo_id = documento.contrato.tipo_costo_id
+            cuentas_nomina = {
+                concepto_cuenta.concepto_id: concepto_cuenta.cuenta
+                for concepto_cuenta in HumConceptoCuenta.objects.select_related('cuenta').filter(
+                    concepto_id__in=conceptos_nomina, tipo_costo_id=tipo_costo_id,
+                )
+            }
+
         for indice, pedido in enumerate(pedidos):
             detalle = detalles[pedido['id']]
 
@@ -1565,11 +1588,29 @@ def actualizar_contabilidad(documento_id, datos):
             if not {'centro_costo', 'contacto', 'base'} & pedido.keys():
                 error('El detalle no trae nada que corregir.')
                 continue
+            if 'centro_costo' in pedido and detalle.tipo_registro in ('N', 'S'):
+                error('El centro de costo de la nómina y la seguridad social sale del contrato.')
             if 'contacto' not in pedido and 'base' not in pedido:
                 continue
-            cuenta = detalle.cuenta
-            if detalle.tipo_registro != 'C' or cuenta is None:
-                error('El contacto y la base solo se corrigen en una línea de cuenta.')
+            if detalle.tipo_registro == 'C':
+                cuenta = detalle.cuenta
+                if cuenta is None:
+                    error('El detalle no tiene cuenta.')
+                    continue
+            elif detalle.tipo_registro == 'N':
+                if documento.contrato_id is None:
+                    error('El documento no tiene contrato.')
+                    continue
+                cuenta = cuentas_nomina.get(detalle.concepto_id)
+                if cuenta is None:
+                    concepto = detalle.concepto.nombre if detalle.concepto_id else 'del detalle'
+                    error(
+                        f'El concepto «{concepto}» no tiene cuenta para el tipo de costo '
+                        f'«{documento.contrato.tipo_costo}».'
+                    )
+                    continue
+            else:
+                error('El contacto y la base solo se corrigen en una línea de cuenta o de nómina.')
                 continue
             if 'contacto' in pedido:
                 if cuenta.exige_contacto and pedido['contacto'] is None:
