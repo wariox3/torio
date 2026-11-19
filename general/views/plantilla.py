@@ -27,7 +27,7 @@ class GenPlantillaViewSet(viewsets.GenericViewSet):
         summary='Cargar plantilla',
         description=(
             'Inserta en este contenedor los datos de una plantilla de '
-            '`general/plantillas/`. Es todo o nada: si una inserción falla no queda '
+            '`general/datos_estandar/`. Es todo o nada: si una inserción falla no queda '
             'nada. Devuelve las filas insertadas por modelo.'
         ),
         request=inline_serializer(

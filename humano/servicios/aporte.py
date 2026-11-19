@@ -605,7 +605,9 @@ def aprobar_aporte(aporte):
             .order_by('id')
         )
         # El documento va a nombre del contacto de la entidad, que se ubica por su
-        # identificación. Sin él no hay a quién cargarle la cuenta por pagar.
+        # identificación. Sin él no hay a quién cargarle la cuenta por pagar. Si
+        # hay varios con el mismo número gana el más reciente: `dict` se queda con
+        # el último valor de cada clave, por eso el orden es ascendente.
         entidades = {}
         for tipo, campo, total, _ in _DOCUMENTOS_ENTIDAD:
             for aporte_contrato in aporte_contratos:
@@ -615,7 +617,7 @@ def aprobar_aporte(aporte):
         contactos = dict(
             GenContacto.objects.filter(
                 numero_identificacion__in={entidad.numero_identificacion for entidad in entidades.values()},
-            ).order_by('-id').values_list('numero_identificacion', 'id')
+            ).order_by('id').values_list('numero_identificacion', 'id')
         )
         errores = [
             {'tipo': tipo, 'entidad': entidad.nombre, 'mensaje': (

@@ -561,14 +561,23 @@ def _movimientos_nomina(documento, detalle, comun):
     )
     cuenta = concepto_cuenta.cuenta if concepto_cuenta is not None else None
 
+    # La etiqueta encabeza cualquier error del movimiento —falta de cuenta, de
+    # contacto, de centro de costo o de base—, así que solo nombra el concepto;
+    # la falta de cuenta se dice aparte porque depende del tipo de costo.
+    etiqueta = f'Detalle {detalle.pk}: el concepto «{detalle.concepto.nombre}»' if detalle.concepto_id \
+        else f'Detalle {detalle.pk}'
+    if cuenta is None:
+        raise ValidationError(
+            f'{etiqueta}: no tiene cuenta para el tipo de costo «{contrato.tipo_costo}».'
+        )
+
     texto = detalle.concepto.nombre if detalle.concepto_id else detalle.detalle
     if detalle.concepto_id and detalle.concepto.concepto_tipo_id in CONCEPTO_TIPOS_CON_EMPLEADO:
         contacto = documento.contacto
         texto = f'{contacto.numero_identificacion}-{contacto.nombre_corto}'
 
     return [_movimiento(
-        comun, cuenta, detalle.operacion, detalle.pago, texto,
-        f'Detalle {detalle.pk}: el concepto de nómina no tiene cuenta para el tipo de costo',
+        comun, cuenta, detalle.operacion, detalle.pago, texto, etiqueta,
         contacto_id=detalle.contacto_id,
         centro_costo_id=contrato.centro_costo_id,
         base=detalle.base,

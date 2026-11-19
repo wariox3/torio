@@ -1,7 +1,7 @@
 """
 Carga de una plantilla de datos de arranque en el schema de un contenedor.
 
-Una plantilla es **un archivo** de `general/plantillas/` con los datos de varios
+Una plantilla es **un archivo** de `general/datos_estandar/` con los datos de varios
 modelos de tenant:
 
     {
@@ -50,7 +50,7 @@ from django_tenants.utils import schema_context
 
 from general.models import GenParametro
 
-RUTA = Path(settings.BASE_DIR) / 'general' / 'plantillas'
+RUTA = Path(settings.BASE_DIR) / 'general' / 'datos_estandar'
 
 # Qué hace un bloque con sus filas. Por defecto inserta; los bloques que ajustan
 # catálogo ya sembrado por `cargar_datos_tenant` declaran `"modo": "actualizar"`.
@@ -75,7 +75,7 @@ def leer(archivo):
     Contenido de una plantilla por nombre de archivo (`01_general.json`).
 
     El nombre acaba viniendo de fuera, así que la ruta se resuelve y se comprueba
-    que caiga directamente en `general/plantillas/`: sin esto, un `../` alcanzaría
+    que caiga directamente en `general/datos_estandar/`: sin esto, un `../` alcanzaría
     cualquier JSON del proyecto.
     """
     ruta = (RUTA / archivo).resolve()

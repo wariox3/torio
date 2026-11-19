@@ -150,7 +150,9 @@ class ContextoNomina:
             creditos[credito.contrato_id].append(credito)
 
         # Salud, pensión y fondo se le deben a la entidad: la línea va a nombre de
-        # su contacto, que se ubica por número de identificación.
+        # su contacto, que se ubica por número de identificación. Si hay varios
+        # contactos con el mismo número gana el más reciente: `dict` se queda con
+        # el último valor de cada clave, por eso el orden es ascendente.
         identificaciones = {
             entidad.numero_identificacion
             for contrato in contratos
@@ -159,7 +161,7 @@ class ContextoNomina:
         }
         contactos_entidad = dict(
             GenContacto.objects.filter(numero_identificacion__in=identificaciones)
-            .order_by('-id').values_list('numero_identificacion', 'id')
+            .order_by('id').values_list('numero_identificacion', 'id')
         )
 
         return cls(
