@@ -6,7 +6,10 @@ from humano.servicios.nomina import NOVEDAD_TIPO_VACACION
 
 class HumNovedadSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'contrato_id', 'novedad_tipo_id', 'prorroga', 'fecha_desde', 'fecha_hasta'}
+    campos_filtrables = {
+        'id', 'contrato_id', 'novedad_tipo_id', 'prorroga', 'fecha_desde', 'fecha_hasta',
+        'contrato__contacto__numero_identificacion', 'contrato__contacto__nombre_corto',
+    }
     select_related_lista = ('contrato', 'contrato__contacto', 'novedad_tipo', 'novedad_referencia')
     ordenamiento_default_lista = ('-id',)
 

@@ -9,7 +9,10 @@ MENSAJE_LIQUIDACION_CERRADA = (
 
 class HumLiquidacionSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'contrato_id', 'fecha', 'estado_aprobado', 'estado_generado'}
+    campos_filtrables = {
+        'id', 'contrato_id', 'fecha', 'estado_aprobado', 'estado_generado',
+        'contrato__contacto__numero_identificacion', 'contrato__contacto__nombre_corto',
+    }
     select_related_lista = ('contrato', 'contrato__contacto')
     ordenamiento_default_lista = ('-id',)
 

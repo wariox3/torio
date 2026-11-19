@@ -5,7 +5,11 @@ from humano.models import HumCredito
 
 class HumCreditoSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
-    campos_filtrables = {'id', 'contrato_id', 'concepto_id', 'inactivo', 'pagado', 'fecha_inicio'}
+    campos_filtrables = {
+        'id', 'contrato_id', 'concepto_id', 'inactivo', 'pagado', 'fecha_inicio',
+        'contrato__contacto__numero_identificacion', 'contrato__contacto__nombre_corto',
+        'concepto__nombre',
+    }
     select_related_lista = ('concepto', 'contrato', 'contrato__contacto')
     ordenamiento_default_lista = ('-id',)
 
