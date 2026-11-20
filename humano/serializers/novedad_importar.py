@@ -1,11 +1,13 @@
 import datetime
 from decimal import Decimal, InvalidOperation
 
+from django.db import transaction
 from rest_framework import serializers
 
 from humano.models import HumContrato, HumNovedad, HumNovedadTipo
 from humano.servicios import novedad as servicio_novedad
 from humano.servicios.nomina import NOVEDAD_TIPO_VACACION
+from humano.servicios.vacacion import recalcular_periodos
 
 
 class HumNovedadImportarSerializer(serializers.Serializer):
@@ -126,7 +128,12 @@ class HumNovedadImportarSerializer(serializers.Serializer):
             return 0, errores
 
         if nuevos:
-            HumNovedad.objects.bulk_create(nuevos, batch_size=self.BATCH_BULK_CREATE)
+            with transaction.atomic():
+                HumNovedad.objects.bulk_create(nuevos, batch_size=self.BATCH_BULK_CREATE)
+                recalcular_periodos({
+                    novedad.contrato_id for novedad in nuevos
+                    if novedad.novedad_tipo_id == NOVEDAD_TIPO_VACACION
+                })
         return len(nuevos), []
 
     # ---- helpers ----

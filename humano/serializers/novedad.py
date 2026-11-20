@@ -51,6 +51,7 @@ class HumNovedadSerializer(serializers.ModelSerializer):
             'total',
             'dias_acumulados',
             'prorroga',
+            'estado_aprobado',
             'detalle',
             'contrato',
             'contrato_nombre',
@@ -60,9 +61,14 @@ class HumNovedadSerializer(serializers.ModelSerializer):
             'novedad_tipo_nombre',
             'novedad_referencia',
         ]
-        # Todo lo que calcula `servicios.novedad.liquidar`; el resto lo manda el usuario.
+        # Todo lo que calcula `servicios.novedad.liquidar`, y el periodo de las
+        # vacaciones (`servicios.vacacion.recalcular_periodos`); el resto lo manda
+        # el usuario.
         read_only_fields = [
             'id',
+            'fecha_desde_periodo',
+            'fecha_hasta_periodo',
+            'estado_aprobado',
             'dias',
             'dias_acumulados',
             'prorroga',
@@ -89,6 +95,9 @@ class HumNovedadSerializer(serializers.ModelSerializer):
             if campo in data:
                 return data[campo]
             return getattr(self.instance, campo, None)
+
+        if self.instance is not None and self.instance.estado_aprobado:
+            raise serializers.ValidationError('La novedad está aprobada: no se puede modificar.')
 
         fecha_desde = valor('fecha_desde')
         fecha_hasta = valor('fecha_hasta')

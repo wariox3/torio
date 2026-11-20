@@ -29,6 +29,7 @@ class HumNovedad(models.Model):
     total = models.DecimalField(max_digits=20, decimal_places=6, default=0, db_default=0)
     dias_acumulados = models.DecimalField(max_digits=10, decimal_places=3, default=0, db_default=0)
     prorroga = models.BooleanField(default=False, db_default=False)
+    estado_aprobado = models.BooleanField(default=False, db_default=False)
     detalle = models.CharField(max_length=150, null=True)
     contrato = models.ForeignKey(
         'humano.HumContrato', on_delete=models.PROTECT,

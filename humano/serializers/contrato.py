@@ -1,7 +1,8 @@
 from rest_framework import serializers
 
-from humano.models import HumContrato
-from humano.servicios.vacacion import corte_inicial
+from humano.models import HumContrato, HumNovedad
+from humano.servicios.nomina import NOVEDAD_TIPO_VACACION
+from humano.servicios.vacacion import corte_inicial, recalcular_periodos
 
 
 class HumContratoSerializer(serializers.ModelSerializer):
@@ -135,6 +136,20 @@ class HumContratoSerializer(serializers.ModelSerializer):
                 {'detail': 'Las fechas se cruzan con otro contrato del contacto.'}
             )
 
+        # Con vacaciones aprobadas, la fecha la mueve `aprobar_vacacion`: cambiarla
+        # a mano dejaría el contrato fuera de lo aprobado.
+        if (
+            self.instance is not None
+            and 'fecha_ultimo_pago_vacacion' in attrs
+            and attrs['fecha_ultimo_pago_vacacion'] != self.instance.fecha_ultimo_pago_vacacion
+            and HumNovedad.objects.filter(
+                contrato=self.instance, novedad_tipo_id=NOVEDAD_TIPO_VACACION, estado_aprobado=True,
+            ).exists()
+        ):
+            raise serializers.ValidationError(
+                {'detail': 'El contrato tiene vacaciones aprobadas: la fecha de último pago de vacaciones no se puede cambiar.'}
+            )
+
         return attrs
 
     def create(self, validated_data):
@@ -144,3 +159,11 @@ class HumContratoSerializer(serializers.ModelSerializer):
         if validated_data.get('fecha_ultimo_pago_vacacion') is None:
             validated_data['fecha_ultimo_pago_vacacion'] = corte_inicial(HumContrato(**validated_data))
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        # Corregir el corte corre el periodo de todas las vacaciones del contrato.
+        corte_anterior = instance.fecha_ultimo_pago_vacacion
+        contrato = super().update(instance, validated_data)
+        if contrato.fecha_ultimo_pago_vacacion != corte_anterior:
+            recalcular_periodos({contrato.pk})
+        return contrato
