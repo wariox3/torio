@@ -19,7 +19,8 @@ crea, edita o borra una, porque cambiar los días de una corre las siguientes.
 Por eso se aprueban en orden: solo la primera pendiente.
 
 Una incapacidad durante las vacaciones las interrumpe (CST art. 188):
-`interrumpir_vacacion` corta la novedad el día anterior, aunque esté aprobada, y
+`interrumpir_vacacion` deja la novedad con lo que alcanzó a disfrutar, aunque
+esté aprobada, y
 los hábiles que faltaron se registran después como una vacación nueva
 (la reanudación), que se encadena como cualquier pendiente.
 """
@@ -28,6 +29,7 @@ from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
+from django.db.models import Q
 
 from general.models import GenDocumentoDetalle
 from humano.models import HumContrato, HumNovedad
@@ -140,20 +142,24 @@ def aprobar_vacacion(novedad):
     return novedad
 
 
-def interrumpir_vacacion(novedad, fecha, dias_disfrutados):
+def interrumpir_vacacion(novedad, fecha_desde, fecha_hasta, dias_disfrutados, dias_disfrutados_reales):
     """
-    Corta la vacación el día anterior a `fecha` (el primer día de la incapacidad
-    que la interrumpe). `dias_disfrutados` son los hábiles que alcanzó a disfrutar.
+    Deja la vacación con las fechas y los días que realmente disfrutó antes de la
+    incapacidad que la interrumpió. Los valores llegan finales: no se calcula nada
+    en proporción. Los hábiles que deja de tomar se devuelven para registrarlos
+    en la reanudación.
 
-    Los días en dinero se reducen en la misma proporción que los días reales, así
-    `pago_dia_dinero` —lo que la nómina paga por cada día disfrutado— no cambia y
-    lo que ya se pagó sigue cuadrando. Lo que falta, hábiles y en dinero, se
-    devuelve para registrarlo en la reanudación.
+    Una vacación con días en dinero no se interrumpe: la nómina paga el dinero
+    por día disfrutado (`pago_dinero` / días reales), y cambiar los días
+    descuadraría lo ya pagado contra la novedad.
+
+    El rango nuevo tiene que caber en el original: la vacación solo libera días,
+    así no puede quedar cruzada con otra novedad del empleado.
 
     Una aprobada también se puede interrumpir, si es la última aprobada del
     contrato: su periodo se acorta y `fecha_ultimo_pago_vacacion` retrocede con él.
 
-    Devuelve `(novedad, dias_disfrutados_pendientes, dias_dinero_pendientes)`.
+    Devuelve `(novedad, dias_disfrutados_pendientes)`.
     """
     with transaction.atomic():
         contrato = HumContrato.objects.select_for_update().get(pk=novedad.contrato_id)
@@ -162,22 +168,35 @@ def interrumpir_vacacion(novedad, fecha, dias_disfrutados):
         ).get(pk=novedad.pk)
         if novedad.novedad_tipo_id != NOVEDAD_TIPO_VACACION:
             raise VacacionError('La novedad no es de vacaciones.')
-        if not novedad.fecha_desde < fecha <= novedad.fecha_hasta:
+        if novedad.dias_dinero > 0:
+            raise VacacionError('La vacación tiene días en dinero: no se puede interrumpir.')
+        if fecha_desde > fecha_hasta:
+            raise VacacionError('La fecha desde no puede ser mayor que la fecha hasta.')
+        if fecha_desde < novedad.fecha_desde or fecha_hasta > novedad.fecha_hasta:
             raise VacacionError(
-                f'La fecha de interrupción debe estar entre el {novedad.fecha_desde + timedelta(days=1)} '
-                f'y el {novedad.fecha_hasta}: al menos un día disfrutado y uno por disfrutar.'
+                f'Las fechas deben quedar dentro de la vacación original '
+                f'({novedad.fecha_desde} a {novedad.fecha_hasta}).'
             )
+        if (fecha_desde, fecha_hasta) == (novedad.fecha_desde, novedad.fecha_hasta):
+            raise VacacionError('Las fechas son las mismas de la vacación: no hay interrupción.')
         if not 0 < dias_disfrutados <= novedad.dias_disfrutados:
             raise VacacionError(
                 f'Los días hábiles disfrutados deben ser mayores que cero y no más de {novedad.dias_disfrutados}.'
             )
+        dias_rango = (fecha_hasta - fecha_desde).days + 1
+        if not 0 < dias_disfrutados_reales <= dias_rango:
+            raise VacacionError(
+                f'Los días reales disfrutados deben ser mayores que cero y no más de {dias_rango}, '
+                'los días entre las fechas.'
+            )
         if novedad.estado_aprobado and contrato.fecha_ultimo_pago_vacacion != novedad.fecha_hasta_periodo:
             raise VacacionError('Solo se puede interrumpir la última vacación aprobada del contrato.')
 
-        # La nómina paga las vacaciones por día: si ya pagó días desde la
-        # interrupción, se pagarían como vacaciones y como incapacidad.
+        # La nómina paga las vacaciones por día: si ya pagó días que quedan fuera,
+        # se pagarían como vacaciones y como incapacidad.
         linea = (
-            GenDocumentoDetalle.objects.filter(novedad=novedad, documento__fecha_hasta__gte=fecha)
+            GenDocumentoDetalle.objects.filter(novedad=novedad)
+            .filter(Q(documento__fecha_hasta__gt=fecha_hasta) | Q(documento__fecha_desde__lt=fecha_desde))
             .select_related('documento__documento_tipo').order_by('documento__fecha_desde', 'id').first()
         )
         if linea is not None:
@@ -187,26 +206,22 @@ def interrumpir_vacacion(novedad, fecha, dias_disfrutados):
             )
             paso = 'desapruebe y desgenere' if documento.estado_aprobado else 'desgenere'
             raise VacacionError(
-                f'La vacación ya se pagó desde la interrupción en el documento {documento.pk} ({nombre}); '
+                f'La vacación ya se pagó por fuera de las nuevas fechas en el documento {documento.pk} ({nombre}); '
                 f'{paso} la programación antes de interrumpirla.'
             )
 
-        reales_antes = novedad.dias_disfrutados_reales
-        reales = Decimal((fecha - novedad.fecha_desde).days)
-        dias_dinero = (novedad.dias_dinero * reales / reales_antes).quantize(Decimal('0.001'), ROUND_HALF_UP)
         pendientes_disfrute = novedad.dias_disfrutados - dias_disfrutados
-        pendientes_dinero = novedad.dias_dinero - dias_dinero
 
-        novedad.fecha_hasta = fecha - timedelta(days=1)
+        novedad.fecha_desde = fecha_desde
+        novedad.fecha_hasta = fecha_hasta
         novedad.dias_disfrutados = dias_disfrutados
-        novedad.dias_disfrutados_reales = reales
-        novedad.dias_dinero = dias_dinero
-        campos = ['fecha_hasta', 'dias_disfrutados', 'dias_disfrutados_reales', 'dias_dinero']
+        novedad.dias_disfrutados_reales = dias_disfrutados_reales
+        campos = ['fecha_desde', 'fecha_hasta', 'dias_disfrutados', 'dias_disfrutados_reales']
         if novedad.estado_aprobado:
             # Las aprobadas no las encadena `recalcular_periodos`: el periodo se
             # acorta desde su mismo inicio y el contrato retrocede con él.
             novedad.fecha_hasta_periodo = sumar_dias_prestacionales(
-                novedad.fecha_desde_periodo, max(_dias_periodo(dias_disfrutados + dias_dinero), 1),
+                novedad.fecha_desde_periodo, max(_dias_periodo(dias_disfrutados), 1),
             )
             campos.append('fecha_hasta_periodo')
             contrato.fecha_ultimo_pago_vacacion = novedad.fecha_hasta_periodo
@@ -218,4 +233,4 @@ def interrumpir_vacacion(novedad, fecha, dias_disfrutados):
             raise VacacionError(e.detail)
         recalcular_periodos({contrato.pk})
         novedad.refresh_from_db()
-    return novedad, pendientes_disfrute, pendientes_dinero
+    return novedad, pendientes_disfrute

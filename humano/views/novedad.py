@@ -167,52 +167,59 @@ class HumNovedadViewSet(
     @extend_schema(
         request=inline_serializer('NovedadInterrumpirRequest', {
             'id': serializers.IntegerField(),
-            'fecha': serializers.DateField(help_text='Primer día de la incapacidad que interrumpe las vacaciones.'),
+            'fecha_desde': serializers.DateField(),
+            'fecha_hasta': serializers.DateField(help_text='Último día disfrutado antes de la incapacidad.'),
             'dias_disfrutados': serializers.DecimalField(
-                max_digits=10, decimal_places=3, help_text='Días hábiles que alcanzó a disfrutar.',
+                max_digits=10, decimal_places=3, help_text='Días hábiles disfrutados.',
+            ),
+            'dias_disfrutados_reales': serializers.DecimalField(
+                max_digits=10, decimal_places=3, help_text='Días calendario disfrutados.',
             ),
         }),
         responses=inline_serializer('NovedadInterrumpirResponse', {
             'novedad': HumNovedadSerializer(),
             'dias_disfrutados_pendientes': serializers.DecimalField(max_digits=10, decimal_places=3),
-            'dias_dinero_pendientes': serializers.DecimalField(max_digits=10, decimal_places=3),
         }),
     )
-    @action(detail=False, methods=['post'], url_path='interrumpir')
+    @action(detail=False, methods=['post'], url_path='interrumpir-vacacion')
     def interrumpir(self, request):
         """
-        Corta una vacación el día anterior a `fecha`, aunque esté aprobada (si es la
-        última aprobada del contrato). Después se registra la incapacidad y, cuando
-        el empleado vuelve, la reanudación con los días pendientes que devuelve.
+        Deja una vacación interrumpida por una incapacidad con las fechas y los días
+        que alcanzó a disfrutar, aunque esté aprobada (si es la última aprobada del
+        contrato). Una vacación con días en dinero no se interrumpe. Después se
+        registra la incapacidad y, cuando el empleado vuelve, la reanudación con
+        los días pendientes que devuelve.
         """
         novedad_id = request.data.get('id')
         if not novedad_id:
             return Response({'detail': 'El campo id es requerido.'}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            fecha = serializers.DateField().run_validation(request.data.get('fecha'))
-        except serializers.ValidationError:
-            return Response({'detail': 'fecha es requerida y debe tener formato AAAA-MM-DD.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        try:
-            dias = serializers.DecimalField(max_digits=10, decimal_places=3).run_validation(
-                request.data.get('dias_disfrutados'),
-            )
-        except serializers.ValidationError:
-            return Response({'detail': 'dias_disfrutados es requerido y debe ser un número.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        valores = {}
+        for campo in ('fecha_desde', 'fecha_hasta'):
+            try:
+                valores[campo] = serializers.DateField().run_validation(request.data.get(campo))
+            except serializers.ValidationError:
+                return Response({'detail': f'{campo} es requerida y debe tener formato AAAA-MM-DD.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        for campo in ('dias_disfrutados', 'dias_disfrutados_reales'):
+            try:
+                valores[campo] = serializers.DecimalField(max_digits=10, decimal_places=3).run_validation(
+                    request.data.get(campo),
+                )
+            except serializers.ValidationError:
+                return Response({'detail': f'{campo} es requerido y debe ser un número.'},
+                                status=status.HTTP_400_BAD_REQUEST)
         try:
             novedad = HumNovedad.objects.get(pk=novedad_id)
         except (HumNovedad.DoesNotExist, ValueError, TypeError):
             raise NotFound('Novedad no encontrada.')
         try:
-            novedad, pendientes_disfrute, pendientes_dinero = interrumpir_vacacion(novedad, fecha, dias)
+            novedad, pendientes_disfrute = interrumpir_vacacion(novedad, **valores)
         except VacacionError as e:
             return Response({'detail': e.detail}, status=status.HTTP_400_BAD_REQUEST)
         novedad = self.get_queryset().get(pk=novedad.pk)
         return Response({
             'novedad': HumNovedadSerializer(novedad).data,
             'dias_disfrutados_pendientes': pendientes_disfrute,
-            'dias_dinero_pendientes': pendientes_dinero,
         }, status=status.HTTP_200_OK)
 
     @extend_schema(
