@@ -65,8 +65,9 @@ _ANCHO_ETIQUETA_PARTE = 3.2 * cm
 
 # Código, descripción, cantidad, precio, descuento, impuesto y total. La
 # descripción se lleva lo que sobra: es lo que se parte en renglones (el nombre
-# del ítem y, debajo, el detalle de la línea).
-_ANCHO_DETALLES = anchos(0.09, 0.40, 0.07, 0.11, 0.10, 0.11, 0.12)
+# del ítem y, debajo, el detalle de la línea). Precio y total van más anchos
+# que el resto: con valores de cientos de millones se veían apretados.
+_ANCHO_DETALLES = anchos(0.09, 0.36, 0.07, 0.13, 0.10, 0.11, 0.14)
 
 # El resumen: letras, comentarios y pago a la izquierda; totales a la derecha.
 # Va con ancho propio y no el de las últimas columnas de detalles: esas se

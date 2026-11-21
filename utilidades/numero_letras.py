@@ -63,12 +63,18 @@ def _apocope(texto):
 
 
 def _grupo(numero, singular, plural):
-    """Un bloque de miles o de millones, con su apócope y su plural."""
+    """
+    Un bloque de millones o de billones, con su apócope y su plural.
+
+    El bloque no se queda en 0-999: los millones llegan hasta 999.999 («mil
+    novecientos noventa y ocho millones») porque el siguiente bloque es el billón.
+    Por eso se escribe con `numero_a_letras` y no con `_hasta_mil`.
+    """
     if numero == 0:
         return ''
     if numero == 1:
         return singular
-    return f'{_apocope(_hasta_mil(numero))} {plural}'
+    return f'{_apocope(numero_a_letras(numero))} {plural}'
 
 
 def numero_a_letras(numero):
@@ -109,6 +115,12 @@ def valor_en_letras(valor, moneda='PESOS M/L'):
     Los centavos se descartan: un egreso se gira por pesos enteros y el original
     tampoco los ponía. Se redondea, no se trunca, para que las letras no
     contradigan la cifra impresa al lado.
+
+    Delante de la moneda va el apócope: «noventa y un pesos», no «noventa y uno
+    pesos». Sin moneda, el número queda en su forma completa.
     """
     entero = int(Decimal(valor or 0).quantize(Decimal('1')))
-    return f'{numero_a_letras(entero).upper()} {moneda}'.strip()
+    letras = numero_a_letras(entero)
+    if moneda:
+        letras = _apocope(letras)
+    return f'{letras.upper()} {moneda}'.strip()
