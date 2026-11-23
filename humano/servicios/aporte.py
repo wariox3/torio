@@ -396,12 +396,15 @@ def _liquidar_contrato(aporte, aporte_contrato, filas, configuracion):
             if tipo == NOVEDAD_VACACIONES or tipo in NOVEDADES_LICENCIA_REMUNERADA:
                 base = max(base, _piso(aporte_contrato.salario, dias))
 
+        # La incapacidad no cotiza caja, salvo que la empresa decida aportar
+        # parafiscales también durante ella.
+        caja_incapacidad = TARIFA_CAJA if configuracion.hum_aporte_parafiscales_novedad else 0
         if tipo == NOVEDAD_INCAPACIDAD_GENERAL:
-            tarifas.update(riesgos=0, caja=0)
+            tarifas.update(riesgos=0, caja=caja_incapacidad)
             marcas.update(incapacidad_general=True,
                           fecha_inicio_incapacidad_general=desde, fecha_fin_incapacidad_general=hasta)
         elif tipo == NOVEDAD_INCAPACIDAD_LABORAL:
-            tarifas.update(riesgos=0, caja=0)
+            tarifas.update(riesgos=0, caja=caja_incapacidad)
             marcas.update(dias_incapacidad_laboral=dias,
                           fecha_inicio_incapacidad_laboral=desde, fecha_fin_incapacidad_laboral=hasta)
         elif tipo == NOVEDAD_LICENCIA_MATERNIDAD:

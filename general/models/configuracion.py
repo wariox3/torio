@@ -18,6 +18,9 @@ class GenConfiguracion(models.Model):
     # Si está activo, en la licencia no remunerada no se le descuenta pensión al
     # empleado en la nómina, y la PILA solo cotiza el 12 % del empleador.
     hum_licencia_no_remunerada_afecta_pension = models.BooleanField(default=False, db_default=False)
+    # Si está activo, la PILA cotiza caja (4 %) también en los días de incapacidad
+    # general y laboral; apagado, esos días van sin caja.
+    hum_aporte_parafiscales_novedad = models.BooleanField(default=False, db_default=False)
     hum_entidad_riesgo = models.ForeignKey(
         'humano.HumEntidad', null=True, on_delete=models.PROTECT,
         related_name='configuraciones_entidad_riesgo_rel',
