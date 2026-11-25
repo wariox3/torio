@@ -1,4 +1,6 @@
 from django.db import models
+from django.db.models.functions import Now
+from django.utils import timezone
 
 
 class CtnMovimiento(models.Model):
@@ -28,7 +30,10 @@ class CtnMovimiento(models.Model):
     tipo = models.CharField(max_length=20)
     concepto = models.CharField(max_length=255)
     valor = models.DecimalField(max_digits=14, decimal_places=2)
-    fecha = models.DateField(auto_now_add=True)
+    # Fecha y hora del pago. El webhook pone la de Wompi (`finalized_at`); el
+    # default cubre lo que se cree por otro lado. No es `auto_now_add`, que
+    # ignoraría el valor asignado.
+    fecha = models.DateTimeField(default=timezone.now, db_default=Now())
     fecha_vence = models.DateField(null=True, blank=True)
 
     class Meta:

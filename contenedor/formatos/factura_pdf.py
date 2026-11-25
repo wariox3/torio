@@ -2,6 +2,7 @@ from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 
+from django.utils import timezone
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import LETTER
@@ -122,9 +123,18 @@ def _bloque_partes(estilos, movimiento):
     return tabla
 
 
+def _fecha_hora(momento):
+    """«25/11/2026 10:31 a. m.», sin depender del locale del servidor."""
+    hora = momento.hour % 12 or 12
+    sufijo = 'a. m.' if momento.hour < 12 else 'p. m.'
+    return f'{momento:%d/%m/%Y} {hora}:{momento:%M} {sufijo}'
+
+
 def _bloque_encabezado(estilos, movimiento):
-    fecha = movimiento.fecha.strftime('%d/%m/%Y') if movimiento.fecha else ''
-    fecha_vence = movimiento.fecha_vence or movimiento.fecha
+    # `fecha` lleva hora (en UTC en la BD): se muestra en la hora local.
+    momento = timezone.localtime(movimiento.fecha) if movimiento.fecha else None
+    fecha = _fecha_hora(momento) if momento else ''
+    fecha_vence = movimiento.fecha_vence or (momento.date() if momento else None)
     vence = fecha_vence.strftime('%d/%m/%Y') if fecha_vence else '—'
     numero = f'FAC-{movimiento.id:06d}'
 

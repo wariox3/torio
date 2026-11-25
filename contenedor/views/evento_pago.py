@@ -2,10 +2,13 @@ import hashlib
 import hmac
 import logging
 from datetime import date
+from datetime import timezone as dt_timezone
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -38,6 +41,19 @@ def _valor(datos, ruta):
             return ''
         valor = valor.get(parte)
     return '' if valor is None else str(valor)
+
+
+def _fecha_wompi(valor):
+    """La fecha ISO de Wompi («2026-11-25T15:31:00.000Z») como datetime con zona, o None."""
+    if not valor:
+        return None
+    try:
+        fecha = parse_datetime(str(valor))
+    except ValueError:
+        return None
+    if fecha is not None and timezone.is_naive(fecha):
+        fecha = timezone.make_aware(fecha, dt_timezone.utc)
+    return fecha
 
 
 def firma_wompi_valida(evento):
@@ -155,6 +171,11 @@ class CtnEventoPagoViewSet(viewsets.GenericViewSet):
     def _aplicar(payload, transaccion, monto_centavos, suscripcion_id,
                  suscripcion_tipo_id, periodo, contacto_id, cliente_id):
         """Registra el evento y, si está aprobado, aplica el pago. Todo o nada."""
+        # Se parsea aquí y no se lee de `evento_pago` después: el modelo guarda el
+        # texto tal cual en el atributo hasta que se recarga de la BD.
+        fecha_transaccion = _fecha_wompi(
+            transaccion.get('finalized_at') or transaccion.get('created_at')
+        )
         with transaction.atomic():
             evento_pago = CtnEventoPago.objects.create(
                 evento=payload.get('event'),
@@ -164,7 +185,7 @@ class CtnEventoPagoViewSet(viewsets.GenericViewSet):
                 referencia=transaccion.get('reference'),
                 correo=transaccion.get('customer_email'),
                 estado=transaccion.get('status'),
-                fecha_transaccion=transaccion.get('finalized_at') or transaccion.get('created_at'),
+                fecha_transaccion=fecha_transaccion,
                 vr_original=monto_centavos / 100 if monto_centavos else 0,
                 datos=payload,
             )
@@ -186,6 +207,7 @@ class CtnEventoPagoViewSet(viewsets.GenericViewSet):
                     CtnMovimiento.objects.create(
                         evento_pago=evento_pago,
                         tipo='factura',
+                        fecha=fecha_transaccion or evento_pago.fecha,
                         concepto=f'{suscripcion.suscripcion_tipo.nombre}',
                         valor=monto_centavos / 100,
                         usuario=suscripcion.usuario,
