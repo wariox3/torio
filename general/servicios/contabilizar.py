@@ -272,6 +272,11 @@ def _movimiento(comun, cuenta, signo, valor, detalle, etiqueta,
         raise ValidationError(f'{etiqueta}: no tiene cuenta contable establecida.')
     if signo == 0:
         raise ValidationError(f'{etiqueta}: no se puede determinar débito o crédito.')
+    # Las cuentas de agrupación (clase, grupo, mayor) no reciben movimiento: es la
+    # misma regla de los importadores (`_PerfilContable._cuenta`) y la que reporta
+    # `movimiento.analizar_inconsistencias`.
+    if not cuenta.permite_movimiento:
+        raise ValidationError(f'{etiqueta}: la cuenta {cuenta.codigo} no permite movimientos.')
 
     # Las tres exigencias de la cuenta se respetan en los dos sentidos, que es lo
     # mismo que revisa `movimiento.analizar_inconsistencias`: lo que la cuenta

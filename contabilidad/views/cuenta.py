@@ -165,6 +165,24 @@ class ConCuentaViewSet(
         cuenta_origen = serializer.validated_data['cuenta_origen']
         cuenta_destino = serializer.validated_data['cuenta_destino']
 
+        # Los movimientos llegan tal como están: si el destino exige algo distinto
+        # que el origen, quedarían con el dato de más o de menos.
+        diferencias = [
+            etiqueta for campo, etiqueta in (
+                ('exige_base', 'exige base'),
+                ('exige_contacto', 'exige contacto'),
+                ('exige_centro_costo', 'exige centro de costo'),
+            )
+            if getattr(cuenta_origen, campo) != getattr(cuenta_destino, campo)
+        ]
+        if diferencias:
+            raise ValidationError({
+                'detail': (
+                    f'Las cuentas {cuenta_origen.codigo} y {cuenta_destino.codigo} no coinciden '
+                    f'en: {", ".join(diferencias)}. Deben exigir lo mismo para trasladar.'
+                ),
+            })
+
         # Las dos actualizaciones son un solo traslado: o se mueve todo o no se mueve nada.
         with transaction.atomic():
             movimientos = ConMovimiento.objects.filter(

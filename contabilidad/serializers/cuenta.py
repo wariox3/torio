@@ -1,6 +1,17 @@
 from rest_framework import serializers
 
-from contabilidad.models import ConCuenta
+from contabilidad.models import ConCuenta, ConMovimiento
+
+# Lo que decide cómo se arma un movimiento contra la cuenta. Cambiarlo con
+# movimientos ya registrados los deja inconsistentes de golpe: activar una
+# exigencia marca como faltante a los que no traen el dato, y desactivarla, como
+# sobrante a los que sí.
+CARACTERISTICAS = {
+    'exige_base': 'exige base',
+    'exige_contacto': 'exige contacto',
+    'exige_centro_costo': 'exige centro de costo',
+    'permite_movimiento': 'permite movimiento',
+}
 
 
 class ConCuentaSerializer(serializers.ModelSerializer):
@@ -41,3 +52,21 @@ class ConCuentaSerializer(serializers.ModelSerializer):
             'cuenta_subcuenta_nombre',
         ]
         read_only_fields = ['id']
+
+    def validate(self, attrs):
+        cuenta = self.instance
+        if cuenta is None:
+            return attrs
+        # Solo cuenta el cambio real: un PUT que reenvía el mismo valor pasa.
+        cambios = [
+            etiqueta for campo, etiqueta in CARACTERISTICAS.items()
+            if campo in attrs and attrs[campo] != getattr(cuenta, campo)
+        ]
+        if cambios and ConMovimiento.objects.filter(cuenta_id=cuenta.pk).exists():
+            raise serializers.ValidationError({
+                'detail': (
+                    f'La cuenta {cuenta.codigo} ya tiene movimientos y no se puede '
+                    f'cambiar: {", ".join(cambios)}.'
+                ),
+            })
+        return attrs
