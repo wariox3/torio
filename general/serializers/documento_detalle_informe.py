@@ -15,6 +15,7 @@ class GenDocumentoDetalleInformeSerializer(serializers.ModelSerializer):
         'id',
         'documento_id',
         'item_id',
+        'item__nombre',
         'puesto_id',
         'modalidad_id',
         'afectado',
