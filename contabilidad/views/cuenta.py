@@ -12,6 +12,7 @@ from contabilidad.serializers import (
     ConCuentaSeleccionarSerializer,
     ConCuentaSerializer,
 )
+from contabilidad.servicios.cuenta import tiene_hijas
 from general.models import GenDocumentoDetalle
 from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import (
@@ -102,6 +103,14 @@ class ConCuentaViewSet(
                 qs = qs.filter(**{filtro: valor.lower() == 'true'})
 
         return qs
+
+    def perform_destroy(self, instance):
+        # Las auxiliares cuelgan del código del padre, no de una FK: el PROTECT no las cubre.
+        if tiene_hijas(instance):
+            raise ValidationError({
+                'detail': f'La cuenta {instance.codigo} tiene auxiliares: elimínelas primero.',
+            })
+        super().perform_destroy(instance)
 
     @extend_schema(parameters=_LIST_PARAMS)
     def list(self, request, *args, **kwargs):

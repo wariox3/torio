@@ -1,11 +1,7 @@
 from rest_framework import serializers
 
-from contabilidad.models import (
-    ConCuenta,
-    ConCuentaClase,
-    ConCuentaCuenta,
-    ConCuentaGrupo,
-)
+from contabilidad.models import ConCuenta
+from contabilidad.servicios import cuenta as reglas
 
 
 class ConCuentaImportarSerializer(serializers.Serializer):
@@ -22,8 +18,9 @@ class ConCuentaImportarSerializer(serializers.Serializer):
         campos_requeridos:    set[str]
         procesar_lote(filas)  -> (creados: int, errores: list[{fila, mensaje}])
 
-    `nivel`, `cuenta_clase`, `cuenta_grupo` y `cuenta_cuenta` NO se importan:
-    se derivan automáticamente del `codigo` (ver `_derivar`).
+    `nivel` y los catálogos NO se importan: se derivan del `codigo` con las mismas
+    reglas que crear (`contabilidad.servicios.cuenta`). El padre de una auxiliar
+    puede venir en el mismo archivo; si viene, se guarda sin movimiento.
     """
 
     model = ConCuenta
@@ -37,7 +34,12 @@ class ConCuentaImportarSerializer(serializers.Serializer):
         ('exige_centro_costo', 'Exige centro de costo'),
         ('permite_movimiento', 'Permite movimiento'),
     )
-    campos_requeridos = {'nombre'}
+    campos_requeridos = {'codigo', 'nombre'}
+    valores_ejemplo = {
+        'codigo': ('110505', '11050501'),
+        'nombre': ('Caja general', 'Caja general sede norte'),
+        'permite_movimiento': ('No', 'Sí'),
+    }
 
     LIMITE_ERRORES = 100
     BATCH_BULK_CREATE = 500
@@ -50,86 +52,79 @@ class ConCuentaImportarSerializer(serializers.Serializer):
         if not filas_validas:
             return 0, []
 
-        # 1) Precargar los PKs existentes de cada catálogo (una query por catálogo).
-        clases = set(ConCuentaClase.objects.values_list('id', flat=True))
-        grupos = set(ConCuentaGrupo.objects.values_list('id', flat=True))
-        cuentas = set(ConCuentaCuenta.objects.values_list('id', flat=True))
-
-        # 2) Precargar códigos existentes en BD para detectar duplicados (codigo es unique)
-        codigos = {self._texto(datos.get('codigo')) or '0' for _, datos in filas_validas}
-        ya_existen = set(
-            ConCuenta.objects
-            .filter(codigo__in=codigos)
-            .values_list('codigo', flat=True)
-        ) if codigos else set()
-
+        # 1) Formato, sin BD: lo demás solo se consulta para los códigos bien formados.
         errores = []
-        nuevos = []
-        vistos = set()  # códigos duplicados intra-archivo
-
+        filas = []  # [(idx, datos, codigo)]
         for idx, datos in filas_validas:
+            codigo = reglas.normalizar_codigo(datos.get('codigo'))
             try:
-                codigo = self._texto(datos.get('codigo')) or '0'
+                reglas.validar_formato(codigo)
+            except reglas.CuentaInvalida as e:
+                errores.append({'fila': idx, 'mensaje': str(e)})
+                if len(errores) >= self.LIMITE_ERRORES:
+                    return 0, errores
+                continue
+            filas.append((idx, datos, codigo))
 
-                if codigo in vistos:
-                    raise ValueError(f'El código {codigo} está duplicado dentro del archivo')
-                vistos.add(codigo)
+        # 2) Precargas: catálogos, códigos ya existentes y padres (una query cada uno,
+        #    más una por FK hacia ConCuenta para saber qué padres se usan).
+        codigos = {codigo for _, _, codigo in filas}
+        catalogos = reglas.cargar_catalogos(codigos)
+        ya_existen = set(
+            ConCuenta.objects.filter(codigo__in=codigos).values_list('codigo', flat=True)
+        )
+        codigos_padre = {reglas.codigo_padre(c) for c in codigos} - {None}
+        padres_bd = {
+            p.codigo: p for p in ConCuenta.objects.filter(codigo__in=codigos_padre)
+        }
+        usos_padres = reglas.usos(p.pk for p in padres_bd.values() if p.permite_movimiento)
+
+        nuevos = {}  # codigo → ConCuenta
+        padres_a_apagar = set()
+        for idx, datos, codigo in filas:
+            try:
+                if codigo in nuevos:
+                    raise reglas.CuentaInvalida(f'El código {codigo} está duplicado dentro del archivo')
                 if codigo in ya_existen:
-                    raise ValueError(f'Ya existe una cuenta con código {codigo}')
+                    raise reglas.CuentaInvalida(f'Ya existe una cuenta con código {codigo}')
 
-                clase_id, grupo_id, cuenta_id, nivel = self._derivar(codigo)
+                derivados = reglas.derivar(codigo, catalogos)
 
-                nuevos.append(ConCuenta(
+                codigo_padre = reglas.codigo_padre(codigo)
+                if codigo_padre:
+                    padre = padres_bd.get(codigo_padre)
+                    if padre is not None:
+                        reglas.validar_padre(padre, codigo, usos_padres.get(padre.pk, []))
+                        padres_a_apagar.add(padre.pk)
+                    elif codigo_padre not in codigos:
+                        raise reglas.CuentaInvalida(reglas.mensaje_padre_inexistente(codigo))
+
+                nuevos[codigo] = ConCuenta(
                     codigo=codigo,
                     nombre=self._texto(datos.get('nombre')),
                     exige_base=self._si_no(datos.get('exige_base')),
                     exige_contacto=self._si_no(datos.get('exige_contacto')),
                     exige_centro_costo=self._si_no(datos.get('exige_centro_costo')),
                     permite_movimiento=self._si_no(datos.get('permite_movimiento')),
-                    nivel=nivel,
-                    # Si el prefijo derivado no existe en el catálogo, se deja en null.
-                    cuenta_clase_id=clase_id if clase_id in clases else None,
-                    cuenta_grupo_id=grupo_id if grupo_id in grupos else None,
-                    cuenta_cuenta_id=cuenta_id if cuenta_id in cuentas else None,
-                ))
-            except Exception as e:  # noqa: BLE001 — el error de la fila se reporta al usuario
+                    **derivados,
+                )
+            except reglas.CuentaInvalida as e:
                 errores.append({'fila': idx, 'mensaje': str(e)})
                 if len(errores) >= self.LIMITE_ERRORES:
                     break
 
         if errores:
-            return 0, errores
+            # Los de formato (paso 1) van antes que los demás: se devuelven por fila.
+            return 0, sorted(errores, key=lambda e: e['fila'])
 
-        if nuevos:
-            ConCuenta.objects.bulk_create(nuevos, batch_size=self.BATCH_BULK_CREATE)
+        # Solo las hojas mueven: un padre que viene en el archivo junto a su auxiliar
+        # se guarda sin movimiento, como se apaga el que ya estaba en la BD.
+        for codigo in codigos_padre & nuevos.keys():
+            nuevos[codigo].permite_movimiento = False
+
+        ConCuenta.objects.bulk_create(nuevos.values(), batch_size=self.BATCH_BULK_CREATE)
+        reglas.apagar_movimiento(padres_a_apagar)
         return len(nuevos), []
-
-    # ---- lógica de negocio ----
-
-    @staticmethod
-    def _derivar(codigo):
-        """
-        Deriva (cuenta_clase_id, cuenta_grupo_id, cuenta_cuenta_id, nivel) a partir
-        del prefijo del código. Los catálogos usan el prefijo numérico como PK.
-        """
-        longitud = len(codigo)
-        clase_id = int(codigo[0]) if longitud >= 1 else None
-        grupo_id = int(codigo[:2]) if longitud >= 2 else None
-        cuenta_id = int(codigo[:4]) if longitud >= 4 else None
-        # subcuenta_id = int(codigo[:6]) if longitud >= 6 else None
-
-        if longitud <= 1:
-            nivel = 1
-        elif longitud == 2:
-            nivel = 2
-        elif longitud <= 4:
-            nivel = 3
-        elif longitud <= 6:
-            nivel = 4
-        else:
-            nivel = 5
-
-        return clase_id, grupo_id, cuenta_id, nivel
 
     # ---- helpers ----
 
