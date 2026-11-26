@@ -398,10 +398,10 @@ CtnDominio.objects.get_or_create(domain='reddocapi2.co', tenant=tenant,
 PYEOF
 
 # 3. Migrar todos los tenants existentes
-$PY manage.py migrate_schemas
+$PY manage.py migrate_schemascargar_geodata
 
 # 4. Datos de referencia del schema público (idempotente)
-$PY manage.py cargar_geodata
+$PY manage.py 
 
 # 5. Datos de referencia de los tenants (idempotente)
 $PY manage.py cargar_datos_tenant

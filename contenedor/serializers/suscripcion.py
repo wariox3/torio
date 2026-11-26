@@ -5,6 +5,12 @@ from contenedor.models import CtnSuscripcion
 
 class CtnSuscripcionSerializer(serializers.ModelSerializer):
     suscripcion_tipo_nombre = serializers.CharField(source='suscripcion_tipo.nombre', read_only=True)
+    suscripcion_tipo_suscripcion_clase_id = serializers.IntegerField(
+        source='suscripcion_tipo.suscripcion_clase_id', read_only=True, allow_null=True,
+    )
+    suscripcion_tipo_suscripcion_categoria_id = serializers.IntegerField(
+        source='suscripcion_tipo.suscripcion_categoria_id', read_only=True, allow_null=True,
+    )
     cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True)
     usuario_nombre = serializers.CharField(source='usuario.username', read_only=True)
 
@@ -18,6 +24,8 @@ class CtnSuscripcionSerializer(serializers.ModelSerializer):
             'usuario_nombre',
             'suscripcion_tipo',
             'suscripcion_tipo_nombre',
+            'suscripcion_tipo_suscripcion_clase_id',
+            'suscripcion_tipo_suscripcion_categoria_id',
             'fecha_inicio',
             'fecha_fin',
             'frecuencia',
