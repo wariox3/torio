@@ -776,8 +776,9 @@ def emitir(documento_ids, cliente: Rededoc = None) -> dict:
 # ------------------------------------------------------- nómina electrónica ----
 #
 # La nómina va por otro camino que los documentos: rededoc la crea en borrador y
-# no la emite sola, ni avisa por el webhook cuando la DIAN la valida. Torio la
-# crea y la emite en la misma llamada, y el veredicto viene en la respuesta. El
+# no avisa por el webhook cuando la DIAN la valida. Torio la crea y la emite en
+# la misma llamada, y el veredicto viene en la respuesta; si no vino, rededoc
+# puede resolverla después por su cuenta, y torio se entera al volver a emitirla. El
 # payload lo arma `humano.servicios.nomina_electronica`.
 
 class _RededocNoResponde(Exception):
@@ -792,8 +793,10 @@ def _emitir_nomina(documento, parametro, cliente):
     (aceptada por la DIAN), `pendiente` (enviada sin veredicto: el Set de Pruebas),
     `error` o None si ya estaba validada.
 
-    Volver a emitir una que quedó pendiente, o cuyo envío se cortó, no la crea de
-    nuevo: rededoc la tiene con ese número, y `emitir/` consulta su estado.
+    Volver a emitir una que ya estaba enviada no la crea de nuevo: primero se
+    consulta en rededoc, que pudo haberla resuelto por su cuenta (aceptada o
+    rechazada se aplica ahí mismo), y si sigue sin veredicto `emitir/` la envía o
+    le pregunta a la DIAN.
     """
     from humano.servicios import nomina_electronica
 
@@ -830,6 +833,32 @@ def _emitir_nomina(documento, parametro, cliente):
             documento.save(update_fields=[
                 'electronico_id', 'estado_electronico_enviado', 'estado_electronico_error',
             ])
+    else:
+        # Ya enviada: puede que rededoc la haya resuelto sin avisar —no hay webhook
+        # de nómina—, con su proceso que emite las que quedaron en borrador o el que
+        # trae el veredicto de las enviadas. A una aceptada o rechazada `emitir/` le
+        # responde 400, así que se pregunta antes: si no, reintentar la marcaba con
+        # error y nunca quedaba validada.
+        respuesta = cliente.consultar_nomina(documento.electronico_id)
+        if respuesta['error'] and not 400 <= respuesta['status'] < 500:
+            raise _RededocNoResponde(respuesta['datos'])
+        if not respuesta['error']:
+            datos = respuesta['datos'] or {}
+            estado = datos.get('estado_nombre')
+            if estado == 'aceptado':
+                _marcar_nomina_aceptada(documento, datos)
+                return 'emitido'
+            if estado == 'rechazado':
+                _registrar_errores(
+                    documento, GenDocumentoElectronicoError.Fase.EMISION,
+                    [
+                        f"{e.get('regla')}: {e.get('mensaje')}" if e.get('regla') else str(e.get('mensaje'))
+                        for e in datos.get('errores') or [] if isinstance(e, dict)
+                    ] or ['La DIAN rechazó la nómina.'],
+                )
+                return 'error'
+        # Borrador, firmado o enviado sin veredicto —o una consulta que rededoc no
+        # pudo responder—: `emitir/` la envía o le pregunta a la DIAN.
 
     respuesta = cliente.emitir_nomina(documento.electronico_id)
     if respuesta['error'] and not 400 <= respuesta['status'] < 500:
@@ -846,18 +875,7 @@ def _emitir_nomina(documento, parametro, cliente):
     datos = respuesta['datos'] or {}
     estado = datos.get('estado')
     if estado == 'aceptado':
-        with transaction.atomic():
-            documento.documentos_electronicos_errores_documento_rel.all().delete()
-            documento.estado_electronico = True
-            documento.estado_electronico_error = False
-            documento.cue = datos.get('cune')
-            documento.fecha_validacion = (
-                parse_datetime(datos['fecha_validacion']) if datos.get('fecha_validacion')
-                else timezone.now()
-            )
-            documento.save(update_fields=[
-                'estado_electronico', 'estado_electronico_error', 'cue', 'fecha_validacion',
-            ])
+        _marcar_nomina_aceptada(documento, datos)
         return 'emitido'
     if estado == 'rechazado':
         _registrar_errores(
@@ -867,6 +885,22 @@ def _emitir_nomina(documento, parametro, cliente):
         )
         return 'error'
     return 'pendiente'
+
+
+def _marcar_nomina_aceptada(documento, datos):
+    """La deja validada con el CUNE y la fecha que trae rededoc (`emitir/` o el detalle)."""
+    with transaction.atomic():
+        documento.documentos_electronicos_errores_documento_rel.all().delete()
+        documento.estado_electronico = True
+        documento.estado_electronico_error = False
+        documento.cue = datos.get('cune')
+        documento.fecha_validacion = (
+            parse_datetime(datos['fecha_validacion']) if datos.get('fecha_validacion')
+            else timezone.now()
+        )
+        documento.save(update_fields=[
+            'estado_electronico', 'estado_electronico_error', 'cue', 'fecha_validacion',
+        ])
 
 
 def _validar_y_armar(documento, parametro):

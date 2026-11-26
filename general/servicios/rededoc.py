@@ -321,6 +321,15 @@ class Rededoc:
         """
         return self._peticion('POST', f'/api/nomina/nomina/{nomina_id}/emitir/')
 
+    def consultar_nomina(self, nomina_id):
+        """
+        La nómina tal como está en rededoc. `GET /api/nomina/nomina/<id>/`.
+        Responde `estado_nombre` (borrador, firmado, enviado, aceptado, rechazado),
+        `cune`, `fecha_validacion` y `errores` (`[{regla, tipo, mensaje}]`). No
+        consulta a la DIAN: es lo último que rededoc sabe de ella.
+        """
+        return self._peticion('GET', f'/api/nomina/nomina/{nomina_id}/')
+
     # Notificar incluye el envío del correo por la pasarela, dentro de la misma
     # llamada: con el timeout general se cortaba antes de que rededoc respondiera.
     TIMEOUT_NOTIFICAR = 30
