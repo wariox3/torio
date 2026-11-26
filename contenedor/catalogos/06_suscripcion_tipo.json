@@ -11,6 +11,6 @@
     { "id": 8,  "nombre": "Éxito ERP",                        "precio": 229900, "suscripcion_clase_id": 1,  "suscripcion_categoria_id": 2  },
     { "id": 13, "nombre": "Prueba ERP",                       "precio": 0,      "suscripcion_clase_id": 1,  "suscripcion_categoria_id": 99 },
     { "id": 15, "nombre": "Cortesía ERP",                     "precio": 0,      "suscripcion_clase_id": 1,  "suscripcion_categoria_id": 99 },
-    { "id": 16, "nombre": "Personalizado",                    "precio": 0,      "suscripcion_clase_id": 1,  "suscripcion_categoria_id": 3  }
+    { "id": 16, "nombre": "Personalizado",                    "precio": 0,      "suscripcion_clase_id": 2,  "suscripcion_categoria_id": 3  }
   ]
 }
