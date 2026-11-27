@@ -40,13 +40,13 @@ class ConMovimientoViewSet(
     ExportarExcelMixin,
     ImportarExcelMixin,
     mixins.ListModelMixin,
-    mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
-    # Sin update ni destroy: un movimiento suelto no se edita ni se borra, porque
-    # descuadraría su asiento. Se borran por asiento completo (descontabilizar el
-    # documento, `eliminar-masivo` para el saldo inicial).
+    # Sin create, update ni destroy: un movimiento suelto no se crea, edita ni
+    # borra, porque descuadraría su asiento. Entran por asiento completo
+    # (contabilizar el documento, `importar` para el saldo inicial, que exige
+    # cuadre) y salen igual (descontabilizar, `eliminar-masivo`).
     serializer_class = ConMovimientoSerializer
     serializer_class_exportar = ConMovimientoExportarSerializer
     serializer_class_importar = ConMovimientoImportarSerializer

@@ -32,8 +32,8 @@ class ConMovimientoImportarSerializer(serializers.Serializer):
 
     Es lo único que se importa directo a `ConMovimiento`: los demás movimientos
     los crea la contabilización de un documento. Por eso cada fila nace con
-    `saldo_inicial = True`, y es lo que permite borrarla después con `eliminar`
-    y `eliminar-masivo`.
+    `saldo_inicial = True`, y es lo que permite borrarla después con
+    `eliminar-masivo`.
 
     Las columnas son las de un asiento (`_PerfilContable`), con sus mismas reglas,
     para que el mayor no reciba lo que la contabilización rechazaría:
