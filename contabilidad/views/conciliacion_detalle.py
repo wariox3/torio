@@ -29,10 +29,6 @@ class ConConciliacionDetalleViewSet(
             *ConConciliacionDetalleSerializer.select_related_lista
         )
 
-    def get_queryset_excel(self):
-        # El Excel lleva el tipo del documento, que la lista no muestra.
-        return self.get_queryset_lista().select_related('documento__documento_tipo')
-
     @extend_schema(
         summary='Limpiar detalles',
         description=(
