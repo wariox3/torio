@@ -23,12 +23,25 @@ class ConConciliacionDetalle(models.Model):
         'general.GenDocumento', null=True, on_delete=models.PROTECT,
         related_name='conciliaciones_detalles_documento_rel',
     )
+    movimiento = models.ForeignKey(
+        'contabilidad.ConMovimiento', null=True, on_delete=models.PROTECT,
+        related_name='conciliaciones_detalles_movimiento_rel',
+    )
 
     class Meta:
         db_table = 'con_conciliacion_detalle'
         ordering = ['-id']
         verbose_name = 'Conciliación detalle'
         verbose_name_plural = 'Conciliaciones detalles'
+        constraints = [
+            # Un movimiento puede aparecer en varias conciliaciones, pero solo
+            # una puede tenerlo conciliado.
+            models.UniqueConstraint(
+                fields=['movimiento'],
+                condition=models.Q(estado_conciliado=True),
+                name='con_conciliacion_detalle_movimiento_conciliado_unico',
+            ),
+        ]
 
     def __str__(self):
         return str(self.id)

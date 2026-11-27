@@ -6,7 +6,7 @@ from contabilidad.models import ConConciliacionDetalle
 class ConConciliacionDetalleSerializer(serializers.ModelSerializer):
     # Config consumida por FiltrosDinamicosMixin
     campos_filtrables = {
-        'id', 'conciliacion_id', 'cuenta_id', 'documento_id', 'estado_conciliado',
+        'id', 'conciliacion_id', 'cuenta_id', 'documento_id', 'movimiento_id', 'estado_conciliado',
         'contacto_id', 'contacto__nombre_corto', 'contacto__numero_identificacion',
     }
     select_related_lista = ('conciliacion', 'cuenta', 'contacto', 'documento')
@@ -30,5 +30,6 @@ class ConConciliacionDetalleSerializer(serializers.ModelSerializer):
             'contacto',
             'contacto_nombre_corto',
             'documento',
+            'movimiento',
         ]
         read_only_fields = ['id']
