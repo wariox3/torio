@@ -13,6 +13,7 @@ from django.db import transaction
 from rest_framework.exceptions import NotFound, ValidationError
 
 from contabilidad.models import ConMovimiento, ConPeriodo
+from contabilidad.servicios.conciliacion import liberar_movimientos
 from contabilidad.servicios.movimiento import TOLERANCIA_DESCUADRE
 from general.models import GenDocumento, GenDocumentoImpuesto
 from humano.models import (
@@ -195,7 +196,9 @@ def _descontabilizar_documento(documento_id):
                 f'descontabilizarlo.'
             )
 
-    ConMovimiento.objects.filter(documento_id=documento_id).delete()
+    movimientos = ConMovimiento.objects.filter(documento_id=documento_id)
+    liberar_movimientos(movimientos.values_list('id', flat=True))
+    movimientos.delete()
     documento.estado_contabilizado = False
     documento.save(update_fields=['estado_contabilizado'])
 

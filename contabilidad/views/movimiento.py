@@ -12,6 +12,7 @@ from contabilidad.serializers import (
     ConMovimientoSeleccionarSerializer,
     ConMovimientoSerializer,
 )
+from contabilidad.servicios.conciliacion import liberar_movimientos
 from seguridad.permissions import TienePermisoModelo
 from utilidades.mixins import (
     ExportarExcelMixin,
@@ -41,10 +42,11 @@ class ConMovimientoViewSet(
     mixins.ListModelMixin,
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
+    # Sin update ni destroy: un movimiento suelto no se edita ni se borra, porque
+    # descuadraría su asiento. Se borran por asiento completo (descontabilizar el
+    # documento, `eliminar-masivo` para el saldo inicial).
     serializer_class = ConMovimientoSerializer
     serializer_class_exportar = ConMovimientoExportarSerializer
     serializer_class_importar = ConMovimientoImportarSerializer
@@ -85,7 +87,8 @@ class ConMovimientoViewSet(
         description=(
             'Elimina todos los movimientos de saldo inicial de un comprobante y número. '
             'Se borra el asiento completo para no dejar la contabilidad descuadrada. '
-            'Si alguno está en un periodo bloqueado, no se elimina ninguno.'
+            'Si alguno está en un periodo bloqueado o conciliado en una conciliación '
+            'bancaria, no se elimina ninguno.'
         ),
         request=inline_serializer(
             name='MovimientoEliminarMasivoRequest',
@@ -128,5 +131,6 @@ class ConMovimientoViewSet(
                     'errores': bloqueados,
                 })
             ids = [mov_id for mov_id, _, _ in movimientos]
+            liberar_movimientos(ids)
             ConMovimiento.objects.filter(id__in=ids).delete()
         return Response({'eliminados': len(ids)}, status=status.HTTP_200_OK)
