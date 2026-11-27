@@ -15,11 +15,10 @@ from general.models import (
 )
 from general.servicios.documento import (
     CONCEPTO_CORRECCION_OBLIGATORIO,
-    DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
     DOCUMENTO_CLASE_FACTURA_POS,
-    DOCUMENTO_CLASE_NOTA_AJUSTE,
     DOCUMENTO_CLASES_CON_RESOLUCION,
     _asignar_cartera,
+    validar_referencia_nota_ajuste,
 )
 from general.serializers.documento_detalle_importar import (
     ErroresFila,
@@ -148,11 +147,9 @@ class GenDocumentoImportarSerializer(serializers.Serializer):
                     raise ValueError(CONCEPTO_CORRECCION_OBLIGATORIO[clase_id])
                 if concepto is not None and concepto.documento_clase_id != clase_id:
                     raise ValueError('El concepto de corrección no corresponde a este tipo de documento.')
-                if clase_id == DOCUMENTO_CLASE_NOTA_AJUSTE:
-                    if referencia is None:
-                        raise ValueError('La nota de ajuste debe indicar el documento soporte que ajusta.')
-                    if referencia.documento_tipo.documento_clase_id != DOCUMENTO_CLASE_DOCUMENTO_SOPORTE:
-                        raise ValueError('La nota de ajuste solo puede ajustar un documento soporte.')
+                mensaje = validar_referencia_nota_ajuste(documento_tipo, referencia)
+                if mensaje:
+                    raise ValueError(mensaje)
 
                 fecha = datos.get('fecha')
                 # Mismo default que en `GenDocumentoSerializer`: sin fecha contable

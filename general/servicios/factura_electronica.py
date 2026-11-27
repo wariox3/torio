@@ -37,8 +37,11 @@ from general.servicios.documento import (
     DOCUMENTO_CLASE_FACTURA_VENTA,
     DOCUMENTO_CLASE_NOMINA_ELECTRONICA,
     DOCUMENTO_CLASE_NOTA_AJUSTE,
+    DOCUMENTO_CLASE_NOTA_AJUSTE_POS,
     DOCUMENTO_CLASE_NOTA_CREDITO_VENTA,
     DOCUMENTO_CLASE_NOTA_DEBITO_VENTA,
+    DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO,
+    DOCUMENTO_TIPO_NOTA_AJUSTE_POS,
 )
 from general.servicios.rededoc import Rededoc
 from seguridad.cuenta import nombre_de_usuario
@@ -648,6 +651,7 @@ PREFIJOS_NOTA = {
     DOCUMENTO_CLASE_NOTA_DEBITO_VENTA: 'ND',
     # El de itrio, para que las notas de ajuste sigan la misma serie.
     DOCUMENTO_CLASE_NOTA_AJUSTE: 'DSAJ',
+    DOCUMENTO_CLASE_NOTA_AJUSTE_POS: 'NAP',
 }
 # El concepto «Anulación de factura electrónica» de la nota crédito. Es el único
 # que exige la factura referenciada: rededoc deja ir las demás notas crédito y
@@ -1357,6 +1361,86 @@ def _armar_nota_ajuste(documento, parametro):
     }
 
 
+def _armar_nota_ajuste_pos(documento, parametro):
+    """
+    La nota de ajuste crédito al documento equivalente P.O.S. (numeral 8.12 del
+    anexo, `nota_ajuste_de_credito` en rededoc): corrige una factura POS
+    electrónica, como la nota crédito corrige una factura.
+
+    A diferencia de la nota crédito de venta, la factura POS corregida
+    (`documento_referencia`) es obligatoria —rededoc no tiene «nota de ajuste sin
+    referencia»—, tiene que haberse enviado desde torio —rededoc no admite aquí
+    una referencia externa, así que una POS emitida desde itrio no se puede
+    ajustar con esta nota— y la DIAN ya la tiene que haber aceptado. Se revisa acá
+    para que el error salga en torio y no como un rechazo de rededoc.
+
+    No lleva el bloque `pos` (las notas del documento equivalente no llevan las
+    extensiones de la caja), ni resolución —va con su prefijo de `PREFIJOS_NOTA`—
+    ni vencimiento. Las retenciones tampoco viajan, igual que en la POS.
+    """
+    errores = []
+    if documento.documento_tipo.codigo is None:
+        errores.append(
+            f'El tipo de documento {documento.documento_tipo.nombre} no tiene código de '
+            'facturación electrónica.'
+        )
+    if documento.numero is None:
+        errores.append(f'El documento {documento.id} no tiene número.')
+    if documento.fecha is None:
+        errores.append(f'El documento {documento.id} no tiene fecha.')
+
+    concepto = documento.documento_concepto_correccion
+    if concepto is None:
+        errores.append(f'El documento {documento.id} no tiene concepto de corrección.')
+
+    referencia = documento.documento_referencia
+    if referencia is None:
+        errores.append(
+            f'El documento {documento.id} es una nota de ajuste POS y no tiene la factura '
+            'POS electrónica que ajusta.'
+        )
+    elif referencia.documento_tipo_id != DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO:
+        errores.append(
+            f'El documento {referencia.numero or referencia.id} que ajusta la nota '
+            f'{documento.id} no es una factura POS electrónica.'
+        )
+    elif not referencia.electronico_id:
+        errores.append(
+            f'La factura POS {referencia.numero or referencia.id} que ajusta la nota '
+            f'{documento.id} no ha sido enviada electrónicamente desde torio.'
+        )
+    elif not referencia.estado_electronico:
+        errores.append(
+            f'La factura POS {referencia.numero or referencia.id} que ajusta la nota '
+            f'{documento.id} todavía no está validada por la DIAN.'
+        )
+
+    adquiriente = _o_error(errores, _adquiriente, documento, 'cliente')
+    detalles = _o_error(errores, _detalles, documento, False)
+    if errores:
+        raise _ErroresDocumento(errores)
+
+    credito = bool(documento.plazo_pago and documento.plazo_pago.dias > 0)
+    return {
+        'emisor': parametro.gen_rededoc_emisor,
+        'ambiente': settings.REDEDOC_AMBIENTE,
+        'referencia_externa': str(documento.id),
+        'documento_tipo': documento.documento_tipo.codigo,
+        'prefijo': PREFIJOS_NOTA[DOCUMENTO_CLASE_NOTA_AJUSTE_POS],
+        'numero_resolucion': '',
+        'consecutivo': documento.numero,
+        'fecha_emision': documento.fecha.isoformat(),
+        'fecha_vencimiento': None,
+        'forma_pago': FORMA_PAGO_CREDITO if credito else FORMA_PAGO_CONTADO,
+        'medio_pago': getattr(documento.metodo_pago, 'codigo', None) or MEDIO_PAGO_NO_DEFINIDO,
+        'moneda': MONEDA,
+        'documento_referencia': str(referencia.electronico_id),
+        'concepto_correccion': concepto.codigo,
+        'adquiriente': adquiriente,
+        'detalles': detalles,
+    }
+
+
 def _o_error(errores, armar, *args):
     """Lo que devuelva `armar`, o `None` dejando su error en la lista."""
     try:
@@ -1470,6 +1554,7 @@ ARMADORES = {
     DOCUMENTO_CLASE_FACTURA_POS: _armar_documento_pos,
     DOCUMENTO_CLASE_DOCUMENTO_SOPORTE: _armar_documento_soporte,
     DOCUMENTO_CLASE_NOTA_AJUSTE: _armar_nota_ajuste,
+    DOCUMENTO_CLASE_NOTA_AJUSTE_POS: _armar_nota_ajuste_pos,
 }
 
 
@@ -1490,9 +1575,12 @@ AVISO_PRUEBA = 'prueba'
 AVISO_HABILITACION = 'habilitacion'
 
 # La factura POS electrónica casi siempre sale a consumidor final, que es un NIT
-# genérico sin nadie detrás para recibir el correo: esa no se notifica. Mismo id
-# que `documento_imprimir.DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO`.
-DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO = 24
+# genérico sin nadie detrás para recibir el correo: esa no se notifica, y su nota
+# de ajuste tampoco.
+DOCUMENTO_TIPOS_POS_ELECTRONICOS = (
+    DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO,
+    DOCUMENTO_TIPO_NOTA_AJUSTE_POS,
+)
 NIT_CONSUMIDOR_FINAL = '222222222222'
 # Operación de rededoc → campo de `GenParametro` que enciende.
 CAMPO_HABILITADO_POR_OPERACION = {
@@ -1563,11 +1651,12 @@ def procesar_aviso(tipo, documento_id, fecha_validacion=None, cufe=None) -> GenD
 
 def _es_pos_a_consumidor_final(documento) -> bool:
     """
-    Una factura POS electrónica a consumidor final. Se compara el NIT y no el
-    contacto semilla: cualquier contacto con ese NIT es el mismo consumidor final.
+    Una factura POS electrónica, o su nota de ajuste, a consumidor final. Se
+    compara el NIT y no el contacto semilla: cualquier contacto con ese NIT es el
+    mismo consumidor final.
     """
     return (
-        documento.documento_tipo_id == DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO
+        documento.documento_tipo_id in DOCUMENTO_TIPOS_POS_ELECTRONICOS
         and documento.contacto is not None
         and (documento.contacto.numero_identificacion or '').strip() == NIT_CONSUMIDOR_FINAL
     )

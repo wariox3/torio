@@ -12,10 +12,9 @@ from general.serializers.documento_detalle import GenDocumentoDetalleSerializer
 from general.servicios import crear_detalle
 from general.servicios.documento import (
     CONCEPTO_CORRECCION_OBLIGATORIO,
-    DOCUMENTO_CLASE_DOCUMENTO_SOPORTE,
     DOCUMENTO_CLASE_FACTURA_POS,
-    DOCUMENTO_CLASE_NOTA_AJUSTE,
     DOCUMENTO_CLASES_CON_RESOLUCION,
+    validar_referencia_nota_ajuste,
 )
 from venta.models import VenTurno
 
@@ -297,29 +296,18 @@ class GenDocumentoSerializer(serializers.ModelSerializer):
 
     def _validar_referencia_nota_ajuste(self, datos):
         """
-        La nota de ajuste lleva siempre el documento soporte que ajusta.
-
-        rededoc no tiene «nota de ajuste sin referencia» (las notas de venta sí),
-        y una vez aprobada la referencia ya no se puede cambiar: sin esta regla
-        la nota se aprobaría y nunca se podría emitir. Que ese documento soporte
-        ya esté validado por la DIAN se revisa al emitir, porque puede llegar
-        después de guardar la nota.
+        Las notas de ajuste (al documento soporte y POS) llevan siempre el
+        documento que ajustan, y solo uno de los suyos. Las reglas viven en
+        `validar_referencia_nota_ajuste`, que también usa el importar.
         """
         tipo = datos.get('documento_tipo') or getattr(self.instance, 'documento_tipo', None)
-        if tipo is None or tipo.documento_clase_id != DOCUMENTO_CLASE_NOTA_AJUSTE:
-            return
         if 'documento_referencia' in datos:
             referencia = datos['documento_referencia']
         else:
             referencia = getattr(self.instance, 'documento_referencia', None)
-        if referencia is None:
-            raise serializers.ValidationError({
-                'documento_referencia': 'La nota de ajuste debe indicar el documento soporte que ajusta.',
-            })
-        if referencia.documento_tipo.documento_clase_id != DOCUMENTO_CLASE_DOCUMENTO_SOPORTE:
-            raise serializers.ValidationError({
-                'documento_referencia': 'La nota de ajuste solo puede ajustar un documento soporte.',
-            })
+        mensaje = validar_referencia_nota_ajuste(tipo, referencia)
+        if mensaje:
+            raise serializers.ValidationError({'documento_referencia': mensaje})
 
     def _heredar_resolucion(self, datos):
         """

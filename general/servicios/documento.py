@@ -52,6 +52,7 @@ DOCUMENTO_CLASE_FACTURA_VENTA = 100
 DOCUMENTO_CLASE_NOTA_CREDITO_VENTA = 101
 DOCUMENTO_CLASE_NOTA_DEBITO_VENTA = 102
 DOCUMENTO_CLASE_FACTURA_POS = 105
+DOCUMENTO_CLASE_NOTA_AJUSTE_POS = 111  # Nota de ajuste crédito al documento equivalente POS
 DOCUMENTO_CLASE_DOCUMENTO_SOPORTE = 303
 DOCUMENTO_CLASE_NOTA_AJUSTE = 304  # Nota de ajuste al documento soporte
 
@@ -61,7 +62,46 @@ DOCUMENTO_CLASE_NOTA_AJUSTE = 304  # Nota de ajuste al documento soporte
 CONCEPTO_CORRECCION_OBLIGATORIO = {
     DOCUMENTO_CLASE_NOTA_CREDITO_VENTA: 'La nota crédito debe indicar el concepto de corrección.',
     DOCUMENTO_CLASE_NOTA_AJUSTE: 'La nota de ajuste debe indicar el concepto de corrección.',
+    DOCUMENTO_CLASE_NOTA_AJUSTE_POS: 'La nota de ajuste POS debe indicar el concepto de corrección.',
 }
+
+# La factura POS que sí se emite a la DIAN. La otra (27, FACTURA POS) no se envía,
+# así que no hay nada que ajustarle con una nota electrónica.
+DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO = 24
+DOCUMENTO_TIPO_NOTA_AJUSTE_POS = 36
+
+
+def validar_referencia_nota_ajuste(tipo, referencia):
+    """
+    Las notas de ajuste llevan siempre el documento que ajustan, y solo uno de los
+    suyos. Devuelve el mensaje de error, o None si está bien (o si `tipo` no es una
+    nota de ajuste).
+
+    rededoc no tiene «nota de ajuste sin referencia» (las notas de venta sí), y una
+    vez aprobada la referencia ya no se puede cambiar: sin esta regla la nota se
+    aprobaría y nunca se podría emitir. Que el referenciado ya esté validado por
+    la DIAN se revisa al emitir, porque puede llegar después de guardar la nota.
+
+    - La nota de ajuste (304) ajusta un documento soporte.
+    - La nota de ajuste POS (111) ajusta una factura POS electrónica: la POS que
+      no se envía (27) no tiene nada que ajustar ante la DIAN.
+
+    La comparten `GenDocumentoSerializer` y el importar de documentos.
+    """
+    if tipo is None:
+        return None
+    clase_id = tipo.documento_clase_id
+    if clase_id == DOCUMENTO_CLASE_NOTA_AJUSTE:
+        if referencia is None:
+            return 'La nota de ajuste debe indicar el documento soporte que ajusta.'
+        if referencia.documento_tipo.documento_clase_id != DOCUMENTO_CLASE_DOCUMENTO_SOPORTE:
+            return 'La nota de ajuste solo puede ajustar un documento soporte.'
+    elif clase_id == DOCUMENTO_CLASE_NOTA_AJUSTE_POS:
+        if referencia is None:
+            return 'La nota de ajuste POS debe indicar la factura POS electrónica que ajusta.'
+        if referencia.documento_tipo_id != DOCUMENTO_TIPO_FACTURA_POS_ELECTRONICO:
+            return 'La nota de ajuste POS solo puede ajustar una factura POS electrónica.'
+    return None
 DOCUMENTO_CLASE_NOMINA = 701
 DOCUMENTO_CLASE_NOMINA_ELECTRONICA = 702
 
@@ -85,6 +125,7 @@ DOCUMENTO_TIPOS_NOTA_CREDITO = (
     2,   # NOTA CRÉDITO DE VENTA
     6,   # NOTA CREDITO COMPRA
     12,  # NOTA AJUSTE (al documento soporte)
+    36,  # NOTA AJUSTE POS (a la factura POS electrónica)
 )
 
 # A qué clases de documento puede devolver cada nota: los de su mismo lado que
@@ -94,6 +135,7 @@ DOCUMENTO_CLASES_REFERENCIA_NOTA_CREDITO = {
     2: (100, 102, 104, 105),  # factura, nota débito, cuenta de cobro, POS
     6: (300, 302),            # compra, nota débito compra
     12: (303,),               # documento soporte
+    36: (105,),               # factura POS (solo la electrónica: `validar_referencia_nota_ajuste`)
 }
 
 # Clases que llevan cartera: al aprobarse el documento queda con saldo pendiente
@@ -167,6 +209,7 @@ DOCUMENTO_TIPOS_QUE_PROMEDIAN_COSTO = (
 # margen de esta venta tiene que quedar con el costo que tenía ese día.
 DOCUMENTO_TIPOS_QUE_CONGELAN_COSTO = (
     1, 2, 17, 24, 27,  # FACTURA ELECTRÓNICA, NOTA CRÉDITO, CUENTA COBRO, POS ELECTRÓNICO, POS
+    36,                # NOTA AJUSTE POS
     5, 6,              # COMPRA, NOTA CREDITO COMPRA
     9, 10,             # ENTRADA ALMACEN, SALIDA ALMACEN
 )

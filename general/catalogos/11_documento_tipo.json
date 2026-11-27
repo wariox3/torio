@@ -311,6 +311,21 @@
       "nombre": "PEDIDO SERVICIO",
       "documento_clase_id": 110,
       "venta": true
+    },
+    {
+      "id": 36,
+      "nombre": "NOTA AJUSTE POS",
+      "documento_clase_id": 111,
+      "comprobante_id": 16,
+      "venta": true,
+      "cobrar": true,
+      "operacion": -1,
+      "contabilidad": true,
+      "inventario": true,
+      "operacion_inventario": 1,
+      "electronico": true,
+      "codigo": 8,
+      "pos": true
     }
   ]
 }
